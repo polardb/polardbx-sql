@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.sharding;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
@@ -450,9 +451,10 @@ public class RelToLabelConverter extends RelShuttleImpl {
         if (other instanceof Exchange) {
             return visitChildren(other);
         }
-        if (other instanceof DirectTableOperation) {
+        if (other instanceof DirectTableOperation || other instanceof DirectMultiDBTableOperation) {
             return visitChildren(other);
         }
+
         if (other instanceof TableModify) {
             return visitChildren(other);
         }

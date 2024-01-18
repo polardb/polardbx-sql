@@ -16,9 +16,10 @@
 
 package com.alibaba.polardbx.server;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.PolarPrivileges;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
@@ -29,6 +30,7 @@ import com.alibaba.polardbx.common.constants.ServerVariables;
 import com.alibaba.polardbx.common.exception.TddlException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -45,11 +47,11 @@ import com.alibaba.polardbx.common.statementsummary.model.ExecInfo;
 import com.alibaba.polardbx.common.utils.ExceptionUtils;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.logger.support.LogFormat;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
@@ -59,6 +61,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlManager;
@@ -70,7 +73,6 @@ import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.TPreparedStatement;
 import com.alibaba.polardbx.matrix.jdbc.TResultSet;
-import com.alibaba.polardbx.matrix.jdbc.utils.MergeHashMap;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.net.FrontendConnection;
@@ -79,7 +81,6 @@ import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.FrontendAuthenticator;
 import com.alibaba.polardbx.net.handler.FrontendAuthorityAuthenticator;
-import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.net.packet.EOFPacket;
 import com.alibaba.polardbx.net.packet.ErrorPacket;
 import com.alibaba.polardbx.net.packet.FieldPacket;
@@ -111,7 +112,9 @@ import com.alibaba.polardbx.optimizer.core.planner.MetaConverter;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.profiler.cpu.CpuStat;
-import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
+import com.alibaba.polardbx.optimizer.memory.MemoryManager;
+import com.alibaba.polardbx.optimizer.memory.MemoryPool;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
 import com.alibaba.polardbx.optimizer.parse.bean.PreStmtMetaData;
@@ -126,6 +129,10 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.variable.VariableManager;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.alibaba.polardbx.rpc.CdcDirectByteOutput;
+import com.alibaba.polardbx.rpc.CdcRpcClient;
+import com.alibaba.polardbx.rpc.cdc.DumpRequest;
+import com.alibaba.polardbx.rpc.cdc.DumpStream;
 import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
 import com.alibaba.polardbx.server.conn.ResultSetCachedObj;
 import com.alibaba.polardbx.server.executor.utils.BinaryResultSetUtil;
@@ -141,15 +148,17 @@ import com.alibaba.polardbx.server.util.MockUtil;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
-import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.alibaba.polardbx.stats.MatrixStatistics;
-import com.alibaba.polardbx.transaction.AutoCommitTransaction;
 import com.alibaba.polardbx.transaction.ReadOnlyTsoTransaction;
 import com.google.common.base.Preconditions;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.stub.StreamObserver;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
@@ -171,8 +180,11 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -180,12 +192,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
-import static com.alibaba.polardbx.ErrorCode.ERR_HANDLE_DATA;
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CONFIG;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_HANDLE_DATA;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_SERVER;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TRANS_DEADLOCK;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TRANS_ROLLBACK_STATEMENT_FAIL;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_DEADLOCK;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.extract;
 import static com.alibaba.polardbx.common.utils.ExceptionUtils.isMySQLIntegrityConstraintViolationException;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.vendorErrorIs;
@@ -260,12 +273,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
      * Since it is used in rare cases (only used in cursor-fetch mode),
      * we initialize it in {@link #getResultSetMap}.
      */
-    private ConcurrentMap<Integer, ResultSetCachedObj> resultSetMap;
+    final private ConcurrentMap<Integer, ResultSetCachedObj> resultSetMap = new ConcurrentHashMap<>();
+    private MemoryPool cursorFetchMemoryPool = null;
 
     private boolean beginTransaction = false;
     private MatrixStatistics stats;
-    // 支持下set sql_select_limit参数
-    private Long sqlSelectLimit = null;
     // 下推到下层的系统变量，全部小写
     final private Map<String, Object> serverVariables = new HashMap<>();
     // 全局的系统变量
@@ -287,6 +299,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
     private volatile RescheduleParam rescheduleParam;
     private volatile RescheduleTask rescheduleTask;
     private ExecInfo execInfo;
+    private String partitionHint;
 
     /**
      * Session's active roles.
@@ -345,9 +358,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     public Map<Integer, ResultSetCachedObj> getResultSetMap() {
-        if (null == resultSetMap) {
-            resultSetMap = new ConcurrentHashMap<>();
-        }
         return resultSetMap;
     }
 
@@ -387,8 +397,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
     public Object getSysVarValue(SqlSystemVar var) {
         Object value = null;
-        VariableManager variableManager =
-            OptimizerContext.getContext(schema).getVariableManager();
+        VariableManager variableManager = OptimizerContext.getContext(schema).getVariableManager();
         String lowerCaseKey = var.getName().toLowerCase();
 
         if (extraServerVariables.containsKey(lowerCaseKey)) {
@@ -587,8 +596,13 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (schemaConfig == null) {
             this.stats = MatrixStatistics.EMPTY;
         } else {
+            MatrixStatistics oldStats = stats;
             TDataSource ds = schemaConfig.getDataSource();
             this.stats = ds.getStatistics();
+            if (oldStats != null) {
+                oldStats.activeConnection.decrementAndGet();
+                this.stats.activeConnection.incrementAndGet();
+            }
             warmUpDb(ds);
         }
     }
@@ -599,8 +613,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
             try {
                 ex = TDataSourceInitUtils.initDataSource(ds);
                 if (ex != null) {
-                    logger.warn("Failed to init schema " + ds.getSchemaName() + " during using db, the cause is " + ex
-                        .getMessage(), ex);
+                    logger.warn("Failed to init schema " + ds.getSchemaName() + " during using db, the cause is "
+                        + ex.getMessage(), ex);
                 }
             } catch (Throwable e) {
                 throw GeneralUtil.nestedException(e);
@@ -643,9 +657,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
     public void setStmtTxIsolation(int txIsolation) {
         if (this.beginTransaction) {
-            throw new TddlNestableRuntimeException(
-                new SQLException("Transaction characteristics can't be changed while a transaction is in progress",
-                    "25001", ErrorCode.ER_CANT_CHANGE_TX_ISOLATION, null));
+            throw new TddlRuntimeException(ErrorCode.ERR_CANT_CHANGE_TX_ISOLATION);
         }
         this.stmtTxIsolation = txIsolation;
         setConnTxIsolation(txIsolation);
@@ -693,12 +705,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (autocommit) {
             this.trxPolicy = null;
             this.shareReadView = ShareReadViewPolicy.DEFAULT;
-        }
-
-        if (this.autocommit != autocommit) {
-            // true -> false, begin a trx, and we should clear all cached result set;
-            // false -> true, commit a trx, and we should also clear all cached result set;
-            this.clearCachedResultSet();
         }
 
         this.autocommit = autocommit;
@@ -790,59 +796,160 @@ public final class ServerConnection extends FrontendConnection implements Resche
         Ping.response(this);
     }
 
-    public void execute(String sql, boolean hasMore) {
-        execute(ByteString.from(sql), hasMore);
+    private CdcRpcClient.CdcRpcStreamingProxy proxy = null;
+
+    @Override
+    public void binlogDump(byte[] data) {
+        CountDownLatch countDownLatch = new CountDownLatch(1);
+        MySQLMessage mm = new MySQLMessage(data);
+        FrontendConnection connection = this;
+        StreamObserver<DumpStream> observer = new StreamObserver<DumpStream>() {
+            @SneakyThrows
+            @Override
+            public void onNext(DumpStream dumpStream) {
+                byte[] data = CdcDirectByteOutput.unsafeFetch(dumpStream.getPayload());
+                PacketOutputProxyFactory.getInstance().createProxy(connection).writeArrayAsPacket(data);
+            }
+
+            @Override
+            public void onError(Throwable t) {
+                try {
+                    if (t instanceof StatusRuntimeException) {
+                        final Status status = ((StatusRuntimeException) t).getStatus();
+                        if (status.getCode() == Status.Code.CANCELLED && status.getCause() == null) {
+                            if (logger.isInfoEnabled()) {
+                                logger.info("binlog dump canceled by remote [" + host + ":" + port + "]...");
+                            }
+                            return;
+                        }
+                        logger.error("[" + host + ":" + port + "] binlog dump from cdc failed", t);
+                        if (status.getCode() == Status.Code.INVALID_ARGUMENT) {
+                            final String description = status.getDescription();
+                            JSONObject obj = JSON.parseObject(description);
+                            logger.error("[" + host + ":" + port + "] binlog dump from cdc failed with " + obj);
+                            writeErrMessage((Integer) obj.get("error_code"), null, (String) obj.get("error_message"));
+                        } else if (status.getCode() == Status.Code.UNAVAILABLE) {
+                            logger.error("[" + host + ":" + port
+                                + "] binlog dump from cdc failed cause of UNAVAILABLE, please try later");
+                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, "please try later...");
+                        } else {
+                            logger.error("[" + host + ":" + port
+                                + "] binlog dump from cdc failed cause of unknown, please try later");
+                            writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
+                        }
+                    } else {
+                        logger.error("binlog dump from cdc failed", t);
+                        writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, t.getMessage());
+                    }
+                } catch (Throwable th) {
+                    logger.error("binlog dump from cdc failed with Throwable", th);
+                    writeErrMessage(ErrorCode.ER_MASTER_FATAL_ERROR_READING_BINLOG, th.getMessage());
+                } finally {
+                    countDownLatch.countDown();
+                }
+            }
+
+            @Override
+            public void onCompleted() {
+                if (logger.isInfoEnabled()) {
+                    logger.info("binlog dump finished at this time");
+                }
+                countDownLatch.countDown();
+            }
+        };
+        mm.position(5);
+        int position = mm.readInt();
+        mm.position(11);
+        int serverId = mm.readInt();
+        String fileName = "";
+        if (data.length > 15) {
+            mm.position(15);
+            fileName = mm.readString().trim();
+        }
+        if (logger.isInfoEnabled()) {
+            logger.info("Slave serverId=" + serverId + " will dump from " + fileName + "@" + position + " with params:"
+                + getUserDefVariables());
+        }
+        String streamName = "";
+        if (fileName.contains("_")) {
+            int idx = fileName.lastIndexOf('_');
+            streamName = fileName.substring(0, idx);
+        }
+        proxy = new CdcRpcClient.CdcRpcStreamingProxy(streamName);
+        proxy.dump(DumpRequest.newBuilder().setFileName(fileName).setPosition(position).setRegistered(registerSlave)
+            .setExt(JSON.toJSONString(getUserDefVariables())).setStreamName(streamName).build(), observer);
+        try {
+            countDownLatch.await();
+        } catch (InterruptedException e) {
+            logger.warn("binlog dump countDownLatch.await fail ", e);
+        }
     }
 
-    public void execute(ByteString sql, boolean hasMore) {
-        execute(sql, hasMore, false, null, null, null);
+    public boolean execute(String sql, boolean hasMore) {
+        return execute(ByteString.from(sql), hasMore);
     }
 
-    public void execute(ByteString sql, List<Pair<Integer, ParameterContext>> params, boolean hasMore,
-                        QueryResultHandler handler) {
-        execute(sql, hasMore, false, params, null, handler);
+    public boolean execute(ByteString sql, boolean hasMore) {
+        return execute(sql, hasMore, false, null, null, null);
     }
 
-    public void execute(ByteString sql, boolean hasMore, boolean prepare,
-                        final List<Pair<Integer, ParameterContext>> params,
-                        PreparedStmtCache preparedStmtCache, QueryResultHandler handler) {
-        execute(sql, hasMore, prepare, params, -1, MySQLPacket.CURSOR_TYPE_NO_CURSOR, preparedStmtCache, handler);
+    public boolean execute(ByteString sql, List<Pair<Integer, ParameterContext>> params, boolean hasMore,
+                           QueryResultHandler handler) {
+        return execute(sql, hasMore, false, params, null, handler);
     }
 
-    public synchronized void execute(ByteString sql, PreparedStmtCache preparedStmtCache,
-                        final List<Pair<Integer, ParameterContext>> params, int statementId, byte flags) {
+    public boolean execute(ByteString sql, boolean hasMore, boolean prepare,
+                           final List<Pair<Integer, ParameterContext>> params, PreparedStmtCache preparedStmtCache,
+                           QueryResultHandler handler) {
+        return execute(sql, hasMore, prepare, params, -1, MySQLPacket.CURSOR_TYPE_NO_CURSOR, preparedStmtCache,
+            handler);
+    }
+
+    public synchronized boolean execute(ByteString sql, PreparedStmtCache preparedStmtCache,
+                                     final List<Pair<Integer, ParameterContext>> params, int statementId, byte flags) {
         setPreparedStmt(preparedStmtCache);
-        execute(sql, false, true, params, statementId, flags, preparedStmtCache, null);
+        return execute(sql, false, true, params, statementId, flags, preparedStmtCache, null);
     }
 
-    public void execute(ByteString sql, boolean hasMore, boolean prepare,
-                        final List<Pair<Integer, ParameterContext>> params, int statementId, byte flags,
-                        PreparedStmtCache preparedStmtCache, QueryResultHandler handler) {
+    public boolean execute(ByteString sql, boolean hasMore, boolean prepare,
+                           final List<Pair<Integer, ParameterContext>> params, int statementId, byte flags,
+                           PreparedStmtCache preparedStmtCache, QueryResultHandler handler) {
+        if (this.schema == null) {
+            if (!ConfigDataMode.isPolarDbX()) {
+                writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
+                return false;
+            }
+        }
 
         int sqlSimpleMaxLen = CobarServer.getInstance().getConfig().getSystem().getSqlSimpleMaxLen();
         sqlSample = sql.substring(0, Math.min(sqlSimpleMaxLen, sql.length()));
 
         if (prepare) {
             // Prepare Execute 的查询结果
-            handler =
-                (null == handler) ? new ServerPreparedResultHandler(hasMore, statementId, flags, preparedStmtCache) :
-                    handler;
+            handler = (null == handler) ?
+                new ServerPreparedResultHandler(hasMore, statementId, traceId, flags, preparedStmtCache) : handler;
         } else {
             clearPreparedStmt();
             handler = (null == handler) ? new ServerResultHandler(hasMore, statementId, flags) : handler;
         }
 
-        innerExecute(sql, params, handler, null);
+        return innerExecute(sql, params, handler, null);
     }
 
-    public void savePrepareStmtCache(PreparedStmtCache preparedStmtCache, boolean isServerPrepare) {
+    /**
+     * 放进Map的同时缓存返回包的元信息
+     */
+    public synchronized void savePrepareStmtCache(PreparedStmtCache preparedStmtCache, boolean isServerPrepare) {
+        if (isClosed()) {
+            logger.warn("connection has been closed");
+            return;
+        }
         prepareStmtCount.incrementAndGet();
         if (isServerPrepare) {
             // 缓存回包元信息
             String javaCharset = CharsetUtil.getJavaCharset(charset);
             preparedStmtCache.setJavaCharset(javaCharset);
-            preparedStmtCache.setCharsetIndex(CharsetMapping
-                .getCollationIndexForJavaEncoding(charset, null));
+            preparedStmtCache.setCharsetIndex(CharsetMapping.getCollationIndexForJavaEncoding(charset, null));
             preparedStmtCache.setCatalog(StringUtil.encode_0(FieldPacket.DEFAULT_CATALOG_STR, javaCharset));
 
             smForPrepare.put(preparedStmtCache.getStmt().getStmtId(), preparedStmtCache);
@@ -908,6 +1015,16 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     /**
+     * Prepare模式下更新权限上下文
+     */
+    public void updatePrivilegeContextForPrepare(PreparedStmtCache preparedStmtCache) {
+        updatePrivilegeContext();
+        if (this.conn != null) {
+            preparedStmtCache.setPrivilegeContext(this.conn.getExecutionContext().getPrivilegeContext());
+        }
+    }
+
+    /**
      * 将权限添加到SQL上下文中
      */
     public void updatePrivilegeContext() {
@@ -915,21 +1032,23 @@ public final class ServerConnection extends FrontendConnection implements Resche
         String host = getHost();
         String schema = getSchema();
 
-        if (this.getTddlConnection() != null) {
-            PrivilegeContext privilegeContext = new PrivilegeContext();
-            privilegeContext.setUser(getUser());
-            privilegeContext.setHost(getHost());
-            privilegeContext.setSchema(getSchema());
-            privilegeContext.setPrivileges(privileges);
-            privilegeContext.setTrustLogin(isTrustLogin());
-            privilegeContext.setManaged(isManaged());
+        if (this.conn == null) {
+            initTddlConnection();
+        }
+        PrivilegeContext privilegeContext = new PrivilegeContext();
+        privilegeContext.setUser(getUser());
+        privilegeContext.setHost(getHost());
+        privilegeContext.setSchema(getSchema());
+        privilegeContext.setPrivileges(privileges);
+        privilegeContext.setTrustLogin(isTrustLogin());
+        privilegeContext.setManaged(isManaged());
+
             PolarPrivileges polarPrivileges = (PolarPrivileges) privileges;
             PolarAccountInfo polarUserInfo = polarPrivileges.checkAndGetMatchUser(user, host);
             this.setMatchPolarUserInfo(polarUserInfo);
             privilegeContext.setPolarUserInfo(polarUserInfo);
             privilegeContext.setActiveRoles(activeRoles);
-            this.conn.getExecutionContext().setPrivilegeContext(privilegeContext);
-        }
+        this.conn.getExecutionContext().setPrivilegeContext(privilegeContext);
     }
 
     public void genTraceId() {
@@ -960,8 +1079,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
      * 简单做同步，避免erlang/nodejs等异步驱动的模式，提交多个sql后，等返回结果，容易串包，加同步，保证串行处理
      * 在重新调度(reschedule)的时候也有用到
      */
-    public synchronized void innerExecute(ByteString sql, List<Pair<Integer, ParameterContext>> params,
-                                          QueryResultHandler handler, LoadDataContext dataContext) {
+    public synchronized boolean innerExecute(ByteString sql, List<Pair<Integer, ParameterContext>> params,
+                                             QueryResultHandler handler, LoadDataContext dataContext) {
 
         ByteString realSql = dataContext != null ? ByteString.from(dataContext.getLoadDataSql()) : sql;
         long statExecCpuNano = 0;
@@ -972,17 +1091,17 @@ public final class ServerConnection extends FrontendConnection implements Resche
         // 针对非事务的请求进行链接中断
         if (!CobarServer.getInstance().isOnline() && isAutocommit()) {
             shutDownError.write(PacketOutputProxyFactory.getInstance().createProxy(this));
-            return;
+            return false;
         }
 
         if (isClosed()) {
-            return;
+            return false;
         }
 
         SchemaConfig schema = getSchemaConfig();
         if (schema == null) {
             writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + this.schema + "'");
-            return;
+            return false;
         }
 
         statementExecuting.set(true);
@@ -991,7 +1110,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (sqlMock) {
             processMock(sql);
             statementExecuting.set(false);
-            return;
+            return true;
         }
 
         if (ConfigDataMode.isFastMock()) {
@@ -1000,7 +1119,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 MockUtil.destroySchema(dbName);
                 handler.sendUpdateResult(1);
                 handler.sendPacketEnd(false);
-                return;
+                this.sqlSample = null;
+                return true;
             }
         }
 
@@ -1012,12 +1132,14 @@ public final class ServerConnection extends FrontendConnection implements Resche
         TPreparedStatement stmt = null;
         ExecutionContext ec = null;
         boolean needRescheduled = false;
+        boolean cursorFetchMode = false;
+        int errorCode = -1;
         try {
             getConnection(schema);
 
             if (conn == null || conn.isClosed()) {
                 logger.warn("connection has been closed");
-                return;
+                return false;
             }
 
             CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
@@ -1035,22 +1157,19 @@ public final class ServerConnection extends FrontendConnection implements Resche
             // 将权限添加到SQL上下文中从prepareExecutionContext拆出来，依赖于conn
             if (!ec.isExecutingPreparedStmt()) {
                 updatePrivilegeContext();
+            } else {
+                ec.setPrivilegeContext(ec.getPreparedStmtCache().getPrivilegeContext());
             }
             ec.setLoadDataContext(dataContext);
             beforeExecution();
 
             // Set cursor-fetch mode.
             if (isCursorFetchMode(handler)) {
-                ec.setCursorFetchMode(true);
-                this.setCursorFetchMode(true);
-                if (!supportCursorFetch(schema)) {
-                    throw new TddlRuntimeException(ERR_CONFIG, "Cursor fetch mode is forbidden, "
-                        + "use SET ENABLE_CURSOR_FETCH = TRUE to enable this function");
-                }
+                cursorFetchMode = true;
             }
 
             // set params to prepare statement if exist
-            fillParams(stmt, params);
+            fillParams(stmt, params, ec.isExecutingPreparedStmt());
 
             // 可能里边会执行多个sql，有多个返回结果
             boolean existMoreResults;
@@ -1067,7 +1186,34 @@ public final class ServerConnection extends FrontendConnection implements Resche
             }
 
             while (existMoreResults) {
+                /**
+                 Stores the result of ROW_COUNT() function.
 
+                 ROW_COUNT() function is a MySQL extention, but we try to keep it
+                 similar to ROW_COUNT member of the GET DIAGNOSTICS stack of the SQL
+                 standard (see SQL99, part 2, search for ROW_COUNT). It's value is
+                 implementation defined for anything except INSERT, DELETE, UPDATE.
+
+                 ROW_COUNT is assigned according to the following rules:
+
+                 - In my_ok():
+                 - for DML statements: to the number of affected rows;
+                 - for DDL statements: to 0.
+
+                 - In my_eof(): to -1 to indicate that there was a result set.
+
+                 We derive this semantics from the JDBC specification, where int
+                 java.sql.Statement.getUpdateCount() is defined to (sic) "return the
+                 current result as an update count; if the result is a ResultSet
+                 object or there are no more results, -1 is returned".
+
+                 - In my_error(): to -1 to be compatible with the MySQL C API and
+                 MySQL ODBC driver.
+
+                 - For SIGNAL statements: to 0 per WL#2110 specification (see also
+                 sql_signal.cc comment). Zero is used since that's the "default"
+                 value of ROW_COUNT in the Diagnostics Area.
+                 */
                 if (!isQuery) {
                     int affectRows = stmt.getUpdateCount();
                     handler.sendUpdateResult(affectRows);
@@ -1076,9 +1222,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     conn.setAffectedRows(affectRows);
                 } else {
                     rs = stmt.getResultSet();
-                    handler.sendSelectResult(rs, rowCount);
+                    handler.sendSelectResult(rs, rowCount,
+                        ec.getParamManager().getLong(ConnectionParams.SQL_SELECT_LIMIT));
                     conn.setFoundRows(rowCount.get());
-                    conn.setAffectedRows(0);
+                    conn.setAffectedRows(-1);
                 }
 
                 // 检查后边是否还有其它的查询结果, 同时会暗中关闭上一个resultSet
@@ -1095,10 +1242,24 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 }
             }
         } catch (Throwable e) {
-            if (futureCancelErrorCode != null) {
+            // In some cases, the current thread is interrupted due to some reason.
+            // The actual reason is indicated by futureCancelErrorCode, so we should
+            // first set the actual exception here.
+            if (null != futureCancelErrorCode) {
                 exception = new TddlRuntimeException(futureCancelErrorCode, e);
             } else {
                 exception = e;
+            }
+
+            // And then, ensure the error code is valid.
+            if (!ErrorCode.match(exception.getMessage())) {
+                errorCode = ERR_SERVER.getCode();
+                exception = new TddlRuntimeException(ERR_SERVER, exception, exception.getMessage());
+            } else if (exception instanceof TddlRuntimeException) {
+                errorCode = ((TddlRuntimeException) exception).getErrorCode();
+            } else {
+                // This path should not being reached.
+                errorCode = ErrorCode.extract(exception.getMessage());
             }
         } finally {
             try {
@@ -1111,8 +1272,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                         .isReschedule();
                     if (needRescheduled) {
                         rescheduleParam =
-                            RescheduleParam.builder().sql(sql).params(params).handler(handler)
-                                .dataContext(dataContext)
+                            RescheduleParam.builder().sql(sql).params(params).handler(handler).dataContext(dataContext)
                                 .build();
                     }
                 } else {
@@ -1131,7 +1291,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                         // For cursor-fetch mode, do not close the result set if it is successfully executed.
                         // This is because the result set will be cached, and closed when the statement is closed
                         // or the frontend connection is closed.
-                        if (!(ec.isCursorFetchMode() && exception == null)) {
+                        if (!(cursorFetchMode && exception == null)) {
                             rs.close();
                         }
                     }
@@ -1142,7 +1302,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
             if (stmt != null) {
                 try {
-                    if (ec.isCursorFetchMode()) {
+                    if (cursorFetchMode) {
                         // For cursor-fetch mode, do not close the result set.
                         stmt.close(true, false);
                     } else {
@@ -1154,8 +1314,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
             }
         }
 
+        if (null != ec && null != conn.getTrx()) {
+            conn.getTrx().updateStatisticsWhenStatementFinished(rowCount);
+        }
+
         if (autocommit && null != conn) {
-            final ITransaction trx = conn.getTrx();
             if (exception == null) {
                 try {
                     conn.commit();
@@ -1168,27 +1331,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     conn.commit();
                 } catch (Throwable ex) {
                     //ignore
-                }
-            }
-
-            if (ec.isCursorFetchMode() && trx instanceof AutoCommitTransaction) {
-                // Cache the trx in cursor-fetch mode. We will actually close it
-                // when the statement is closed or the frontend connection is closed.
-                final Integer stmtId = getStatementId(handler);
-                if (null != stmtId && null != this.getResultSetMap().get(stmtId)) {
-                    this.getResultSetMap().get(stmtId).setTrx(trx);
-                } else if (null != trx) {
-                    // Fail to cache the trx, commit and close it here.
-                    try {
-                        trx.commit();
-                    } catch (Throwable t) {
-                        logger.warn(t.getMessage());
-                    }
-                    try {
-                        trx.close();
-                    } catch (Throwable t) {
-                        logger.warn(t.getMessage());
-                    }
                 }
             }
         }
@@ -1243,8 +1385,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
             if (conn.getExecutionContext() != null) {
                 try {
                     afterExecution(conn.getExecutionContext(), realSql, params, schema,
-                        exception != null ? -1 : rowCount.get(),
-                        getTrxPolicyForLogging(), statExecCpuNano, exception);
+                        exception != null ? -1 : rowCount.get(), getTrxPolicyForLogging(), statExecCpuNano, exception,
+                        errorCode);
                 } catch (Throwable ex) {
                     logger.error("Exception happens after execution", ex);
                 }
@@ -1256,22 +1398,22 @@ public final class ServerConnection extends FrontendConnection implements Resche
         statementExecuting.set(false);
 
         if (needRescheduled) {
-            return;
+            return true;
         }
         if (exception != null) {
             try {
                 // Here must close the connection when rowCount > 0 and exception is not null.
-                // However, for cursor-fetch mode, rowCount.get() is always zero,
-                // but we should close the frontend connection when exception occurs.
-                final boolean fatal = (rowCount.get() > 0 || (null != ec && ec.isCursorFetchMode()));
-                handler.handleError(exception, realSql, fatal);
+                final boolean fatal = rowCount.get() > 0;
+                handler.handleError(exception, realSql, ConfigDataMode.isFastMock() ? false : fatal);
             } catch (Throwable ex) {
                 logger.error("Failed to send error message", ex);
             }
+            return false;
         } else {
             handler.sendPacketEnd(false);
             // Release all savepoints after packet is sent.
             releaseAutoSavepoint();
+            return true;
         }
     }
 
@@ -1281,26 +1423,12 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
-    private boolean supportCursorFetch(SchemaConfig schema) {
-        Object localConnVar = connectionVariables.get(ConnectionProperties.ENABLE_CURSOR_FETCH);
-        if (localConnVar != null) {
-            // If local variable is set, use local one.
-            final Boolean supportCursorFetch = GeneralUtil.convertStringToBoolean(String.valueOf(localConnVar));
-            return null != supportCursorFetch && supportCursorFetch;
-        } else {
-            // Otherwise, use global variable.
-            final ParamManager paramManager = new ParamManager(schema.getDataSource().getConnectionProperties());
-            return paramManager.getBoolean(ConnectionParams.ENABLE_CURSOR_FETCH);
-        }
-    }
-
     private Integer getStatementId(QueryResultHandler handler) {
         return handler instanceof ServerResultHandler ? ((ServerResultHandler) handler).getStatementId() : null;
     }
 
     private boolean isCursorFetchMode(QueryResultHandler handler) {
-        return handler instanceof ServerResultHandler
-            && ((ServerResultHandler) handler).isCursorFetch();
+        return handler instanceof ServerResultHandler && ((ServerResultHandler) handler).isCursorFetch();
     }
 
     private String getTrxPolicyForLogging() {
@@ -1341,8 +1469,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
              * 将权限添加到SQL上下文中 因为prepare不走innerExecute,所以针对prepare需要获得内部的目标sql并检查是否有权限执行，
              * 而且有了prepare的检查就不需要检查execute了。
              */
-            updatePrivilegeContext();
+            updatePrivilegeContextForPrepare(preparedStmtCache);
             ec.setPrivilegeMode(this.isPrivilegeMode());
+
             ec.setExtraCmds(new MergeHashMap<>(tddlConnection.getDs().getConnectionProperties()));
             return MetaConverter.getMetaData(preparedStmtCache, params, ec);
         } catch (RuntimeException ex) {
@@ -1370,6 +1499,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
         ec.setSchemaName(schema);
         ec.setClientFoundRows(clientFoundRows());
         ec.setTxIsolation(this.txIsolation);
+        ec.setPartitionHint(partitionHint);
+        if (StringUtils.isNotEmpty(partitionHint)) {
+            ec.setUseHint(true);
+        }
 
         buildMDC();
 
@@ -1397,16 +1530,19 @@ public final class ServerConnection extends FrontendConnection implements Resche
              */
             ec.setInternalSystemSql(false);
             ec.setUsingPhySqlCache(true);
+            ec.setStartTime(System.nanoTime());
+            ec.setPrivilegeMode(isPrivilegeMode());
+            ec.setMdcConnString(buildMDCCache);
+
+            ec.setLogicalSqlStartTimeInMs(getSqlBeginTimestamp());
+            ec.setLogicalSqlStartTime(getLastActiveTime());
+            ec.setSqlId(sqlId);
         }
-        ec.setStartTime(System.nanoTime());
-        ec.setPrivilegeMode(isPrivilegeMode());
-        ec.setMdcConnString(buildMDCCache);
     }
 
     private void afterExecution(ExecutionContext ec, ByteString sql, List<Pair<Integer, ParameterContext>> params,
-                                SchemaConfig schema, long lastAffectedRows, String trxPolicy,
-                                long startExecTimeNano,
-                                Throwable exception) {
+                                SchemaConfig schema, long lastAffectedRows, String trxPolicy, long startExecTimeNano,
+                                Throwable exception, int errorCode) {
         if (DynamicConfig.getInstance().enableExtremePerformance()) {
             try {
                 this.conn.feedBackPlan(exception);
@@ -1438,9 +1574,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
         // Do plan evolution
         if (ec.getParamManager().getBoolean(ConnectionParams.ENABLE_SPM)) {
-            Pair<Integer, Integer> baselineIdAndPlanId = this.conn.updatePlanManagementInfo(
-                this.conn.getLastExecutionBeginUnixTime(), executeTimeMs / 1e3, ec,
-                exception);
+            Pair<Integer, Integer> baselineIdAndPlanId =
+                this.conn.updatePlanManagementInfo(this.conn.getLastExecutionBeginUnixTime(), executeTimeMs / 1e3, ec,
+                    exception);
             if (baselineIdAndPlanId != null) {
                 baselineId = baselineIdAndPlanId.getKey();
                 planId = baselineIdAndPlanId.getValue();
@@ -1448,25 +1584,25 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
         boolean sqlMetricEnabled = ExecUtils.isSQLMetricEnabled(ec);
         RuntimeStatistics runtimeStat = (RuntimeStatistics) ec.getRuntimeStatistics();
-        LogUtils.QueryMetrics metrics = getQueryMetrics(ec, startExecTimeNano, sqlMetricEnabled, runtimeStat);
+        LogUtils.QueryMetrics metrics =
+            getQueryMetrics(ec, startExecTimeNano, sqlMetricEnabled, runtimeStat, errorCode);
 
         /*
          * Record sql info to sql.log
          */
-        boolean slowRecorded = recordSlowSql(user, host, String.valueOf(port), schema, sql, lastAffectedRows);
+        boolean slowRecorded = recordSlowSqlState(user, host, String.valueOf(port), schema, sql, lastAffectedRows);
         LogUtils.recordSql(this, "", sql, params, trxPolicy, lastAffectedRows, finishFetchSqlRsNano, metrics,
-            baselineId, planId, workloadType, cost, ec.getExecuteMode(), slowRecorded);
+            baselineId, planId, workloadType, cost, ec.getExecuteMode(), slowRecorded, ec.getSqlType());
 
         cclMetrics(ec, metrics);
         statCpu(ec, finishFetchSqlRsNano, sqlMetricEnabled, runtimeStat);
-        feedBackWorkload(ec, workloadType, finishFetchSqlRsNano);
+        feedBackWorkload(ec, workloadType, finishFetchSqlRsNano, executeTimeMs);
 
         //statement summary
         try {
-            summaryStmt(ec, lastAffectedRows, getSqlBeginTimestamp(), finishFetchSqlRsNano, runtimeStat,
-                workloadType,
+            summaryStmt(ec, lastAffectedRows, getSqlBeginTimestamp(), finishFetchSqlRsNano, runtimeStat, workloadType,
                 ec.getExecuteMode(), ec.getSqlType(),
-                this.conn.getTrx() != null ? this.conn.getTrx().getStartTime() : 0, slowRecorded);
+                this.conn.getTrx() != null ? this.conn.getTrx().getStartTimeInMs() : 0, slowRecorded);
         } catch (Throwable throwable) {
             logger.error("Failed to summary stmt ", throwable);
         }
@@ -1475,8 +1611,25 @@ public final class ServerConnection extends FrontendConnection implements Resche
         this.setLastActiveTime(finishFetchSqlRsNano);
         this.sqlSample = null;
 
+        //stat for gsi usage
+        try {
+            GsiStatisticsManager statisticsManager = GsiStatisticsManager.getInstance();
+            if (ec.getFinalPlan() != null && statisticsManager.enableGsiStatisticsCollection()) {
+                ExecutionPlan plan = ec.getFinalPlan();
+                Map<String, Set<String>> referencedGsiNames = plan.getReferencedGsiNames();
+                for (Map.Entry<String, Set<String>> entry : referencedGsiNames.entrySet()) {
+                    String schemaName = entry.getKey();
+                    for (String gsi : entry.getValue()) {
+                        statisticsManager.increaseGsiVisitFrequency(schemaName, gsi);
+                    }
+                }
+            }
+        } catch (Throwable e) {
+            logger.warn("Failed to stat gsi usage ", e);
+        }
+
         if (conn != null) {
-        this.conn.newExecutionContext();
+            this.conn.newExecutionContext();
         }
     }
 
@@ -1501,9 +1654,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     private void summaryStmt(ExecutionContext ec, long affectRow, long sqlBeginTs, long endTimeNano,
-                             RuntimeStatistics runtimeStatistics,
-                             WorkloadType workloadType, ExecutorMode mode, SqlType sqlType, long transStartTimeMs,
-                             boolean slowRecorded) {
+                             RuntimeStatistics runtimeStatistics, WorkloadType workloadType, ExecutorMode mode,
+                             SqlType sqlType, long transStartTimeMs, boolean slowRecorded) {
         // check if the statement summary is enabled.
         boolean stmtSummaryEnabled =
             StatementSummaryManager.getInstance().getConfig().getEnableStmtSummary() > 0 ? true : false;
@@ -1631,13 +1783,14 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     private LogUtils.QueryMetrics getQueryMetrics(ExecutionContext ec, long startExecTimeNano, boolean sqlMetricEnabled,
-                                                  RuntimeStatistics runtimeStat) {
+                                                  RuntimeStatistics runtimeStat, int errorCode) {
         // Collect the metrics info after query was executed
         LogUtils.QueryMetrics metrics = new LogUtils.QueryMetrics();
         metrics.hasMultiShards = ec.hasScanWholeTable();
         metrics.hasUnpushedJoin = ec.hasUnpushedJoin();
         metrics.hasTempTable = ec.hasTempTable();
         metrics.optimizedWithReturning = ec.isOptimizedWithReturning();
+        metrics.errorCode = errorCode;
         if (runtimeStat != null) {
             runtimeStat.setFinishExecution(true);
             if (sqlMetricEnabled) {
@@ -1649,11 +1802,13 @@ public final class ServerConnection extends FrontendConnection implements Resche
         return metrics;
     }
 
-    private void feedBackWorkload(ExecutionContext ec, WorkloadType workloadType, long finishFetchSqlRsNano) {
+    private void feedBackWorkload(ExecutionContext ec, WorkloadType workloadType, long finishFetchSqlRsNano,
+                                  double executeTimeMs) {
         if (WorkloadUtil.isApWorkload(workloadType)) {
             getStatistics().apLoad++;
         } else {
             getStatistics().tpLoad++;
+            OptimizerAlertUtil.tpAlert(ec, executeTimeMs);
         }
 
         if (ExecUtils.isMppMode(ec)) {
@@ -1704,12 +1859,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
     /**
      * 记录sql执行信息
      */
-    private boolean recordSlowSql(String user, String host, String port, SchemaConfig schema, ByteString sqlBytes,
-                                  long affectRow) {
-        if (!SQLRecorderLogger.slowLogger.isInfoEnabled()) {
-            return false;
-        }
-
+    private boolean recordSlowSqlState(String user, String host, String port, SchemaConfig schema, ByteString sqlBytes,
+                                       long affectRow) {
         boolean slowRecorded = false;
         SQLRecorder sqlRecorder = schema.getDataSource().getRecorder();
         long endTime = System.nanoTime() / 1000_000;
@@ -1735,16 +1886,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     sql = sqlBytes.toString();
                 }
 
-                String formatted = LogFormat.formatLog(sql);
                 if (!PolarPrivUtil.isPolarxRootUser(user)) {
                     // show slow 不记录polardbx_root账号的慢SQL
-                    sqlRecorder
-                        .recordSql(formatted, startTime, user, host, port, this.schema, affectRow, endTime, traceId);
+                    sqlRecorder.recordSql(sql, startTime, user, host, port, this.schema, affectRow, endTime,
+                        traceId);
                 }
-
-                String slowLog = SQLRecorderLogger.slowLogFormat
-                    .format(new Object[] {formatted, String.valueOf(time), String.valueOf(affectRow), traceId});
-                SQLRecorderLogger.slowLogger.info(slowLog);
             }
         } catch (Throwable e) {
             logger.error("error when record sql", e);
@@ -1757,6 +1903,12 @@ public final class ServerConnection extends FrontendConnection implements Resche
      */
     public synchronized boolean commit(boolean hasMore) {
         long transStartTime = getTransactionBeginTime();
+
+        if (conn != null && conn.getExecutionContext() != null) {
+            conn.getExecutionContext().setLogicalSqlStartTime(getLastActiveTime());
+            conn.getExecutionContext().setLogicalSqlStartTimeInMs(getSqlBeginTimestamp());
+        }
+
         try {
             innerCommit();
 
@@ -1764,7 +1916,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             PacketOutputProxyFactory.getInstance().createProxy(this, buffer)
                 .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         } catch (Exception ex) {
-            this.handleError(ErrorCode.ERR_HANDLE_DATA, ex, "commit", false);
+            this.handleError(ERR_HANDLE_DATA, ex, "commit", false);
             return false;
         }
         stmtSummaryTransaction(SqlType.COMMIT, transStartTime);
@@ -1779,10 +1931,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
         if (this.conn != null) {
             conn.commit();
-            // Clear all cached result set when committing a non-autocommit trx.
-            if (!this.autocommit) {
-                clearCachedResultSet();
-            }
         }
 
         if (this.beginTransaction) {
@@ -1798,6 +1946,12 @@ public final class ServerConnection extends FrontendConnection implements Resche
      */
     public synchronized boolean rollback(boolean hasMore) {
         long transStartTime = getTransactionBeginTime();
+
+        if (conn != null && conn.getExecutionContext() != null) {
+            conn.getExecutionContext().setLogicalSqlStartTime(getLastActiveTime());
+            conn.getExecutionContext().setLogicalSqlStartTimeInMs(getSqlBeginTimestamp());
+        }
+
         try {
             innerRollback();
 
@@ -1805,7 +1959,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             PacketOutputProxyFactory.getInstance().createProxy(this, buffer)
                 .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         } catch (Exception ex) {
-            this.handleError(ErrorCode.ERR_HANDLE_DATA, ex, "rollback", false);
+            this.handleError(ERR_HANDLE_DATA, ex, "rollback", false);
             return false;
         }
         stmtSummaryTransaction(SqlType.ROLLBACK, transStartTime);
@@ -1815,7 +1969,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
     private long getTransactionBeginTime() {
         if (this.conn != null) {
             if (this.conn.getTrx() != null) {
-                return this.conn.getTrx().getStartTime();
+                return this.conn.getTrx().getStartTimeInMs();
             }
         }
         return getSqlBeginTimestamp();
@@ -1838,10 +1992,6 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
         if (this.conn != null) {
             conn.rollback();
-            // Clear all cached result set when committing a non-autocommit trx.
-            if (!this.autocommit) {
-                clearCachedResultSet();
-            }
         }
 
         if (this.beginTransaction) {
@@ -1853,11 +2003,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     @Override
-    public void handleError(int errCode, Throwable t) {
+    public void handleError(ErrorCode errCode, Throwable t) {
         handleError(errCode, t, null, false);
     }
 
-    public void handleError(int errCode, Throwable t, String sql, boolean fatal) {
+    public void handleError(ErrorCode errCode, Throwable t, String sql, boolean fatal) {
 
         String db = this.schema;
         if (db == null) {
@@ -1866,31 +2016,37 @@ public final class ServerConnection extends FrontendConnection implements Resche
         // 取得配置文件
         SchemaConfig schema = getSchemaConfig();
 
-        Throwable ex = t;
-        String message = null;
+        String message = t.getMessage();
+        Throwable ex;
+        if (!ErrorCode.match(message)) {
+            if (t instanceof NullPointerException) {
+                ex = new TddlRuntimeException(ERR_SERVER, "unknown NPE");
+                // NPE (NullPointerException) may not have been handled correctly,
+                // to avoid the exception being swallowed, print the exception stack trace again.
+            } else {
+                ex = new TddlRuntimeException(ERR_SERVER, message);
+            }
+            logger.error(ex.getMessage(), t);
+            message = ex.getMessage();
+        } else {
+            ex = t;
+        }
+
         String sqlState = null;
-        int errorCode = errCode;// 输出给用户看的errorCode
-        if (errCode == ErrorCode.ERR_HANDLE_DATA) {
+        int errorCode = errCode.getCode();// 输出给用户看的errorCode
+        if (errCode == ERR_HANDLE_DATA) {
             List<Throwable> ths = ExceptionUtils.getThrowableList(t);
             for (int i = ths.size() - 1; i >= 0; i--) {
                 Throwable e = ths.get(i);
-                if (SQLSyntaxErrorException.class.isInstance(e)) {
-                    errorCode = ErrorCode.ER_PARSE_ERROR;
-                    ex = e;
-                    break;
-                } else if (TableNotFoundException.class.isInstance(e)) {
-                    errorCode = ErrorCode.ER_NO_SUCH_TABLE;
-                    ex = e;
-                    break;
-                } else if (e instanceof SQLIntegrityConstraintViolationException) {
+                if (e instanceof SQLIntegrityConstraintViolationException) {
                     if (schema != null) {
                         schema.getDataSource().getStatistics().integrityConstraintViolationErrorCount++;
                     }
                 }
             }
 
-            message = t.getMessage();
             // 获取一下原始异常中带的sql errorcode
+            // TODO remove TddlException
             if (t instanceof TddlException) {
                 int code = ((TddlException) t).getErrorCode();
                 sqlState = ((TddlException) t).getSQLState();
@@ -1904,9 +2060,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     errorCode = ((TddlNestableRuntimeException) t).getErrorCode();
                 }
             }
-        } else {
-            message = t.getMessage();
         }
+
         // 根据异常类型和信息，选择日志输出级别。
         if (this.schema == null) {
             // DNS探测日志的schema一定为null,正常应用访问日志schema绝大多数情况下不为null
@@ -1952,7 +2107,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             if (isDeadLockException(t)) {
                 // Handle deadlock error.
                 // Prevent this transaction from committing.
-                trx.setCrucialError(ERR_TRANS_DEADLOCK);
+                trx.setCrucialError(ERR_TRANS_DEADLOCK, t.getMessage());
 
                 // Rollback this trx.
                 try {
@@ -1967,14 +2122,14 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 } catch (Throwable throwable) {
                     // In case that some unexpected errors occur when handling statement errors,
                     // forbid this trx from committing.
-                    trx.setCrucialError(ERR_TRANS_ROLLBACK_STATEMENT_FAIL);
+                    trx.setCrucialError(ERR_TRANS_ROLLBACK_STATEMENT_FAIL, throwable.getMessage());
                     logger.warn(throwable.getMessage());
                 }
             }
         }
 
         switch (errCode) {
-        case ErrorCode.ERR_HANDLE_DATA:
+        case ERR_HANDLE_DATA:
             writeErrMessage(errorCode, sqlState, message == null ? t.getClass().getSimpleName() : message);
             if (fatal) {
                 close();
@@ -1986,10 +2141,12 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
-    private static boolean isDeadLockException(Throwable t) {
+    private boolean isDeadLockException(Throwable t) {
         if (t instanceof TddlNestableRuntimeException && vendorErrorIs((TddlNestableRuntimeException) t,
             SQLSTATE_DEADLOCK, ER_LOCK_DEADLOCK)) {
             // A local deadlock causes this exception
+            Optional.ofNullable(OptimizerContext.getTransStat(schema))
+                .ifPresent(s -> s.countLocalDeadlock.incrementAndGet());
             return true;
         }
 
@@ -2013,7 +2170,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     cclContext.getThread().interrupt();
                 }
             }
-            cancelRescheduleTask(ErrorCode.ERR_HANDLE_DATA, false);
+            cancelRescheduleTask(ERR_HANDLE_DATA, false);
         }
         this.getStatistics().activeConnection.decrementAndGet();
     }
@@ -2041,7 +2198,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
                     }
 
                 } catch (Throwable e) {
-                    handleError(ErrorCode.ERR_HANDLE_DATA, e);
+                    handleError(ERR_HANDLE_DATA, e);
                 } finally {
                     if (function != null) {
                         function.apply(currentRescheduleTask.getCclRuleInfo());
@@ -2076,7 +2233,11 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
-    private void cancelRescheduleTask(int errorCode, boolean killQuery) {
+    public CdcRpcClient.CdcRpcStreamingProxy getProxy() {
+        return proxy;
+    }
+
+    private void cancelRescheduleTask(ErrorCode errorCode, boolean killQuery) {
         final RescheduleTask currentRescheduleTask = this.rescheduleTask;
         if (currentRescheduleTask != null) {
             boolean active = currentRescheduleTask.getActivation().compareAndSet(false, true);
@@ -2131,6 +2292,14 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
+    public void setPartitionHint(String partitionHint) {
+        this.partitionHint = partitionHint;
+    }
+
+    public String getPartitionHint() {
+        return partitionHint;
+    }
+
     /**
      * Cancel a query with retry.
      * The killing action should be executed in KillExecutor thread-pool
@@ -2152,16 +2321,16 @@ public final class ServerConnection extends FrontendConnection implements Resche
         // Only kill query with this traceId.
         private final String traceIdToBeKilled;
 
-        public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode,
-                               int retried, int retryLimit) {
+        public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode, int retried,
+                               int retryLimit) {
             this.errorCode = errorCode;
             this.retried = retried;
             this.retryLimit = retryLimit;
             this.traceIdToBeKilled = ServerConnection.this.getTraceId();
         }
 
-        public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode,
-                               int retried, int retryLimit, String traceIdToBeKilled) {
+        public CancelQueryTask(com.alibaba.polardbx.common.exception.code.ErrorCode errorCode, int retried,
+                               int retryLimit, String traceIdToBeKilled) {
             this.errorCode = errorCode;
             this.retried = retried;
             this.retryLimit = retryLimit;
@@ -2215,8 +2384,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
         private void retryWithBackoff() {
             long delay = 5 + (long) this.retried * 10;
             CobarServer.getInstance().getTimerTaskExecutor().schedule(() -> {
-                CancelQueryTask task = new CancelQueryTask(this.errorCode, this.retried + 1, retryLimit,
-                    traceIdToBeKilled);
+                CancelQueryTask task =
+                    new CancelQueryTask(this.errorCode, this.retried + 1, retryLimit, traceIdToBeKilled);
                 CobarServer.getInstance().getKillExecutor().execute(task);
             }, delay, TimeUnit.MILLISECONDS);
         }
@@ -2236,7 +2405,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             });
         }
         if (rescheduled) {
-            cancelRescheduleTask(ErrorCode.ERR_HANDLE_DATA, true);
+            cancelRescheduleTask(ERR_HANDLE_DATA, true);
         }
     }
 
@@ -2247,6 +2416,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
             if (loadDataHandler != null) {
                 loadDataHandler.close();
                 loadDataHandler = null;
+            }
+            if (proxy != null) {
+                proxy.cancel();
+                this.proxy = null;
             }
             clearPreparedStatement();
             if (this.statementExecuting.get()) {
@@ -2320,7 +2493,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
             // Clear all cached resultSet when frontend connection is closed.
             clearCachedResultSet();
-            this.setCursorFetchMode(false);
+            if (cursorFetchMemoryPool != null) {
+                cursorFetchMemoryPool.destroy();
+                cursorFetchMemoryPool = null;
+            }
 
             return true;
         }
@@ -2331,7 +2507,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         if (null != getResultSetMap()) {
             for (ResultSetCachedObj resultSetCachedObj : getResultSetMap().values()) {
                 if (null != resultSetCachedObj) {
-                    resultSetCachedObj.close(logger);
+                    resultSetCachedObj.close();
                 }
             }
             getResultSetMap().clear();
@@ -2341,20 +2517,19 @@ public final class ServerConnection extends FrontendConnection implements Resche
     public void closeCacheResultSet(int statementId) {
         final ResultSetCachedObj rs = getResultSetMap().remove(statementId);
         if (null != rs) {
-            rs.close(logger);
+            rs.close();
         }
     }
 
     private void clearPreparedStatement() {
         if (smForQuery != null) {
             smForQuery.clear();
-            smForQuery = null;
         }
         if (smForPrepare != null) {
             smForPrepare.clear();
-            smForPrepare = null;
         }
     }
+
     /**
      * release Transactional locks and remove context
      */
@@ -2467,7 +2642,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             }
 
             if (this.trxPolicy != null) {
-                this.conn.setTrxPolicy(this.trxPolicy);
+                this.conn.setTrxPolicy(this.trxPolicy, false);
             }
 
             // set time zone for session
@@ -2491,7 +2666,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
         this.trxPolicy = policy;
 
         if (this.conn != null) {
-            this.conn.setTrxPolicy(policy);
+            this.conn.setTrxPolicy(policy, true);
         }
     }
 
@@ -2518,13 +2693,32 @@ public final class ServerConnection extends FrontendConnection implements Resche
         }
     }
 
-    private void fillParams(TPreparedStatement stmt, List<Pair<Integer, ParameterContext>> params) {
+    private void fillParams(TPreparedStatement stmt, List<Pair<Integer, ParameterContext>> params,
+                            boolean isExecPrepare) throws SQLException {
         if (params == null) {
             return;
         }
+        if (isExecPrepare) {
+            boolean first = true;
+            boolean isBatch = false;
+            for (Pair<Integer, ParameterContext> param : params) {
+                // resolve batch prepare params
+                if (first) {
+                    first = false;
+                } else if (param.getKey() == 1) {
+                    stmt.addBatch();
+                    isBatch = true;
+                }
+                stmt.setParam(param.getKey(), param.getValue());
+            }
 
-        for (Pair<Integer, ParameterContext> param : params) {
-            stmt.setParam(param.getKey(), param.getValue());
+            if (isBatch) {
+                stmt.addBatch();
+            }
+        } else {
+            for (Pair<Integer, ParameterContext> param : params) {
+                stmt.setParam(param.getKey(), param.getValue());
+            }
         }
     }
 
@@ -2546,8 +2740,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
     public void checkPreparedStmtCount() throws SQLException {
         int count = prepareStmtCount.get();
         if (count >= DynamicConfig.getInstance().getMaxSessionPreparedStmtCount()) {
-            throw new SQLException("Can't create more than max_prepared_stmt_count statements in one session " +
-                String.format("(current value: %d)", count));
+            throw new SQLException(
+                "Can't create more than max_prepared_stmt_count statements in one session " + String.format(
+                    "(current value: %d)", count));
         }
     }
 
@@ -2634,8 +2829,9 @@ public final class ServerConnection extends FrontendConnection implements Resche
             field.charsetIndex = charsetIndex;
 
             if (cm.getDataType().getSqlType() != DataType.UNDECIDED_SQL_TYPE) {
-                field.type = (byte) (MysqlDefs.javaTypeMysql(MysqlDefs.javaTypeDetect(cm.getDataType().getSqlType(),
-                    field.decimals)) & 0xff);
+                field.type = (byte) (
+                    MysqlDefs.javaTypeMysql(MysqlDefs.javaTypeDetect(cm.getDataType().getSqlType(), field.decimals))
+                        & 0xff);
             } else {
                 field.type = MysqlDefs.FIELD_TYPE_STRING; // 默认设置为string
             }
@@ -2741,22 +2937,22 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     @Override
-    public synchronized LoadDataHandler prepareLoadInfile(String sql) {
+    public synchronized boolean prepareLoadInfile(String sql) {
 
         // 针对非事务的请求进行链接中断
         if (!CobarServer.getInstance().isOnline() && isAutocommit()) {
             shutDownError.write(PacketOutputProxyFactory.getInstance().createProxy(this));
-            return null;
+            return false;
         }
 
         if (isClosed()) {
-            return null;
+            return false;
         }
 
         SchemaConfig schema = getSchemaConfig();
         if (schema == null) {
             writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + this.schema + "'");
-            return null;
+            return false;
         }
 
         statementExecuting.set(true);
@@ -2765,18 +2961,18 @@ public final class ServerConnection extends FrontendConnection implements Resche
             getConnection(schema);
             if (conn == null) {
                 logger.warn("connection has been closed");
-                return null;
+                return false;
             }
 
         } catch (Throwable e) {
             logger.error("Initialize LOAD DATA failed!", e);
             writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "Initialize LOAD DATA failed!");
-            return null;
+            return false;
         }
 
         this.loadDataHandler = new ServerLoadDataHandler(this);
         loadDataHandler.open(sql);
-        return loadDataHandler;
+        return true;
     }
 
     @Override
@@ -2847,6 +3043,22 @@ public final class ServerConnection extends FrontendConnection implements Resche
             return false;
         }
         return TStringUtil.equals(user, schema);
+    }
+
+    public boolean isSuperUser() {
+        updatePrivilegeContext();
+        if (null != conn && null != conn.getExecutionContext()) {
+            return conn.getExecutionContext().isSuperUser();
+        }
+        return false;
+    }
+
+    public boolean isSuperUserOrAllPrivileges() {
+        updatePrivilegeContext();
+        if (null != conn && null != conn.getExecutionContext()) {
+            return conn.getExecutionContext().isSuperUserOrAllPrivileges();
+        }
+        return false;
     }
 
     /**
@@ -2929,7 +3141,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
         try {
             IPacketOutputProxy proxy =
-                ResultSetUtil.resultSetToPacket(new TResultSet(result, null), charset, this, new AtomicLong(0), null);
+                ResultSetUtil.resultSetToPacket(new TResultSet(result, null), charset, this, new AtomicLong(0), null,
+                    ResultSetUtil.NO_SQL_SELECT_LIMIT);
             ResultSetUtil.eofToPacket(proxy, this, 2);
         } catch (Exception ex) {
             logger.error("sql mock error", ex);
@@ -2983,26 +3196,70 @@ public final class ServerConnection extends FrontendConnection implements Resche
 
         PreparedStmtCache preparedStmtCache = this.getSmForPrepare().find(String.valueOf(statementId));
         final ServerPreparedResultHandler resultHandler =
-            new ServerPreparedResultHandler(false, statementId, MySQLPacket.READ_ONLY_CURSOR_FLAG, preparedStmtCache);
+            new ServerPreparedResultHandler(false, statementId, traceId, MySQLPacket.READ_ONLY_CURSOR_FLAG,
+                preparedStmtCache);
         try {
             // 2. Fetch {numRows} rows of data.
             resultHandler.sendFetchResult(resultSetCachedObj, numRows);
         } catch (Exception e) {
-            // If we fail to fetch data, close the result set.
+            // If we fail to fetch data, close the result set and clear;
             try {
                 resultSetCachedObj.getResultSet().close();
+                getResultSetMap().remove(statementId);
             } catch (Throwable t) {
                 // Ignore.
                 logger.warn("Close cached result set failed, caused by " + t);
             }
             writeErrMessage(ErrorCode.ERR_HANDLE_DATA,
-                "Fetch data failed: fetch data from result set failed for statement "
-                    + statementId + ". Result set is closed. Caused by " + e.getMessage());
+                "Fetch data failed: fetch data from result set failed for statement " + statementId
+                    + ". Result set is closed. Caused by " + e.getMessage());
             return;
         }
 
         // 3. Write an EOF packet and send all packets to client.
         resultHandler.sendPacketEnd(false);
+    }
+
+    private synchronized MemoryPool getOrCreateCursorFetchMemoryPool() {
+        if (cursorFetchMemoryPool == null) {
+            long memoryLimit;
+            Object value = this.getConnectionVariables().get(ConnectionProperties.CURSOR_FETCH_CONN_MEMORY_LIMIT);
+            if (value == null) {
+                // Use global config
+                ParamManager paramManager = new ParamManager(schemaConfig.getDataSource().getConnectionProperties());
+                value = paramManager.getLong(ConnectionParams.CURSOR_FETCH_CONN_MEMORY_LIMIT);
+            }
+            memoryLimit = Long.parseLong(String.valueOf(value));
+            String poolName = getClass().getSimpleName() + "@" + System.identityHashCode(this);
+            cursorFetchMemoryPool = MemoryManager.getInstance().createCursorFetchMemoryPool(poolName, memoryLimit);
+        }
+        return cursorFetchMemoryPool;
+    }
+
+    public synchronized void setTrxLastActiveTime() {
+        if (isClosed()) {
+            return;
+        }
+
+        ITransaction trx = getTrx();
+        if (null != trx) {
+            trx.setLastActiveTime();
+        }
+
+    }
+
+    public void resetTrxLastActiveTime() {
+        ITransaction trx = getTrx();
+        if (null != trx) {
+            trx.resetLastActiveTime();
+        }
+    }
+
+    private ITransaction getTrx() {
+        if (null != conn) {
+            return conn.getTrx();
+        }
+        return null;
     }
 
     class ServerResultHandler implements QueryResultHandler {
@@ -3045,11 +3302,21 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 ok.serverStatus = MySQLPacket.SERVER_STATUS_IN_TRANS;
             }
             ok.warningCount = conn.getWarningCount();
+
+            // To be compatible with MySQL's behavior, i.e. not display the warning detail.
+            if (!ConfigDataMode.isPolarDbX() && !conn.getExecutionContext().getAsyncDDLContext()
+                .isAsyncDDLSupported()) {
+                if (ok.warningCount != 0) {
+                    ok.message = encodeString(conn.getWarningSimpleMessage(), charset);
+                }
+            }
         }
 
         @Override
-        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
-            proxy = ResultSetUtil.resultSetToPacket(resultSet, charset, ServerConnection.this, outAffectedRows, null);
+        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+            throws Exception {
+            proxy = ResultSetUtil.resultSetToPacket(resultSet, charset, ServerConnection.this, outAffectedRows, null,
+                sqlSelectLimit);
         }
 
         @Override
@@ -3095,39 +3362,48 @@ public final class ServerConnection extends FrontendConnection implements Resche
         @Override
         public void handleError(Throwable ex, ByteString sql, boolean fatal) {
             if (ex instanceof TddlRuntimeException && ((TddlRuntimeException) ex).getErrorCodeType()
-                == com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_NO_DB_ERROR) {
+                ==ErrorCode.ERR_NO_DB_ERROR) {
                 writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
                 return;
             }
-            ServerConnection.this.handleError(ErrorCode.ERR_HANDLE_DATA, ex, sql.toString(), fatal);
+            ServerConnection.this.handleError(ERR_HANDLE_DATA, ex, sql.toString(), fatal);
         }
     }
 
     private class ServerPreparedResultHandler extends ServerResultHandler {
         final PreparedStmtCache preparedStmtCache;
+        final String traceId;
 
-        public ServerPreparedResultHandler(boolean hasMore, int statementId, byte flags,
+        public ServerPreparedResultHandler(boolean hasMore, int statementId, String traceId, byte flags,
                                            PreparedStmtCache preparedStmtCache) {
             super(hasMore, statementId, flags);
             if (preparedStmtCache == null) {
                 throw new IllegalArgumentException("empty prepare stmt cache in result set handler");
             }
+            this.traceId = traceId;
             this.preparedStmtCache = preparedStmtCache;
         }
 
         @Override
-        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+            throws Exception {
             if (isCursorFetch()) {
                 // For cursor-fetch mode.
                 // 1. Cache the resultSet.
-                final ResultSetCachedObj resultSetCachedObj = new ResultSetCachedObj(resultSet);
-                ServerConnection.this.getResultSetMap().put(this.getStatementId(), resultSetCachedObj);
+                int stmtId = this.getStatementId();
+                // Close previous result set
+                closeCacheResultSet(stmtId);
+                final ResultSetCachedObj resultSetCachedObj =
+                    new ResultSetCachedObj(resultSet, traceId, getOrCreateCursorFetchMemoryPool(), logger,
+                        sqlSelectLimit);
+                getResultSetMap().put(stmtId, resultSetCachedObj);
                 // 2. Send header packet containing only meta-data.
-                proxy = BinaryResultSetUtil
-                    .resultSetToHeaderPacket(resultSetCachedObj, ServerConnection.this, preparedStmtCache);
+                proxy = BinaryResultSetUtil.resultSetToHeaderPacket(resultSetCachedObj, ServerConnection.this,
+                    preparedStmtCache, outAffectedRows);
             } else {
-                proxy = BinaryResultSetUtil
-                    .resultSetToPacket(resultSet, charset, ServerConnection.this, outAffectedRows, preparedStmtCache);
+                proxy =
+                    BinaryResultSetUtil.resultSetToPacket(resultSet, charset, ServerConnection.this, outAffectedRows,
+                        preparedStmtCache, sqlSelectLimit);
             }
         }
 
@@ -3139,10 +3415,15 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 return;
             }
 
-            proxy = BinaryResultSetUtil
-                .resultSetToDataPacket(resultSetCachedObj, charset, ServerConnection.this, fetchRows, preparedStmtCache);
+            proxy =
+                BinaryResultSetUtil.resultSetToDataPacket(resultSetCachedObj, charset, ServerConnection.this, fetchRows,
+                    preparedStmtCache);
             lastRow = resultSetCachedObj.isLastRow();
         }
+    }
+
+    public Long getGroupParallelism() {
+        return groupParallelism;
     }
 
     @Data

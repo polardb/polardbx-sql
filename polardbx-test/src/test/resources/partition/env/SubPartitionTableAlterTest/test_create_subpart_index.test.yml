@@ -1,0 +1,176 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `jxg4l` (
+`W` bigint(5) UNSIGNED NOT NULL COMMENT 'bJxAxFFWLJX',
+`IlgkcgS66eqq` timestamp(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3) COMMENT 'YcDmQo',
+`OSXLK1tY6Ac62D5` char(1) NOT NULL COMMENT '9Bea1',
+`DH0Y4yRgLIr` char(1) DEFAULT NULL COMMENT '4YDTgNu9YgEQW1',
+`JQrKcU5VlLY` bigint(20) UNSIGNED ZEROFILL NOT NULL COMMENT '2k',
+`E1z5i` datetime NOT NULL,
+`8` int(10) UNSIGNED ZEROFILL DEFAULT NULL COMMENT '1oPUQVA',
+`vEYDNrAkjPwWLA4` bigint(20) UNSIGNED ZEROFILL DEFAULT NULL COMMENT 'lbzNFn',
+`GqsLG` char(29) NOT NULL COMMENT 'fddT6jZhJ8yk2G',
+`WnV0DBIPNW` datetime(3) DEFAULT NULL,
+`r` tinyint(3) UNSIGNED ZEROFILL NOT NULL,
+`y8sYAvQsh6mWlQ1` char(23) NOT NULL COMMENT 'u0n1Y3D7s',
+`J` bigint(4) UNSIGNED ZEROFILL DEFAULT NULL COMMENT 'aZof',
+`Ot3bMl` bigint(7) UNSIGNED ZEROFILL DEFAULT NULL,
+`Xy` bigint(2) UNSIGNED DEFAULT NULL COMMENT '0Kzdi6K',
+`hdLeTLDKu` int(2) UNSIGNED DEFAULT NULL,
+`f` datetime(5) NOT NULL COMMENT 'ripKhJPv5h',
+`0` bigint(3) UNSIGNED ZEROFILL DEFAULT NULL,
+`6BRyEiit1ef` char(1) NOT NULL,
+`PfJ` char(17) NOT NULL COMMENT 'hyALhW2nuKf',
+PRIMARY KEY (`W`, `JQrKcU5VlLY`, `r`, `E1z5i`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`f`,`y8sYAvQsh6mWlQ1`)
+PARTITIONS 2
+SUBPARTITION BY KEY(`PfJ`,`Ot3bMl`)
+SUBPARTITIONS 1;
+
+  ## gsi with list part
+CREATE GLOBAL INDEX `i_lc`
+ON `jxg4l` ( `Ot3bMl` ASC,  `W` ASC, `0` ASC,  `JQrKcU5VlLY` ASC, `GqsLG`  ASC )
+PARTITION BY LIST COLUMNS ( `JQrKcU5VlLY`, `GqsLG` ) (
+  PARTITION `nrVuSOs` VALUES IN ( (1367461806, 'xwuj') )
+);
+
+  ## gsi with subpart of list
+CREATE GLOBAL INDEX `i_sp_lc`
+ON `jxg4l` ( `Ot3bMl` ASC,  `W` ASC, `0` ASC,  `JQrKcU5VlLY` ASC, `GqsLG`  ASC )
+PARTITION BY KEY ( `W`, `0` )
+PARTITIONS 1
+SUBPARTITION BY LIST COLUMNS ( `JQrKcU5VlLY`, `GqsLG` ) (
+PARTITION `ZEaMHa73er` (
+SUBPARTITION `nrVuSOs` VALUES IN ( (1367461806, 'xwuj') )
+)
+）;
+
+  ## gsi with subpart of rng
+CREATE GLOBAL INDEX `i_sp_rc`
+ON `jxg4l` ( `Ot3bMl` ASC,  `W` ASC, `0` ASC,  `JQrKcU5VlLY` ASC, `GqsLG`  ASC )
+  PARTITION BY KEY ( `W`, `0` )
+  PARTITIONS 1
+  SUBPARTITION BY RANGE COLUMNS ( `JQrKcU5VlLY`, `GqsLG` ) (
+  PARTITION `ZEaMHa73er` (
+    SUBPARTITION `nrVuSOs` VALUES LESS THAN ( 1367461806, 'xwuj' )
+  )
+）;
+
+
+
+
+
+create table if not exists lc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+subpartition template
+(
+subpartition sp0 values less than ('2020-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+
+create global index`gsi_lc`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);
+
+create global index`gsi_rc`
+on `lc_rc_tp1` ( c,d,a,b )
+partition by range columns (c,d)
+(
+partition sp0 values less than ('2021-01-01','a'),
+partition sp1 values less than (maxvalue,maxvalue)
+);
+
+create global index`gsi_lc_rc`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+subpartition template
+(
+subpartition sp0 values less than ('2021-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);
+
+
+create global index`gsi_lc_rc2`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+(
+partition p0 values in ((5,5),(6,6),(9,9))
+(
+subpartition sp0 values less than ('2021-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+),
+partition p1 values in ((7,7),(8,8)) (
+subpartition sp2 values less than ('2021-01-01','a'),
+subpartition sp3 values less than (maxvalue,maxvalue)
+)
+);
+
+create global index`gsi_lc_k`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+subpartition by key (c,d)
+(
+partition p0 values in ((5,5),(6,6),(9,9)) subpartitions 3,
+partition p1 values in ((7,7),(8,8)) subpartitions 2
+);
+
+create global index`gsi_lc_k2`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 3
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);
+show create table lc_rc_tp1;
+
+create table if not exists lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+
+create global index`gsi_rc2`
+on `lc_tp1` ( a,b,c,d )
+partition by range columns (a,b)
+(
+partition p0 values less than (5,5),
+partition p1 values less than (7,7)
+);
+
+create global index`gsi_lc2`
+on `lc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);

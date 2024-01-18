@@ -115,7 +115,6 @@ public class RuntimeFilterUtil {
             || dataType instanceof TimeType) {
             return true;
         }
-        // 如果一个类型支持生成的bloomfilter下推到mysql，必定支持类型在polarx这一层生成runtime filter
         return RUNTIME_FILTER_SUPPORTED_TYPES.contains(dataType) ||
             RUNTIME_FILTER_BOTH_SUPPORTED_TYPES.contains(dataType) ||
             OSS_MIN_MAX_FILTER_SUPPORTED_DATATYPES.contains(dataType);

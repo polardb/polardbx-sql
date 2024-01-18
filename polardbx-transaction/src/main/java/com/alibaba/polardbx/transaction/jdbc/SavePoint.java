@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.transaction.jdbc;
 
-import java.sql.SQLException;
-import java.sql.Statement;
-
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public final class SavePoint {
 

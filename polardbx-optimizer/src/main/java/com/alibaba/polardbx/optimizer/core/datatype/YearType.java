@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.datatype;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 
 /**
  * 针对mysql中特殊的year type
@@ -25,6 +27,9 @@ import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
  * @since 5.1.0
  */
 public class YearType extends LongType {
+    static long SHORT_VALUE_LOWER_BOUND = 1;
+    static long SHORT_VALUE_UPPER_BOUND = 99;
+    static long SHORT_VALUE_SPLIT_POINT = 69;
 
     @Override
     public int getSqlType() {
@@ -39,5 +44,30 @@ public class YearType extends LongType {
     @Override
     public MySQLStandardFieldType fieldType() {
         return MySQLStandardFieldType.MYSQL_TYPE_YEAR;
+    }
+
+    @Override
+    public Long convertFrom(Object value) {
+        Long convert = super.convertFrom(value);
+        if (convert == null) {
+            return null;
+        }
+        if (convert >= SHORT_VALUE_LOWER_BOUND && convert <= SHORT_VALUE_UPPER_BOUND) {
+            convert = fixedReturnValue(convert);
+        }
+        return convert;
+    }
+
+    private Long fixedReturnValue(Long value) {
+        if (!InstConfUtil.getBool(ConnectionParams.STRICT_YEAR_CONVERT)) {
+            return value;
+        }
+        if (value >= SHORT_VALUE_LOWER_BOUND && value <= SHORT_VALUE_SPLIT_POINT) {
+            return value + 2000;
+        } else if (value > SHORT_VALUE_SPLIT_POINT && value <= SHORT_VALUE_UPPER_BOUND) {
+            return value + 1900;
+        } else {
+            return value;
+        }
     }
 }

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.server.conn;
 
-import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
@@ -37,6 +36,7 @@ import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.TPreparedStatement;
 import com.alibaba.polardbx.matrix.jdbc.TResultSet;
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
@@ -123,7 +123,7 @@ public class InnerConnection implements Connection {
         this.connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         this.connection.setAutoCommit(autoCommit);
         this.connection.setEncoding("utf8");
-        this.connection.setTrxPolicy(ITransactionPolicy.TSO);
+        this.connection.setTrxPolicy(ITransactionPolicy.TSO, false);
         this.connection.setServerVariables(serverVariables);
     }
 
@@ -132,7 +132,7 @@ public class InnerConnection implements Connection {
         CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
 
         // 设置TrxPolicy & ExecutionContext信息
-        connection.setTrxPolicy(ITransactionPolicy.TSO);
+        connection.setTrxPolicy(ITransactionPolicy.TSO, false);
         connection.getExecutionContext().setClientIp("127.0.0.1");
         connection.getExecutionContext().setConnId(connection.getId());
         connection.getExecutionContext().setTxId(txId);
@@ -141,6 +141,8 @@ public class InnerConnection implements Connection {
         connection.getExecutionContext().setSchemaName(schemaName);
         connection.getExecutionContext().renewMemoryPoolHolder();
         connection.getExecutionContext().setInternalSystemSql(false);
+        connection.getExecutionContext().setLogicalSqlStartTimeInMs(System.currentTimeMillis());
+        connection.getExecutionContext().setLogicalSqlStartTime(System.nanoTime());
 
         // 变量定义
         Object result = null;
@@ -311,7 +313,7 @@ public class InnerConnection implements Connection {
 
         // 自动提交, 清理事务参数
         if (autoCommit) {
-            this.connection.setTrxPolicy(null);
+            this.connection.setTrxPolicy(null, false);
         }
 
         this.autoCommit = autoCommit;

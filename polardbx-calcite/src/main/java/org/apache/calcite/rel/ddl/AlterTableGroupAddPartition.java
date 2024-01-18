@@ -20,7 +20,6 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlDdl;
@@ -36,38 +35,41 @@ import java.util.Map;
  *
  * @author luoyanxin
  */
-public class AlterTableGroupAddPartition extends DDL {
-    final Map<SqlNode, RexNode> partBoundExprInfo;
-    final String tableGroupName;
+public class AlterTableGroupAddPartition extends AlterTableGroupDdl {
+    final Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel;
 
     protected AlterTableGroupAddPartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
-                                          RelDataType rowType, Map<SqlNode, RexNode> partBoundExprInfo,
+                                          RelDataType rowType,
+                                          Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
                                           String tableGroupName) {
         super(cluster, traits, ddl, rowType);
-        this.partBoundExprInfo = partBoundExprInfo;
+        this.partBoundExprInfoByLevel = partBoundExprInfoByLevel;
         this.tableGroupName = tableGroupName;
         this.sqlNode = ddl;
         this.setTableName(new SqlIdentifier(tableGroupName, SqlParserPos.ZERO));
     }
 
     public static AlterTableGroupAddPartition create(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
-                                                     RelDataType rowType, Map<SqlNode, RexNode> partBoundExprInfo,
+                                                     RelDataType rowType,
+                                                     Map<Integer, Map<SqlNode, RexNode>> partBoundExprInfoByLevel,
                                                      String tableGroupName) {
 
-        return new AlterTableGroupAddPartition(cluster, traits, ddl, rowType, partBoundExprInfo, tableGroupName);
+        return new AlterTableGroupAddPartition(cluster, traits, ddl, rowType, partBoundExprInfoByLevel, tableGroupName);
     }
 
     @Override
     public AlterTableGroupAddPartition copy(
         RelTraitSet traitSet, List<RelNode> inputs) {
         assert traitSet.containsIfApplicable(Convention.NONE);
-        return new AlterTableGroupAddPartition(this.getCluster(), traitSet, this.ddl, rowType, partBoundExprInfo, tableGroupName);
+        return new AlterTableGroupAddPartition(this.getCluster(), traitSet, this.ddl, rowType, partBoundExprInfoByLevel,
+            tableGroupName);
     }
 
-    public Map<SqlNode, RexNode> getPartBoundExprInfo() {
-        return partBoundExprInfo;
+    public Map<Integer, Map<SqlNode, RexNode>> getPartBoundExprInfoByLevel() {
+        return partBoundExprInfoByLevel;
     }
 
+    @Override
     public String getTableGroupName() {
         return tableGroupName;
     }

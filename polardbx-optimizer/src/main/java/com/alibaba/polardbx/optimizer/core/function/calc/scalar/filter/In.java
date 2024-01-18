@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.expression.ISelectable;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
@@ -76,10 +78,16 @@ public class In extends AbstractCollationScalarFunction {
                     }
 
                     boolean notMatch = false;
-                    if (operandTypes.get(0).compare(left, eachRight) != 0) {
-                        // 不匹配
-                        notMatch = true;
+                    for (int i = 0; i < leftArgs.size(); i++) {
+                        Object leftArg = leftArgs.get(i);
+                        Object rightArg = rightArgs.get(i);
+                        if (getArgType(leftArg, 0).compare(leftArg, rightArg) != 0) {
+                            // 不匹配
+                            notMatch = true;
+                            break;
+                        }
                     }
+
                     if (!notMatch) {
                         return 1L;
                     }
@@ -101,5 +109,19 @@ public class In extends AbstractCollationScalarFunction {
     @Override
     public String[] getFunctionNames() {
         return new String[] {"IN"};
+    }
+
+    protected static DataType getArgType(Object arg, int rowValueIdx) {
+        DataType type = null;
+        if (arg instanceof ISelectable) {
+            type = ((ISelectable) arg).getDataType();
+        }
+        if (arg instanceof Row.RowValue) {
+            type = DataTypeUtil.getTypeOfObject(((Row.RowValue) arg).getValues().get(rowValueIdx));
+        }
+        if (type == null) {
+            type = DataTypeUtil.getTypeOfObject(arg);
+        }
+        return type;
     }
 }

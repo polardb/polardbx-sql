@@ -1,0 +1,43 @@
+## DISABLE_FAST_SQL_PARSER
+set @auto_partition=true;
+CREATE TABLE `test1` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`warehouseCode` varchar(50) NOT NULL,
+`code` varchar(50) NOT NULL,
+PRIMARY KEY USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC;
+CREATE TABLE `test2` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`shipmentId` bigint(20) NOT NULL,
+`warehouseCode` varchar(50) NOT NULL,
+`shipmentCode` varchar(50) NOT NULL,
+PRIMARY KEY USING BTREE (`id`),
+INDEX `idx1` USING BTREE (`shipmentId`),
+INDEX `idx2` USING BTREE (`shipmentCode`, `warehouseCode`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC;
+CREATE TABLE `test3` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`shipmentId` bigint(20) NOT NULL,
+`warehouseCode` varchar(50) NULL,
+`shipmentCode` varchar(50) NULL,
+PRIMARY KEY USING BTREE (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC;
+
+insert into test1 values (1, '1', '1');
+insert into test1 values (2, '2', '2');
+insert into test1 values (3, '1', '1');
+insert into test1 values (4, '1', '1');
+
+insert into test2 values (1, 1, '1', '1');
+insert into test2 values (2, 2, '2', '2');
+insert into test2 values (3, 3, '3', '3');
+insert into test2 values (4, 3, '3', '2');
+
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh LEFT JOIN test2 sd force index(idx2) ON  sd.shipmentId=sh.id AND sd.shipmentCode=sh.code;
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh LEFT JOIN test2 sd force index(idx2) ON  sd.shipmentId=sh.id AND sd.shipmentCode=sh.code;
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh LEFT JOIN test2 sd force index(idx2) ON sd.shipmentCode=sh.code AND  sd.shipmentId=sh.id;
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh LEFT JOIN test2 sd force index(idx2) ON sd.shipmentId=sh.id  AND sd.shipmentCode=sh.code WHERE  sh.warehouseCode='1';
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh LEFT JOIN test2 sd force index(idx1) ON sd.shipmentId=sh.id  AND sd.shipmentCode=sh.code WHERE  sh.warehouseCode='1';
+/*+TDDL:ENBALE_MPP=false*/ SELECT 1 FROM test1 sh INNER JOIN test2 sd force index(idx2) ON sd.shipmentId=sh.id  AND sd.shipmentCode=sh.code WHERE  sh.warehouseCode='1';
+SELECT 1 FROM test1 sh inner JOIN test2 sd force index(idx1) ON sd.shipmentId=sh.id  WHERE  sh.warehouseCode='021DC1';
+/*+TDDL:BKA_JOIN(test1, test2)*/ SELECT 1 FROM test1 sh inner JOIN test2 sd force index(idx2) ON sd.shipmentCode=sh.warehouseCode;

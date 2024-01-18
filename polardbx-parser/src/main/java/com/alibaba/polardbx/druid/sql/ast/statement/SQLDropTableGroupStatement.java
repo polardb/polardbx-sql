@@ -31,11 +31,11 @@ public class SQLDropTableGroupStatement extends SQLStatementImpl implements SQLD
     protected SQLName name;
     protected boolean ifExists = false;
 
-    public SQLDropTableGroupStatement(){
+    public SQLDropTableGroupStatement() {
     }
 
-    public SQLDropTableGroupStatement(DbType dbType){
-        super (dbType);
+    public SQLDropTableGroupStatement(DbType dbType) {
+        super(dbType);
     }
 
     @Override
@@ -78,7 +78,7 @@ public class SQLDropTableGroupStatement extends SQLStatementImpl implements SQLD
     public boolean isIfExists() {
         return ifExists;
     }
-    
+
     public void setIfExists(boolean ifNotExists) {
         this.ifExists = ifNotExists;
     }

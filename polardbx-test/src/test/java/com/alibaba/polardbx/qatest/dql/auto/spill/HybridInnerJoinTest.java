@@ -28,6 +28,7 @@ import java.util.List;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
+
 public class HybridInnerJoinTest extends AutoReadBaseTestCase {
 
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();

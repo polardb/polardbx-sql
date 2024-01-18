@@ -16,11 +16,11 @@
 
 package org.apache.calcite.sql;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.google.common.collect.Lists;
 import org.apache.calcite.sql.parser.SqlParserPos;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * @Author ShuGuang
@@ -28,17 +28,19 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  * @Date 2020/10/20 3:30 下午
  */
 public class SqlShowBinaryLogs extends SqlShow {
+    private SqlNode with;
     private static final List<SqlNode> OPERANDS_EMPTY = new ArrayList<>(0);
     private static final List<SqlSpecialIdentifier> SPECIAL_IDENTIFIERS = Lists.newArrayList(
         SqlSpecialIdentifier.BINARY,
         SqlSpecialIdentifier.LOGS);
 
-    public SqlShowBinaryLogs(SqlParserPos pos) {
+    public SqlShowBinaryLogs(SqlParserPos pos, SqlNode with) {
         super(pos, SPECIAL_IDENTIFIERS, OPERANDS_EMPTY, null, null, null, null);
+        this.with = with;
     }
 
-    public static SqlShowBinaryLogs create(SqlParserPos pos) {
-        return new SqlShowBinaryLogs(pos);
+    public static SqlShowBinaryLogs create(SqlParserPos pos, SqlNode with) {
+        return new SqlShowBinaryLogs(pos, with);
     }
 
     @Override
@@ -46,4 +48,7 @@ public class SqlShowBinaryLogs extends SqlShow {
         return SqlKind.SHOW_BINARY_LOGS;
     }
 
+    public SqlNode getWith() {
+        return with;
+    }
 }

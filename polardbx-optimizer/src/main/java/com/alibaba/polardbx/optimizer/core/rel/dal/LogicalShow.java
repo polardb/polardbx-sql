@@ -24,14 +24,13 @@ import java.util.List;
 
 /**
  * @author chenmo.cm
- * @date 2018/5/30 下午2:03
  */
 public class LogicalShow extends LogicalDal {
 
     private boolean showForTruncateTable = false;
 
     private LogicalShow(Show show, String dbIndex,
-                       String phyTable, String schemaName){
+                        String phyTable, String schemaName) {
         super(show, dbIndex, phyTable, schemaName);
     }
 

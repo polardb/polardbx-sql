@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -43,7 +43,7 @@ public final class ShowWorkload {
     private static final int FIELD_COUNT = 4;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -61,11 +61,9 @@ public final class ShowWorkload {
 
         fields[i] = PacketUtil.getField("CLUSTER", Fields.FIELD_TYPE_LONGLONG);
         fields[i++].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c) {
+    public static boolean execute(ServerConnection c) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -78,16 +76,19 @@ public final class ShowWorkload {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
-
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + c.getSchema() + "'");
-            return;
+            return false;
         }
 
         TDataSource ds = schema.getDataSource();
@@ -96,7 +97,7 @@ public final class ShowWorkload {
                 ds.init();
             } catch (Throwable e) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
+                return false;
             }
         }
 
@@ -125,15 +126,16 @@ public final class ShowWorkload {
         row.add(LongUtil.toBytes(local));
         row.add(LongUtil.toBytes(cluster));
 
-        row.packetId = ++packetId;
+        row.packetId = ++tmpPacketId;
         proxy = row.write(proxy);
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         proxy = lastEof.write(proxy);
 
         // write buffer
         proxy.packetEnd();
+        return true;
     }
 }

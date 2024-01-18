@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 
 import java.sql.Connection;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -43,6 +44,8 @@ public interface SchemaManager extends Lifecycle {
     public static final String DUAL = "dual";
 
     public TableMeta getTable(String tableName);
+
+    public Collection<TableMeta> getAllTables();
 
     public default TableMeta getTableWithNull(String tableName) {
         if (tableName == null) {
@@ -98,15 +101,30 @@ public interface SchemaManager extends Lifecycle {
 
     default void toNewVersionInTrx(List<String> tableNameList,
                                    boolean preemtive, long initWait, long interval, TimeUnit timeUnit,
-                                   boolean allowTwoVersion) {
+                                   long connId, boolean allowTwoVersion, boolean sameTableGroup) {
         throw new AssertionError("NOT SUPPORTED");
     }
 
-    default void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
+    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
         throw new AssertionError("NOT SUPPORTED");
     }
 
     default void toNewVersionForTableGroup(String tableName, boolean allowTwoVersion) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList,
+                                   boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
+                                   long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+    default void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion, long trxId) {
+        throw new AssertionError("NOT SUPPORTED");
+    }
+
+
+    default public Map<String, Long> getStaleTables(List<String> tableNameList, Connection conn) {
         throw new AssertionError("NOT SUPPORTED");
     }
 }

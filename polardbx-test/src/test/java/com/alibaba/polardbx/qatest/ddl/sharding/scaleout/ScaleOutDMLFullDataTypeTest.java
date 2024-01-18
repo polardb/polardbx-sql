@@ -30,6 +30,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.text.MessageFormat;
@@ -61,7 +62,7 @@ import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.PRIMARY_KEY_TE
  *
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
 public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
 
@@ -132,10 +133,15 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
                 }
             }
         }
+        String sqlMode = "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
+        if (isMySQL80()) {
+            sqlMode = "NO_ENGINE_SUBSTITUTION";
+        }
+
         String tddlSql = "use " + logicalDatabase;
         JdbcUtil.executeUpdateSuccess(tddlConnection, tddlSql);
         try {
-            setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+            setSqlMode(sqlMode, tddlConnection);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -153,6 +159,13 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         if (indexSk.equalsIgnoreCase(C_INT_32)) {
             System.out.println(LocalTime.now().toString() + ":" + "start to run the testcase");
         }
+        final String sqlMode;
+        if (isMySQL80()) {
+            sqlMode = "NO_ENGINE_SUBSTITUTION";
+        } else {
+            sqlMode =
+                "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION";
+        }
         System.out.println(LocalTime.now().toString() + ":" + "start to run the testcase");
         final AtomicBoolean stop = new AtomicBoolean(false);
         String hint =
@@ -167,11 +180,11 @@ public class ScaleOutDMLFullDataTypeTest extends ScaleOutBaseTest {
         final List<Future> inserts =
             ImmutableList.of(dmlPool
                     .submit(new DMLRunner(stop, normalTable1, (sql) -> {
-                        setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+                        setSqlMode(sqlMode, tddlConnection);
                         executeDml(hintStr + sql);
                     })),
                 dmlPool.submit(new DMLRunner(stop, normalTable2, (sql) -> {
-                    setSqlMode("NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION", tddlConnection);
+                    setSqlMode(sqlMode, tddlConnection);
                     executeDml(hintStr + sql);
                 })));
 

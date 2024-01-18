@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.executor.balancer.policy;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -33,7 +36,11 @@ import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
 import com.alibaba.polardbx.executor.balancer.action.ActionMovePartitions;
 import com.alibaba.polardbx.executor.balancer.action.ActionTaskAdapter;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
+import com.alibaba.polardbx.executor.balancer.action.ActionWriteDataDistLog;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
+import com.alibaba.polardbx.executor.balancer.serial.DataDistInfo;
+import com.alibaba.polardbx.executor.balancer.solver.MixedModel;
+import com.alibaba.polardbx.executor.balancer.solver.Solution;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
 import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
@@ -46,10 +53,13 @@ import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TopologySyncThenRel
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -59,6 +69,7 @@ import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -71,6 +82,9 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.executor.balancer.policy.PolicyPartitionBalance.MAX_TABLEGROUP_SOLVED_BY_LP;
+import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
 
 /**
  * Move partitions between storage node if un-balanced.
@@ -88,6 +102,23 @@ public class PolicyDataBalance implements BalancePolicy {
     @Override
     public String name() {
         return SqlRebalance.POLICY_DATA_BALANCE;
+    }
+
+    public class MoveInfo {
+        PartitionStat partitionStat;
+        String targetDn;
+
+        String tgName;
+        Long tableRows;
+        Long dataSize;
+
+        public MoveInfo(PartitionStat partitionStat, String tgName, String targetDn, Long tableRows, Long dataSize) {
+            this.partitionStat = partitionStat;
+            this.tgName = tgName;
+            this.targetDn = targetDn;
+            this.tableRows = tableRows;
+            this.dataSize = dataSize;
+        }
     }
 
     @Override
@@ -232,6 +263,7 @@ public class PolicyDataBalance implements BalancePolicy {
             .entrySet().stream()
             .map(x -> new BucketOfPartitions(x.getKey(), x.getValue()))
             .collect(Collectors.toList());
+
         // consider empty groups
         List<BucketOfPartitions> emptyGroups = new ArrayList<>();
         for (String groupName : balanceStats.getAllGroups()) {
@@ -315,21 +347,22 @@ public class PolicyDataBalance implements BalancePolicy {
         GeneralUtil.emptyIfNull(moves).stream()
             .collect(Collectors.groupingBy(Pair::getValue, Collectors.mapping(Pair::getKey, Collectors.toList())))
             .forEach((toGroup, partitions) -> {
-                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions, toGroup, balanceStats)) {
+                for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions, toGroup,
+                    balanceStats)) {
                     if ((actions.size() + movePartitionActions.size()) >= options.maxActions) {
                         break;
                     }
-                    movePartitionActions.computeIfAbsent(act.getTableGroupName(), o->new ArrayList<>()).add(act);
+                    movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>()).add(act);
                 }
             });
 
         actions.add(new ActionMovePartitions(schemaName, movePartitionActions));
+
         if (!actions.isEmpty()) {
             LOG.info("DataBalance move partition for data balance: " + actions);
         }
         return actions;
     }
-
 
     /**
      * 1. Create group on empty storage-node
@@ -473,14 +506,15 @@ public class PolicyDataBalance implements BalancePolicy {
     private List<PolicyDrainNode.MoveInDn> prepareMoveInDnsForTablegroup(List<PolicyDrainNode.DnDiskInfo> dnDiskInfo,
                                                                          String schemaName, String tableGroup) {
         List<PolicyDrainNode.MoveInDn> moveInDnList;
-        List<GroupDetailInfoExRecord> detailInfoExRecords = LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName, tableGroup);
+        List<GroupDetailInfoExRecord> detailInfoExRecords =
+            LocalityInfoUtils.getAllowedGroupInfoOfTableGroup(schemaName, tableGroup);
         Set<String> storageIds =
             detailInfoExRecords.stream().map(o -> o.storageInstId.toLowerCase()).collect(Collectors.toSet());
         if (!dnDiskInfo.isEmpty()) {
             // choose dn list from disk_info
             moveInDnList = dnDiskInfo.stream()
                 .map(PolicyDrainNode.MoveInDn::new)
-                .filter(dn->storageIds.contains(dn.getDnDiskInfo().getInstance().toLowerCase()))
+                .filter(dn -> storageIds.contains(dn.getDnDiskInfo().getInstance().toLowerCase()))
                 .collect(Collectors.toList());
         } else {
             // choose dn list from metadb
@@ -495,24 +529,27 @@ public class PolicyDataBalance implements BalancePolicy {
             moveInDnList.removeIf(o -> !storageIds.contains(o.getDnDiskInfo().getInstance().toLowerCase()));
         }
         if (moveInDnList.isEmpty()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format("no available data-node to move in for table group %s", tableGroup));
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                String.format("no available data-node to move in for table group %s", tableGroup));
         }
         return moveInDnList;
     }
 
-
-    private Map<String, List<PolicyDrainNode.MoveInDn>> prepareMoveInDnsForPartitionGroup(List<PolicyDrainNode.DnDiskInfo> dnDiskInfo,
-                                                                                          String schemaName, String tableGroup) {
-        Map<String, List<GroupDetailInfoExRecord>> detailInfoExRecords = LocalityInfoUtils.getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroup);
+    private Map<String, List<PolicyDrainNode.MoveInDn>> prepareMoveInDnsForPartitionGroup(
+        List<PolicyDrainNode.DnDiskInfo> dnDiskInfo,
+        String schemaName, String tableGroup) {
+        Map<String, List<GroupDetailInfoExRecord>> detailInfoExRecords =
+            LocalityInfoUtils.getAllowedGroupInfoOfPartitionGroup(schemaName, tableGroup);
         Map<String, List<PolicyDrainNode.MoveInDn>> moveInDnMap = new HashMap<>();
-        for(String partition:detailInfoExRecords.keySet()) {
-            Set<String> storageIds = detailInfoExRecords.get(partition).stream().map(o -> o.storageInstId.toLowerCase()).collect(Collectors.toSet());
+        for (String partition : detailInfoExRecords.keySet()) {
+            Set<String> storageIds = detailInfoExRecords.get(partition).stream().map(o -> o.storageInstId.toLowerCase())
+                .collect(Collectors.toSet());
             List<PolicyDrainNode.MoveInDn> moveInDnList;
             if (!dnDiskInfo.isEmpty()) {
                 // choose dn list from disk_info
                 moveInDnList = dnDiskInfo.stream()
                     .map(PolicyDrainNode.MoveInDn::new)
-                    .filter(dn->storageIds.contains(dn.getDnDiskInfo().getInstance().toLowerCase()))
+                    .filter(dn -> storageIds.contains(dn.getDnDiskInfo().getInstance().toLowerCase()))
                     .collect(Collectors.toList());
             } else {
                 // choose dn list from metadb
@@ -527,7 +564,8 @@ public class PolicyDataBalance implements BalancePolicy {
                 moveInDnList.removeIf(o -> !storageIds.contains(o.getDnDiskInfo().getInstance().toLowerCase()));
             }
             if (moveInDnList.isEmpty()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, String.format("no available data-node to move in for partition group %s", partition));
+                throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                    String.format("no available data-node to move in for partition group %s", partition));
             }
             moveInDnMap.put(partition, moveInDnList);
         }
@@ -551,6 +589,222 @@ public class PolicyDataBalance implements BalancePolicy {
     }
 
     @Override
+    public List<BalanceAction> applyToTenantPartitionDb(ExecutionContext ec, BalanceOptions options, BalanceStats stats,
+                                                        String storagePoolName, String schemaName) {
+        // 1. Refresh Topology and sync broadcast table data.
+        DdlHelper.getServerConfigManager().executeBackgroundSql("refresh topology", schemaName, null);
+        List<BalanceAction> actions = new ArrayList<>();
+        // 2. lock
+        String name = ActionUtils.genRebalanceResourceName(RebalanceTarget.DATABASE, schemaName);
+
+        ActionLockResource lock = new ActionLockResource(schemaName, Sets.newHashSet(name));
+        // 3.1 get storage pool instIds and groupMap.
+        // NOTICE: ASSERT THAT storageInfo has been updated with appended node.
+        StoragePoolManager storagePoolManager = StoragePoolManager.getInstance();
+        List<String> storageInstIds = storagePoolManager.getStoragePoolInfo(storagePoolName).getDnLists();
+        Map<String, GroupDetailInfoRecord> groupMap = PolicyUtils.getGroupDetails(schemaName, storageInstIds);
+        if (groupMap.isEmpty()) {
+            return actions;
+        }
+
+        // 3.2 filter tableGroup without fixed Locality.
+        List<TableGroupConfig> tableGroupConfigList = TableGroupUtils.getAllTableGroupInfoByDb(schemaName);
+        Set<String> tgWithoutLocality =
+            tableGroupConfigList.stream().filter(o -> o.getLocalityDesc().hasStoragePoolDefinition()
+                    || o.getLocalityDesc().holdEmptyDnList()).map(o -> o.getTableGroupRecord().tg_name)
+                .collect(Collectors.toSet());
+        // 3.3 filter pg without fixed locality and location in storage pool.
+        List<PartitionGroupStat> pgList = stats.getPartitionGroupStats().stream().filter(o -> {
+            Boolean inStoragePool = groupMap.containsKey(o.getFirstPartition().getLocation().getGroupKey());
+            LocalityDesc partLocality =
+                LocalityInfoUtils.parse(o.partitions.get(0).getPartitionGroupRecord().getLocality());
+            return inStoragePool && (partLocality.holdEmptyDnList()
+                || partLocality.hasStoragePoolDefinition());
+        }).collect(Collectors.toList());
+        // 3.4 filter toMovePg by intersection of non-fix tg and location-in-sp pg.
+        Map<String, List<PartitionGroupStat>> pgListGroupByTg = GeneralUtil.emptyIfNull(pgList).stream()
+            .filter(o -> tgWithoutLocality.contains(o.tgName))
+            .collect(Collectors.groupingBy(o -> o.getTgName(), Collectors.mapping(o -> o, Collectors.toList())));
+
+        // 3.5 filter broadcastTg
+        Set<String> boadcastTgSets =
+            tableGroupConfigList.stream().filter(o -> o.getTableGroupRecord().isBroadCastTableGroup())
+                .map(o -> o.getTableGroupRecord().getTg_name()).collect(Collectors.toSet());
+        Set<String> validTgSet = pgListGroupByTg.keySet();
+        validTgSet.removeAll(boadcastTgSets);
+        // 3.6 final pgList
+        Map<String, List<PartitionGroupStat>> toRebalancePgListGroupByTg =
+            pgListGroupByTg.keySet().stream().filter(o -> validTgSet.contains(o))
+                .collect(Collectors.toMap(o -> o, o -> pgListGroupByTg.get(o)));
+
+        MixedModel.SolveLevel solveLevel = MixedModel.SolveLevel.MIN_COST;
+        if (!options.solveLevel.equals("DEFAULT") && !options.solveLevel.isEmpty()) {
+            solveLevel = MixedModel.SolveLevel.BALANCE_DEFAULT;
+        }
+
+        // 4.1 map groupInfo and storageInst to Index.
+        int M = groupMap.size();
+        Map<Integer, String> groupDetailMap = new HashMap<>();
+        Map<Integer, String> storageInstMap = new HashMap<>();
+        Map<String, Integer> groupDetailReverseMap = new HashMap();
+        Map<String, Integer> storageInstReverseMap = new HashMap();
+        List<String> groupNames = new ArrayList<>(groupMap.keySet());
+        List<String> storageInsts =
+            groupNames.stream().map(o -> groupMap.get(o).storageInstId).collect(Collectors.toList());
+        for (int i = 0; i < M; i++) {
+            storageInstMap.put(i, storageInsts.get(i));
+            groupDetailMap.put(i, groupNames.get(i));
+            groupDetailReverseMap.put(groupNames.get(i), i);
+            storageInstReverseMap.put(storageInsts.get(i), i);
+        }
+
+        // 4.2 sort tgNames by tgSize.
+        Map<String, Long> tgDataSize = new HashMap<>();
+        for (String tgName : toRebalancePgListGroupByTg.keySet()) {
+            Long tgSize = toRebalancePgListGroupByTg.get(tgName).stream().map(PartitionGroupStat::getTotalDiskSize)
+                .reduce(0L, Long::sum);
+            tgDataSize.put(tgName, tgSize);
+        }
+        List<String> tableGroupNames = validTgSet.stream().collect(Collectors.toList());
+        tableGroupNames.sort(Comparator.comparingLong(key -> tgDataSize.get(key)).reversed());
+        DataDistInfo dataDistInfo = DataDistInfo.fromSchemaAndInstMap(schemaName, storageInstMap, groupDetailMap);
+        List<PolicyDataBalance.MoveInfo> moves = new ArrayList<>();
+        // 4.3 compute move
+        for (int k = 0; k < tableGroupNames.size(); k++) {
+
+            String tgName = tableGroupNames.get(k);
+            List<PartitionGroupStat> toRebalancePgList = toRebalancePgListGroupByTg.get(tgName);
+            int m = storageInsts.size();
+            int N = toRebalancePgList.size();
+
+            int[] originalPlace = new int[N];
+            int[] targetPlace = new int[N];
+            double[] partitionSize = new double[N];
+            Map<Integer, PartitionGroupStat> toRebalancePgMap = new HashMap<>();
+
+            for (int i = 0; i < N; i++) {
+                PartitionGroupStat partitionGroupStat = toRebalancePgList.get(i);
+                toRebalancePgMap.put(i, partitionGroupStat);
+                String groupKey = partitionGroupStat.getFirstPartition().getLocation().getGroupKey();
+                originalPlace[i] = groupDetailReverseMap.get(groupKey);
+                partitionSize[i] = partitionGroupStat.getDataRows();
+                targetPlace[i] = originalPlace[i];
+            }
+            Date startTime = new Date();
+            String logInfo = String.format(
+                "[schema %s, tablegroup %s] start to solve move partition problem: M=%d, N=%d, originalPlace=%s, partitionSize=%s",
+                schemaName, tgName, M, N, Arrays.toString(originalPlace), Arrays.toString(partitionSize));
+            EventLogger.log(EventType.REBALANCE_INFO, logInfo);
+
+            Solution solution = null;
+            // TODO: while select drain node index is empty.
+            if (k < MAX_TABLEGROUP_SOLVED_BY_LP) {
+                solution = MixedModel.solveMovePartition(m, N, originalPlace, partitionSize);
+            } else {
+                solution = MixedModel.solveMovePartitionByGreedy(m, N, originalPlace, partitionSize);
+            }
+            if (solution.withValidSolve) {
+//                    Date endTime = new Date();
+//                    Long costMillis = endTime.getTime() - startTime.getTime();
+//                    logInfo =
+//                        String.format(
+//                            "[schema %s, tablegroup %s] get solution in %d ms: solved via %s, originalMu = %f, mu=%f, targetPlace=%s",
+//                            schemaName, tgName, costMillis, solution.strategy, originalMu, solution.mu,
+//                            Arrays.toString(solution.targetPlace));
+//                    EventLogger.log(EventType.REBALANCE_INFO, logInfo);
+//                double originalFactor = caculateBalanceFactor(M, N, originalPlace, partitionSize);
+//                double targetFactor = caculateBalanceFactor(M, N, solution.targetPlace, partitionSize);
+//                if (originalFactor - targetFactor > TOLORANT_BALANCE_ERR) {
+//                    targetPlace = solution.targetPlace;
+//                }
+                targetPlace = solution.targetPlace;
+
+                for (int i = 0; i < N; i++) {
+                    if (targetPlace[i] != originalPlace[i]) {
+                        moves.add(new PolicyDataBalance.MoveInfo(toRebalancePgMap.get(i).getFirstPartition(),
+                            toRebalancePgMap.get(i).getTgName(), groupDetailMap.get(targetPlace[i]),
+                            toRebalancePgMap.get(i).getDataRows(), toRebalancePgMap.get(i).getTotalDiskSize()));
+                    }
+
+                }
+            }
+            dataDistInfo.appendTgDataDist(tgName, toRebalancePgList, originalPlace, targetPlace);
+        }
+
+        // 4.4 cluster move actions.
+        moves.sort(Comparator.comparingLong(o -> -o.dataSize));
+        List<BalanceAction> moveDataActions = new ArrayList<>();
+        for (int i = 0; i < moves.size(); ) {
+            Long sumMoveSizes = 0L;
+            int j = i;
+            int nextI;
+            for (; j < moves.size() && sumMoveSizes <= options.maxTaskUnitSize * 1024 * 1024; j++) {
+                sumMoveSizes += moves.get(j).dataSize;
+            }
+            nextI = j;
+            Map<String, List<ActionMovePartition>> movePartitionActions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+//            Long finalSumMoveRows = sumMoveSizes;
+            GeneralUtil.emptyIfNull(moves.subList(i, nextI)).stream().collect(
+                    Collectors.groupingBy(o -> o.targetDn, Collectors.mapping(o -> o.partitionStat, Collectors.toList())))
+                .forEach((toGroup, partitions) -> {
+                    for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schemaName, partitions,
+                        toGroup,
+                        stats)) {
+//                    if (moveDataActions.size() >= options.maxActions) {
+//                        break;
+//                    }
+                        movePartitionActions.computeIfAbsent(act.getTableGroupName(), o -> new ArrayList<>()).add(act);
+                    }
+                });
+            if (!movePartitionActions.isEmpty()) {
+                moveDataActions.add(new ActionMovePartitions(schemaName, movePartitionActions));
+            }
+            i = nextI;
+        }
+
+        //        for (String tgName : movesGroupByTg.keySet()) {
+//            List<MoveInfo> movesOfTg = movesGroupByTg.get(tgName);
+//            movesOfTg.sort(Comparator.comparingLong(o -> -o.dataSize));
+//            for (int i = 0; i < movesOfTg.size(); ) {
+//                Long sumMoveRows = 0L;
+//                int j = i;
+//                int nextI;
+//                for (; j < movesOfTg.size() && sumMoveRows <= options.maxTaskUnitRows; j++) {
+//                    sumMoveRows += movesOfTg.get(j).tableRows;
+//                }
+//                nextI = j;
+//                GeneralUtil.emptyIfNull(movesOfTg.subList(i, nextI)).stream().collect(
+//                    Collectors.groupingBy(o -> o.targetDn,
+//                        Collectors.mapping(o -> o.partitionStat, Collectors.toList()))
+//                ).forEach((toGroup, partitions) -> {
+//                    for (ActionMovePartition act : ActionMovePartition.createMoveToGroups(schema, partitions,
+//                        toGroup, stats)) {
+//                        if (actions.size() >= options.maxActions) {
+//                            break;
+//                        }
+//                        actions.add(act);
+//                    }
+//                });
+//                i = nextI;
+//            }
+//        }
+        // 5. log
+        String distLogInfo =
+            String.format("[schema %s] estimated data distribution: %s", schemaName, JSON.toJSONString(dataDistInfo));
+        EventLogger.log(EventType.REBALANCE_INFO, distLogInfo);
+        ActionWriteDataDistLog actionWriteDataDistLog = new ActionWriteDataDistLog(schemaName, dataDistInfo);
+        moveDataActions.add(actionWriteDataDistLog);
+        actions.add(lock);
+        actions.add(new ActionInitPartitionDb(schemaName));
+        actions.addAll(moveDataActions);
+
+        // remove broadcast tables
+
+        return actions;
+
+    }
+
+    @Override
     public List<BalanceAction> applyToTableGroup(ExecutionContext ec,
                                                  BalanceOptions options,
                                                  BalanceStats stats,
@@ -564,15 +818,18 @@ public class PolicyDataBalance implements BalancePolicy {
         // query locality and reset locality involving drain node
         // move partitions
         List<BalanceAction> actionMovePartitions = new ArrayList<>();
-        Set<PartitionStat> moved = org.glassfish.jersey.internal.guava.Sets.newHashSet();
-        List<PolicyDrainNode.MoveInDn> availableInstList = prepareMoveInDnsForTablegroup(dnDiskInfo, schemaName, tableGroupName);
-        Map<String, List<PolicyDrainNode.MoveInDn>> availableInstListForPartitionGroup = prepareMoveInDnsForPartitionGroup(dnDiskInfo, schemaName, tableGroupName);
+        Set<PartitionStat> moved = new HashSet<>();
+        List<PolicyDrainNode.MoveInDn> availableInstList =
+            prepareMoveInDnsForTablegroup(dnDiskInfo, schemaName, tableGroupName);
+        Map<String, List<PolicyDrainNode.MoveInDn>> availableInstListForPartitionGroup =
+            prepareMoveInDnsForPartitionGroup(dnDiskInfo, schemaName, tableGroupName);
         List<Pair<PartitionStat, String>> movePartitions = new ArrayList<>();
 
         List<PartitionStat> partitionStats = stats.getPartitionStats().stream().filter(partitionStat ->
             partitionStat.getTableGroupName().equals(tableGroupName)).collect(Collectors.toList());
 
-        for (PartitionStat partition : partitionStats){
+        // all the partition topology.
+        for (PartitionStat partition : partitionStats) {
             int tgType = partition.getTableGroupRecord().getTg_type();
             if (tgType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG) {
                 continue;
@@ -588,7 +845,8 @@ public class PolicyDataBalance implements BalancePolicy {
 
             if (!moved.contains(partition) && partition.getTableGroupName().equals(tableGroupName)) {
                 String targetInst = "";
-                targetInst = chooseTargetInst(availableInstListForPartitionGroup.getOrDefault(partition.getPartitionName(), availableInstList));
+                targetInst = chooseTargetInst(
+                    availableInstListForPartitionGroup.getOrDefault(partition.getPartitionName(), availableInstList));
                 moved.add(partition);
                 movePartitions.add(Pair.of(partition, targetInst));
             }
@@ -605,13 +863,13 @@ public class PolicyDataBalance implements BalancePolicy {
         TableGroupSyncTask tableGroupSyncTask = new TableGroupSyncTask(schemaName, tableGroupName);
         ActionTaskAdapter syncTableGroupAction = new ActionTaskAdapter(schemaName, tableGroupSyncTask);
 
-
         List<TableGroupConfig> tableGroupConfigs = new ArrayList<>();
         GeneralUtil.emptyIfNull(stats.getTableGroupStats()).stream()
             .forEach(o -> {
                 tableGroupConfigs.add(o.getTableGroupConfig());
             });
-        DrainNodeOfTableGroupValidateTask drainNodeValidateTask = new DrainNodeOfTableGroupValidateTask(schemaName, tableGroupConfigs, tableGroupName);
+        DrainNodeOfTableGroupValidateTask drainNodeValidateTask =
+            new DrainNodeOfTableGroupValidateTask(schemaName, tableGroupConfigs, tableGroupName);
         ActionTaskAdapter drainNodeValidateTaskAdapter = new ActionTaskAdapter(schemaName, drainNodeValidateTask);
 
         // lock
@@ -620,8 +878,10 @@ public class PolicyDataBalance implements BalancePolicy {
         ActionLockResource lock =
             new ActionLockResource(schemaName, com.google.common.collect.Sets.newHashSet(name, schemaXLock));
 
-        TopologySyncThenReleaseXLockTask topologySyncThenReleaseXLockTask = new TopologySyncThenReleaseXLockTask(schemaName, schemaXLock);
-        ActionTaskAdapter actionTopologySyncThenReleaseXLockTask = new ActionTaskAdapter(schemaName, topologySyncThenReleaseXLockTask);
+        TopologySyncThenReleaseXLockTask topologySyncThenReleaseXLockTask =
+            new TopologySyncThenReleaseXLockTask(schemaName, schemaXLock);
+        ActionTaskAdapter actionTopologySyncThenReleaseXLockTask =
+            new ActionTaskAdapter(schemaName, topologySyncThenReleaseXLockTask);
         // combine actions
         actions.add(lock);
         actions.add(drainNodeValidateTaskAdapter);
@@ -737,10 +997,10 @@ public class PolicyDataBalance implements BalancePolicy {
                 if (tgType != TableGroupRecord.TG_TYPE_PARTITION_TBL_TG) {
                     continue;
                 }
-                if(!allowLocalityTable && (!StringUtils.isEmpty(tgLocality) || !StringUtils.isEmpty(pgLocality))){
+                if (!allowLocalityTable && (!StringUtils.isEmpty(tgLocality) || !StringUtils.isEmpty(pgLocality))) {
                     continue;
                 }
-                if(allowLocalityTable && !StringUtils.isEmpty(pgLocality)){
+                if (allowLocalityTable && !StringUtils.isEmpty(pgLocality)) {
                     continue;
                 }
                 if (!moveOutPartitions.contains(p)) {

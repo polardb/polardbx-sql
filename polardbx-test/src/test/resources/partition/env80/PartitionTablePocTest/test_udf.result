@@ -1,0 +1,11 @@
+## DISABLE_FAST_SQL_PARSER
+drop function if exists add_with_convert;
+create function add_with_convert(c1 varchar(255), c2 varchar(255)) returns varchar(255) return c1 + c2;
+explain select add_with_convert(1,1);
+Logical ExecutionPlan
+Project(add_with_convert(1, 1)="mysql.add_with_convert(CAST(?0), CAST(?1))")
+  Values(table="dual")
+explain select add_with_convert("2", 1);
+Logical ExecutionPlan
+Project(add_with_convert('2', 1)="mysql.add_with_convert(?0, CAST(?1))")
+  Values(table="dual")

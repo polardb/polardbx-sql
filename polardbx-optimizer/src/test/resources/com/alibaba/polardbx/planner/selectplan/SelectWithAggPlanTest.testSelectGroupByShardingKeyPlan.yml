@@ -1,10 +1,22 @@
-sql: |
-  select count(*) 
-  from test_hash_tb4 a 
-  where a.name='xx' group by a.id;
+- sql: |
+    select count(*) 
+    from test_hash_tb4 a 
+    where a.name='xx' group by a.id;
 
+  plan: |
 
-plan: |
+    Gather(concurrent=true)
+      LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb4` AS `test_hash_tb4` WHERE (`name` = 'xx') GROUP BY `id`")
 
-  Gather(concurrent=true)
-    LogicalView(tables="[0000-0003].test_hash_tb4", shardCount=4, sql="SELECT COUNT(*) AS `count(*)` FROM `test_hash_tb4` AS `test_hash_tb4` WHERE (`name` = 'xx') GROUP BY `id`")
+- sql: |
+    select sum(a.num) FROM select_hash_tb5 a LEFT join select_single b ON a.join_key = b.join_key WHERE a.join_key = '2300005452' AND b.join_key = '2300005452' group by a.id, a.join_key;
+
+  plan: |
+    
+    project(sum(a.num)="sum(a.num)")
+      hashagg(group="id,join_key", sum(a.num)="sum(num)")
+        project(id="id", join_key="join_key0", num="num", join_key0="join_key")
+          bkajoin(condition="join_key = join_key", type="inner")
+            logicalview(tables="optest_0000.select_single", sql="select `join_key` from `select_single` as `select_single` where (`join_key` = '2300005452')")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].select_hash_tb5_[00-11]", shardcount=48, sql="select `id`, `join_key`, `num` from `select_hash_tb5` as `select_hash_tb5` where ((`join_key` = '2300005452') and (`join_key` in (...)))")

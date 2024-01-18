@@ -23,10 +23,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName MySqlAlterTableLock
- * @description
- * @Author zzy
- * @Date 2019-06-03 15:50
  */
 public class MySqlAlterTableLock extends MySqlObjectImpl implements SQLAlterTableItem {
 

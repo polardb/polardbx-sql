@@ -22,11 +22,13 @@ public enum OSSFileType {
     OTHER("", "", ""),
     TABLE_FORMAT("format", "%s_%s_%s.%s", "/tmp/%s_%s_%s.%s"),
     TABLE_FILE("orc", "%s_%s_%s.%s", "/tmp/%s_%s_%s.%s"),
-    TABLE_META("bf", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s");
+    TABLE_META("bf", "%s_%s_%s_%s_%s.%s", "/tmp/%s_%s_%s_%s_%s.%s"),
+    EXPORT_ORC_FILE("orc", "%s_%s.%s", "../spill/temp/%s");
 
     String suffix;
     String remotePathFormat;
     String localPathFormat;
+
     OSSFileType(String suffix, String remotePathFormat, String localPathFormat) {
         this.suffix = suffix;
         this.remotePathFormat = remotePathFormat;

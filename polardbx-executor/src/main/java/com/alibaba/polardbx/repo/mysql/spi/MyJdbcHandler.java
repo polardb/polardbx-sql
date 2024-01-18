@@ -53,6 +53,7 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.executor.utils.transaction.PhyOpTrxConnUtils;
 import com.alibaba.polardbx.gms.metadb.MetaDbConnectionProxy;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.group.utils.StatementStats;
@@ -61,6 +62,7 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
@@ -69,6 +71,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.ResultSetRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatisticsExt;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
@@ -77,6 +80,7 @@ import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
+import com.alibaba.polardbx.rpc.XLog;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
 import com.alibaba.polardbx.rpc.compatible.XResultSet;
@@ -93,10 +97,12 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Bytes;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import com.mysql.jdbc.CommunicationsException;
 import com.mysql.jdbc.Statement;
+import com.mysql.jdbc.exceptions.MySQLQueryInterruptedException;
+import com.mysql.jdbc.exceptions.jdbc4.CommunicationsException;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.Nullable;
 import org.openjdk.jol.info.ClassLayout;
 
 import javax.sql.DataSource;
@@ -135,6 +141,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     private static final Logger logger = LoggerFactory.getLogger(MyJdbcHandler.class);
     private static final int MAX_LOG_PARAM_COUNT = 500;
 
+    private static final int LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN = 7 * 24 * 60 * 60 * 1000;
+
     private IConnection connection = null;
     private ResultSet resultSet = null;
     private java.sql.Statement ps = null;
@@ -159,6 +167,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     private boolean phySqlExecuted = false;
     private boolean lessMy56Version = false;
 
+    private int ddlTimeoutForTest = -1;
+
     public enum ExecutionType {
         PUT, GET
     }
@@ -172,9 +182,14 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         try {
             lessMy56Version = ExecutorContext.getContext(
                 executionContext.getSchemaName()).getStorageInfoManager().isLessMy56Version();
-        } catch (Throwable t) {
-            //ignore
+        } catch (Throwable ignored) {
         }
+        FailPoint.inject(FailPointKey.FP_PHYSICAL_DDL_TIMEOUT, (k, v) -> {
+            try {
+                ddlTimeoutForTest = Integer.parseInt(v);
+            } catch (Throwable ignored) {
+            }
+        });
     }
 
     private boolean isForceStream() {
@@ -249,16 +264,54 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 if (executionContext.getExtraCmds().containsKey(ConnectionProperties.SLOW_SQL_TIME)) {
                     thresold = executionContext.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
                 }
-
                 if (thresold > 0L && time > thresold) {
+
+                    boolean isBackfillTask = (executionContext.getDdlJobId() != null
+                        && executionContext.getDdlJobId() > 0);
+                    String sql = StringUtils.EMPTY;
+                    if (!isBackfillTask) {
+                        sql = bytesSql.display();
+                    }
+                    long length = executionContext.getPhysicalRecorder().getMaxSizeThreshold();
+
+                    long remainingSize = 0;
+                    if (sql.length() < length) {
+                        remainingSize = length - sql.length();
+                    }
+                    StringBuilder paramsBuffer = new StringBuilder();
+
+                    if (remainingSize <= 0 || isBackfillTask) {
+                        //ignore the backfill physical slow sql's parameters
+                        if (GeneralUtil.isNotEmpty(param)) {
+                            paramsBuffer.append("{1=");
+                            paramsBuffer.append(param.get(1));
+                            paramsBuffer.append(",...,}");
+                        }
+                    } else {
+                        paramsBuffer.append("{");
+                        if (GeneralUtil.isNotEmpty(param)) {
+                            for (int i = 1; i <= param.size(); i++) {
+                                String val = String.valueOf(param.get(i));
+                                if (val.length() + paramsBuffer.length() <= remainingSize) {
+                                    paramsBuffer.append(i);
+                                    paramsBuffer.append("=");
+                                    paramsBuffer.append(val);
+                                    paramsBuffer.append(",");
+                                } else {
+                                    paramsBuffer.append("...");
+                                    break;
+                                }
+                            }
+                        }
+                        paramsBuffer.append("}");
+                    }
 
                     String traceId = executionContext.getTraceId();
 
                     executionContext.getStats().physicalSlowRequest++;
 
                     String currentDbKey = getCurrentDbkey(rw);
-                    long length = executionContext.getPhysicalRecorder().getMaxSizeThreshold();
-                    String sql = bytesSql.display();
+
                     if (sql.length() > length) {
                         StringBuilder newSql = new StringBuilder((int) length + 3);
                         newSql.append(sql, 0, (int) length);
@@ -291,7 +344,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     }
                     SQLRecorderLogger.physicalSlowLogger.info(SQLRecorderLogger.physicalLogFormat.format(new Object[] {
                         formatSql, this.groupName, currentDbKey, time, sqlCostTime, getConnectionWaitCostNano,
-                        getConnectionCreateCostNano, param, traceId}));
+                        getConnectionCreateCostNano, paramsBuffer, traceId}));
                 }
             } catch (Throwable e) {
                 logger.error("Error occurs when record SQL", e);
@@ -367,7 +420,6 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             if (this.closed) {
                 return;
             }
-
             this.closed = true;
         }
         long startCloseJdbcRsNano = System.nanoTime();
@@ -380,6 +432,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                         ;
                     }
                 }
+                OptimizerAlertUtil.xplanAlert(executionContext, xResult);
                 xResult.close();
                 xResult = null;
             }
@@ -392,6 +445,12 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     ps = null;
                 } else {
                     ps = null;
+                }
+            } catch (Exception e) {
+                if (killStreaming && executionContext.isAutoCommit() && !inTrans && exceptionIsInterrupt(e)) {
+                    logger.info("failed to close statement, ", e);
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, e, "error when close result");
                 }
             } finally {
                 if (this.connection != null) {
@@ -406,6 +465,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             collectStatementStatsForClose();
         }
         executionType = null;
+    }
+
+    private boolean exceptionIsInterrupt(Exception e) {
+        return e instanceof MySQLQueryInterruptedException || TStringUtil.contains(e.getClass().getName(),
+            "MySQLQueryInterruptedException");
     }
 
     @Override
@@ -463,8 +527,9 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
     protected PreparedStatement prepareStatement(
         BytesSql bytesSql, byte[] sqlBytesPrefix, IConnection conn, ExecutionContext executionContext,
-        List<ParameterContext> parameterContexts, Map<Integer, ParameterContext> param,
-        boolean isInsert, boolean isDDL, BaseQueryOperation rel)
+        List<ParameterContext> parameterContexts, Map<Integer, ParameterContext> param, boolean isInsertOrUpdate,
+        boolean isDDL,
+        BaseQueryOperation rel)
         throws SQLException {
         long startInitStmtEnvNano = System.nanoTime();
         if (this.ps != null) {
@@ -478,8 +543,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         if (isDDL) {
             phyConnLastSocketTimeout = conn.getNetworkTimeout();
-            Long ddlTimeout = executionContext.getParamManager().getLong(ConnectionParams.MERGE_DDL_TIMEOUT);
-            conn.setNetworkTimeout(socketTimeoutExecutor, ddlTimeout.intValue());
+            int ddlTimeout = getDdlTimeout(conn, executionContext);
+            conn.setNetworkTimeout(socketTimeoutExecutor, ddlTimeout);
         } else if (socketTimeout >= 0) {
             phyConnLastSocketTimeout = conn.getNetworkTimeout();
             conn.setNetworkTimeout(socketTimeoutExecutor, socketTimeout.intValue());
@@ -491,7 +556,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         conn.setServerVariables(executionContext.getServerVariables());
 
         int autoGeneratedKeys = executionContext.getAutoGeneratedKeys();
-        if (isInsert) {
+        if (isInsertOrUpdate) {
             autoGeneratedKeys = java.sql.Statement.RETURN_GENERATED_KEYS;
         }
 
@@ -569,6 +634,17 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         return (PreparedStatement) ps;
     }
 
+    private int getDdlTimeout(IConnection conn, ExecutionContext executionContext) throws SQLException {
+        // Long enough (7-day) for X-Protocol or never (0) for JDBC.
+        int ddlTimeout = conn.isWrapperFor(XConnection.class) ? LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN : 0;
+
+        if (ddlTimeoutForTest > 0) {
+            ddlTimeout = ddlTimeoutForTest;
+        }
+
+        return ddlTimeout;
+    }
+
     protected java.sql.Statement createStatement(IConnection conn, ExecutionContext executionContext, boolean isDDL)
         throws SQLException {
         long startInitStmtEnvNano = System.nanoTime();
@@ -583,8 +659,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         if (isDDL) {
             phyConnLastSocketTimeout = conn.getNetworkTimeout();
-            Long ddlTimeout = executionContext.getParamManager().getLong(ConnectionParams.MERGE_DDL_TIMEOUT);
-            conn.setNetworkTimeout(socketTimeoutExecutor, ddlTimeout.intValue());
+            int ddlTimeout = getDdlTimeout(conn, executionContext);
+            conn.setNetworkTimeout(socketTimeoutExecutor, ddlTimeout);
         } else if (socketTimeout >= 0) {
             phyConnLastSocketTimeout = conn.getNetworkTimeout();
             conn.setNetworkTimeout(socketTimeoutExecutor, socketTimeout.intValue());
@@ -730,7 +806,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         final TGroupDataSource group = (TGroupDataSource) repo.getDataSource(groupName);
         final String dbName = group.getAtomDataSources().get(0).getDsConfHandle().getRunTimeConf().getDbName();
         ITransaction.RW rw = ITransaction.RW.READ; // Now XPlan only support pure read without lock.
-//        final String trace = buildDRDSTraceComment(executionContext); TODO: Add this to XPlan.
+        final byte[] trace = buildSqlPreFix(executionContext);
         if (executionContext.getGroupHint() != null && !executionContext.getGroupHint().isEmpty()) {
             return false; // Not support.
         }
@@ -776,6 +852,17 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             // Check last.
             final XResult last = xConnection.getLastUserRequest();
             if (xResult != null || (last != null && !last.isGoodAndDone() && !last.isGoodIgnorable())) {
+                try {
+                    XResult probe = last;
+                    while (probe != null) {
+                        logger.warn(
+                            xConnection + " last req: " + probe.getSql().toString() + " status:" + probe.getStatus()
+                                .toString());
+                        probe = probe.getPrevious();
+                    }
+                } catch (Throwable e) {
+                    XLog.XLogLogger.error(e);
+                }
                 throw new IllegalStateException("Start XPlan with previous unfinished.");
             }
 
@@ -847,8 +934,9 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
             // Add feedback flag directly in execPlan.
             execPlan.setFeedBack(true);
+            execPlan.setCapabilities(executionContext.getCapabilityFlags());
             phySqlExecuted = true;
-            xResult = xConnection.execQuery(execPlan, nativeSql);
+            xResult = xConnection.execQuery(execPlan, nativeSql, trace);
             // Note: We skip here, so physical_slow never get slow of plan exec, but XRequest record this case.
             // xResult.getMetaData(); // Compatible with original time record.
             this.resultSet = null;
@@ -866,7 +954,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 String sql = sqlPrefix + format.printToString(execPlan.build());
 
                 String currentDbKey = getCurrentDbkey(rw);
-                ExecuteSQLOperation op = new ExecuteSQLOperation(this.groupName, currentDbKey, sql, startTimeNano);
+                ExecuteSQLOperation op =
+                    new ExecuteSQLOperation(this.groupName, currentDbKey, sql, startTimeNano / 1000_000);
                 op.setThreadName(Thread.currentThread().getName());
                 op.setTimeCost(System.currentTimeMillis() - startTime);
                 op.setRowsCount((long) xResult.getFetchCount());
@@ -912,6 +1001,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
         final XPlanTemplate XTemplate = queryOperation.getXTemplate();
         if (null == XTemplate) {
+            return false;
+        }
+
+        //xplan don't support cross-schema query
+        if (queryOperation instanceof DirectMultiDBTableOperation) {
             return false;
         }
 
@@ -1042,14 +1136,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
 
             Map<Integer, ParameterContext> map = sqlAndParam.param;
-            convertParameters(sqlAndParam.param, executionContext.getParamManager());
             List<ParameterContext> parameterContexts = null;
-            if (!connection.isBytesSqlSupported()) {
-                parameterContexts = prepareParam(mapToList(map));
-                ParameterMethod.setParameters(ps, parameterContexts);
-            } else {
-                ParameterMethod.setParameters(ps, map);
-            }
+            parameterContexts = handleParamsMap(map);
             ResultSet rs;
 
             executionContext.getStats().physicalRequest.incrementAndGet();
@@ -1070,6 +1158,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     xConnection.setCompactMetadata(compactMeta);
                     // Add feedback here by set flag in XConnection.
                     xConnection.setWithFeedback(true);
+                    // set client JDBC capability
+                    xConnection.setCapabilities(executionContext.getCapabilityFlags());
                     connection.flushUnsent(); // Caution: This is important when use deferred sql.
                     xConnection.getSession().setChunkResult(false);
                     final boolean noDigest =
@@ -1099,6 +1189,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     xConnection.setCompactMetadata(compactMeta);
                     // Add feedback here by set flag in XConnection.
                     xConnection.setWithFeedback(true);
+                    // set client JDBC capability
+                    xConnection.setCapabilities(executionContext.getCapabilityFlags());
                     connection.flushUnsent(); // Caution: This is important when use deferred sql.
                     xConnection.getSession().setChunkResult(false);
                     final boolean noDigest =
@@ -1140,10 +1232,10 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 ExecuteSQLOperation op = null;
                 if (connection.isBytesSqlSupported()) {
                     op = new ExecuteSQLOperation(this.groupName, currentDbKey,
-                        new String(sqlBytesPrefix) + bytesSql.display(), startTimeNano);
+                        new String(sqlBytesPrefix) + bytesSql.display(), startTime);
                 } else {
                     op = new ExecuteSQLOperation(this.groupName, currentDbKey,
-                        new String(sqlBytesPrefix) + new String(bytesSql.getBytes(parameterContexts)), startTimeNano);
+                        new String(sqlBytesPrefix) + new String(bytesSql.getBytes(parameterContexts)), startTime);
                 }
                 if (connection.isBytesSqlSupported()) {
                     op.setParams(new Parameters(map, false));
@@ -1187,14 +1279,14 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     private Pair<String, Map<Integer, ParameterContext>> fetchDbIndexAndParams(BaseQueryOperation queryOperation,
                                                                                List<List<String>> phyTableNamesOutput) {
         Pair<String, Map<Integer, ParameterContext>> result;
+
+        Map<Integer, ParameterContext> paramMap = executionContext.getParamMap();
         if (queryOperation instanceof BaseTableOperation) {
             result = queryOperation.getDbIndexAndParam(
-                executionContext.getParams() == null ? null : executionContext.getParams()
-                    .getCurrentParameter(), phyTableNamesOutput, executionContext);
+                paramMap, phyTableNamesOutput, executionContext);
         } else {
             result = queryOperation.getDbIndexAndParam(
-                executionContext.getParams() == null ? null : executionContext.getParams()
-                    .getCurrentParameter(), executionContext);
+                paramMap, executionContext);
         }
         return result;
     }
@@ -1288,13 +1380,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, originParamList, null, false,
                 false,
                 phyTableOperation);
-            List<ParameterContext> paramList = null;
-            if (!connection.isBytesSqlSupported()) {
-                paramList = prepareParam(originParamList);
-            } else {
-                paramList = originParamList;
-            }
-            ParameterMethod.setParameters(ps, paramList);
+            List<ParameterContext> paramList = handleParamsList(originParamList);
             if (isStreaming) {
                 setStreamingForStatement(ps);
             }
@@ -1315,6 +1401,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
                 // Add feedback here by set flag in XConnection.
                 xConnection.setWithFeedback(true);
+                // set client JDBC capability
+                xConnection.setCapabilities(executionContext.getCapabilityFlags());
                 connection.flushUnsent(); // Caution: This is important when use deferred sql.
                 xConnection.getSession().setChunkResult(false);
                 final boolean noDigest =
@@ -1353,11 +1441,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 ExecuteSQLOperation op = null;
                 if (connection.isBytesSqlSupported()) {
                     op = new ExecuteSQLOperation(this.groupName, currentDbKey,
-                        new String(sqlBytesPrefix) + bytesSql.display(), startTimeNano);
+                        new String(sqlBytesPrefix) + bytesSql.display(), startTime);
                     op.setParams(new Parameters(listToMap(originParamList), false));
                 } else {
                     op = new ExecuteSQLOperation(this.groupName, currentDbKey,
-                        new String(sqlBytesPrefix) + new String(bytesSql.getBytes(originParamList)), startTimeNano);
+                        new String(sqlBytesPrefix) + new String(bytesSql.getBytes(originParamList)), startTime);
                     op.setParams(new Parameters(listToMap(paramList), false));
                 }
                 op.setThreadName(Thread.currentThread().getName());
@@ -1436,9 +1524,10 @@ public class MyJdbcHandler implements GeneralQueryHandler {
 
         interceptDMLAllTableSql(phyTableModify, sqlAndParam.sql);
 
-        boolean isInsert = false;
-        if (phyTableModify.getKind() == SqlKind.INSERT || phyTableModify.getKind() == SqlKind.REPLACE) {
-            isInsert = true;
+        boolean isInsertOrUpdate = false;
+        if (phyTableModify.getKind() == SqlKind.INSERT || phyTableModify.getKind() == SqlKind.REPLACE
+            || phyTableModify.getKind() == SqlKind.UPDATE) {
+            isInsertOrUpdate = true;
         }
 
         long startTime = System.currentTimeMillis();
@@ -1462,6 +1551,8 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
             if (connection.isWrapperFor(XConnection.class)) {
                 connection.unwrap(XConnection.class).setTraceId(executionContext.getTraceId());
+                // set client JDBC capability
+                connection.unwrap(XConnection.class).setCapabilities(executionContext.getCapabilityFlags());
             }
 
             final boolean noDigest =
@@ -1478,19 +1569,13 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     executionContext.getLoadDataContext().isUseBatch()) {
                     try {
                         ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext,
-                            null, batchParams.get(0), isInsert, false, phyTableModify);
+                            null, batchParams.get(0), isInsertOrUpdate, false, phyTableModify);
                         if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                             ps.unwrap(XPreparedStatement.class)
                                 .setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                         }
                         for (Map<Integer, ParameterContext> param : batchParams) {
-                            convertParameters(param, executionContext.getParamManager());
-                            if (!connection.isBytesSqlSupported()) {
-                                List<ParameterContext> parameterContexts = prepareParam(mapToList(param));
-                                ParameterMethod.setParameters(ps, parameterContexts);
-                            } else {
-                                ParameterMethod.setParameters(ps, param);
-                            }
+                            handleParamsMap(param);
                             ((PreparedStatement) ps).addBatch();
                         }
 
@@ -1505,13 +1590,18 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     }
                 } else {
                     ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext,
-                        null, batchParams.get(0), isInsert, false, phyTableModify);
+                        null, batchParams.get(0), isInsertOrUpdate, false, phyTableModify);
                     if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                         ps.unwrap(XPreparedStatement.class).setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                     }
                     for (Map<Integer, ParameterContext> param : batchParams) {
-                        convertParameters(param, executionContext.getParamManager());
-                        ParameterMethod.setParameters(ps, param);
+                        if (connection.isBytesSqlSupported()) {
+                            convertParameters(param, executionContext.getParamManager());
+                            ParameterMethod.setParameters(ps, param);
+                        } else {
+                            convertParameters(param, executionContext.getParamManager());
+                            ParameterMethod.setParameters(ps, prepareParam(mapToList(param)));
+                        }
                         ((PreparedStatement) ps).addBatch();
                     }
 
@@ -1525,30 +1615,24 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                 }
             } else {
 
-                if (sqlAndParam.param.isEmpty() && batchParams == null) {
+                if (sqlAndParam.param.isEmpty()) {
                     ps = createStatement(connection, executionContext, false);
                 } else {
                     ps = prepareStatement(bytesSql, sqlBytesPrefix, connection, executionContext, null,
-                        sqlAndParam.param, isInsert, false, phyTableModify);
+                        sqlAndParam.param, isInsertOrUpdate, false, phyTableModify);
                     if (!noDigest && ps.isWrapperFor(XPreparedStatement.class)) {
                         ps.unwrap(XPreparedStatement.class).setGalaxyDigest(phyTableModify.getGalaxyPrepareDigest());
                     }
                 }
 
                 int affectRow;
-                convertParameters(sqlAndParam.param, executionContext.getParamManager());
-                if (connection.isBytesSqlSupported()) {
-                    ParameterMethod.setParameters(ps, sqlAndParam.param);
-                } else {
-                    List<ParameterContext> newParams = prepareParam(mapToList(sqlAndParam.param));
-                    ParameterMethod.setParameters(ps, newParams);
-                }
+                handleParamsMap(sqlAndParam.param);
 
                 if (sqlAndParam.param.isEmpty()) {
                     int[] columnIndexes = executionContext.getColumnIndexes();
                     String[] columnNames = executionContext.getColumnNames();
                     int autoGeneratedKeys = executionContext.getAutoGeneratedKeys();
-                    if (isInsert) {
+                    if (isInsertOrUpdate) {
                         autoGeneratedKeys = Statement.RETURN_GENERATED_KEYS;
                     }
 
@@ -1556,6 +1640,10 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     executionContext.getStats().physicalRequest.incrementAndGet();
                     phySqlExecuted = true;
                     if (ps.isWrapperFor(XStatement.class)) {
+                        final XConnection xConnection = ps.getConnection().unwrap(XConnection.class);
+                        xConnection.setTraceId(executionContext.getTraceId());
+                        xConnection.getSession().setChunkResult(false);
+                        connection.flushUnsent();
                         affectRow = (int) ps.unwrap(XStatement.class).executeUpdateX(bytesSql, sqlBytesPrefix);
                     } else {
                         // jdbc path
@@ -1619,7 +1707,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             if (executionContext.isEnableTrace()) {
                 ExecuteSQLOperation op =
                     new ExecuteSQLOperation(this.groupName, currentDbKey,
-                        new String(sqlBytesPrefix) + bytesSql.display(), startTimeNano);
+                        new String(sqlBytesPrefix) + bytesSql.display(), startTime);
                 if (batchParams != null) {
                     op.setParams(new Parameters(batchParams));
                 } else {
@@ -1636,7 +1724,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             UpdateResultWrapper urw = new UpdateResultWrapper(affectRows, this);
             this.resultSet = urw;
             executionType = ExecutionType.PUT;
-            if (isInsert) {
+            if (isInsertOrUpdate) {
                 ResultSet lastInsertIdResult = null;
                 try {
                     lastInsertIdResult = ps.getGeneratedKeys();
@@ -1696,6 +1784,38 @@ public class MyJdbcHandler implements GeneralQueryHandler {
         }
     }
 
+    /**
+     * handle params map, if connection support bytesSql, then just setParam;
+     * else must transform map to list, and extend rawString params by prepareParam method
+     */
+    @Nullable
+    private List<ParameterContext> handleParamsMap(Map<Integer, ParameterContext> params) throws SQLException {
+        convertParameters(params, executionContext.getParamManager());
+        if (connection.isBytesSqlSupported()) {
+            ParameterMethod.setParameters(ps, params);
+            return null;
+        } else {
+            List<ParameterContext> paramList = prepareParam(mapToList(params));
+            ParameterMethod.setParameters(ps, paramList);
+            return paramList;
+        }
+    }
+
+    /**
+     * handle params list, if connection support bytesSql, then just setParam; else must prepareParam params first
+     */
+    @Nullable
+    private List<ParameterContext> handleParamsList(List<ParameterContext> originParamList) throws SQLException {
+        List<ParameterContext> paramList = null;
+        if (connection.isBytesSqlSupported()) {
+            paramList = originParamList;
+        } else {
+            paramList = prepareParam(originParamList);
+        }
+        ParameterMethod.setParameters(ps, paramList);
+        return paramList;
+    }
+
     public int executeTableDdl(PhyDdlTableOperation tableOperation) throws SQLException {
         long startPrepStmtEnvNano = 0;
         if (enableTaskProfile) {
@@ -1741,15 +1861,16 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
             long startTimeNano = System.nanoTime();
             try {
-                FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
-                    FailPoint.injectException(FailPointKey.FP_PHYSICAL_DDL_EXCEPTION);
+                FailPoint.injectFromHint(FailPointKey.FP_BEFORE_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
+                    FailPoint.injectException(FailPointKey.FP_BEFORE_PHYSICAL_DDL_EXCEPTION);
                 });
-                FailPoint.injectFromHint(FailPointKey.FP_PHYSICAL_DDL_PARTIAL_EXCEPTION, executionContext, () -> {
-                    long taskId = executionContext.getPhyDdlExecutionRecord().getTaskId();
-                    if (!executionContext.getDdlContext().compareAndSetPhysicalDdlInjectionFlag(taskId)) {
-                        FailPoint.injectException(FailPointKey.FP_PHYSICAL_DDL_PARTIAL_EXCEPTION);
-                    }
-                });
+                FailPoint.injectFromHint(FailPointKey.FP_BEFORE_PHYSICAL_DDL_PARTIAL_EXCEPTION, executionContext,
+                    () -> {
+                        long taskId = executionContext.getPhyDdlExecutionRecord().getTaskId();
+                        if (!executionContext.getDdlContext().compareAndSetPhysicalDdlInjectionFlag(taskId)) {
+                            FailPoint.injectException(FailPointKey.FP_BEFORE_PHYSICAL_DDL_PARTIAL_EXCEPTION);
+                        }
+                    });
 
                 /**
                  * 真正将SQL发向物理数据源并执行：一定需要返回是否真正对DB产生了影响，后面会根据这个来决定是否上推新规则
@@ -1768,6 +1889,17 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     affectRows = ps.executeUpdate(sql);
                 }
 
+                FailPoint.injectFromHint(FailPointKey.FP_AFTER_PHYSICAL_DDL_EXCEPTION, executionContext, () -> {
+                    FailPoint.injectException(FailPointKey.FP_AFTER_PHYSICAL_DDL_EXCEPTION);
+                });
+                FailPoint.injectFromHint(FailPointKey.FP_AFTER_PHYSICAL_DDL_PARTIAL_EXCEPTION, executionContext,
+                    () -> {
+                        long taskId = executionContext.getPhyDdlExecutionRecord().getTaskId();
+                        if (!executionContext.getDdlContext().compareAndSetPhysicalDdlInjectionFlag(taskId)) {
+                            FailPoint.injectException(FailPointKey.FP_AFTER_PHYSICAL_DDL_PARTIAL_EXCEPTION);
+                        }
+                    });
+
                 long timeCostNano = System.nanoTime() - startTimeNano;
                 long getConnectionCostNano = 0;
                 if (connectionStats != null) {
@@ -1785,7 +1917,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     ExecuteSQLOperation op = new ExecuteSQLOperation(this.groupName,
                         currentDbKey,
                         new String(sqlBytesPrefix) + bytesSql.display(),
-                        startTimeNano);
+                        startTimeNano / 1000_000);
                     op.setParams(new Parameters(null, false));
                     op.setTimeCost(System.currentTimeMillis() - startTime);
                     op.setGetConnectionTimeCost(getConnectionCostNano / (float) (1000 * 1000));
@@ -1822,7 +1954,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     1L);
             }
 
-            waitUntilPhyDdlDoneAfterTimeout(tableOperation, e);
+            handlePhyDDLAfterFailure(tableOperation, e);
 
             try {
                 if (tableOperation.isPartitioned()) {
@@ -1835,6 +1967,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                     }
 
                     storeFailedDDLRecords(tableOperation, this.groupName, code, e.getMessage());
+
                     return 0;
                 } else {
                     if (e instanceof TddlRuntimeException || e instanceof TddlException) {
@@ -1850,7 +1983,7 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             } finally {
                 if (logger.isWarnEnabled()) {
                     logger.warn("Execute error on group: " + this.groupName + ", sql is: " + sqlAndParam.sql
-                        + ", param is: " + String.valueOf(sqlAndParam.param.values()), e);
+                        + ", param is: " + sqlAndParam.param.values(), e);
                 }
             }
         } finally {
@@ -1875,12 +2008,16 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     /**
      * If the physical ddl failed due to timeout or connection reset,
      * then it may be still running on physical instance. We should
-     * check the physical process until it's done, so that the logical
-     * ddl executor can determine if the physical ddl is already done.
+     * check the physical process until it's done or kill it, so that
+     * ddl executor can determine later if the physical ddl is already done.
      */
-    private void waitUntilPhyDdlDoneAfterTimeout(PhyDdlTableOperation tableOperation, Throwable t) {
+    private void handlePhyDDLAfterFailure(PhyDdlTableOperation tableOperation, Throwable t) {
         boolean isTimeoutOnJdbc = t instanceof CommunicationsException &&
             TStringUtil.equalsIgnoreCase(((CommunicationsException) t).getSQLState(), "08S01") &&
+            TStringUtil.containsIgnoreCase(t.getMessage(), "Communications link failure");
+
+        boolean isTimeoutOnJdbc2 = t instanceof com.mysql.jdbc.CommunicationsException &&
+            TStringUtil.equalsIgnoreCase(((com.mysql.jdbc.CommunicationsException) t).getSQLState(), "08S01") &&
             TStringUtil.containsIgnoreCase(t.getMessage(), "Communications link failure");
 
         boolean isTimeoutOnXProtocol = t instanceof TddlRuntimeException &&
@@ -1891,10 +2028,27 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             ((TddlRuntimeException) t).getErrorCode() == 10002 &&
             TStringUtil.containsIgnoreCase(t.getMessage(), "previous unfinished");
 
-        if (isTimeoutOnJdbc || isTimeoutOnXProtocol || isUnfinishedOnXProtocol) {
-            String phyTableName =
-                DdlHelper.genPhyTablePair(tableOperation, executionContext.getDdlContext()).getValue();
-            DdlHelper.waitUntilPhyDdlDone(connection, phyTableName, executionContext.getTraceId() + "");
+        String schemaName = executionContext.getSchemaName();
+        String traceId = executionContext.getTraceId() + "";
+
+        Pair<String, String> phyTableInfo = DdlHelper.genPhyTablePair(tableOperation, executionContext.getDdlContext());
+
+        String groupName = phyTableInfo.getKey();
+        String phyTableName = phyTableInfo.getValue();
+
+        String warningMsg =
+            String.format("The physical DDL %%s on %s:%s:%s, then we will %%s if it's still active", groupName,
+                phyTableName, traceId);
+
+        if (isTimeoutOnJdbc || isTimeoutOnJdbc2 || isTimeoutOnXProtocol || isUnfinishedOnXProtocol) {
+            // Unexpected timeout, so let's wait until the physical DDL completes.
+            logger.warn(String.format(warningMsg, "timed out due to unexpected connection reset",
+                "wait until it completes"));
+            DdlHelper.waitUntilPhyDDLDone(schemaName, groupName, phyTableName, traceId);
+        } else {
+            // Kill the physical DDL right now for other exceptions.
+            logger.warn(String.format(warningMsg, "failed due to " + t.getMessage(), "kill it"));
+            DdlHelper.killUntilPhyDDLGone(schemaName, groupName, phyTableName, traceId);
         }
     }
 
@@ -2032,12 +2186,12 @@ public class MyJdbcHandler implements GeneralQueryHandler {
             }
         }
 
-        executionContext.addMessage(ExecutionContext.FailedMessage,
+        executionContext.addMessage(ExecutionContext.FAILED_MESSAGE,
             new ExecutionContext.ErrorMessage(code, group, message));
     }
 
     private void storeSuccessDDLRecords(PhyDdlTableOperation ddl, String group) {
-        executionContext.addMessage(ExecutionContext.SuccessMessage,
+        executionContext.addMessage(ExecutionContext.SUCCESS_MESSAGE,
             new ExecutionContext.ErrorMessage(0, group, "Success"));
     }
 
@@ -2088,16 +2242,14 @@ public class MyJdbcHandler implements GeneralQueryHandler {
     protected IConnection getPhyConnection(ITransaction trans, ITransaction.RW rw, String groupName, Long grpConnId,
                                            DataSource ds)
         throws SQLException {
-        if (groupName.equalsIgnoreCase(MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME)) {
+        if (groupName.equalsIgnoreCase(MetaDbDataSource.DEFAULT_META_DB_GROUP_NAME) ||
+            SystemDbHelper.INFO_SCHEMA_DB_GROUP_NAME.equalsIgnoreCase(groupName)) {
             IConnection metaDbConn = new MetaDbConnectionProxy();
             return metaDbConn;
         }
+
         DataSource dataSource = null == ds ? repo.getDataSource(groupName) : ds;
-//        IConnection conn = trans.getConnection(repo.getSchemaName(),
-//            groupName,
-//            (TGroupDataSource) dataSource,
-//            rw,
-//            executionContext);
+
         IConnection conn = (IConnection) PhyOpTrxConnUtils.getConnection(trans, repo.getSchemaName(), groupName,
             (TGroupDataSource) dataSource, rw, executionContext, grpConnId);
 

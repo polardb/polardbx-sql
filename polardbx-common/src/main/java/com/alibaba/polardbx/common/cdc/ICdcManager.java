@@ -33,16 +33,53 @@ public interface ICdcManager {
      */
     String REFRESH_CREATE_SQL_4_PHY_TABLE = "REFRESH_CREATE_SQL_4_PHY_TABLE";
 
-    enum InstructionType {
+    /**
+     * 通知CdcManager， 是否是标记 ORGINAL_DDL;
+     */
+    String USE_ORGINAL_DDL = "USE_ORGINAL_DDL";
+    /**
+     * 标识Foreign Keys DDL
+     */
+    String FOREIGN_KEYS_DDL = "FOREIGN_KEYS_DDL";
 
-        CdcStart,
+    /**
+     * 是否使用OMC
+     */
+    String USE_OMC = "USE_OMC";
 
-        StorageInstChange
-    }
+    /**
+     * support multi mark in one task
+     */
+    String TASK_MARK_SEQ = "TASK_MARK_SEQ";
 
+    String CDC_MARK_SQL_MODE = "cdc_mark_sql_mode";
+
+    String CDC_ORIGINAL_DDL = "original_ddl";
+    String CDC_IS_GSI = "CDC_IS_GSI";
+    String CDC_GSI_PRIMARY_TABLE = "CDC_GSI_PRIMARY_TABLE";
+    String CDC_GROUP_NAME = "cdc_group_name";
+
+    /**
+     * 发送Cdc通用指令
+     */
     void sendInstruction(InstructionType instructionType, String instructionId, String instructionContent);
 
     void notifyDdl(CdcDDLContext cdcDDLContext);
 
     void checkCdcBeforeStorageRemove(Set<String> storageInstIds, String identifier);
+
+    enum InstructionType {
+        /**
+         * Cdc初始化
+         */
+        CdcStart,
+        /**
+         * 存储实例发生了变更
+         */
+        StorageInstChange,
+        /**
+         * 元数据镜像
+         */
+        MetaSnapshot;
+    }
 }

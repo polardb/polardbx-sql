@@ -18,8 +18,10 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import io.airlift.slice.Slice;
@@ -100,14 +102,17 @@ public class EnumType extends AbstractDataType<String> {
             return null;
         }
 
+        String result = null;
         if (value instanceof Slice) {
             // converting from slice, is equal to convert from a string with utf-8 encoding.
-            return ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+            result = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+            return checkResult(result);
         }
 
         final Class<?> clazz = value.getClass();
         if (clazz == String.class) {
-            return (String) value;
+            result = (String) value;
+            return checkResult(result);
         } else if (value instanceof Number) {
             return this.convertTo(((Number) value).intValue());
         } else if (clazz == EnumValue.class) {
@@ -115,6 +120,17 @@ public class EnumType extends AbstractDataType<String> {
         }
 
         return null;
+    }
+
+    private String checkResult(String value) {
+        if (!InstConfUtil.getBool(ConnectionParams.STRICT_ENUM_CONVERT)) {
+            return value;
+        }
+        if (value != null && enumValues.containsKey(value)) {
+            return value;
+        } else {
+            return null;
+        }
     }
 
     public String convertTo(Integer value) {
@@ -191,6 +207,5 @@ public class EnumType extends AbstractDataType<String> {
     public int hashCode() {
         return Objects.hash(getEnumValues(), enumIndexs);
     }
-
 
 }

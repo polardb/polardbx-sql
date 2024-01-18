@@ -26,6 +26,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class ParserTest extends ReadBaseTestCase {
 
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")

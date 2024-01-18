@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.handler;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.Privileges;
@@ -34,14 +34,14 @@ import java.util.Set;
  */
 public final class UseHandler {
 
-    public static void handle(ByteString sql, FrontendConnection c, int offset, boolean hasMore) {
+    public static boolean handle(ByteString sql, FrontendConnection c, int offset, boolean hasMore) {
         String useSql;
         try {
             MySQLLexer lexer = new MySQLLexer(sql.toString());
             lexer.nextToken();
             if (MySQLToken.IDENTIFIER != lexer.token()) {
                 c.writeErrMessage(ErrorCode.ER_DBACCESS_DENIED_ERROR, "Use statement syntax error");
-                return;
+                return false;
             }
             useSql = lexer.getSQL().substring(0, lexer.getCurrentIndex());
             lexer.nextToken();
@@ -50,15 +50,15 @@ public final class UseHandler {
                 if (MySQLToken.EOF != lexer.token()) {
                     c.writeErrMessage(ErrorCode.ER_DBACCESS_DENIED_ERROR,
                         "Not support multi statement in use statement case");
-                    return;
+                    return false;
                 }
             } else if (MySQLToken.EOF != lexer.token()) {
                 c.writeErrMessage(ErrorCode.ER_DBACCESS_DENIED_ERROR, "Use statement syntax error");
-                return;
+                return false;
             }
         } catch (SQLSyntaxErrorException e) {
             c.writeErrMessage(ErrorCode.ER_DBACCESS_DENIED_ERROR, e.getMessage());
-            return;
+            return false;
         }
         String schema = useSql.substring(offset).trim();
         int length = schema.length();
@@ -73,21 +73,21 @@ public final class UseHandler {
             c.updateMDC();
             PacketOutputProxyFactory.getInstance().createProxy(c)
                 .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
-            return;
+            return true;
         }
 
         // 检查schema的有效性
         Privileges privileges = c.getPrivileges();
         if (schema == null || !privileges.schemaExists(schema)) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + schema + "'");
-            return;
+            return false;
         }
         String user = c.getUser();
         boolean userExists = privileges.userExists(user, c.getHost());
         if (!userExists || !privileges.checkQuarantine(user, c.getHost())) {
             c.writeErrMessage(ErrorCode.ER_ACCESS_DENIED_ERROR, "Access denied for user '" + c.getUser() + "'@'"
                 + c.getHost() + "'");
-            return;
+            return false;
         }
 
         Set<String> schemas;
@@ -101,10 +101,12 @@ public final class UseHandler {
             c.updateMDC();
             PacketOutputProxyFactory.getInstance().createProxy(c)
                 .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+            return true;
         } else {
             String msg = "Access denied for user '" + c.getUser() + "'@'" + c.getHost() + "' to database '"
                 + schema + "'";
             c.writeErrMessage(ErrorCode.ER_DBACCESS_DENIED_ERROR, msg);
+            return false;
         }
     }
 }

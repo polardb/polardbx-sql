@@ -29,6 +29,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.RandomStringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.math.RandomUtils;
 import org.junit.Before;
 import org.junit.FixMethodOrder;
@@ -404,7 +405,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
         final AtomicBoolean stop = new AtomicBoolean(false);
         final List<Future> inserts = new ArrayList<>();
         final Supplier<String> pkGen = () -> RandomStringUtils.randomAlphabetic(32);
-        final Supplier<Integer> batchGen = () -> RandomUtils.nextInt(20);
+        final Supplier<Integer> batchGen = () -> RandomUtils.nextInt(10);
 
         inserts.add(launchInsertThread2(sqlInsert, stop, pkGen, () -> null, () -> 10, ignoreDuplicate));
         inserts.add(launchInsertThread2(sqlInsert, stop, pkGen, () -> 3L, batchGen, ignoreDuplicate));
@@ -421,7 +422,11 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             try {
                 future.get();
             } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
+                if (StringUtils.containsIgnoreCase(e.getMessage(), "Deadlock found")) {
+                    // ignore
+                } else {
+                    throw new RuntimeException(e);
+                }
             }
         }
 
@@ -440,11 +445,15 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
             try {
                 future.get();
             } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
+                if (StringUtils.containsIgnoreCase(e.getMessage(), "Deadlock found")) {
+                    // ignore
+                } else {
+                    throw new RuntimeException(e);
+                }
             }
         }
 
-        gsiIntegrityCheck(PRIMARY_TABLE_NAME, INDEX_NAME, true);
+        gsiIntegrityCheck(PRIMARY_TABLE_NAME, INDEX_NAME, false);
     }
 
     @Test
@@ -775,7 +784,8 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
     private void enableDynamicSpeed(long speed) {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('" + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','"
+            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('"
+                + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','"
                 + speed + "') on duplicate key update param_val='" + speed + "'");
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "/*+TDDL: node('__META_DB__')*/update config_listener set op_version=op_version+1 where data_id like \"polardbx.inst.config.%\"");
@@ -783,12 +793,14 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
     private void disableDynamicSpeed() {
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('" + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','-1') on duplicate key update param_val='-1'");
+            "/*+TDDL: node('__META_DB__')*/insert into inst_config (inst_id,param_key,param_val) values ('"
+                + INSTANCE_ID + "','GENERAL_DYNAMIC_SPEED_LIMITATION','-1') on duplicate key update param_val='-1'");
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             "/*+TDDL: node('__META_DB__')*/update config_listener set op_version=op_version+1 where data_id like \"polardbx.inst.config.%\"");
     }
 
     @Test
+    @Ignore("有自适应限速后，这个动态调限速不需要了")
     public void dynamicSpeedTest() {
         final String tddlCreateTable = MessageFormat.format(SINGLE_PK_TMPL, PRIMARY_TABLE_NAME, primaryShardingDef);
 

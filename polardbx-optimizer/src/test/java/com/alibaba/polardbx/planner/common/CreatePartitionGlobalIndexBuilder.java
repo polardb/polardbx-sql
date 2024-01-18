@@ -23,15 +23,12 @@ import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlCreateIndex;
-import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
@@ -98,7 +95,8 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * copy table structure from main table
          */
         final MySqlCreateTableStatement astCreateIndexTable = (MySqlCreateTableStatement) SQLUtils
-            .parseStatements(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0).clone();
+            .parseStatementsWithDefaultFeatures(indexDef.getPrimaryTableDefinition(), JdbcConstants.MYSQL).get(0)
+            .clone();
 
         assert primaryPartitionInfo != null;
         final Set<String> shardingColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -153,8 +151,9 @@ public class CreatePartitionGlobalIndexBuilder extends CreateGlobalIndexBuilder 
          * copy table structure from main table
          */
         final MySqlCreateTableStatement indexTableStmt =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(sqlCreateIndex.getPrimaryTableDefinition(),
-                JdbcConstants.MYSQL)
+            (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(
+                    sqlCreateIndex.getPrimaryTableDefinition(),
+                    JdbcConstants.MYSQL)
                 .get(0)
                 .clone();
 

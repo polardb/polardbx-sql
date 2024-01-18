@@ -231,9 +231,8 @@ public class OSSBackFillChecker {
         }
         if (obj instanceof Slice) {
             return ((Slice) obj).toStringUtf8();
-        } else
-        if (obj instanceof byte[]) {
-            return new String((byte[])obj);
+        } else if (obj instanceof byte[]) {
+            return new String((byte[]) obj);
         } else {
             return obj.toString();
         }
@@ -250,7 +249,7 @@ public class OSSBackFillChecker {
         DBCursor(ExecutionContext ec) {
 
             info = Extractor.buildExtractorInfo(ec, sourceLogicalSchemaName,
-                sourceLogicalTableName, sourceLogicalTableName);
+                sourceLogicalTableName, sourceLogicalTableName, false);
             batchSize = ec.getParamManager().getLong(ConnectionParams.CHECK_OSS_BATCH_SIZE);
             // build the plan
             final PhysicalPlanBuilder builder =

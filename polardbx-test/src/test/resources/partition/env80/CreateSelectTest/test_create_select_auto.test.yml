@@ -1,0 +1,87 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists test_auto;
+
+CREATE DATABASE IF NOT EXISTS test_auto
+DEFAULT CHARACTER SET = `utf8mb4`
+DEFAULT COLLATE = `utf8mb4_general_ci`
+mode='auto';
+
+use test_auto;
+
+CREATE TABLE single_tbl(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+);
+
+insert into single_tbl(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+
+show create table single_tbl;
+select * from single_tbl order by id;
+
+create table single_t1 as single_tbl;
+show create table single_t1;
+select * from single_t1 order by id;
+
+
+CREATE TABLE multi_db_single_tbl(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+) partition by hash(id);
+
+insert into multi_db_single_tbl(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+
+show create table multi_db_single_tbl;
+select * from multi_db_single_tbl order by id;
+
+create table multi_db_single_t1 as multi_db_single_tbl;
+show create table multi_db_single_t1;
+select * from multi_db_single_t1 order by id;
+
+
+CREATE TABLE multi_db_multi_tbl(
+id bigint not null auto_increment,
+bid int,
+name varchar(30),
+primary key(id)
+) partition by hash(id) partitions 3;
+
+insert into multi_db_multi_tbl(id, bid, name) values (1, 2, 'Tom'), (3, 2, 'Mike'), (8, 7, 'John');
+create table multi_db_multi_t1 as multi_db_multi_tbl;
+show create table multi_db_multi_t1;
+select * from multi_db_multi_t1 order by id;
+
+create table t1(bid int, primary key(bid)) replace select * from multi_db_multi_tbl;
+select bid from t1 order by bid;
+
+
+
+
+CREATE TABLE brd_tbl(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 BROADCAST;
+insert into brd_tbl(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+show create table brd_tbl;
+select * from brd_tbl order by id;
+
+create table brd_t1 as brd_tbl;
+show create table brd_t1;
+select * from brd_t1 order by id;
+
+
+create table single_t2 select * from single_tbl;
+show create table single_t2;
+
+create table t(bid int not null auto_increment, primary key(bid), global index idx_bid(bid) partition by hash(bid)) partition by hash(id) select * from single_tbl;
+
+CREATE TABLE t2 ( pk bigint(11) NOT NULL, integer_test int(11) DEFAULT NULL, varchar_test varchar(255) DEFAULT NULL, char_test char(255) DEFAULT NULL, blob_test blob, tinyint_test tinyint(4) DEFAULT NULL, tinyint_1bit_test tinyint(1) DEFAULT NULL, smallint_test smallint(6) DEFAULT NULL, mediumint_test mediumint(9) DEFAULT NULL, bit_test bit(1) DEFAULT NULL, bigint_test bigint(20) DEFAULT NULL, float_test float DEFAULT NULL, double_test double DEFAULT NULL, decimal_test decimal(10, 0) DEFAULT NULL, date_test date DEFAULT NULL, time_test time DEFAULT NULL, datetime_test datetime DEFAULT NULL, timestamp_test timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP, year_test year(4) DEFAULT NULL, PRIMARY KEY (pk) ) ENGINE = InnoDB DEFAULT CHARSET = utf8 partition by key(pk);
+show create table t2;
+create table t3 select * from t2;
+show create table t3;
+
+
+
+

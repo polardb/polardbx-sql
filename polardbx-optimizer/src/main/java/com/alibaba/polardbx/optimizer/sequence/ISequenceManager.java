@@ -103,9 +103,9 @@ public interface ISequenceManager extends Lifecycle {
     int[] getCustomUnitArgsForGroupSeq(String schemaName);
 
     /**
-     * Check if all existing sequences are the same type specified.
+     * Check if all existing sequences are the same types specified.
      */
-    boolean areAllSequencesSameType(String schemaName, Type seqType);
+    boolean areAllSequencesSameType(String schemaName, Type[] seqTypes);
 
     /**
      * Reload connection properties so that the latest configuration

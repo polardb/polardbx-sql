@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.join;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -23,12 +24,13 @@ import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.MaterializedSemiJoin;
+import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
-import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalTableLookup;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
@@ -46,30 +48,22 @@ import java.util.stream.Collectors;
 
 public class EquiJoinUtils {
 
-    public static List<EquiJoinKey> buildEquiJoinKeys(Join join, RelNode outer, RelNode inner,
-                                                      RexCall condition, JoinRelType joinType) {
-        return createEquiJoinKeys(false, join, outer, inner, condition, joinType, false);
-    }
-
     public static List<LookupEquiJoinKey> buildLookupEquiJoinKeys(Join join, RelNode outer, RelNode inner,
-                                                                  RexCall condition, JoinRelType joinType,
-                                                                  boolean includeNullSafeEqual) {
+                                                                  RexCall condition, JoinRelType joinType) {
         List<EquiJoinKey> equiJoinKeys = createEquiJoinKeys(
-            true, join, outer, inner, condition, joinType, includeNullSafeEqual);
+            true, join, outer, inner, condition, joinType);
 
         return equiJoinKeys.stream().map(x -> (LookupEquiJoinKey) x).collect(Collectors.toList());
     }
 
     public static List<EquiJoinKey> buildEquiJoinKeys(Join join, RelNode outer, RelNode inner,
-                                                      RexCall condition, JoinRelType joinType,
-                                                      boolean includeNullSafeEqual) {
+                                                      RexCall condition, JoinRelType joinType) {
         return createEquiJoinKeys(
-            false, join, outer, inner, condition, joinType, includeNullSafeEqual);
+            false, join, outer, inner, condition, joinType);
     }
 
     public static List<EquiJoinKey> createEquiJoinKeys(boolean isLookupView, Join join, RelNode outer, RelNode inner,
-                                                       RexCall condition, JoinRelType joinType,
-                                                       boolean includeNullSafeEqual) {
+                                                       RexCall condition, JoinRelType joinType) {
         final SqlOperator operator = condition.getOperator();
         final List<RexNode> operands = condition.getOperands();
 
@@ -78,9 +72,6 @@ public class EquiJoinUtils {
             || operator == TddlOperatorTable.NULL_SAFE_EQUAL
             || operator == TddlOperatorTable.IS_NOT_DISTINCT_FROM) {
             boolean nullSafeEqual = (operator != TddlOperatorTable.EQUALS);
-            if (!includeNullSafeEqual && nullSafeEqual) {
-                return Collections.emptyList();
-            }
             if (operands.get(0) instanceof RexInputRef && operands.get(1) instanceof RexInputRef) {
                 assert operands.get(0) instanceof RexInputRef : "expect RexInputRef for first operand";
                 assert operands.get(1) instanceof RexInputRef : "expect RexInputRef for second operand";
@@ -164,7 +155,7 @@ public class EquiJoinUtils {
                 .filter(op -> op instanceof RexCall)
                 .flatMap(
                     op -> createEquiJoinKeys(isLookupView,
-                        join, outer, inner, (RexCall) op, joinType, includeNullSafeEqual).stream())
+                        join, outer, inner, (RexCall) op, joinType).stream())
                 .collect(Collectors.toList());
         } else {
             return new ArrayList<>();
@@ -185,23 +176,30 @@ public class EquiJoinUtils {
             if (input instanceof LogicalIndexScan) {
                 return ((LogicalIndexScan) input).getJoin() != null;
             }
-        } else if (relNode instanceof LogicalProject) {
+        } else if (relNode instanceof Project) {
             // after expand
-            RelNode input = ((LogicalProject) relNode).getInput();
+            RelNode input = ((Project) relNode).getInput();
             if (input instanceof BKAJoin) {
                 BKAJoin bkaJoin = (BKAJoin) input;
-                if (bkaJoin.getJoinType() == JoinRelType.INNER) {
-                    RelNode bkaJoinLeftInput = bkaJoin.getLeft();
-                    if (bkaJoinLeftInput instanceof Gather) {
-                        bkaJoinLeftInput = ((Gather) bkaJoinLeftInput).getInput();
-                    }
-                    if (bkaJoinLeftInput instanceof LogicalIndexScan) {
-                        return ((LogicalIndexScan) bkaJoinLeftInput).getJoin() != null;
-                    }
+                boolean ret = existLookupGsiSide(bkaJoin);
+                if (ret) {
+                    return ret;
                 }
             }
         }
         return false;
+    }
+
+    public static boolean existLookupGsiSide(Join join) {
+        boolean isLookUpGsi = false;
+        RelNode node = join.getOuter();
+        if (node instanceof Gather) {
+            node = ((Gather) node).getInput();
+        }
+        if (node instanceof LogicalIndexScan) {
+            isLookUpGsi = ((LogicalIndexScan) node).getJoin() != null;
+        }
+        return isLookUpGsi;
     }
 
     public static List<EquiJoinKey> buildEquiJoinKeys(RelNode outer, RelNode inner,

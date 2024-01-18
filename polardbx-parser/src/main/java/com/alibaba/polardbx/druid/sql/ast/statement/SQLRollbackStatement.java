@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -33,13 +34,13 @@ public class SQLRollbackStatement extends SQLStatementImpl {
     private Boolean chain;
     private Boolean release;
     private SQLExpr force;
-    
+
     public SQLRollbackStatement() {
-        
+
     }
-    
+
     public SQLRollbackStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override
@@ -96,4 +97,8 @@ public class SQLRollbackStatement extends SQLStatementImpl {
         this.force = force;
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

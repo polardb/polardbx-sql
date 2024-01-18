@@ -32,7 +32,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Timestamp Block
- *
  */
 public class TimestampBlock extends AbstractCommonBlock {
     private static final long NULL_VALUE = 0L;
@@ -55,8 +54,7 @@ public class TimestampBlock extends AbstractCommonBlock {
         this.dataType = dataType;
         this.timezone = timezone;
         this.packed = Preconditions.checkNotNull(packed);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(packed);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     TimestampBlock(int positionCount, boolean[] valueIsNull, long[] packed,
@@ -65,8 +63,7 @@ public class TimestampBlock extends AbstractCommonBlock {
         this.dataType = dataType;
         this.timezone = timezone;
         this.packed = Preconditions.checkNotNull(packed);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(packed);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     @Override
@@ -179,5 +176,11 @@ public class TimestampBlock extends AbstractCommonBlock {
         long l1 = getPackedLong(position);
         long l2 = other.getPackedLong(otherPosition);
         return l1 == l2;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
+        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
     }
 }

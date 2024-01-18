@@ -1,0 +1,169 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_db15"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_locality_db15"
+      - "create database test_locality_db15 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db15;"
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn1';"
+      - "create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn2';"
+      - "create table t3(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality='dn=$dn1';"
+      - "create table t4(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4;"
+      - "create table c0(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c1(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table c2(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c3(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1), partition p2 values less than (100) ,partition p3 values less than (1000) , partition p4 values less than (MAXVALUE));"
+      - "create table c4(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn1', partition p4 values less than (MAXVALUE) locality='dn=$dn2');"
+      - "create table s0(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn1';"
+      - "create table s1(x int  AUTO_INCREMENT primary key, y int) single locality='dn=$dn2';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db15;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table $dn2
+        - t3 table $dn1
+        - t4 table ""
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table ""
+        - s0 table $dn1
+        - s1 table $dn2
+        - test_locality_db15 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t3 $tg1 $dn1
+        - t2 $tg2 $dn2
+        - t4 $tg3 ""
+        - c0,c1 $tg4 ""
+        - c2,c3 $tg5 ""
+        - c4 $tg6 "";
+        - s0 $tg7 $dn1
+        - s1 $tg8 $dn2
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn1
+        - $tg4.p3 $dn2
+        - $tg4.p4 $dn2
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+        - $tg6.p3 $dn1
+        - $tg6.p4 $dn2
+      topologyCheck:
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p4 partition $dn2
+        - c1.p1 partition $dn1
+        - c1.p2 partition $dn1
+        - c1.p3 partition $dn2
+        - c1.p4 partition $dn2
+        - c4.p1 partition $dn1
+        - c4.p2 partition $dn1
+        - c4.p3 partition $dn1
+        - c4.p4 partition $dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "rebalance database drain_node = '$dn2'"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db15;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'test_locality_db15';###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table ""
+        - t3 table $dn1
+        - t4 table ""
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table ""
+        - s0 table $dn1
+        - s1 table ""
+        - test_locality_db15 database ""
+      tableGroupMatchCheck:
+        - t1,t3 $tg1 $dn1
+        - t2 $tg2 ""
+        - t4 $tg3 ""
+        - c0,c1 $tg4 ""
+        - c2,c3 $tg5 ""
+        - c4 $tg6 "";
+        - s0 $tg7 $dn1
+        - s1 $tg8 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn1
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+      topologyCheck:
+        - t2 table $dn1
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn1
+        - c0.p4 partition $dn1
+        - c1.p1 partition $dn1
+        - c1.p2 partition $dn1
+        - c1.p3 partition $dn1
+        - c1.p4 partition $dn1
+        - c2 table $dn1
+        - c3 table $dn1
+        - c4.p1 partition $dn1
+        - c4.p2 partition $dn1
+        - c4.p3 partition $dn1
+        - c4.p4 partition $dn1
+        - s1.p1 partition $dn1
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "rebalance database"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db15;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'test_locality_db15';###0"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+        - t2 table ""
+        - t3 table $dn1
+        - t4 table ""
+        - c0 table ""
+        - c1 table ""
+        - c2 table ""
+        - c3 table ""
+        - c4 table ""
+        - s0 table $dn1
+        - s1 table ""
+        - test_locality_db15 database ""
+      tableGroupMatchCheck:
+        - t1,t3 $tg1 $dn1
+        - t2 $tg2 ""
+        - t4 $tg3 ""
+        - c0,c1 $tg4 ""
+        - c2,c3 $tg5 ""
+        - c4 $tg6 "";
+        - s0 $tg7 $dn1
+        - s1 $tg8 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg4.p1 $dn1
+        - $tg4.p2 $dn1
+        - $tg6.p1 $dn1
+        - $tg6.p2 $dn1
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"
+  - "drop database if exists test_locality_db15;"

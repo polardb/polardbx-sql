@@ -271,6 +271,18 @@ public class ServerParserTest {
     }
 
     @Test
+    public void testIsStartMaster() {
+        Assert.assertEquals(ServerParse.START_MASTER, 0xff & ServerParse.parse("start master ..."));
+        Assert.assertEquals(ServerParse.START_MASTER, 0xff & ServerParse.parse("START MASTER ..."));
+    }
+
+    @Test
+    public void testIsStartSlave() {
+        Assert.assertEquals(ServerParse.START_SLAVE, 0xff & ServerParse.parse("start slave ..."));
+        Assert.assertEquals(ServerParse.START_SLAVE, 0xff & ServerParse.parse("START SLAVE ..."));
+    }
+
+    @Test
     public void testTxReadUncommitted() {
         Assert.assertEquals(ServerParseSet.TX_READ_UNCOMMITTED,
             ServerParseSet.parse("  SET SESSION TRANSACTION ISOLATION LEVEL READ  UNCOMMITTED  ", "  SET".length()));
@@ -338,4 +350,33 @@ public class ServerParserTest {
 
     }
 
+    @Test
+    public void testCurrentTrans() {
+        Assert.assertEquals(ServerParseSelect.CURRENT_TRANS_ID,
+            ServerParseSelect.parse("select current_trans_id();", 6, null));
+        Assert.assertEquals(ServerParseSelect.CURRENT_TRANS_ID,
+            ServerParseSelect.parse("select current_trans_id()", 6, null));
+        Assert.assertEquals(ServerParseSelect.CURRENT_TRANS_ID,
+            ServerParseSelect.parse("select current_trans_id(  )   ", 6, null));
+
+        Assert.assertEquals(ServerParseSelect.OTHER,
+            ServerParseSelect.parse("select current_trans_id from a", 6, null));
+        Assert.assertEquals(ServerParseSelect.OTHER,
+            ServerParseSelect.parse("select current_trans_id", 6, null));
+    }
+
+    @Test
+    public void testPolardbVersion() {
+        Assert.assertEquals(ServerParseSelect.POLARDB_VERSION,
+            ServerParseSelect.parse("select polardb_version();", 6, null));
+        Assert.assertEquals(ServerParseSelect.POLARDB_VERSION,
+            ServerParseSelect.parse("select polardb_version()", 6, null));
+        Assert.assertEquals(ServerParseSelect.POLARDB_VERSION,
+            ServerParseSelect.parse("select polardb_version(  )   ", 6, null));
+
+        Assert.assertEquals(ServerParseSelect.OTHER,
+            ServerParseSelect.parse("select polardb_version from a", 6, null));
+        Assert.assertEquals(ServerParseSelect.OTHER,
+            ServerParseSelect.parse("select polardb_version", 6, null));
+    }
 }

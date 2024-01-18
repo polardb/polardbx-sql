@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.rel.SimpleShardProcessor;
 import com.alibaba.polardbx.optimizer.utils.LoadDataCacheManager;
@@ -23,7 +24,9 @@ import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -50,11 +53,18 @@ public class LoadDataContext {
     private boolean swapColumns;
     private boolean gsiInsertTurn;
 
+    /**
+     * param value of load data sql should use this, rather than get result from execution context
+     */
+    private ParamManager paramManager = new ParamManager(new HashMap());
+
     public LoadDataContext(
         LoadDataCacheManager dataCacheManager,
         BlockingQueue<List<String>> parameters,
         long batchInsertNum, String loadDataSql, List<SqlTypeName> valueTypes,
-        String fieldTerminatedBy, Charset character, List<ColumnMeta> metaList, String tableName) {
+        String fieldTerminatedBy, Charset character, List<ColumnMeta> metaList, String tableName,
+        Map<String, Object> extraCmds,
+        int autoFillColumnIndex) {
         this.dataCacheManager = dataCacheManager;
         this.parameters = parameters;
         this.batchInsertNum = batchInsertNum;
@@ -64,6 +74,8 @@ public class LoadDataContext {
         this.charset = character;
         this.metaList = metaList;
         this.tableName = tableName;
+        this.paramManager = new ParamManager(extraCmds);
+        this.autoFillColumnIndex = autoFillColumnIndex;
     }
 
     public LoadDataCacheManager getDataCacheManager() {
@@ -148,10 +160,6 @@ public class LoadDataContext {
         return autoFillColumnIndex;
     }
 
-    public void setAutoFillColumnIndex(int autoFillColumnIndex) {
-        this.autoFillColumnIndex = autoFillColumnIndex;
-    }
-
     public boolean isInSingleDb() {
         return inSingleDb;
     }
@@ -178,5 +186,9 @@ public class LoadDataContext {
 
     public void setGsiInsertTurn(boolean gsiInsertTurn) {
         this.gsiInsertTurn = gsiInsertTurn;
+    }
+
+    public ParamManager getParamManager() {
+        return paramManager;
     }
 }

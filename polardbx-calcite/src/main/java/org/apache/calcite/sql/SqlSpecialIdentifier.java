@@ -31,8 +31,9 @@ public enum SqlSpecialIdentifier {
     UNCOMMITTED, VARIABLES, VIEW, WARNINGS, SEQUENCES, TOPOLOGY, PARITIONS, BROADCASTS, RULE, TRACE, DATASOURCES,
     CHARSET, PARTITIONS, PREPARE, EXECUTE, DEALLOCATE, DBLOCK, OFF, PHYSICAL_SLOW, STATS, ONLY, STC, HTC, HIS, DS, DDL,
     VERSION, PHYSICAL_PROCESSLIST, DB, OUTLINES, BINARY, LOGS, CHARACTER, SET, FROM, PROCEDURE, FOR, QUERY, LIMIT,
-    OFFSET, LOCALITY,
-    RELAYLOG, IN, TABLE, CREATE, DATABASE, IF, NOT, EXISTS, TRIGGER, KEYS, SLOW, RECYCLEBIN, DATABASES, CCL_RULE, INFO;
+    OFFSET, CHANGESET, LOCALITY,
+    RELAYLOG, IN, TABLE, CREATE, DATABASE, IF, NOT, EXISTS, TRIGGER, KEYS, SLOW, RECYCLEBIN, DATABASES, CCL_RULE, INFO,
+    CONVERT, WITH, STREAMS, CDC;
     private static final Map<String, SqlSpecialIdentifier> specialIdentifiers = new HashMap<>();
 
     static {
@@ -42,6 +43,7 @@ public enum SqlSpecialIdentifier {
         specialIdentifiers.put("BINLOG", SqlSpecialIdentifier.BINLOG);
         specialIdentifiers.put("COLLATION", SqlSpecialIdentifier.COLLATION);
         specialIdentifiers.put("COLUMNS", SqlSpecialIdentifier.COLUMNS);
+        specialIdentifiers.put("CHANGESET", SqlSpecialIdentifier.CHANGESET);
         specialIdentifiers.put("PARTITIONS", SqlSpecialIdentifier.PARTITIONS);
         specialIdentifiers.put("FIELDS", SqlSpecialIdentifier.FIELDS);
         specialIdentifiers.put("CONTRIBUTORS", SqlSpecialIdentifier.CONTRIBUTORS);
@@ -143,6 +145,8 @@ public enum SqlSpecialIdentifier {
         specialIdentifiers.put("DATABASES", SqlSpecialIdentifier.DATABASES);
         specialIdentifiers.put("CCL_RULE", SqlSpecialIdentifier.CCL_RULE);
         specialIdentifiers.put("INFO", SqlSpecialIdentifier.INFO);
+        specialIdentifiers.put("CONVERT", SqlSpecialIdentifier.CONVERT);
+        specialIdentifiers.put("CDC", SqlSpecialIdentifier.CDC);
     }
 
     public static SqlSpecialIdentifier get(String value) {

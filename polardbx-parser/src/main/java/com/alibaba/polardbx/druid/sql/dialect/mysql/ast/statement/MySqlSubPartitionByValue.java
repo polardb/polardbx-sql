@@ -37,7 +37,7 @@ public class MySqlSubPartitionByValue extends SQLSubPartitionBy implements MySql
             throw new IllegalArgumentException("not support visitor type : " + visitor.getClass().getName());
         }
     }
-    
+
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -49,13 +49,6 @@ public class MySqlSubPartitionByValue extends SQLSubPartitionBy implements MySql
 
     public List<SQLExpr> getColumns() {
         return columns;
-    }
-
-    public void addColumn(SQLExpr column) {
-        if (column != null) {
-            column.setParent(this);
-        }
-        this.columns.add(column);
     }
 
     public void cloneTo(MySqlSubPartitionByValue x) {
@@ -77,7 +70,7 @@ public class MySqlSubPartitionByValue extends SQLSubPartitionBy implements MySql
     public boolean isPartitionByColumn(long columnNameHashCode64) {
         for (SQLExpr column : columns) {
             if (column instanceof SQLName) {
-                if (((SQLName)column).nameHashCode64() == columnNameHashCode64) {
+                if (((SQLName) column).nameHashCode64() == columnNameHashCode64) {
                     return true;
                 } else if (column instanceof SQLMethodInvokeExpr) {
                     List<SQLExpr> arguments = ((SQLMethodInvokeExpr) column).getArguments();

@@ -17,12 +17,14 @@
 package com.alibaba.polardbx.executor.ddl.job.factory.localpartition;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RemoveLocalPartitionTask;
@@ -32,6 +34,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionV
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.partitionmanagement.LocalPartitionManager;
+import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
@@ -39,7 +43,10 @@ import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.ReorganizeLocalPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
+import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
+import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlPhyDdlWrapper;
@@ -51,6 +58,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static com.alibaba.polardbx.executor.partitionmanagement.LocalPartitionManager.parsePartitionDate;
 
 /**
  * @author guxu
@@ -77,22 +86,57 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected void validate() {
-        final TableMeta primaryTableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
-        if(primaryTableMeta.getLocalPartitionDefinitionInfo() != null){
-            LocalPartitionValidateTask localPartitionValidateTask = new LocalPartitionValidateTask(schemaName, primaryTableName);
+        final TableMeta primaryTableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
+        if (primaryTableMeta.getLocalPartitionDefinitionInfo() != null) {
+            LocalPartitionValidateTask localPartitionValidateTask =
+                new LocalPartitionValidateTask(schemaName, primaryTableName);
             localPartitionValidateTask.executeImpl(executionContext);
         }
     }
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        final TableMeta primaryTableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
+        final TableMeta primaryTableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
 
         checkLocalPartitionColumnInUk(primaryTableMeta);
         List<TableMeta> gsiList = GlobalIndexMeta.getIndex(primaryTableName, schemaName, executionContext);
-        if(CollectionUtils.isNotEmpty(gsiList)){
-            for(TableMeta gsiMeta: gsiList){
+        if (CollectionUtils.isNotEmpty(gsiList)) {
+            for (TableMeta gsiMeta : gsiList) {
                 checkLocalPartitionColumnInUk(gsiMeta);
+            }
+        }
+
+        boolean needRepartition = true;
+
+        LocalPartitionDefinitionInfo localPartitionDefinitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
+
+        if (modifyDefinitionOnly(localPartitionDefinitionInfo, definitionInfo)) {
+
+            IRepository repository = ExecutorContext.getContext(schemaName).getTopologyHandler()
+                .getRepositoryHolder().get(Group.GroupType.MYSQL_JDBC.toString());
+
+            List<TableDescription> tableDescriptionList = LocalPartitionManager.getLocalPartitionInfoList(
+                (MyRepository) repository, schemaName, primaryTableName, true);
+
+            TableDescription tableDescription = tableDescriptionList.get(0);
+
+            List<LocalPartitionDescription> partitionList = tableDescription.getPartitions();
+
+            // 判断过期日期是否一致
+            if (!CollectionUtils.isEmpty(partitionList)) {
+                partitionList.sort(LocalPartitionDescription::comparePartitionOrdinalPosition);
+
+                MysqlDateTime partitionDate = parsePartitionDate(partitionList.get(0).getPartitionDescription());
+
+                MysqlDateTime startWithDate = definitionInfo.getStartWithDate();
+
+                if (startWithDate == null || (partitionDate != null
+                    && partitionDate.getMonth() == startWithDate.getMonth()
+                    && partitionDate.getDay() == startWithDate.getDay())) {
+                    needRepartition = false;
+                }
             }
         }
 
@@ -111,18 +155,23 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
-        if(primaryTableMeta.getLocalPartitionDefinitionInfo() != null){
-            LocalPartitionValidateTask localPartitionValidateTask = new LocalPartitionValidateTask(schemaName, primaryTableName);
+        if (primaryTableMeta.getLocalPartitionDefinitionInfo() != null) {
+            LocalPartitionValidateTask localPartitionValidateTask =
+                new LocalPartitionValidateTask(schemaName, primaryTableName);
             taskList.add(localPartitionValidateTask);
         }
-        taskList.add(genPhyDdlTask(schemaName, primaryTableName, phySql));
-        if(publishedGsi != null){
-            publishedGsi.forEach((gsiName, gsiIndexMetaBean) -> {
-                taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
-            });
+        if (needRepartition) {
+            taskList.add(genPhyDdlTask(schemaName, primaryTableName, phySql));
+            if (publishedGsi != null) {
+                publishedGsi.forEach((gsiName, gsiIndexMetaBean) -> {
+                    taskList.add(genPhyDdlTask(schemaName, gsiName, phySql));
+                });
+            }
         }
-        if(primaryTableMeta.getLocalPartitionDefinitionInfo() != null){
+        if (primaryTableMeta.getLocalPartitionDefinitionInfo() != null) {
             taskList.add(new RemoveLocalPartitionTask(schemaName, primaryTableName));
+            definitionInfo.archiveTableSchema = primaryTableMeta.getLocalPartitionDefinitionInfo().archiveTableSchema;
+            definitionInfo.archiveTableName = primaryTableMeta.getLocalPartitionDefinitionInfo().archiveTableName;
         }
         taskList.add(new AddLocalPartitionTask(definitionInfo));
         taskList.add(new TableSyncTask(schemaName, primaryTableName));
@@ -133,19 +182,21 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
     private void checkLocalPartitionColumnInUk(TableMeta tableMeta) {
         final String columnName = definitionInfo.getColumnName();
         List<IndexMeta> ukList = tableMeta.getUniqueIndexes(true);
-        if(CollectionUtils.isNotEmpty(ukList)){
-            for(IndexMeta indexMeta: ukList){
-                if(indexMeta.getKeyColumn(columnName)==null){
+        if (CollectionUtils.isNotEmpty(ukList)) {
+            for (IndexMeta indexMeta : ukList) {
+                if (indexMeta.getKeyColumn(columnName) == null) {
                     throw new TddlNestableRuntimeException(String.format(
-                        "Unsupported index table structure, Primary/Unique Key must contain local partition column: %s", columnName
+                        "Unsupported index table structure, Primary/Unique Key must contain local partition column: %s",
+                        columnName
                     ));
                 }
             }
         }
     }
 
-    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql){
-        ddl.sqlNode = SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
+    private LocalPartitionPhyDdlTask genPhyDdlTask(String schemaName, String tableName, String phySql) {
+        ddl.sqlNode =
+            SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
         DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
             ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );
@@ -154,20 +205,21 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
         return phyDdlTask;
     }
 
-    private boolean modifyDefinitionOnly(LocalPartitionDefinitionInfo origin, LocalPartitionDefinitionInfo definitionInfo){
-        if(origin==null){
+    private boolean modifyDefinitionOnly(LocalPartitionDefinitionInfo origin,
+                                         LocalPartitionDefinitionInfo definitionInfo) {
+        if (origin == null) {
             return false;
         }
-        if(!StringUtils.equalsIgnoreCase(origin.getColumnName(), definitionInfo.getColumnName())){
+        if (!StringUtils.equalsIgnoreCase(origin.getColumnName(), definitionInfo.getColumnName())) {
             return false;
         }
-        if(!StringUtils.equalsIgnoreCase(origin.getIntervalUnit(), definitionInfo.getIntervalUnit())){
+        if (!StringUtils.equalsIgnoreCase(origin.getIntervalUnit(), definitionInfo.getIntervalUnit())) {
             return false;
         }
-        if(origin.getIntervalCount() != definitionInfo.getIntervalCount()){
+        if (origin.getIntervalCount() != definitionInfo.getIntervalCount()) {
             return false;
         }
-        if(origin.getPreAllocateCount() < definitionInfo.getPreAllocateCount()){
+        if (origin.getPreAllocateCount() < definitionInfo.getPreAllocateCount()) {
             return false;
         }
         return true;

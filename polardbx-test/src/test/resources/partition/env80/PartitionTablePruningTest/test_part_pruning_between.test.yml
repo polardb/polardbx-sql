@@ -1,0 +1,16 @@
+# test between expr
+drop table if exists tbl_bt;
+create table if not exists tbl_bt (
+  a bigint unsigned not null,
+  b bigint unsigned not null
+)
+partition by range columns(a,b)
+( partition p0 values less than (100,1000),
+  partition p1 values less than (100,2000),
+  partition p2 values less than (200,2000),
+  partition p3 values less than (200,3000),
+  partition p4 values less than (300,3000)
+);
+
+explain select a from tbl_bt where (b between 2000 and 3000) and a=100;
+explain select a from tbl_bt where (a between 200 and 300) and b=1250;

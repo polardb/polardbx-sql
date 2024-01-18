@@ -20,7 +20,6 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -33,8 +32,7 @@ import java.util.List;
  *
  * @author luoyanxin
  */
-public class AlterTableGroupDropPartition extends DDL {
-    final String tableGroupName;
+public class AlterTableGroupDropPartition extends AlterTableGroupDdl {
 
     protected AlterTableGroupDropPartition(RelOptCluster cluster, RelTraitSet traits, SqlDdl ddl,
                                            RelDataType rowType,
@@ -59,6 +57,7 @@ public class AlterTableGroupDropPartition extends DDL {
         return new AlterTableGroupDropPartition(this.getCluster(), traitSet, this.ddl, rowType, tableGroupName);
     }
 
+    @Override
     public String getTableGroupName() {
         return tableGroupName;
     }

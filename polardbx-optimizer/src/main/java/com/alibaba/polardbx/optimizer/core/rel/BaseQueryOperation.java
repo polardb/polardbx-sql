@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -45,7 +45,6 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
 
     protected String dbIndex;
     protected String schemaName;
-    //    protected String sqlTemplate;
     protected BytesSql bytesSql;
     protected SqlNode nativeSqlNode;
     protected DbType dbType;
@@ -67,14 +66,6 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
     public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet) {
         super(cluster, traitSet.replace(DrdsConvention.INSTANCE));
     }
-
-//    public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, String sqlTemplate,
-//                              SqlNode nativeSqlNode, DbType dbType) {
-//        super(cluster, traitSet.replace(DrdsConvention.INSTANCE));
-//        this.bytesSql = BytesSql.getBytesSql(sqlTemplate);
-//        this.nativeSqlNode = nativeSqlNode;
-//        this.dbType = dbType;
-//    }
 
     public BaseQueryOperation(RelOptCluster cluster, RelTraitSet traitSet, BytesSql bytesSql,
                               SqlNode nativeSqlNode, DbType dbType) {
@@ -113,10 +104,6 @@ public abstract class BaseQueryOperation extends AbstractRelNode implements IPhy
     public String getNativeSql() {
         return bytesSql.toString(null);
     }
-
-//    public void setSqlTemplate(String sqlTemplate) {
-//        this.sqlTemplate = sqlTemplate;
-//    }
 
     public DbType getDbType() {
         return dbType;

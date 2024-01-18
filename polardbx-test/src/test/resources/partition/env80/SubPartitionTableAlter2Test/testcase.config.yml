@@ -1,0 +1,9 @@
+test_split_hash
+test_alter_tg_by_tbl
+test_add_drop_subpart
+test_alter_index2
+test_list_posi_tg
+test_alter_tg_list_val
+test_alter_list_vals
+test_modify_subpart
+test_reorg_rng

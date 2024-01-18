@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -28,6 +29,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
@@ -38,20 +40,19 @@ public class AlterTableSplitPartitionSubTaskJobFactory extends AlterTableGroupSu
 
     final AlterTableSplitPartitionPreparedData parentPrepareData;
 
-    public AlterTableSplitPartitionSubTaskJobFactory(DDL ddl,
-                                                     AlterTableSplitPartitionPreparedData parentPrepareData,
+    public AlterTableSplitPartitionSubTaskJobFactory(DDL ddl, AlterTableSplitPartitionPreparedData parentPrepareData,
                                                      AlterTableGroupItemPreparedData preparedData,
                                                      List<PhyDdlTableOperation> phyDdlTableOperations,
                                                      Map<String, List<List<String>>> tableTopology,
                                                      Map<String, Set<String>> targetTableTopology,
                                                      Map<String, Set<String>> sourceTableTopology,
-                                                     List<Pair<String, String>> orderedTargetTableLocations,
-                                                     String targetPartition,
-                                                     boolean skipBackfill,
+                                                     Map<String, Pair<String, String>> orderedTargetTableLocations,
+                                                     String targetPartition, boolean skipBackfill,
                                                      ComplexTaskMetaManager.ComplexTaskType taskType,
                                                      ExecutionContext executionContext) {
-        super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, taskType, executionContext);
+        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology,
+            sourceTableTopology, orderedTargetTableLocations, targetPartition, skipBackfill, taskType,
+            executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 
@@ -65,18 +66,20 @@ public class AlterTableSplitPartitionSubTaskJobFactory extends AlterTableGroupSu
 
         SqlNode sqlAlterTableSpecNode = ((SqlAlterTable) ddl.getSqlNode()).getAlters().get(0);
 
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfoForSplitType(executionContext, curPartitionInfo,
-                preparedData.getInvisiblePartitionGroups(),
-                sqlAlterTableSpecNode, parentPrepareData.getTableGroupName(),
-                parentPrepareData.getSplitPartitions().get(0),
-                orderedTargetTableLocations, parentPrepareData.getPartBoundExprInfo());
+        PartitionInfo newPartInfo =
+            AlterTableGroupSnapShotUtils.getNewPartitionInfo(parentPrepareData, curPartitionInfo, false,
+                sqlAlterTableSpecNode, preparedData.getOldPartitionNames(), preparedData.getNewPartitionNames(),
+                parentPrepareData.getTableGroupName(), parentPrepareData.getSplitPartitions().get(0),
+                preparedData.getInvisiblePartitionGroups(), orderedTargetTableLocations, executionContext);
+
         if (parentPrepareData.isMoveToExistTableGroup()) {
             updateNewPartitionInfoByTargetGroup(parentPrepareData, newPartInfo);
         }
-        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
-        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
+
         return newPartInfo;
     }
 
+    public AlterTableGroupBasePreparedData getParentPrepareData() {
+        return parentPrepareData;
+    }
 }

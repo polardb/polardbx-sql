@@ -16,6 +16,7 @@
 
 package org.apache.calcite.sql;
 
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 
 /**
@@ -61,7 +62,7 @@ public class SqlPartitionValueItem {
         this.value = value;
     }
 
-    public boolean equalsDeep(Object obj, Litmus litmus) {
+    public boolean equalsDeep(Object obj, Litmus litmus, EqualsContext context) {
         if (this == obj) {
             return true;
         }
@@ -77,7 +78,7 @@ public class SqlPartitionValueItem {
             return false;
         }
 
-        return value.equalsDeep(sqlPartValueItem.value, litmus);
+        return value.equalsDeep(sqlPartValueItem.value, litmus, context);
     }
 
 }

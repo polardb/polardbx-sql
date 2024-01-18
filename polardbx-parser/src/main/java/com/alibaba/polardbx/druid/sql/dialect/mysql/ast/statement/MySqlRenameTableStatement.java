@@ -23,7 +23,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MySqlRenameTableStatement extends MySqlStatementImpl implements SQLAlterStatement  {
+public class MySqlRenameTableStatement extends MySqlStatementImpl implements SQLAlterStatement {
 
     private List<Item> items = new ArrayList<Item>(2);
 

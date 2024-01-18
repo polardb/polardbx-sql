@@ -19,6 +19,7 @@ package com.alibaba.polardbx.manager.response;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.manager.ManagerConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -183,6 +184,9 @@ public final class ShowStats {
         byte packetId = eof.packetId;
         for (SchemaConfig schema : CobarServer.getInstance().getConfig().getSchemas().values()) {
             if (!schema.getDataSource().isInited()) {
+                continue;
+            }
+            if (SystemDbHelper.CDC_DB_NAME.equalsIgnoreCase(schema.getName())) {
                 continue;
             }
             RowDataPacket row = getRow(schema.getDataSource(), c.getCharset());

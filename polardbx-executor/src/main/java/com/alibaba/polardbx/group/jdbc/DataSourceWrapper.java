@@ -54,7 +54,8 @@ public class DataSourceWrapper extends AbstractLifecycle implements DataSource {
     protected volatile TAtomDataSource wrappedDataSource; // 被封装的目标DataSource
     protected final int dataSourceIndex;   // DataSourceIndex是指这个DataSource在Group中的位置
 
-    public DataSourceWrapper(String dbKey, String weightStr, TAtomDataSource wrappedDataSource, int dataSourceIndex) {
+    public DataSourceWrapper(String storageId, String dbKey, String weightStr, TAtomDataSource wrappedDataSource,
+                             int dataSourceIndex) {
         this.dbKey = dbKey;
         this.weight = new Weight(weightStr);
         this.weightStr = weightStr;
@@ -70,16 +71,7 @@ public class DataSourceWrapper extends AbstractLifecycle implements DataSource {
 
         this.dataSourceIndex = dataSourceIndex;
         this.isInited = true;
-    }
-
-    public DataSourceWrapper(String storageId, String dbKey, String weightStr, TAtomDataSource wrappedDataSource,
-                             int dataSourceIndex) {
-        this(dbKey, weightStr, wrappedDataSource, dataSourceIndex);
         this.storageId = storageId;
-    }
-
-    public DataSourceWrapper(String dbKey, String weightStr, TAtomDataSource wrappedDataSource) {
-        this(dbKey, weightStr, wrappedDataSource, -1);
     }
 
     /**

@@ -19,7 +19,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
-public class MySqlRenameSequenceStatement extends MySqlStatementImpl implements SQLAlterStatement  {
+public class MySqlRenameSequenceStatement extends MySqlStatementImpl implements SQLAlterStatement {
 
     private SQLName name;
     private SQLName to;

@@ -22,12 +22,12 @@
     select * from emp where EMPNO in(select EMPNO from emp) and empno=3 and EMPNO in (select DEPTNO from dept)
 
   plan: |
-    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where (((`empno` = 3) and (`empno` in (select * from (select `empno` from `emp` as `emp0`) as `t` where (`empno` = 3)))) and (`empno` in (select * from (select `deptno` from `dept` as `dept`) as `t1` where (`deptno` = 3))))")
+    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where ((`empno` = 3) and (`empno` in (select * from (select `empno` from `emp` as `emp0`) as `t` where (`empno` = 3))) and (`empno` in (select * from (select `deptno` from `dept` as `dept`) as `t1` where (`deptno` = 3))))")
 - sql: |
     select * from emp t1 where EMPNO in(select EMPNO from emp t2 where t1.ename = t2.ename) and empno=3 and EMPNO in (select DEPTNO from dept)
 
   plan: |
-    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where (((`empno` = 3) and (`empno` in (select `empno` from (select `empno`, `ename` from `emp` as `emp0`) as `t` where (((`emp`.`empno` = `empno`) and (`emp`.`ename` = `ename`)) and (`empno` = 3))))) and (`empno` in (select * from (select `deptno` from `dept` as `dept`) as `t2` where ((`emp`.`empno` = `deptno`) and (`deptno` = 3)))))")
+    logicalview(tables="optest_0000.emp_03,dept_03", sql="select `empno`, `ename`, `job`, `mgr`, `hiredate`, `sal`, `comm`, `deptno`, `slacker` from `emp` as `emp` where ((`empno` = 3) and (`empno` in (select `empno` from (select `empno`, `ename` from `emp` as `emp0`) as `t` where ((`emp`.`empno` = `empno`) and (`emp`.`ename` = `ename`) and (`empno` = 3)))) and (`empno` in (select * from (select `deptno` from `dept` as `dept`) as `t2` where ((`emp`.`empno` = `deptno`) and (`deptno` = 3)))))")
 
 - sql: |
     select * from emp a where EMPNO not in (select DEPTNO from dept b  )

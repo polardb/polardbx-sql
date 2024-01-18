@@ -17,6 +17,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -57,5 +58,10 @@ public class SQLBackupStatement extends SQLStatementImpl {
 
     public List<SQLCharExpr> getProperties() {
         return properties;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

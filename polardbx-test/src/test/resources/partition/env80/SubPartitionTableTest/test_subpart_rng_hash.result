@@ -1,0 +1,478 @@
+## DISABLE_FAST_SQL_PARSER
+##======== r-hash ===========
+## r-hash-tp
+drop table if exists r_h_tp;
+create table if not exists r_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp;
+Table,Create Table
+r_h_tp,CREATE TABLE `r_h_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY KEY(`a`)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-hash-tp2
+drop table if exists r_h_tp2;
+create table if not exists r_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(month(c))
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp2;
+Table,Create Table
+r_h_tp2,CREATE TABLE `r_h_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY HASH(MONTH(`c`))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-hash-tp3, hash with multi columns
+drop table if exists r_h_tp3;
+create table if not exists r_h_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+subpartitions 4
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_h_tp3;
+Table,Create Table
+r_h_tp3,CREATE TABLE `r_h_tp3` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-hash-tp4, hash with multi columns, specify suppart name
+drop table if exists r_h_tp4;
+create table if not exists r_h_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+subpartitions 4
+(
+subpartition sp1 values less than(1),
+subpartition sp2 values less than(10),
+subpartition sp3 values less than(100),
+subpartition sp4 values less than(9223372036854775807)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table r_h_tp4;
+Table,Create Table
+r_h_tp4,CREATE TABLE `r_h_tp4` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (1),
+ SUBPARTITION sp2 VALUES LESS THAN (10),
+ SUBPARTITION sp3 VALUES LESS THAN (100),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807))
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-hash-ntp, hash with multi columns
+drop table if exists r_h_ntp;
+create table if not exists r_h_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+(
+partition p0 values less than (2020) subpartitions 2,
+partition p1 values less than (2021) subpartitions 3,
+partition p2 values less than (maxvalue) subpartitions 4
+);
+show create table r_h_ntp;
+Table,Create Table
+r_h_ntp,CREATE TABLE `r_h_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN (2020)
+ (SUBPARTITION p0sp1 ENGINE = InnoDB,
+  SUBPARTITION p0sp2 ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN (2021)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB,
+  SUBPARTITION p1sp3 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB,
+  SUBPARTITION p2sp4 ENGINE = InnoDB))
+## r-hash-ntp2, hash with multi columns
+drop table if exists r_h_ntp2;
+create table if not exists r_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by hash(a,b)
+(
+partition p0 values less than (2020) (
+subpartition sp1,
+subpartition sp2
+),
+partition p1 values less than (2022)(
+subpartition sp3,
+subpartition sp4,
+subpartition sp5
+),
+partition p2 values less than (maxvalue) (
+subpartition sp6,
+subpartition sp7,
+subpartition sp8,
+subpartition sp9
+)
+);
+show create table r_h_ntp2;
+Table,Create Table
+r_h_ntp2,CREATE TABLE `r_h_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN (2020)
+ (SUBPARTITION sp1 ENGINE = InnoDB,
+  SUBPARTITION sp2 ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN (2022)
+ (SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB,
+  SUBPARTITION sp5 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB,
+  SUBPARTITION sp9 ENGINE = InnoDB))
+##======== rc-hash ===========
+## r-hash-tp
+drop table if exists rc_h_tp;
+create table if not exists rc_h_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a)
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp;
+Table,Create Table
+rc_h_tp,CREATE TABLE `rc_h_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY KEY(`a`)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+## rc-hash-tp2
+drop table if exists rc_h_tp2;
+create table if not exists rc_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(month(c))
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp2;
+Table,Create Table
+rc_h_tp2,CREATE TABLE `rc_h_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(MONTH(`c`))
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+## rc-hash-tp3, hash with multi columns
+drop table if exists rc_h_tp3;
+create table if not exists rc_h_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+subpartitions 4
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+show create table rc_h_tp3;
+Table,Create Table
+rc_h_tp3,CREATE TABLE `rc_h_tp3` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+## rc-hash-tp4, hash with multi columns, specify suppart name
+drop table if exists rc_h_tp4;
+create table if not exists rc_h_tp4 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+subpartitions 4
+(
+subpartition sp1 values less than(1),
+subpartition sp2 values less than(10),
+subpartition sp3 values less than(100),
+subpartition sp4 values less than(9223372036854775807)
+)
+(
+partition p0 values less than ('2020-01-01','abc'),
+partition p1 values less than ('2022-01-01','efg'),
+partition p2 values less than (maxvalue, maxvalue)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table rc_h_tp4;
+Table,Create Table
+rc_h_tp4,CREATE TABLE `rc_h_tp4` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4
+(SUBPARTITION sp1 VALUES LESS THAN (1),
+ SUBPARTITION sp2 VALUES LESS THAN (10),
+ SUBPARTITION sp3 VALUES LESS THAN (100),
+ SUBPARTITION sp4 VALUES LESS THAN (9223372036854775807))
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc'),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg'),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+## rc-hash-ntp, hash with multi columns
+drop table if exists rc_h_ntp;
+create table if not exists rc_h_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+(
+partition p0 values less than ('2020-01-01','abc') subpartitions 1,
+partition p1 values less than ('2022-01-01','efg') subpartitions 2,
+partition p2 values less than (maxvalue, maxvalue) subpartitions 3
+);
+show create table rc_h_ntp;
+Table,Create Table
+rc_h_ntp,CREATE TABLE `rc_h_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION p0sp1 ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg')
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE)
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB))
+## r-hash-ntp2, hash with multi columns
+drop table if exists rc_h_ntp2;
+create table if not exists rc_h_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash(a,b)
+(
+partition p0 values less than ('2020-01-01','abc') (
+subpartition sp1,
+subpartition sp2
+),
+partition p1 values less than ('2022-02-01','efg')(
+subpartition sp3,
+subpartition sp4,
+subpartition sp5
+),
+partition p2 values less than (maxvalue, maxvalue) (
+subpartition sp6,
+subpartition sp7,
+subpartition sp8,
+subpartition sp9
+)
+);
+show create table rc_h_ntp2;
+Table,Create Table
+rc_h_ntp2,CREATE TABLE `rc_h_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`)
+SUBPARTITION BY HASH(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc')
+ (SUBPARTITION sp1 ENGINE = InnoDB,
+  SUBPARTITION sp2 ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN ('2022-02-01 00:00:00','efg')
+ (SUBPARTITION sp3 ENGINE = InnoDB,
+  SUBPARTITION sp4 ENGINE = InnoDB,
+  SUBPARTITION sp5 ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE)
+ (SUBPARTITION sp6 ENGINE = InnoDB,
+  SUBPARTITION sp7 ENGINE = InnoDB,
+  SUBPARTITION sp8 ENGINE = InnoDB,
+  SUBPARTITION sp9 ENGINE = InnoDB))

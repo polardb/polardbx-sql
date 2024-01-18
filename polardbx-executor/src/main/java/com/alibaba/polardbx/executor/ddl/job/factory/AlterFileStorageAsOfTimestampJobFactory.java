@@ -26,11 +26,13 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.DeleteOssFilesTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.DropOssFilesTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.FileStorageBackupTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.OSSTaskUtils;
 import com.alibaba.polardbx.gms.engine.FileStorageMetaStore;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileRemoveTsTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.gms.engine.FileStorageMetaStore;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
@@ -45,6 +47,9 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TimeZone;
+import java.util.stream.Collectors;
+
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.optimizer.utils.ITimestampOracle.BITS_LOGICAL_TIME;
@@ -75,11 +80,14 @@ public class AlterFileStorageAsOfTimestampJobFactory extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         Engine engine = Engine.of(alterFileStoragePreparedData.getFileStorageName());
-        Timestamp timestamp = Timestamp.valueOf(alterFileStoragePreparedData.getTimestamp());
-        long ts = timestamp.getTime() << BITS_LOGICAL_TIME;
-        if (ts < 0) {
-            throw new IllegalArgumentException("timestamp should greater than 1970-01-01 00:00:01");
+        TimeZone fromTimeZone;
+        if (executionContext.getTimeZone() != null) {
+            fromTimeZone = executionContext.getTimeZone().getTimeZone();
+        } else {
+            fromTimeZone = TimeZone.getDefault();
         }
+
+        long ts = OSSTaskUtils.getTsFromTimestampWithTimeZone(alterFileStoragePreparedData.getTimestamp(), fromTimeZone);
 
         List<FilesRecord> toDeleteFileRecordList = new ArrayList<>();
         List<FilesRecord> toUpdateFileRecordList = new ArrayList<>();

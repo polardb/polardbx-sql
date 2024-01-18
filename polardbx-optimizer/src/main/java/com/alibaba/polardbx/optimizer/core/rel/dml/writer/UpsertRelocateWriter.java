@@ -19,7 +19,10 @@ package com.alibaba.polardbx.optimizer.core.rel.dml.writer;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -85,6 +88,11 @@ public class UpsertRelocateWriter extends RelocateWriter {
         assert targetTable.getQualifiedName().size() == 2;
         final String schemaName = targetTable.getQualifiedName().get(0);
         final String tableName = targetTable.getQualifiedName().get(1);
+        final TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
+
+        final boolean canWriteForScaleout = ComplexTaskPlanUtils.canWrite(tableMeta);
+        final boolean isReadyToPublishForScaleout = ComplexTaskPlanUtils.isReadyToPublish(tableMeta);
+        final boolean isGsiBackfill = tableMeta.isGsi() && GlobalIndexMeta.isBackFillStatus(ec, tableMeta);
 
         classifiedRows.stream().filter(r -> !r.skipUpdate()).forEach(row -> {
             final boolean insertThenUpdate = row.insertThenUpdate();
@@ -95,7 +103,7 @@ public class UpsertRelocateWriter extends RelocateWriter {
 
             // If partition key is not modified do UPDATE, or else do DELETE + INSERT
             final boolean doUpdate = updateOnly && identicalSk.test(this, Pair.of(row.updateSource, null))
-                && !isOnlineModifyColumn;
+                && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isOnlineModifyColumn && !isGsiBackfill;
 
             addResult(row.before, row.after, row.updateSource, row.insertParam, row.duplicated, insertThenUpdate,
                 doUpdate, ec, result);

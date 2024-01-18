@@ -26,14 +26,22 @@ public class MySqlAlterTableAlterFullTextIndex extends MySqlObjectImpl implement
     private SQLName indexName;
 
     private AnalyzerIndexType analyzerType;
-    private SQLName           analyzerName;
+    private SQLName analyzerName;
 
+    //indexVisibility:  visible, invisible
+    private String indexVisibility = null;
+
+    private boolean isAlterIndexVisibility = false;
 
     @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
-            acceptChild(visitor, indexName);
-            acceptChild(visitor, analyzerName);
+            if (indexName != null) {
+                acceptChild(visitor, indexName);
+            }
+            if (analyzerName != null) {
+                acceptChild(visitor, analyzerName);
+            }
         }
         visitor.endVisit(this);
     }
@@ -44,6 +52,19 @@ public class MySqlAlterTableAlterFullTextIndex extends MySqlObjectImpl implement
 
     public void setIndexName(SQLName indexName) {
         this.indexName = indexName;
+    }
+
+    public void setIndexVisibility(String visibility) {
+        this.isAlterIndexVisibility = true;
+        this.indexVisibility = visibility;
+    }
+
+    public String getIndexVisibility() {
+        return this.indexVisibility;
+    }
+
+    public boolean isAlterIndexVisibility() {
+        return this.isAlterIndexVisibility;
     }
 
     public SQLName getAnalyzerName() {

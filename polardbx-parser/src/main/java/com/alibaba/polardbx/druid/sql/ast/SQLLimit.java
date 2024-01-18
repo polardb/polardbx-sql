@@ -44,7 +44,6 @@ public final class SQLLimit extends SQLObjectImpl implements SQLReplaceable {
         this.setRowCount(rowCount);
     }
 
-
     public SQLExpr getRowCount() {
         return rowCount;
     }
@@ -142,12 +141,18 @@ public final class SQLLimit extends SQLObjectImpl implements SQLReplaceable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLLimit limit = (SQLLimit) o;
 
-        if (rowCount != null ? !rowCount.equals(limit.rowCount) : limit.rowCount != null) return false;
+        if (rowCount != null ? !rowCount.equals(limit.rowCount) : limit.rowCount != null) {
+            return false;
+        }
         return offset != null ? offset.equals(limit.offset) : limit.offset == null;
     }
 

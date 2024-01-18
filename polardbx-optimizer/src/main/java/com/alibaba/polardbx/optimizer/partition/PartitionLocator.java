@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.partition.MurmurHashUtils;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.LocationRouter;
 
 /**
@@ -72,7 +74,7 @@ public class PartitionLocator {
                                              String groupKey) {
 
         PartitionLocation location = null;
-        PartitionStrategy strategy = partitionSpec.boundSpec.strategy;
+        PartitionStrategy strategy = partitionSpec.getBoundSpec().getStrategy();
 
         if (strategy == PartitionStrategy.RANGE) {
             // boundValue -> sortKey -> murmurHashKey -> dbLocation
@@ -91,7 +93,7 @@ public class PartitionLocator {
     protected PartitionLocation computeLocationForRange(String dbName, String tbName, PartitionSpec partitionSpec,
                                                         String groupKey) {
         PartitionLocation location = null;
-        long posi = partitionSpec.position - 1;
+        long posi = partitionSpec.getPosition() - 1;
         //Long sortKey = (Long) partitionSpec.boundSpec.getSingleDatum().getSingletonValue().getValue();
         Long sortKey = null;
         long sortKeyLongVal = sortKey.longValue();
@@ -106,7 +108,7 @@ public class PartitionLocator {
     protected PartitionLocation computeLocationForList(String dbName, String tbName, PartitionSpec partitionSpec,
                                                        String groupKey) {
         PartitionLocation location = null;
-        long posi = partitionSpec.position - 1;
+        long posi = partitionSpec.getPosition() - 1;
         String phyTableName = String.format(PHYSICAL_TABLENAME_PATTERN, tbName, posi);
         location = new PartitionLocation(groupKey, phyTableName, PartitionLocation.INVALID_PARTITION_GROUP_ID);
         return location;

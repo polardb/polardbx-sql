@@ -34,27 +34,28 @@ import java.util.Map;
 
 public class SQLAggregateExpr extends SQLMethodInvokeExpr implements Serializable, SQLReplaceable {
 
-    private static final long     serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
-    protected SQLAggregateOption  option;
+    protected SQLAggregateOption option;
 
-    protected SQLKeep             keep;
-    protected SQLExpr             filter;
-    protected SQLOver             over;
-    protected SQLName             overRef;
-    protected SQLOrderBy          orderBy;
-    protected boolean             withinGroup = false;
-    protected Boolean             ignoreNulls      = false;
+    protected SQLKeep keep;
+    protected SQLExpr filter;
+    protected SQLOver over;
+    protected SQLName overRef;
+    protected SQLOrderBy orderBy;
+    protected boolean withinGroup = false;
+    protected Boolean ignoreNulls = false;
 
-    public SQLAggregateExpr(String methodName){
+    public SQLAggregateExpr(String methodName) {
         this.methodName = methodName;
     }
-    public SQLAggregateExpr(String methodName, SQLAggregateOption option){
+
+    public SQLAggregateExpr(String methodName, SQLAggregateOption option) {
         this.methodName = methodName;
         this.option = option;
     }
 
-    public SQLAggregateExpr(String methodName, SQLAggregateOption option, SQLExpr... arguments){
+    public SQLAggregateExpr(String methodName, SQLAggregateOption option, SQLExpr... arguments) {
         this.methodName = methodName;
         this.option = option;
         if (arguments != null) {
@@ -153,7 +154,6 @@ public class SQLAggregateExpr extends SQLMethodInvokeExpr implements Serializabl
         return SQLUtils.toSQLString(this);
     }
 
-
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -221,18 +221,36 @@ public class SQLAggregateExpr extends SQLMethodInvokeExpr implements Serializabl
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
 
         SQLAggregateExpr that = (SQLAggregateExpr) o;
 
-        if (option != that.option) return false;
-        if (keep != null ? !keep.equals(that.keep) : that.keep != null) return false;
-        if (filter != null ? !filter.equals(that.filter) : that.filter != null) return false;
-        if (over != null ? !over.equals(that.over) : that.over != null) return false;
-        if (overRef != null ? !overRef.equals(that.overRef) : that.overRef != null) return false;
-        if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null) return false;
+        if (option != that.option) {
+            return false;
+        }
+        if (keep != null ? !keep.equals(that.keep) : that.keep != null) {
+            return false;
+        }
+        if (filter != null ? !filter.equals(that.filter) : that.filter != null) {
+            return false;
+        }
+        if (over != null ? !over.equals(that.over) : that.over != null) {
+            return false;
+        }
+        if (overRef != null ? !overRef.equals(that.overRef) : that.overRef != null) {
+            return false;
+        }
+        if (orderBy != null ? !orderBy.equals(that.orderBy) : that.orderBy != null) {
+            return false;
+        }
         return ignoreNulls != null ? ignoreNulls.equals(that.ignoreNulls) : that.ignoreNulls == null;
     }
 
@@ -298,15 +316,15 @@ public class SQLAggregateExpr extends SQLMethodInvokeExpr implements Serializabl
         long hash = methodNameHashCode64();
 
         if (hash == FnvHash.Constants.COUNT
-                || hash == FnvHash.Constants.ROW_NUMBER) {
+            || hash == FnvHash.Constants.ROW_NUMBER) {
             return SQLIntegerExpr.DATA_TYPE;
         }
 
         if (arguments.size() > 0) {
             SQLDataType dataType = arguments.get(0)
-                    .computeDataType();
+                .computeDataType();
             if (dataType != null
-                    && (dataType.nameHashCode64() != FnvHash.Constants.BOOLEAN)) {
+                && (dataType.nameHashCode64() != FnvHash.Constants.BOOLEAN)) {
                 return dataType;
             }
         }
@@ -316,7 +334,7 @@ public class SQLAggregateExpr extends SQLMethodInvokeExpr implements Serializabl
         }
 
         if (hash == FnvHash.Constants.WM_CONCAT
-                || hash == FnvHash.Constants.GROUP_CONCAT) {
+            || hash == FnvHash.Constants.GROUP_CONCAT) {
             return SQLCharExpr.DATA_TYPE;
         }
 

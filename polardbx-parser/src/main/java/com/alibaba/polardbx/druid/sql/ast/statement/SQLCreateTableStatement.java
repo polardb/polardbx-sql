@@ -24,6 +24,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableInde
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.sql.semantic.SemanticException;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
+import com.alibaba.polardbx.druid.sql.visitor.VisitorFeature;
 import com.alibaba.polardbx.druid.util.FnvHash;
 import com.alibaba.polardbx.druid.util.ListDG;
 import com.alibaba.polardbx.druid.util.lang.Consumer;
@@ -44,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -59,6 +62,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     protected SQLSelect select;
     protected SQLExpr comment;
     protected SQLExprTableSource like;
+    protected SQLExprTableSource asTable;
 
     protected Boolean compress;
     protected Boolean logging;
@@ -111,6 +115,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         this.acceptChild(v, select);
         this.acceptChild(v, comment);
         this.acceptChild(v, like);
+        this.acceptChild(v, asTable);
 
         this.acceptChild(v, tablespace);
         this.acceptChild(v, partitioning);
@@ -342,8 +347,16 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         return like;
     }
 
+    public SQLExprTableSource getAsTable() {
+        return asTable;
+    }
+
     public void setLike(SQLName like) {
         this.setLike(new SQLExprTableSource(like));
+    }
+
+    public void setAsTable(SQLName asTable) {
+        this.setAsTable(new SQLExprTableSource(asTable));
     }
 
     public void setLike(SQLExprTableSource like) {
@@ -351,6 +364,13 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
             like.setParent(this);
         }
         this.like = like;
+    }
+
+    public void setAsTable(SQLExprTableSource as) {
+        if (as != null) {
+            as.setParent(this);
+        }
+        this.asTable = as;
     }
 
     public Boolean getCompress() {
@@ -889,9 +909,27 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     tableElementList.remove(i);
                     return true;
                 }
+            } else if (e instanceof SQLColumnDefinition) {
+                SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                dropUniqueInColumnDefinition(columnDefinition, x.getIndexName());
             }
         }
         return false;
+    }
+
+    private void dropUniqueInColumnDefinition(SQLColumnDefinition columnDefinition, SQLName indexName) {
+        List<SQLColumnConstraint> constraints = columnDefinition.getConstraints();
+        if (constraints != null) {
+            Iterator<SQLColumnConstraint> iterator = constraints.iterator();
+            while (iterator.hasNext()) {
+                SQLColumnConstraint constraint = iterator.next();
+                if (constraint instanceof SQLColumnUniqueKey) {
+                    if (SQLUtils.nameEquals(columnDefinition.getName(), indexName)) {
+                        iterator.remove();
+                    }
+                }
+            }
+        }
     }
 
     public boolean apply(SQLCommentStatement x) {
@@ -980,7 +1018,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
         } else if (item instanceof SQLAlterTableRenameIndex) {
             return apply((SQLAlterTableRenameIndex) item);
-            
+
         }
 
         return false;
@@ -1112,6 +1150,9 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     tableElementList.remove(i);
                     return true;
                 }
+            } else if (e instanceof SQLColumnDefinition) {
+                SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                dropUniqueInColumnDefinition(columnDefinition, item.getIndexName());
             }
         }
         return false;
@@ -1120,6 +1161,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     private boolean apply(SQLAlterTableDropPrimaryKey item) {
         for (int i = tableElementList.size() - 1; i >= 0; i--) {
             SQLTableElement e = tableElementList.get(i);
+            if (e instanceof SQLColumnDefinition) {
+                SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                columnDefinition.constraints.removeIf(constraint -> constraint instanceof SQLColumnPrimaryKey);
+            }
             if (e instanceof SQLPrimaryKey) {
                 tableElementList.remove(i);
                 return true;
@@ -1284,7 +1329,9 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         if (like != null) {
             x.setLike(like.clone());
         }
-
+        if (asTable != null) {
+            x.setAsTable(asTable.clone());
+        }
         x.compress = compress;
         x.logging = logging;
 
@@ -1386,6 +1433,14 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
     public String toString() {
         return SQLUtils.toSQLString(this, dbType);
+    }
+
+    public String toSqlString(boolean showHashPartitionsByRange) {
+        if (showHashPartitionsByRange) {
+            return SQLUtils.toSQLString(this, dbType, null, VisitorFeature.OutputHashPartitionsByRange);
+        } else {
+            return SQLUtils.toSQLString(this, dbType, null, null);
+        }
     }
 
     public boolean isOnCommitPreserveRows() {
@@ -1604,5 +1659,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         }
 
         return false;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.CREATE;
     }
 }

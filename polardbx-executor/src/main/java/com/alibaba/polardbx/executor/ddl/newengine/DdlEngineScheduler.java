@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.async.AsyncTask;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -28,6 +30,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
+import com.alibaba.polardbx.executor.changeset.ChangeSetApplyExecutorMap;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
@@ -120,8 +123,10 @@ public class DdlEngineScheduler {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
             DdlEngineDagExecutorMap.register(lowerCaseSchemaName);
-            synchronized (activeSchemaDdlConfig){
-                activeSchemaDdlConfig.put(lowerCaseSchemaName, new DdlJobSchedulerConfig(lowerCaseSchemaName, executor));
+            ChangeSetApplyExecutorMap.register(lowerCaseSchemaName);
+            synchronized (activeSchemaDdlConfig) {
+                activeSchemaDdlConfig.put(lowerCaseSchemaName,
+                    new DdlJobSchedulerConfig(lowerCaseSchemaName, executor));
             }
         }
     }
@@ -130,7 +135,8 @@ public class DdlEngineScheduler {
         if (DdlHelper.isRunnable(schemaName)) {
             String lowerCaseSchemaName = schemaName.toLowerCase();
             DdlEngineDagExecutorMap.deregister(lowerCaseSchemaName);
-            synchronized (activeSchemaDdlConfig){
+            ChangeSetApplyExecutorMap.deregister(lowerCaseSchemaName);
+            synchronized (activeSchemaDdlConfig) {
                 activeSchemaDdlConfig.remove(lowerCaseSchemaName);
             }
         }
@@ -141,6 +147,19 @@ public class DdlEngineScheduler {
         message.append(". DDL Job Request: schema - ").append(ddlRequest.getSchemaName());
         message.append(", jobIds - ");
         for (Long jobId : ddlRequest.getJobIds()) {
+            for (long waitTimes = 0; waitTimes < ROLLBACK_DDL_WAIT_TIMES; ++waitTimes) {
+                if (!DdlEngineDagExecutorMap.contains(ddlRequest.getSchemaName(), jobId)) {
+                    break;
+                }
+                SQLRecorderLogger.ddlEngineLogger.info(
+                    String.format("waiting for ddl job:%s.%s stop, times:%s",
+                        ddlRequest.getSchemaName(), jobId, waitTimes));
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
             message.append(jobId).append(",");
         }
         offerQueue(ddlRequestTransitQueue, ddlRequest, message.toString());
@@ -198,7 +217,7 @@ public class DdlEngineScheduler {
             if (!DdlHelper.isRunnable()) {
                 return;
             }
-            if (!ExecUtils.hasLeadership(null)){
+            if (!ExecUtils.hasLeadership(null)) {
                 return;
             }
             //15 days
@@ -216,22 +235,25 @@ public class DdlEngineScheduler {
         public void run() {
             try {
                 SQLRecorderLogger.ddlEngineLogger.debug(
-                    "current ddlLeaderLease info:" + (ddlLeaderLease.get()==null? "empty":ddlLeaderLease.get().info()));
-                if (DdlHelper.hasDdlLeadership()){
+                    "current ddlLeaderLease info:" + (ddlLeaderLease.get() == null ? "empty" :
+                        ddlLeaderLease.get().info()));
+                if (DdlHelper.hasDdlLeadership()) {
                     Optional<LeaseRecord> optionalLeaseRecord = leaseManager.extend(DDL_LEADER_KEY);
-                    if(optionalLeaseRecord.isPresent()){
+                    if (optionalLeaseRecord.isPresent()) {
                         ddlLeaderLease.set(optionalLeaseRecord.get());
-                        SQLRecorderLogger.ddlEngineLogger.debug("success extend DDL_LEADER:" + optionalLeaseRecord.get().info());
+                        SQLRecorderLogger.ddlEngineLogger.debug(
+                            "success extend DDL_LEADER:" + optionalLeaseRecord.get().info());
                     }
                 } else {
                     Optional<LeaseRecord> optionalLeaseRecord =
                         leaseManager.acquire(DEFAULT_DB_NAME, DDL_LEADER_KEY, DDL_LEADER_TTL_IN_MILLIS);
-                    if(optionalLeaseRecord.isPresent()){
+                    if (optionalLeaseRecord.isPresent()) {
                         ddlLeaderLease.set(optionalLeaseRecord.get());
-                        SQLRecorderLogger.ddlEngineLogger.info("success acquire DDL_LEADER:" + optionalLeaseRecord.get().info());
+                        SQLRecorderLogger.ddlEngineLogger.info(
+                            "success acquire DDL_LEADER:" + optionalLeaseRecord.get().info());
                     }
                 }
-            }catch (Throwable t){
+            } catch (Throwable t) {
                 SQLRecorderLogger.ddlEngineLogger.error("DDL Leader election error", t);
             }
         }
@@ -298,15 +320,18 @@ public class DdlEngineScheduler {
             // No job request came before timeout. Let's try to poll on the
             // job queue directly to see if any job was left to handle.
             List<DdlEngineRecord> records =
-                ddlJobManager.fetchRecords(Sets.newHashSet(DdlState.RUNNING, DdlState.ROLLBACK_RUNNING),
+                ddlJobManager.fetchRecords(
+                    Sets.newHashSet(DdlState.RUNNING, DdlState.ROLLBACK_RUNNING, DdlState.ROLLBACK_TO_READY),
                     DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES);
             dispatch(records);
         }
 
         private void processPaused() {
             List<DdlEngineRecord> records =
-                ddlJobManager.fetchRecords(DdlState.TERMINATED, DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES);
-            for(DdlEngineRecord record: records){
+                ddlJobManager.fetchRecords(DdlState.TERMINATED,
+                    DdlHelper.getInstConfigAsInt(LOGGER, ConnectionProperties.PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES,
+                        DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES));
+            for (DdlEngineRecord record : records) {
                 try {
                     DdlState currentState = DdlState.valueOf(record.state);
                     if (currentState == DdlState.PAUSED) {
@@ -333,7 +358,7 @@ public class DdlEngineScheduler {
         private void dispatch(List<DdlEngineRecord> records) {
             for (DdlEngineRecord record : records) {
                 // Avoid schedule subjobs
-                if (record.isSubJob()) {
+                if (record.isSubJob() && !record.isRollBackToReady() && !record.isSkipSubjob()) {
                     continue;
                 }
                 try {
@@ -345,7 +370,7 @@ public class DdlEngineScheduler {
         }
 
         private void uniqueOffer(DdlEngineRecord record) {
-            if(record == null || record.isSubJob()){
+            if (record == null || (record.isSubJob() && !record.isRollBackToReady() && !record.isSkipSubjob())) {
                 return;
             }
             String schemaName = record.schemaName.toLowerCase();
@@ -354,7 +379,7 @@ public class DdlEngineScheduler {
                     if (ddlJobDeliveryQueue.contains(record)) {
                         return;
                     }
-                    if (DdlEngineDagExecutorMap.contains(schemaName, record.jobId)){
+                    if (DdlEngineDagExecutorMap.contains(schemaName, record.jobId)) {
                         return;
                     }
                     boolean success = ddlJobDeliveryQueue.offer(record);
@@ -371,7 +396,7 @@ public class DdlEngineScheduler {
 
     }
 
-    private class DdlJobSchedulerConfig{
+    private class DdlJobSchedulerConfig {
         private String schemaName;
         private int maxParallelism;
         private final Semaphore semaphore;
@@ -453,13 +478,13 @@ public class DdlEngineScheduler {
 
         public boolean isIdle() {
             boolean idleFlag = suspending.get() && scheduleSuspended;
-            if(idleFlag == false){
+            if (idleFlag == false) {
                 return false;
             }
-            synchronized (activeSchemaDdlConfig){
-                for(Map.Entry<String, DdlJobSchedulerConfig> entry: activeSchemaDdlConfig.entrySet()){
+            synchronized (activeSchemaDdlConfig) {
+                for (Map.Entry<String, DdlJobSchedulerConfig> entry : activeSchemaDdlConfig.entrySet()) {
                     DdlJobSchedulerConfig schedulerConfig = entry.getValue();
-                    if(schedulerConfig.semaphore.availablePermits() != schedulerConfig.maxParallelism){
+                    if (schedulerConfig.semaphore.availablePermits() != schedulerConfig.maxParallelism) {
                         //there are executing DDLs
                         return false;
                     }
@@ -469,7 +494,8 @@ public class DdlEngineScheduler {
         }
 
         private void schedule(DdlEngineRecord record) throws InterruptedException {
-            if (record == null || !ExecUtils.hasLeadership(null) || record.isSubJob()) {
+            if (record == null || !ExecUtils.hasLeadership(null)
+                || (record.isSubJob() && !record.isRollBackToReady() && !record.isSkipSubjob())) {
                 return;
             }
             //current DDL JOB running
@@ -478,7 +504,7 @@ public class DdlEngineScheduler {
             }
             final String schemaName = StringUtils.lowerCase(record.schemaName);
             final DdlJobSchedulerConfig schedulerConfig = activeSchemaDdlConfig.get(schemaName);
-            if(schedulerConfig == null){
+            if (schedulerConfig == null) {
                 LOGGER.debug(String.format("schema:%s is not active for DDL JOB:%s", schemaName, record.jobId));
                 return;
             }

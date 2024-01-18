@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.chunk.ChunkUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.CharType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.JsonType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 
 import java.util.List;
@@ -41,9 +42,19 @@ public class GroupKey implements Comparable {
     final Object[] groupKeys;
     final List<ColumnMeta> columns;
 
+    /**
+     * 需要比较的groupKeys下标，默认null，代表所有列都需要比较
+     */
+    final boolean[] needCmp;
+
     public GroupKey(Object[] groupKeys, List<ColumnMeta> columns) {
+        this(groupKeys, columns, null);
+    }
+
+    public GroupKey(Object[] groupKeys, List<ColumnMeta> columns, boolean[] needCmp) {
         this.groupKeys = groupKeys;
         this.columns = columns;
+        this.needCmp = needCmp;
     }
 
     public Object[] getGroupKeys() {
@@ -71,6 +82,9 @@ public class GroupKey implements Comparable {
         int result = 1;
 
         for (int i = 0; i < a.length; i++) {
+            if (needCmp != null && !needCmp[i]) {
+                continue;
+            }
             Object element = a[i];
             result = 31 * result;
             if (element == null) {
@@ -105,6 +119,9 @@ public class GroupKey implements Comparable {
             return false;
         }
         for (int i = 0; i < this.groupKeys.length; i++) {
+            if (needCmp != null && !needCmp[i]) {
+                continue;
+            }
             if (ExecUtils.comp(this.groupKeys[i], that.groupKeys[i], columns.get(i).getDataType(), true) != 0) {
                 return false;
             }
@@ -127,6 +144,9 @@ public class GroupKey implements Comparable {
             return false;
         }
         for (int i = 0; i < this.groupKeys.length; i++) {
+            if (needCmp != null && !needCmp[i]) {
+                continue;
+            }
             DataType dataType = columns.get(i).getDataType();
             if (dataType instanceof VarcharType) {
                 dataType = varcharBinaryCollation; // Use cached collation.
@@ -141,9 +161,12 @@ public class GroupKey implements Comparable {
                     thisObject = columns.get(i).getDataType().convertFrom(thisObject); // Force to string.
                 }
             }
-            if (thisObject instanceof String && that.groupKeys[i] instanceof String) {
-                if (!thisObject.equals(that.groupKeys[i]))
+            if (thisObject instanceof String && that.groupKeys[i] instanceof String
+                // we should not compare string when type is json
+                && !(dataType instanceof JsonType)) {
+                if (!thisObject.equals(that.groupKeys[i])) {
                     return false;
+                }
                 // or continue check others
             } else if (ExecUtils.comp(thisObject, that.groupKeys[i], dataType, true) != 0) {
                 return false;
@@ -181,6 +204,9 @@ public class GroupKey implements Comparable {
         final GroupKey that = (GroupKey) obj;
         final int length = Math.min(this.groupKeys.length, that.groupKeys.length);
         for (int i = 0; i < length; i++) {
+            if (needCmp != null && !needCmp[i]) {
+                continue;
+            }
             final int comp = ExecUtils.comp(this.groupKeys[i], that.groupKeys[i], columns.get(i).getDataType(), true);
             if (comp != 0) {
                 return comp;

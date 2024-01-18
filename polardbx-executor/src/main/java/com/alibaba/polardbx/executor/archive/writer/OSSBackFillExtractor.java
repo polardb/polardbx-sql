@@ -86,8 +86,9 @@ public class OSSBackFillExtractor extends Extractor {
                                               Map<String, Set<String>> sourcePhyTables,
                                               ExecutionContext ec, String physicalPartition, Engine sourceEngine,
                                               Engine targetEngine) {
+
         // we use sourceTableName instead of targetTableName, because targetTableMeta couldn't be fetched during backfill.
-        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName);
+        ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, sourceTableName, false);
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
         return new OSSBackFillExtractor(schemaName,
@@ -97,11 +98,17 @@ public class OSSBackFillExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
-            builder.buildSelectForBackfill(info, false, true,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
+                false, true,
                 SqlSelect.LockMode.SHARED_LOCK, physicalPartition),
-            builder.buildSelectForBackfill(info, true, false,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
+                true, false,
                 SqlSelect.LockMode.SHARED_LOCK, physicalPartition),
-            builder.buildSelectForBackfill(info, true, true,
+            builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
+                info.getPrimaryKeys(),
+                true, true,
                 SqlSelect.LockMode.SHARED_LOCK, physicalPartition),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId(),
@@ -127,6 +134,8 @@ public class OSSBackFillExtractor extends Extractor {
         case OSS:
         case S3:
         case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS:
             RelNode fileStorePlan =
                 OSSTableScan.fromPhysicalTableOperation(extractPlan, extractEc, this.sourceTableName, 1);
 
@@ -144,6 +153,8 @@ public class OSSBackFillExtractor extends Extractor {
         case S3:
         case LOCAL_DISK:
         case OSS:
+        case EXTERNAL_DISK:
+        case NFS:
             return consumeFileStore(extractPlan, extractEc, batchConsumer, extractCursor);
         case INNODB:
         default:
@@ -229,6 +240,8 @@ public class OSSBackFillExtractor extends Extractor {
         case OSS:
         case S3:
         case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS:
             plan = OSSTableScan.fromPhysicalTableOperation(phyTableOperation, baseEc, this.sourceTableName, 1);
             break;
         case INNODB:

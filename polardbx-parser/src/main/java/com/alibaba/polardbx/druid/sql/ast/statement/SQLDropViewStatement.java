@@ -27,30 +27,30 @@ public class SQLDropViewStatement extends SQLStatementImpl implements SQLDropSta
 
     protected List<SQLExprTableSource> tableSources = new ArrayList<SQLExprTableSource>();
 
-    protected boolean                  cascade      = false;
-    protected boolean                  restrict     = false;
-    protected boolean                  ifExists     = false;
+    protected boolean cascade = false;
+    protected boolean restrict = false;
+    protected boolean ifExists = false;
 
-    public SQLDropViewStatement(){
+    public SQLDropViewStatement() {
 
     }
-    
-    public SQLDropViewStatement(DbType dbType){
-        super (dbType);
+
+    public SQLDropViewStatement(DbType dbType) {
+        super(dbType);
     }
 
-    public SQLDropViewStatement(SQLName name){
+    public SQLDropViewStatement(SQLName name) {
         this(new SQLExprTableSource(name));
     }
 
-    public SQLDropViewStatement(SQLExprTableSource tableSource){
+    public SQLDropViewStatement(SQLExprTableSource tableSource) {
         this.tableSources.add(tableSource);
     }
 
     public List<SQLExprTableSource> getTableSources() {
         return tableSources;
     }
-    
+
     public void addPartition(SQLExprTableSource tableSource) {
         if (tableSource != null) {
             tableSource.setParent(this);

@@ -1,0 +1,18 @@
+## DISABLE_FAST_SQL_PARSER
+## test key/one col/int
+create table test_key(
+id int not null auto_increment,
+col1 int,
+col2 varchar(10),
+primary key(id)
+) partition by key() partitions 2;
+show create table test_key;
+Table,Create Table
+test_key,CREATE TABLE `test_key` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`col1` int(11) DEFAULT NULL,
+	`col2` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 2

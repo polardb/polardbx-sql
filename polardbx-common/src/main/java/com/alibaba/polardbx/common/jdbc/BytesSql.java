@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.common.jdbc;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -32,6 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -194,9 +197,10 @@ public class BytesSql {
         if (lastSplit != sql.length()) {
             bytesList.add(sql.substring(lastSplit).getBytes(StandardCharsets.UTF_8));
         }
-        byte[][] bytesArray = bytesList.toArray(new byte[0][]);
-        BytesSql b = new BytesSql(bytesArray, parameterLast);
-        return b;
+        return BytesSqlBuilder.buildInstance()
+            .writeBatch(bytesList, StandardCharsets.UTF_8)
+            .setParameterLast(parameterLast)
+            .build();
     }
 
     /**
@@ -242,10 +246,18 @@ public class BytesSql {
         if (null == parameterContexts) {
             return false;
         }
-        final int len = Math.min(bytesArray.length, parameterContexts.size());
-        for (int i = 0; i < len; ++i) {
-            if (parameterContexts.get(i).getValue() instanceof RawString) {
-                return true;
+        if (parameterContexts instanceof LinkedList) {
+            for (ParameterContext pc : parameterContexts) {
+                if (pc.getValue() instanceof RawString) {
+                    return true;
+                }
+            }
+        } else {
+            final int len = Math.min(bytesArray.length, parameterContexts.size());
+            for (int i = 0; i < len; ++i) {
+                if (parameterContexts.get(i).getValue() instanceof RawString) {
+                    return true;
+                }
             }
         }
         return false;
@@ -267,6 +279,9 @@ public class BytesSql {
      * Returns a new byte[] composed of copies of the bytesArray elements joined together with a copy of the specified delimiter '?'.
      */
     public byte[] getBytes(List<ParameterContext> parameterContexts) {
+        if (!containRawString(parameterContexts)) {
+            return getBytes();
+        }
         int var1 = 0;
 
         int rawSize = 1;
@@ -475,24 +490,39 @@ public class BytesSql {
         private BytesSqlBuilder() {
         }
 
-        public static BytesSqlBuilder getInstance() {
+        public static BytesSqlBuilder buildInstance() {
             return new BytesSqlBuilder();
         }
 
         public BytesSql build() {
+            if (ConfigDataMode.isFastMock()) {
+                return new MockBytesSql(bytesList.toArray(new byte[0][]), parameterLast);
+            }
             return new BytesSql(bytesList.toArray(new byte[0][]), parameterLast);
         }
 
-        public void setParameterLast() {
-            parameterLast = true;
+        public BytesSqlBuilder setParameterLast(boolean parameterLast) {
+            this.parameterLast = parameterLast;
+            return this;
         }
 
-        public void write(byte[] bytes, Charset charset) {
+        public BytesSqlBuilder write(byte[] bytes, Charset charset) {
             if (charset != StandardCharsets.UTF_8) {
                 bytesList.add(new String(bytes, charset).getBytes(StandardCharsets.UTF_8));
             } else {
                 bytesList.add(bytes);
             }
+            return this;
+        }
+
+        public BytesSqlBuilder writeBatch(List<byte[]> bytes, Charset charset) {
+            if (charset != StandardCharsets.UTF_8) {
+                throw GeneralUtil.nestedException(
+                    "batch write in bytessql with charset(" + charset + ") not supported");
+            } else {
+                bytesList = bytes;
+            }
+            return this;
         }
 
     }

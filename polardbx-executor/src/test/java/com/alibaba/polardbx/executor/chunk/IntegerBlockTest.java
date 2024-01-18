@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.optimizer.core.datatype.IntegerType;
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -23,6 +25,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class IntegerBlockTest extends BaseBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        IntegerBlock block = new IntegerBlock(new IntegerType(), 1024);
+        Assert.assertEquals(5120, block.getElementUsedBytes());
+    }
 
     @Test
     public void test() {

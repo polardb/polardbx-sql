@@ -16,9 +16,13 @@
 
 package com.alibaba.polardbx.common.datatype;
 
+import org.apache.commons.lang.math.IntRange;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigDecimal;
+import java.util.Random;
+import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertEquals;
 
@@ -35,6 +39,8 @@ public class BigDecimalTest {
         "70679821480865132823.0664709",
         "-0.38193261179310511850917153643"
     };
+    private static final Random RANDOM = new Random();
+    private static final int RANDOM_TEST_TIME = 1 << 12;
 
     @Test
     public void testFromString() {
@@ -42,5 +48,24 @@ public class BigDecimalTest {
             Decimal d1 = Decimal.fromString(s);
             assertEquals(new BigDecimal(s), d1.toBigDecimal());
         }
+    }
+
+    @Test
+    public void testUnscaled() {
+        IntStream.range(0, RANDOM_TEST_TIME).forEach(i -> doRandomTest());
+    }
+
+    private void doRandomTest() {
+        // random long with sign
+        final long unscaled = RANDOM.nextLong();
+
+        // 0 ~ 30
+        final int scale = RANDOM.nextInt(DecimalTypeBase.MAX_DECIMAL_SCALE + 1);
+
+        Decimal decimal = new Decimal(unscaled, scale);
+        BigDecimal bigDecimal = BigDecimal.valueOf(unscaled, scale);
+
+        // use plain string to check
+        Assert.assertEquals(decimal.toString(), bigDecimal.toPlainString());
     }
 }

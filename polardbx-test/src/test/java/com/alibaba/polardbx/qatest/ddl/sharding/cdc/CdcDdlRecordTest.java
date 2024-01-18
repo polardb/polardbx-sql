@@ -26,6 +26,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTruncateWithRecycleMarkTask.CDC_RECYCLE_HINTS;
+import static com.alibaba.polardbx.qatest.ddl.sharding.cdc.CdcTestUtil.getServerId4Check;
 
 /**
  * Created by ziyang.lb
@@ -79,6 +81,8 @@ public class CdcDdlRecordTest extends CdcBaseTest {
 
     @Test
     public void testCdcDdlRecord() throws SQLException, InterruptedException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET GLOBAL ENABLE_FOREIGN_KEY = true");
+
         String sql;
         String tokenHints;
         AtomicLong jobIdSeed = new AtomicLong(0);
@@ -96,14 +100,14 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             Thread.sleep(2000);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
             tokenHints = buildTokenHints();
             sql = tokenHints + "create database " + dbName;
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
             sql = "use " + dbName;
             executeSql(stmt, sql);
@@ -115,6 +119,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             doDDl(stmt, jobIdSeed, "t_ddl_test_single", 4);
             testRecycleBin(stmt);
             testDropManyTable(stmt);
+            testForeignKeys(stmt);
 
             tokenHints = buildTokenHints();
             sql = tokenHints + "drop database " + dbName;
@@ -122,7 +127,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             stmt.execute("use __cdc__");
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         }
     }
 
@@ -137,7 +142,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         // 连续执行两次drop ... if exists ...，验证第二次也需要打标(和mysql行为保持一致)
@@ -146,7 +151,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         if (testType == 0) {
@@ -168,7 +173,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         //打标的建表语句和传入的建表语句并不完全一样，此处只演示是否是create语句
         Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
 
         // Test Step
         doDml(jobIdSeed, tableName, 10);
@@ -183,7 +188,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -194,7 +199,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -207,7 +212,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -219,7 +224,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -230,7 +235,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -239,7 +244,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -248,7 +253,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         //--------------------------------------------------------------------------------
@@ -260,7 +265,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -269,7 +274,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -278,7 +283,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -289,7 +294,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         // Test Step
@@ -298,7 +303,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
         doDml(jobIdSeed, tableName, 10);
 
         //--------------------------------------------------------------------------------
@@ -312,15 +317,15 @@ public class CdcDdlRecordTest extends CdcBaseTest {
                 tokenHints + String
                     .format("CREATE GLOBAL INDEX g_i_test ON %s (`EXT_ID`) DBPARTITION BY HASH(`EXT_ID`)", tableName);
             executeSql(stmt, sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
             doDml(jobIdSeed, tableName, 10);
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + "CHECK GLOBAL INDEX g_i_test";
             executeSql(stmt, sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
+            Assert.assertEquals("", getDdlRecordSql(tokenHints));
             Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
             doDml(jobIdSeed, tableName, 10);
 
@@ -330,24 +335,24 @@ public class CdcDdlRecordTest extends CdcBaseTest {
                 + "(`GMT_CREATED`) DBPARTITION BY HASH(`JOB_ID`)", tableName, tableName);
             //+ "add column add1 varchar(20) not null default '111'";//gsi不支持混合模式，省事儿了，不用测了
             executeSql(stmt, sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
             doDml(jobIdSeed, tableName, 10);
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String.format("drop index g_i_test on %s", tableName);
             executeSql(stmt, sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
             doDml(jobIdSeed, tableName, 10);
 
             // Test Step
             tokenHints = buildTokenHints();
             sql = tokenHints + String.format("alter table %s drop index g_i_test11", tableName);
             executeSql(stmt, sql);
-            Assert.assertEquals("", getDdlRecordSql(tokenHints));//GSI类型，不进行打标
-            Assert.assertEquals(0, getDdlRecordSqlCount(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -364,7 +369,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -379,7 +384,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, tableName, 10);
         }
 
@@ -395,7 +400,7 @@ public class CdcDdlRecordTest extends CdcBaseTest {
             executeSql(stmt, sql);
             Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
             Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-            Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+            Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
             doDml(jobIdSeed, newTableName, 10);
             tableName = newTableName;
         }
@@ -417,7 +422,123 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         executeSql(stmt, sql);
         Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
         Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
-        Assert.assertEquals(serverId, getDdlExtInfo(tokenHints).getServerId());
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
+    }
+
+    private void testForeignKeys(Statement stmt) throws SQLException {
+        String tokenHints = buildTokenHints();
+        String createUser1 = tokenHints + "CREATE TABLE user1 (\n"
+            + "\ta int PRIMARY KEY,\n"
+            + "\tb int NOT NULL,\n"
+            + "\tc int NOT NULL,\n"
+            + "\td int NOT NULL,\n"
+            + "\tINDEX b(b, c, d),\n"
+            + "\tINDEX c(c, d)\n"
+            + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`\n"
+            + "DBPARTITION BY hash(a)";
+
+        executeSql(stmt, createUser1);
+
+        tokenHints = buildTokenHints();
+        String createUser2 = tokenHints + "CREATE TABLE user2 (\n"
+            + "\ta int PRIMARY KEY,\n"
+            + "\tb int NOT NULL,\n"
+            + "\tc int NOT NULL,\n"
+            + "\td int NOT NULL,\n"
+            + "\tINDEX b(b, c, d),\n"
+            + "\tINDEX c(c, d)\n"
+            + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`";
+        executeSql(stmt, createUser2);
+        tokenHints = buildTokenHints();
+        String createPrimaryTable = tokenHints + "CREATE TABLE device (\n"
+            + "\ta int PRIMARY KEY AUTO_INCREMENT,\n"
+            + "\tb int NOT NULL,\n"
+            + "\tc int NOT NULL,\n"
+            + "\td int NOT NULL\n"
+            + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`\n"
+            + "DBPARTITION BY hash(`a`)";
+        executeSql(stmt, createPrimaryTable);
+
+        DDLExtInfo extInfo0 = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(Boolean.FALSE, extInfo0.getForeignKeysDdl());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), extInfo0.getServerId());
+
+        tokenHints = buildTokenHints();
+        String addForeignKey1 = tokenHints + "alter table `device` add foreign key (`b`) REFERENCES `user2` (`a`)";
+        executeSql(stmt, addForeignKey1);
+
+        DDLExtInfo extInfo1 = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(addForeignKey1, extInfo1.getOriginalDdl());
+        Assert.assertEquals(Boolean.TRUE, extInfo1.getForeignKeysDdl());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
+
+        tokenHints = buildTokenHints();
+        String addForeignKey2 = tokenHints
+            + "alter table `device` add constraint `my_ibfk_1` foreign key `fk1` (`c`) REFERENCES `user2` (`c`) ON DELETE CASCADE ON UPDATE CASCADE";
+        executeSql(stmt, addForeignKey2);
+
+        DDLExtInfo extInfo2 = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(addForeignKey2, extInfo2.getOriginalDdl());
+        Assert.assertEquals(Boolean.TRUE, extInfo2.getForeignKeysDdl());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), extInfo2.getServerId());
+
+        tokenHints = buildTokenHints();
+        // 匿名foreign key会添加固定后缀与序号_ibfk_{num} see @link com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils#getForeignKeyConstraintName
+        String dropForeignKey1 = tokenHints + "alter table `device` drop foreign key `device_ibfk_1`";
+        executeSql(stmt, dropForeignKey1);
+
+        DDLExtInfo extInfo3 = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(dropForeignKey1, extInfo3.getOriginalDdl());
+        Assert.assertEquals(Boolean.TRUE, extInfo3.getForeignKeysDdl());
+        Assert.assertNull(extInfo3.getFlags2());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), extInfo3.getServerId());
+
+        tokenHints = buildTokenHints();
+        String dropForeignKey2 = tokenHints + "alter table `device` drop foreign key `my_ibfk_1`";
+        executeSql(stmt, "set foreign_key_checks = 0");
+        executeSql(stmt, dropForeignKey2);
+
+        DDLExtInfo extInfo4 = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(dropForeignKey2, extInfo4.getOriginalDdl());
+        Assert.assertEquals("OPTION_NO_FOREIGN_KEY_CHECKS,", extInfo4.getFlags2());
+        Assert.assertEquals(Boolean.TRUE, extInfo4.getForeignKeysDdl());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), extInfo4.getServerId());
+
+        tokenHints = buildTokenHints();
+        String dropTable = tokenHints + "drop table `device`";
+        executeSql(stmt, dropTable);
+
+        tokenHints = buildTokenHints();
+        String createWithForeignKeys = tokenHints + "create table device\n"
+            + "(   a int auto_increment primary key,\n"
+            + "    b int not null,\n"
+            + "    c int not null,\n"
+            + "    d int not null,\n"
+            + "    key (`c`),\n"
+            + "    foreign key (`b`) REFERENCES `user2` (`a`),\n"
+            + "    foreign key `fk` (`b`) REFERENCES `user2` (`b`),\n"
+            + "    constraint `my_ibfk` foreign key (`b`) REFERENCES `user2` (`c`),\n"
+            + "    constraint `my_ibfk_1` foreign key `fk1` (`c`) REFERENCES `user2` (`c`),\n"
+            + "    foreign key (`c`) REFERENCES `user2` (`c`) ON DELETE CASCADE ON UPDATE CASCADE,\n"
+            + "    foreign key (`c`) REFERENCES `user2` (`c`) ON DELETE CASCADE ON UPDATE CASCADE,\n"
+            + "    foreign key (`c`) REFERENCES `user1` (`c`),\n"
+            + "    foreign key (`d`) REFERENCES `device` (`c`),\n"
+            + "    constraint `fk_device_user` foreign key (`b` , `c` , `d`)\n"
+            + "       REFERENCES `user2` (`b` , `c` , `d`)\n"
+            + ")dbpartition by hash(`b`)";
+        executeSql(stmt, "set foreign_key_checks = 1");
+        executeSql(stmt, createWithForeignKeys);
+        DDLExtInfo extInfo = getDdlExtInfo(tokenHints);
+        Assert.assertEquals(createWithForeignKeys, extInfo.getOriginalDdl());
+        Assert.assertEquals(Boolean.TRUE, extInfo.getForeignKeysDdl());
+        Assert.assertNull(extInfo.getFlags2());
+        Assert.assertEquals(1, getDdlRecordSqlCount(tokenHints));
+        Assert.assertEquals(getServerId4Check(serverId), getDdlExtInfo(tokenHints).getServerId());
     }
 
     private void testRecycleBin(Statement stmt) throws SQLException, InterruptedException {
@@ -465,11 +586,11 @@ public class CdcDdlRecordTest extends CdcBaseTest {
         Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(1).get("ddl_sql"), "rename"));
         Assert.assertTrue(StringUtils.containsIgnoreCase(recordSqls.get(2).get("ddl_sql"), "rename"));
         Assert.assertEquals(JSONObject.parseObject(recordSqls.get(0).get("ext"), DDLExtInfo.class).getServerId(),
-            serverId);
+            getServerId4Check(serverId));
         Assert.assertEquals(JSONObject.parseObject(recordSqls.get(1).get("ext"), DDLExtInfo.class).getServerId(),
-            serverId);
+            getServerId4Check(serverId));
         Assert.assertEquals(JSONObject.parseObject(recordSqls.get(2).get("ext"), DDLExtInfo.class).getServerId(),
-            serverId);
+            getServerId4Check(serverId));
     }
 
     private void testDropManyTable(Statement stmt) throws SQLException {

@@ -24,9 +24,14 @@ import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
+import org.apache.calcite.util.NlsString;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -173,7 +178,20 @@ public class SqlDynamicParam extends SqlNode {
     return visitor.visit(this);
   }
 
-  public boolean equalsDeep(SqlNode node, Litmus litmus) {
+  public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
+    if (context.isGenColSubstitute()) {
+      if (node instanceof SqlLiteral) {
+        int paramIndex = this.getIndex();
+        if (paramEquals((SqlLiteral) node,
+            context.getParameters().getFirstParameter().get(paramIndex + 1).getValue())) {
+          context.getConstantParamIndex().add(paramIndex + 1);
+          return litmus.succeed();
+        }
+      } else {
+        return litmus.fail("{} != {}", this, node);
+      }
+    }
+
     if (!(node instanceof SqlDynamicParam)) {
       return litmus.fail("{} != {}", this, node);
     }
@@ -182,6 +200,34 @@ public class SqlDynamicParam extends SqlNode {
       return litmus.fail("{} != {}", this, node);
     }
     return litmus.succeed();
+  }
+
+  private static boolean paramEquals(SqlLiteral literal, Object param) {
+    // TODO(qianjing): support more type
+    if (literal instanceof SqlNumericLiteral) {
+      SqlNumericLiteral numericLiteral = (SqlNumericLiteral)literal;
+      if (SqlTypeName.INT_TYPES.contains(numericLiteral.getTypeName())) {
+        if (param instanceof Integer || param instanceof Long || param instanceof BigInteger) {
+          return param.toString().equals(numericLiteral.getValue().toString());
+        }
+      }
+      if (SqlTypeName.DECIMAL.equals(numericLiteral.getTypeName())) {
+        if (param instanceof BigDecimal) {
+          return param.equals(literal.getValue());
+        }
+      }
+    } else if (literal instanceof SqlCharStringLiteral) {
+      SqlCharStringLiteral charStringLiteral = (SqlCharStringLiteral) literal;
+      if (param instanceof String) {
+        return ((NlsString)(charStringLiteral.getValue())).getValue().equals(param);
+      }
+    } else if (literal instanceof SqlBinaryStringLiteral) {
+      SqlBinaryStringLiteral binaryStringLiteral = (SqlBinaryStringLiteral)literal;
+      if (param instanceof byte[]) {
+        return Arrays.equals((byte[])param, binaryStringLiteral.getBitString().getAsByteArray());
+      }
+    }
+    return false;
   }
 
   public Object getValue() {

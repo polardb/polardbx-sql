@@ -28,7 +28,6 @@ import java.sql.Timestamp;
 
 /**
  * Block stores data in columnar format
- *
  */
 public interface Block {
     /**
@@ -179,7 +178,7 @@ public interface Block {
     /**
      * Returns the logical size of this block in memory.
      */
-    default long getSizeInBytes() {
+    default long getElementUsedBytes() {
         throw new UnsupportedOperationException();
     }
 

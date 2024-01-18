@@ -43,6 +43,8 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author chenmo.cm
  */
 
+
+
 public class SelectGsiJoinTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();

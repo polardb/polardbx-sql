@@ -22,15 +22,22 @@ import org.junit.Ignore;
 import org.junit.Test;
 
 import java.io.FileNotFoundException;
+import java.sql.SQLException;
 
 @NotThreadSafe
 public class LocalityTestCase extends LocalityTestBase {
-    public void runTestCase(String resourceFile) throws FileNotFoundException {
+
+    public void runTestCase(String resourceFile) throws FileNotFoundException, InterruptedException, SQLException {
+
+        /**
+         * Ignore this case for debug ddl qatest 
+         */
         String resourceDir = "partition/env/LocalityTest/" + resourceFile;
         String fileDir = getClass().getClassLoader().getResource(resourceDir).getPath();
         LocalityTestCaseTask localityTestCaseTask = new LocalityTestCaseTask(fileDir);
         localityTestCaseTask.execute(tddlConnection);
     }
+
     /*
      * for create partition table.
      * (hash_partition, range_partition, list_partition)
@@ -55,68 +62,99 @@ public class LocalityTestCase extends LocalityTestBase {
      */
 
     @Test
-    public void testCreateSimpleTable() throws FileNotFoundException {
+    public void testCreateSimpleTable() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("create_simple_table.test.yml");
     }
 
     @Test
-    public void testListPartitionTableOperation() throws FileNotFoundException {
+    public void testListPartitionTableOperation() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("list_partition_table_operation.test.yml");
     }
 
     @Test
-    public void testSingleTableOperation() throws FileNotFoundException {
+    public void testRebalanceSimpleWithEmptyTableGroup()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("rebalance_drain_node_with_empty_tablegroup.test.yml");
+    }
+
+    @Test
+    public void testSingleTableOperation() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("single_table_operation.test.yml");
     }
 
     @Test
-    public void testCreateTableGroupSimple() throws FileNotFoundException {
+    public void testCreateTableGroupSimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("create_tablegroup_simple.test.yml");
     }
 
     @Test
-    public void testAlterTableGroupFirstSimple() throws FileNotFoundException {
+    public void testAlterTableGroupFirstSimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_tablegroup_first_simple.test.yml");
     }
 
     @Test
-    @Ignore("ignore force dn")
-    public void testAlterTableGroupSecondSimple() throws FileNotFoundException {
+    public void testAlterTableGroupSecondSimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_tablegroup_second_simple.test.yml");
     }
 
     @Test
-    public void testRepartitionSimple() throws FileNotFoundException {
+    public void testRepartitionSimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("repartition_simple.test.yml");
     }
 
     @Test
-    public void testAlterLocalitySimple() throws FileNotFoundException {
+    public void testAlterLocalitySimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_locality_simple.test.yml");
     }
 
     @Test
-    public void testRebalanceSimple() throws FileNotFoundException {
+    public void testRebalanceSimple() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("rebalance_simple.test.yml");
     }
 
     @Test
-    public void testCreateOverrideTable() throws FileNotFoundException {
+    public void testCreateOverrideTable() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("create_override_table.test.yml");
     }
 
     @Test
-    public void testAlterLocalityOverride() throws FileNotFoundException {
+    public void testAlterLocalityOverride() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("alter_locality_override.test.yml");
     }
 
     @Test
-    public void testCreateSingleTableBalance() throws FileNotFoundException {
+    public void testCreateSingleTableBalance() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("create_single_table_balance.test.yml");
     }
 
     @Test
-    public void testTruncate() throws FileNotFoundException {
+    public void testTruncate() throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("truncate.test.yml");
     }
+
+    @Test
+    public void testCreateTableGroup() throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("create_tablegroup.test.yml");
+    }
+
+    @Test
+    public void testCreateTableGroupForSecondaryPartitionTable()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("create_tablegroup_for_secondary_partition.test.yml");
+    }
+
+    @Test
+    public void testRepartitionTableWithLocality() throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("repartition_table_with_locality.test.yml");
+    }
+
+    @Test
+    public void testAlterLocalityEmpty() throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("alter_locality_empty.test.yml");
+    }
+
+//    @Test
+//    public void testDatabaseLocality() throws FileNotFoundException, InterruptedException, SQLException {
+//        runTestCase("database_locality.test.yml");
+//    }
 }

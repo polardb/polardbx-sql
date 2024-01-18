@@ -27,14 +27,13 @@ import java.util.List;
 /**
  * @author chenghui.lch
  */
-@Ignore
-
 public class PartitionColumnTypeForKeyTest extends PartitionColumnTypeTestBase {
 
     public PartitionColumnTypeTestBase.TestParameter parameter;
 
     public PartitionColumnTypeForKeyTest(PartitionColumnTypeTestBase.TestParameter parameter) {
         super(parameter);
+        this.testDbName = this.testDbName + "_k1";
     }
 
     @Parameterized.Parameters(name = "{index}: partColTypeTestCase {0}")

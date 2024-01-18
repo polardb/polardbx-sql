@@ -21,11 +21,10 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.NFSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
-import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
+import com.alibaba.polardbx.common.oss.filesystem.cache.CacheType;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -50,7 +49,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 
 import java.io.IOException;
-import java.math.BigInteger;
 import java.net.URI;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -64,6 +62,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.StampedLock;
+
+import static com.google.common.base.Preconditions.checkState;
 
 public class FileSystemManager {
     private ThreadPoolExecutor executor;
@@ -102,8 +102,7 @@ public class FileSystemManager {
             new ThreadPoolExecutor.CallerRunsPolicy());
 
         MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getFileStorageInfoDataId(), null);
-        MetaDbConfigManager
-            .getInstance()
+        MetaDbConfigManager.getInstance()
             .bindListener(MetaDbDataIdBuilder.getFileStorageInfoDataId(), new FileStorageInfoListener());
     }
 
@@ -118,8 +117,6 @@ public class FileSystemManager {
     private StampedLock getLockImpl(Engine engine) {
         return lockMap.get(engine);
     }
-
-    private static final int CACHE_STATS_FIELD_COUNT = 9;
 
     public static FileSystemGroup getFileSystemGroup(Engine engine) {
         return getFileSystemGroup(engine, true);
@@ -200,6 +197,10 @@ public class FileSystemManager {
         FileMergeCachingFileSystem masterFs = (FileMergeCachingFileSystem) fileSystemGroup.getMaster();
         if (masterFs.getDataTier() instanceof OSSFileSystem) {
             FileSystemRateLimiter rateLimiter = ((OSSFileSystem) masterFs.getDataTier()).getRateLimiter();
+            rateLimiter.setReadRate(readRate);
+            rateLimiter.setWriteRate(writeRate);
+        } else if (masterFs.getDataTier() instanceof NFSFileSystem) {
+            FileSystemRateLimiter rateLimiter = ((NFSFileSystem) masterFs.getDataTier()).getRateLimiter();
             rateLimiter.setReadRate(readRate);
             rateLimiter.setWriteRate(writeRate);
         }
@@ -293,9 +294,11 @@ public class FileSystemManager {
                     .initialize();
             Path workingDirectory =
                 new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
-
+            try {
                 ossFileSystem.setWorkingDirectory(workingDirectory);
-
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
             return ossFileSystem;
         }
         case LOCAL_DISK: {
@@ -306,42 +309,69 @@ public class FileSystemManager {
             );
             Path workingDirectory =
                 new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
-
+            try {
                 localFileSystem.setWorkingDirectory(workingDirectory);
-
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
             return localFileSystem;
+        }
+        case EXTERNAL_DISK: {
+            Configuration configuration = new Configuration();
+            configuration.setBoolean("fs.file.impl.disable.cache", true);
+            FileSystem externalFileSystem = FileSystem.get(
+                URI.create(record.fileUri), configuration
+            );
+            FileSystem fileSystem;
+            // TODO: catch exception
+            CacheManager cacheManager = FileMergeCacheManager.createMergeCacheManager(InstConfUtil.fetchLongConfigs(
+                ConnectionParams.OSS_FS_CACHE_TTL,
+                ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES
+            ), engine);
+
+            Configuration factoryConfig = new Configuration();
+            final CacheType cacheType = CacheType.FILE_MERGE;
+            final boolean validationEnabled = false;
+
+            checkState(cacheType != null);
+
+            switch (cacheType) {
+            case FILE_MERGE:
+                fileSystem = new FileMergeCachingFileSystem(
+                    URI.create(record.fileUri),
+                    factoryConfig,
+                    cacheManager,
+                    externalFileSystem,
+                    validationEnabled,
+                    true);
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid CacheType: " + cacheType.name());
+            }
+            Path workingDirectory =
+                new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+            try {
+                fileSystem.setWorkingDirectory(workingDirectory);
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
+            return fileSystem;
+        }
+        case NFS: {
+            FileSystem nfsFileSystem = NFSInstanceInitializer.newBuilder().uri(record.fileUri)
+                .cachePolicy(CachePolicy.MAP.get(record.cachePolicy)).initialize();
+            Path workingDirectory =
+                new Path(URI.create(record.fileUri + ServerInstIdManager.getInstance().getMasterInstId() + "/"));
+            try {
+                nfsFileSystem.setWorkingDirectory(workingDirectory);
+            } catch (Throwable t) {
+                throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "bad fileUri = " + record.fileUri, t);
+            }
+            return nfsFileSystem;
         }
         default:
             return null;
         }
     }
 
-    public synchronized static byte[][] generateCacheStatsPacket() {
-        FileSystem fileSystem = getFileSystemGroup(Engine.OSS).getMaster();
-        CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
-
-        if (cacheManager != null) {
-            CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
-            FileMergeCacheConfig fileMergeCacheConfig =
-                ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
-            CacheConfig cacheConfig = ((FileMergeCacheManager) cacheManager).getCacheConfig();
-            BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
-            long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();
-
-            byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
-            int pos = 0;
-            results[pos++] = String.valueOf(cacheSize).getBytes();
-            results[pos++] = String.valueOf(cacheEntries).getBytes();
-            results[pos++] = String.valueOf(cacheStats.getInMemoryRetainedBytes()).getBytes();
-            results[pos++] = String.valueOf(cacheStats.getCacheHit()).getBytes();
-            results[pos++] = String.valueOf(cacheStats.getCacheMiss()).getBytes();
-            results[pos++] = String.valueOf(cacheStats.getQuotaExceed()).getBytes();
-            results[pos++] = cacheConfig.getBaseDirectory().toString().getBytes();
-            results[pos++] = fileMergeCacheConfig.getCacheTtl().toString().getBytes();
-            results[pos++] = String.valueOf(fileMergeCacheConfig.getMaxCachedEntries()).getBytes();
-            return results;
-        } else {
-            return null;
-        }
-    }
 }

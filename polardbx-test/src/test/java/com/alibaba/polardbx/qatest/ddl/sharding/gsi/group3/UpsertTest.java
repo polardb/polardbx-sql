@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group3;
 
-import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.util.Pair;
 import org.hamcrest.Matchers;
 import org.junit.Assert;
@@ -47,6 +47,16 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.updateErrorAss
  * @author luoyanxin
  */
 public class UpsertTest extends DDLBaseNewDBTestCase {
+    private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
+    private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
+
+    private static String buildCmdExtra(String... params) {
+        if (0 == params.length) {
+            return "";
+        }
+        return "/*+TDDL:CMD_EXTRA(" + String.join(",", params) + ")*/";
+    }
+
     /**
      * 无 PK 无 UK
      * UPSERT 不支持逻辑执行，直接下发
@@ -1909,7 +1919,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             + "  `c7` text,\n"
             + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY(`id`, `c1`, `c2`),\n"
-            + "  UNIQUE CLUSTERED GLOBAL INDEX " + gsiName
+            + "  UNIQUE CLUSTERED INDEX " + gsiName
             + "(`c1`, `c2`) DBPARTITION BY HASH(`c2`) TBPARTITION BY HASH(`c2`) TBPARTITIONS 3\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
         final String partitionDef = " dbpartition by hash(`c1`) tbpartition by hash(`c1`) tbpartitions 7";
@@ -2743,6 +2753,83 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
 //        final List<Pair<String, String>> topology = JdbcUtil.getTopology(tddlConnection, tableName);
 
         Assert.assertThat(trace.size(), Matchers.is(3 + 3 + 1));
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        checkGsi(tddlConnection, gsiName);
+    }
+
+    /**
+     * 主表拆分键和gsi拆分键不一样
+     * upsert 主表拆分键
+     * 主表 UPSERT 转 SELECT + DELETE + INSERT
+     * 处于write only 阶段的gsi UPSERT 转 SELECT + DELETE + INSERT
+     */
+    @Test
+    public void tableWithPkNoUkWithGsi_writeOnly3() throws SQLException {
+        final String tableName = "update_test_tb_with_write_only_gsi";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        final String mysqlCreatTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT 2,\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT 3,\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`c1`, `c2`)\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+
+        final String gsiName = "g_update_c2_write_only";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `id` bigint(11) NOT NULL DEFAULT '1',\n"
+            + "  `c1` bigint(20) NOT NULL DEFAULT 2,\n"
+            + "  `c2` bigint(20) NOT NULL DEFAULT 3,\n"
+            + "  `c3` bigint(20) DEFAULT NULL,\n"
+            + "  `c4` bigint(20) DEFAULT NULL,\n"
+            + "  `c5` varchar(255) DEFAULT NULL,\n"
+            + "  `c6` datetime DEFAULT NULL,\n"
+            + "  `c7` text,\n"
+            + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY(`c1`, `c2`),\n"
+            + "  GLOBAL INDEX " + gsiName
+            + "(`c2`) COVERING(`c5`) DBPARTITION BY HASH(`c2`) TBPARTITION BY HASH(`c2`) TBPARTITIONS 3\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c1`) tbpartition by hash(`c1`) tbpartitions 3";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, mysqlCreatTable);
+
+        final String insert =
+            "insert into " + tableName
+                + "(c1, c2, c8) values(4, 5, '2020-06-16 06:49:32'), (2, 3, '2020-06-16 06:49:32'), (3, 4, '2020-06-16 06:49:32')";
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+
+        final String hint = "/*+TDDL: cmd_extra(GSI_DEBUG=\"GsiStatus2\",DML_SKIP_TRIVIAL_UPDATE=FALSE)*/ ";
+        final String upsertSql = "insert into " + tableName
+            + "(c1, c2, c8) values(4, 5, '2020-06-16 06:49:32') on duplicate key update c1 = c1 + 100";
+        final String upsertSql2 = "insert into " + tableName
+            + "(c1, c2, c8) values(104, 5, '2020-06-16 06:49:32') on duplicate key update c1 = c1 + 100";
+
+        checkGsi(tddlConnection, gsiName);
+
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        // write only
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsertSql, "trace " + hint + upsertSql, null, true);
+        final List<List<String>> trace = getTrace(tddlConnection);
+
+        org.junit.Assert.assertThat(trace.size(), Matchers.is(1 + 2 + 2));
+
+        // public
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsertSql2, "trace " + upsertSql2, null, true);
+        final List<List<String>> trace2 = getTrace(tddlConnection);
+
+        org.junit.Assert.assertThat(trace2.size(), Matchers.is(1 + 2 + 1));
 
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
@@ -3889,11 +3976,6 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
     }
 
-    boolean useXproto() {
-        return JdbcUtil.getStringResult(JdbcUtil.executeQuery("show datasources", tddlConnection), false)
-            .stream().noneMatch(l -> l.stream().anyMatch(s -> s.contains("jdbc:mysql://")));
-    }
-
     /**
      * 测试upsert传递了Uint64参数
      */
@@ -4151,7 +4233,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s select 1,2+1 union select 2,3 on duplicate key update a=values(a),b=4",
-                    tableName), String.format("select * from %s where a=1", tableName), 4L, false},
+                    tableName), String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=3,b=4", tableName),
                 String.format("select * from %s where a=3", tableName), 3L, false},
@@ -4160,13 +4242,13 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s values (1,2),(2,3) on duplicate key update a=values(a),b=4", tableName),
-                String.format("select * from %s where a=1", tableName), 4L, false},
+                String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=values(b),b=4", tableName),
                 String.format("select * from %s where a=2", tableName), 3L, false},
             new Object[] {
                 String.format("insert into %s(b) values (2) on duplicate key update a=values(a),b=4", tableName),
-                String.format("select * from %s where a=1", tableName), 2L, false},
+                String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s(b,a) values (2,1) on duplicate key update a=values(a),b=4", tableName),
                 String.format("select * from %s where a=1", tableName), 1L, false},
@@ -4181,10 +4263,10 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                     tableName, tableName), String.format("select * from %s where a=1", tableName), 3L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=values(b),a=values(a),b=4",
-                    tableName), String.format("select * from %s where a=1", tableName), 3L, false},
+                    tableName), String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=3,a=values(a),b=4", tableName),
-                String.format("select * from %s where a=1", tableName), 3L, false},
+                String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s set a=1,b=2 on duplicate key update a=values(a),b=4", tableName),
                 String.format("select * from %s where a=1", tableName), 1L, false},
@@ -4212,7 +4294,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s select 1,2+1 union select 2,3 on duplicate key update a=a,b=4",
-                    tableName), String.format("select * from %s where a=1", tableName), 4L, false},
+                    tableName), String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=3,b=4", tableName),
                 String.format("select * from %s where a=3", tableName), 3L, false},
@@ -4221,13 +4303,13 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
                 String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s values (1,2),(2,3) on duplicate key update a=a,b=4", tableName),
-                String.format("select * from %s where a=1", tableName), 4L, false},
+                String.format("select * from %s where a=1", tableName), 2L, false},
             new Object[] {
                 String.format("insert into %s values (1,2) on duplicate key update a=b,b=4", tableName),
                 String.format("select * from %s where a=2", tableName), 3L, false},
             new Object[] {
                 String.format("insert into %s(b) values (2) on duplicate key update a=a,b=4", tableName),
-                String.format("select * from %s where a=1", tableName), 2L, false},
+                String.format("select * from %s where a=1", tableName), 1L, false},
             new Object[] {
                 String.format("insert into %s(b,a) values (2,1) on duplicate key update a=a,b=4", tableName),
                 String.format("select * from %s where a=1", tableName), 1L, false},
@@ -4311,7 +4393,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertEquals(1, trace.size());
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
+            tddlConnection);
 
         // all before value, pushdown
         upsertSql = String.format("insert into %s values (1,2,4) on duplicate key update a=a,b=b,c=c", tableName);
@@ -4319,7 +4402,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
         trace = getTrace(tddlConnection);
         Assert.assertEquals(1, trace.size());
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
+            tddlConnection);
 
         // after value and before value, do not pushdown
         upsertSql =
@@ -4328,7 +4412,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
         trace = getTrace(tddlConnection);
         Assert.assertEquals(topology.size(), trace.size());
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=2", null, mysqlConnection,
+            tddlConnection);
 
         // after value with different column, do not pushdown
         upsertSql = String.format("insert into %s values (1,2,6) on duplicate key update a=values(a),b=values(a),c=c",
@@ -4337,7 +4422,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
         trace = getTrace(tddlConnection);
         Assert.assertEquals(topology.size() + 2, trace.size());
-        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=1", null, mysqlConnection,
+            tddlConnection);
 
         // before value with different column , do not pushdown
         upsertSql = String.format("insert into %s values (1,2,7) on duplicate key update a=a,b=a,c=c", tableName);
@@ -4345,6 +4431,462 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
         trace = getTrace(tddlConnection);
         Assert.assertEquals(topology.size(), trace.size());
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=1", null, mysqlConnection,
+            tddlConnection);
+
+        // part after value, do not pushdown
+        upsertSql = String.format("insert into %s values (1,3,8) on duplicate key update b=values(b),c=c", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
+        trace = getTrace(tddlConnection);
+        Assert.assertEquals(topology.size() + 2, trace.size());
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=3", null, mysqlConnection,
+            tddlConnection);
+
+        // part before value, pushdown
+        upsertSql = String.format("insert into %s values (1,2,9) on duplicate key update b=b,c=c", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
+        trace = getTrace(tddlConnection);
+        Assert.assertEquals(1, trace.size());
+        selectContentSameAssert("select * from " + tableName + " where a=1 and b=3", null, mysqlConnection,
+            tddlConnection);
+    }
+
+    @Test
+    public void testUpsertSingleShardWithGsi() {
+        String tableName = "test_upsert_single_shard_gsi_tbl";
+        String gsiName = tableName + "_gsi";
+        String createSql = String.format("create table %s (a int primary key, b int, c int)", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql + partDef);
+
+        String createGsi = String.format("create global index %s on %s(a) dbpartition by hash(a)", gsiName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        String upsertSql = String.format("insert into %s values (1,2,3)", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
+
+        upsertSql = String.format("insert into %s values (1,10,11) on duplicate key update b=b,c=values(c)", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
+
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertEquals(2, trace.size());
         selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        upsertSql =
+            String.format("insert into %s values (1,10,11) on duplicate key update b=values(b),c=values(c)", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, upsertSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + upsertSql);
+
+        trace = getTrace(tddlConnection);
+        Assert.assertEquals(2, trace.size());
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testUpsertWithUnorderedUpdatePart() throws SQLException {
+        final String tableName = "upsert_unordered_update_part";
+        final String indexName1 = "g_unordered_update_idx1";
+        final String indexName2 = "g_unordered_update_idx2";
+        final String indexName3 = "g_unordered_update_idx3";
+        final String createTableTmpl = "CREATE TABLE %s (\n"
+            + "        `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT BY GROUP,\n"
+            + "        `local_date` varchar(10) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `local_time` varchar(6) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `app_id` varchar(64) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `belong_bm` varchar(16) COLLATE utf8mb4_bin NOT NULL DEFAULT '1' ,\n"
+            + "        `access_md` varchar(3) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `access_id` varchar(64) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `app_name` varchar(64) COLLATE utf8mb4_bin NOT NULL ,\n"
+            + "        `prod_cd` varchar(32) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `sett_md` varchar(4) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `tran_cd` varchar(32) COLLATE utf8mb4_bin NOT NULL ,\n"
+            + "        `tran_nm` varchar(64) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `host_date` date NOT NULL ,\n"
+            + "        `order_id` varchar(64) COLLATE utf8mb4_bin NOT NULL ,\n"
+            + "        `order_st` varchar(10) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `trade_id` varchar(64) COLLATE utf8mb4_bin NOT NULL DEFAULT '' ,\n"
+            + "        `created_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),\n"
+            + "        `updated_at` timestamp(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),\n"
+            + "        `dept_id` bigint(20) DEFAULT NULL ,\n"
+            + "        `del_flag` char(1) COLLATE utf8mb4_bin DEFAULT '0' ,\n"
+            + "        `create_id` bigint(20) DEFAULT NULL ,\n"
+            + "        `create_by` varchar(64) COLLATE utf8mb4_bin DEFAULT '' ,\n"
+            + "        `create_time` varchar(20) COLLATE utf8mb4_bin DEFAULT '',\n"
+            + "        `update_id` int(11) DEFAULT NULL ,\n"
+            + "        `update_by` varchar(64) COLLATE utf8mb4_bin DEFAULT '' ,\n"
+            + "        `update_time` varchar(20) COLLATE utf8mb4_bin DEFAULT '',\n"
+            + "        `version` int(255) DEFAULT '1' ,\n"
+            + "        PRIMARY KEY (`id`),\n"
+            + "        UNIQUE GLOBAL KEY %s (`order_id`, `app_id`) COVERING (`id`, `host_date`) DBPARTITION BY STR_HASH(`order_id`) TBPARTITION BY STR_HASH(`order_id`) TBPARTITIONS 14,\n"
+            + "        UNIQUE GLOBAL KEY %s (`id`) COVERING (`host_date`) DBPARTITION BY HASH(`id`) TBPARTITION BY HASH(`id`) TBPARTITIONS 14,\n"
+            + "        UNIQUE GLOBAL KEY %s (`trade_id`) COVERING (`id`, `host_date`) DBPARTITION BY STR_HASH(`trade_id`) TBPARTITION BY STR_HASH(`trade_id`) TBPARTITIONS 14\n"
+            + ") ENGINE = InnoDB AUTO_INCREMENT = 9850480 DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_bin dbpartition by YYYYWEEK(`host_date`) tbpartition by YYYYWEEK(`host_date`) tbpartitions 14";
+        String createSql = String.format(createTableTmpl, tableName, indexName1, indexName2, indexName3);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql);
+
+        final String initDataTmpl =
+            "INSERT INTO %s (`id` , `local_date` , `local_time` , `app_id` , `belong_bm` , `access_md` , `access_id` , `app_name`    , `prod_cd` , `sett_md` , `tran_cd` , `tran_nm`       , `host_date` , `order_id` , `order_st`   , `trade_id`              , `created_at`                 , `updated_at`                 , `dept_id`  , `del_flag` , `create_id` , `create_by` , `create_time` , `update_id` , `update_by` , `update_time` , `version`) VALUES "
+                + "('9445941'         , '20220924'   , '204306'     , 'QY0003' , '4'         , '001'       , 'QY0003'    , '鏈夐檺鍏徃'    , 'SM102'   , 'T1'      , 'P2013'   , '寰紬鍙锋敮浠�'   , '20220924'  , '1'        , '2000000000' , 'OCG010924204305659713' , '2022-09-24 20:43:06.051757' , '2022-09-24 20:53:44.696521' , '20000088' , '0'        , null        , ''          , ''            , null        , ''          , ''            , '1')";
+
+        String sql = String.format(initDataTmpl, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "INSERT INTO %s (`id` , `local_date` , `local_time` , `app_id` , `belong_bm` , `access_md` , `access_id` , `app_name`                          , `prod_cd` , `sett_md` , `tran_cd` , `tran_nm`             , `host_date` , `order_id`                  , `order_st`   , `trade_id`              , `created_at`                 , `updated_at`                 , `dept_id`  , `del_flag` , `create_id` , `create_by` , `create_time` , `update_id` , `update_by` , `update_time` , `version`)\n"
+                + "VALUES (\"9445941\"                      , \"20220924\"   , \"204306\"     , \"QY0003\" , \"4\"         , \"001\"       , \"QY0003\"    , \"鏉\uE15E窞浼楁嫇缃戦�氱\uE756鎶�鏈夐檺鍏\uE100徃\" , \"SM102\"   , \"T1\"      , \"P2013\"   , \"寰\uE1BB俊鍏\uE0FF紬鍙锋敮浠�\" , \"20220924\"  , \"20291924204305824818P2013\" , \"2000000000\" , \"OCG010022004305659713\" , \"2022-09-24 20:43:06.051757\" , \"2022-09-24 20:53:44.696521\" , \"20000088\" , \"0\"        , null        , \"\"          , \"\"            , null        , \"\"          , \"\"            , \"1\")\n"
+                + "ON DUPLICATE KEY UPDATE `order_id`=VALUES(`order_id`) , `app_id`=VALUES(`app_id`) , `access_id`=VALUES(`access_id`) , `created_at`=VALUES(`created_at`) , `update_id`=VALUES(`update_id`) , `del_flag`=VALUES(`del_flag`) , `id`=VALUES(`id`) , `host_date`=VALUES(`host_date`)     , `create_id`=VALUES(`create_id`) , `version`=VALUES(`version`) , `access_md`=VALUES(`access_md`) , `tran_cd`=VALUES(`tran_cd`) , `belong_bm`=VALUES(`belong_bm`) , `update_time`=VALUES(`update_time`) , `prod_cd`=VALUES(`prod_cd`) , `local_date`=VALUES(`local_date`) , `app_name`=VALUES(`app_name`) , `update_by`=VALUES(`update_by`) , `trade_id`=VALUES(`trade_id`) , `updated_at`=VALUES(`updated_at`) , `dept_id`=VALUES(`dept_id`) , `local_time`=VALUES(`local_time`) , `create_time`=VALUES(`create_time`) , `order_st`=VALUES(`order_st`) , `create_by`=VALUES(`create_by`);\n",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select order_id from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("20291924204305824818P2013"));
+        checkGsi(tddlConnection, indexName2);
+    }
+
+    @Test
+    public void testUpsertWithDupColumns() {
+        String tableName = "test_upsert_with_dup_col_tbl";
+        String createSql = String.format("create table %s (id int primary key, a int, b int)", tableName);
+        String partDef = "dbpartition by hash(id)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createSql);
+
+        String insert =
+            String.format("insert into %s values (1,2,2) on duplicate key update a=1,a=a+10,b=a,id=1", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testUpsertValueColumnOrder() {
+        String tableName = "test_upsert_value_column_order";
+        String createSql =
+            String.format("create table %s (a int primary key, b int default 2, c int default 4)", tableName);
+        String partDef = "dbpartition by hash(c)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createSql);
+
+        String insert = String.format("insert into %s(a,b,c) values (b,b+1,b+2)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        ResultSet rs = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<Object>> objects = JdbcUtil.getAllResult(rs);
+        Assert.assertTrue(objects.get(0).get(0).toString().equals("2"));
+        Assert.assertTrue(objects.get(0).get(1).toString().equals("3"));
+        Assert.assertTrue(objects.get(0).get(2).toString().equals("4"));
+
+        String delete = "delete from " + tableName;
+        JdbcUtil.executeUpdateSuccess(tddlConnection, delete);
+
+        String hint = buildCmdExtra("DML_REF_PRIOR_COL_IN_VALUE=TRUE");
+        insert = String.format("insert into %s(b,a,c) values (b+1,b+2,3)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        insert =
+            String.format("insert into %s(b,a,c) values (3,5,3) on duplicate key update a=a+1,b=a+1,b=b+1,a=b+1,c=4",
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testUpsertAutoUpdateShardingKey() throws SQLException {
+        String tableName = "upsert_auto_update_shard";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String create = String.format(
+            "create table %s (a int primary key, b datetime default '2022-10-10 10:10:10' on update current_timestamp()) ",
+            tableName);
+        String partDef = "dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String insert = String.format("insert into %s(a) values (1) on duplicate key update a=a+1", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+        selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testUpsertJson() {
+        final String tableName = "replace_json_tbl";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert =
+            String.format("insert into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        insert = String.format(
+            "insert into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}') on duplicate key update a=1,b=2,c='{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}'",
+            tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + insert, "");
+
+        hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + insert);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testUpsertUnpushableFunc() {
+        final String tableName = "upsert_unpush_func_tbl";
+        String[] partDefs = new String[] {"single", "broadcast", "dbpartition by hash(a)"};
+
+        for (String partDef : partDefs) {
+            dropTableIfExists(tableName);
+            String create = String.format("create table %s (a int primary key, b text) " + partDef, tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+            String insert =
+                String.format("insert into %s values (1,2) on duplicate key update b=current_user()", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+            String select = String.format("select * from %s where b != current_user()", tableName);
+            ResultSet resultSet = JdbcUtil.executeQuery(select, tddlConnection);
+            List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+            Assert.assertEquals(0, allResult.size());
+        }
+    }
+
+    @Test
+    public void testUpsertJson1() {
+        final String tableName = "replace_json_tbl1";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert =
+            String.format("insert into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+        insert = String.format(
+            "insert into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}') on duplicate key update a=1,b=2,c='{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}'",
+            tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + insert, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testUpsertGsiStatus() {
+        final String tableName = "upsert_status_tbl";
+        final String gsiName1 = tableName + "_gsi1";
+        final String gsiName2 = tableName + "_gsi2";
+
+        String[] status = new String[] {"DELETE_ONLY", "WRITE_ONLY", "PUBLIC"};
+
+        for (String s : status) {
+            dropTableIfExists(tableName);
+
+            String create =
+                String.format("create table %s (a int primary key, b int, c int) dbpartition by hash(a)", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+            String hint = String.format("/*+TDDL:CMD_EXTRA(GSI_FINAL_STATUS_DEBUG=%s)*/", s);
+            String createGsi =
+                String.format("create global index %s on %s(b) dbpartition by hash(b)", gsiName1, tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, hint + createGsi);
+
+            createGsi = String.format("create global index %s on %s(c) dbpartition by hash(c)", gsiName2, tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, hint + createGsi);
+
+            String insert = String.format("insert into %s values (1,2,3) on duplicate key update c=10", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+            ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+            List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+            Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+            Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+            Assert.assertTrue(allResult.get(0).get(2).equals("10"));
+        }
+    }
+
+    @Test
+    public void testBinaryFunc1() {
+        String tableName = "test_binary_func_tbl1";
+        String create = String.format("create table %s (a int primary key, b varbinary(16) unique)", tableName);
+        String partDef = "dbpartition by hash(b)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String[] binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234"};
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert = String.format("insert into %s values (%d,%s)", tableName, i, binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert =
+                String.format("insert into %s values (%d,%s) on duplicate key update b=%s", tableName, i + 10,
+                    binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testBinaryFunc2() {
+        String tableName = "test_binary_func_tbl2";
+        String create = String.format("create table %s (a int primary key, b varbinary(16) unique)", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String[] binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234"};
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert = String.format("insert into %s values (%d,%s)", tableName, i, binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert =
+                String.format("insert into %s values (%d,%s) on duplicate key update a=a+10, b=%s", tableName, i + 10,
+                    binaryValues[i], binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testBinaryFunc3() {
+        String tableName = "test_binary_func_tbl3";
+        String create =
+            String.format("create table %s (a int primary key auto_increment, b varbinary(16))", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create + partDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, create);
+
+        String[] binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234"};
+
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert = String.format("insert into %s(b) values (%s)", tableName, binaryValues[i]);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+
+        binaryValues = new String[] {"unhex('BBE5')", "0xBBE6", "1234", "b"};
+        for (int i = 0; i < binaryValues.length; i++) {
+            String insert = String.format("insert into %s(b) select %s from %s", tableName, binaryValues[i], tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, insert);
+
+            selectContentSameAssert("select b from " + tableName, null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testUpsertWithUgsiAndJson() throws SQLException {
+        final String tableName = "test_tb_update_with_json";
+        dropTableIfExists(tableName);
+
+        final String gsiName = tableName + "_gsi";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `pk` bigint(11) NOT NULL,\n"
+            + "  `c1` bigint(20) DEFAULT NULL,\n"
+            + "  `c2` bigint(20) DEFAULT NULL ,\n"
+            + "  `c3` bigint(20) DEFAULT NULL ,\n"
+            + "  `c4` json DEFAULT NULL ,\n"
+            + "  PRIMARY KEY (`pk`), \n"
+            + "  UNIQUE GLOBAL INDEX " + gsiName + "(`c1`) covering(`c2`) DBPARTITION BY HASH(`c1`), \n"
+            + "  UNIQUE INDEX l1 on g1(`c2`) "
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c3`)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String sql = String.format("insert into %s values (1,1,1,1,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        sql = String.format(
+            "insert into %s values (1,2,3,4,'{\"a\":\"b\"}') on duplicate key update pk=values(pk),c1=values(c1),c2=values(c2),c3=values(c3),c4=values(c4)",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        checkGsi(tddlConnection, gsiName);
+
+        final ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        final List<List<Object>> allResult = JdbcUtil.getAllResult(resultSet);
+
+        Assert.assertEquals("2", allResult.get(0).get(1).toString());
+        Assert.assertEquals("3", allResult.get(0).get(2).toString());
+        Assert.assertEquals("4", allResult.get(0).get(3).toString());
+        Assert.assertEquals("{\"a\": \"b\"}", allResult.get(0).get(4).toString());
     }
 }

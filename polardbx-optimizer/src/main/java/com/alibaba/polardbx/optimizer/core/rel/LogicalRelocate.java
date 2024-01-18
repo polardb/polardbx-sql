@@ -20,7 +20,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
@@ -30,6 +29,7 @@ import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mapping;
@@ -39,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Modify sharding key
@@ -61,10 +60,19 @@ public class LogicalRelocate extends TableModify {
     private final Map<Integer, Mapping> setColumnTargetMappings;
     private final Map<Integer, Mapping> setColumnSourceMappings;
     private final Map<Integer, List<ColumnMeta>> setColumnMetas;
+    // If only modify sharding keys of primary and GSI
+    private final Map<Integer, Boolean> modifySkOnlyMap;
 
     // Primary writer
     private final Map<Integer, DistinctWriter> primaryDistinctWriter;
     private final Map<Integer, RelocateWriter> primaryRelocateWriter;
+
+    private SqlNode originalSqlNode;
+
+    // Following variables used by generated columns
+    private Map<Integer, List<ColumnMeta>> evalRowColumnMetas;
+    private Map<Integer, List<Integer>> inputToEvalFieldMappings;
+    private Map<Integer, List<RexNode>> genColRexNodes;
 
     protected LogicalRelocate(LogicalModify update, List<Integer> autoIncColumns,
                               Map<Integer, List<RelocateWriter>> relocateWriterMap,
@@ -72,8 +80,10 @@ public class LogicalRelocate extends TableModify {
                               Map<Integer, Mapping> setColumnTargetMappings,
                               Map<Integer, Mapping> setColumnSourceMappings,
                               Map<Integer, List<ColumnMeta>> setColumnMetas,
+                              Map<Integer, Boolean> modifySkOnlyMap,
                               Map<Integer, DistinctWriter> primaryDistinctWriter,
-                              Map<Integer, RelocateWriter> primaryRelocateWriter) {
+                              Map<Integer, RelocateWriter> primaryRelocateWriter,
+                              SqlNode originalSqlNode) {
         super(update.getCluster(),
             update.getTraitSet(),
             update.getTable(),
@@ -95,8 +105,11 @@ public class LogicalRelocate extends TableModify {
         this.setColumnTargetMappings = setColumnTargetMappings;
         this.setColumnSourceMappings = setColumnSourceMappings;
         this.setColumnMetas = setColumnMetas;
+        this.modifySkOnlyMap = modifySkOnlyMap;
         this.primaryDistinctWriter = primaryDistinctWriter;
         this.primaryRelocateWriter = primaryRelocateWriter;
+        this.originalSqlNode = originalSqlNode;
+        this.originalSqlNode = update.getOriginalSqlNode();
     }
 
     public LogicalRelocate(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, CatalogReader catalogReader,
@@ -106,9 +119,9 @@ public class LogicalRelocate extends TableModify {
                            List<Integer> autoIncColumns, Map<Integer, List<RelocateWriter>> relocateWriterMap,
                            Map<Integer, List<DistinctWriter>> modifyWriterMap,
                            Map<Integer, Mapping> setColumnTargetMappings, Map<Integer, Mapping> setColumnSourceMappings,
-                           Map<Integer, List<ColumnMeta>> setColumnMetas,
+                           Map<Integer, List<ColumnMeta>> setColumnMetas, Map<Integer, Boolean> modifySkOnlyMap,
                            Map<Integer, DistinctWriter> primaryDistinctWriter,
-                           Map<Integer, RelocateWriter> primaryRelocateWriter) {
+                           Map<Integer, RelocateWriter> primaryRelocateWriter, SqlNode originalSqlNode) {
         super(cluster,
             traitSet,
             table,
@@ -130,8 +143,10 @@ public class LogicalRelocate extends TableModify {
         this.setColumnTargetMappings = setColumnTargetMappings;
         this.setColumnSourceMappings = setColumnSourceMappings;
         this.setColumnMetas = setColumnMetas;
+        this.modifySkOnlyMap = modifySkOnlyMap;
         this.primaryDistinctWriter = primaryDistinctWriter;
         this.primaryRelocateWriter = primaryRelocateWriter;
+        this.originalSqlNode = originalSqlNode;
     }
 
     /**
@@ -147,8 +162,10 @@ public class LogicalRelocate extends TableModify {
                                                          Map<Integer, Mapping> setColumnTargetMappings,
                                                          Map<Integer, Mapping> setColumnSourceMappings,
                                                          Map<Integer, List<ColumnMeta>> setColumnMetas,
+                                                         Map<Integer, Boolean> modifySkOnly,
                                                          Map<Integer, DistinctWriter> primaryDistinctWriter,
-                                                         Map<Integer, RelocateWriter> primaryRelocateWriter) {
+                                                         Map<Integer, RelocateWriter> primaryRelocateWriter,
+                                                         SqlNode originalSqlNode) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
@@ -156,7 +173,8 @@ public class LogicalRelocate extends TableModify {
         Preconditions.checkArgument(update.getTableInfo().isSingleTarget());
 
         return new LogicalRelocate(update, autoIncColumns, relocateWriterMap, modifyWriterMap, setColumnTargetMappings,
-            setColumnSourceMappings, setColumnMetas, primaryDistinctWriter, primaryRelocateWriter);
+            setColumnSourceMappings, setColumnMetas, modifySkOnly, primaryDistinctWriter, primaryRelocateWriter,
+            originalSqlNode);
     }
 
     public static LogicalRelocate create(LogicalModify update,
@@ -166,14 +184,16 @@ public class LogicalRelocate extends TableModify {
                                          Map<Integer, Mapping> setColumnTargetMappings,
                                          Map<Integer, Mapping> setColumnSourceMappings,
                                          Map<Integer, List<ColumnMeta>> setColumnMetas,
+                                         Map<Integer, Boolean> modifySkOnly,
                                          Map<Integer, DistinctWriter> primaryDistinctWriter,
-                                         Map<Integer, RelocateWriter> primaryRelocateWriter) {
+                                         Map<Integer, RelocateWriter> primaryRelocateWriter,
+                                         SqlNode originalSqlNode) {
         Preconditions.checkNotNull(update);
         Preconditions.checkArgument(update.isUpdate());
 
-        return new LogicalRelocate(update, autoIncColumns, relocateWriterMap,
-            modifyWriterMap, setColumnTargetMappings, setColumnSourceMappings, setColumnMetas, primaryDistinctWriter,
-            primaryRelocateWriter);
+        return new LogicalRelocate(update, autoIncColumns, relocateWriterMap, modifyWriterMap, setColumnTargetMappings,
+            setColumnSourceMappings, setColumnMetas, modifySkOnly, primaryDistinctWriter, primaryRelocateWriter,
+            originalSqlNode);
     }
 
     protected String explainNodeName() {
@@ -218,7 +238,7 @@ public class LogicalRelocate extends TableModify {
 
     @Override
     public final RelNode copy(RelTraitSet traitSet, List<RelNode> inputs) {
-        return new LogicalRelocate(getCluster(),
+        LogicalRelocate newLogicalRelocate = new LogicalRelocate(getCluster(),
             traitSet,
             getTable(),
             getCatalogReader(),
@@ -239,8 +259,14 @@ public class LogicalRelocate extends TableModify {
             getSetColumnTargetMappings(),
             getSetColumnSourceMappings(),
             getSetColumnMetas(),
+            getModifySkOnlyMap(),
             getPrimaryDistinctWriter(),
-            getPrimaryRelocateWriter());
+            getPrimaryRelocateWriter(),
+            getOriginalSqlNode());
+        newLogicalRelocate.evalRowColumnMetas = evalRowColumnMetas;
+        newLogicalRelocate.inputToEvalFieldMappings = inputToEvalFieldMappings;
+        newLogicalRelocate.genColRexNodes = genColRexNodes;
+        return newLogicalRelocate;
     }
 
     public List<Integer> getAutoIncColumns() {
@@ -278,5 +304,44 @@ public class LogicalRelocate extends TableModify {
     @Override
     public String getSchemaName() {
         return schemaName;
+    }
+
+    public SqlNode getOriginalSqlNode() {
+        return originalSqlNode;
+    }
+
+    public Map<Integer, Boolean> getModifySkOnlyMap() {
+        return modifySkOnlyMap;
+    }
+
+    public Map<Integer, List<ColumnMeta>> getEvalRowColumnMetas() {
+        return evalRowColumnMetas;
+    }
+
+    public void setEvalRowColumnMetas(
+        Map<Integer, List<ColumnMeta>> evalRowColumnMetas) {
+        this.evalRowColumnMetas = evalRowColumnMetas;
+    }
+
+    public Map<Integer, List<Integer>> getInputToEvalFieldMappings() {
+        return inputToEvalFieldMappings;
+    }
+
+    public void setInputToEvalFieldMappings(
+        Map<Integer, List<Integer>> inputToEvalFieldMappings) {
+        this.inputToEvalFieldMappings = inputToEvalFieldMappings;
+    }
+
+    public Map<Integer, List<RexNode>> getGenColRexNodes() {
+        return genColRexNodes;
+    }
+
+    public void setGenColRexNodes(
+        Map<Integer, List<RexNode>> genColRexNodes) {
+        this.genColRexNodes = genColRexNodes;
+    }
+
+    public String getLogicalTableName() {
+        return getTargetTableNames().get(0);
     }
 }

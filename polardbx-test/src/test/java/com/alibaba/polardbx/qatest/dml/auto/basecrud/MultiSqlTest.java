@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
  * @since 5.1.14
  */
 
-@RunWith(Parameterized.class)
+
 public class MultiSqlTest extends AutoCrudBasedLockTestCase {
 
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();

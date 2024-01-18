@@ -23,6 +23,7 @@ import org.junit.After;
 import org.junit.Before;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;

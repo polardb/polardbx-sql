@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.archive.reader;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.archive.columns.ColumnProviders;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
@@ -48,7 +47,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult {
     private List<ORCReaderTask> orcReaderTaskList;
@@ -85,12 +83,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
         this.taskIndex = 0;
         this.isFinished = false;
 
-        this.columnProviders =
-            readOption.getColumnMetas().stream()
-                .map(t -> ColumnProviders.getProvider(t)).collect(Collectors.toList());
-        this.aggCalls = aggCalls;
-        this.groupSet = groupSet;
-        this.dataType = dataType;
+        this.columnProviders = readOption.getOssColumnTransformer().getTargetColumnProvides();
         this.sessionProperties = SessionProperties.fromExecutionContext(context);
     }
 
@@ -106,15 +99,6 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
         for (; taskIndex < orcReaderTaskList.size(); taskIndex++) {
             while (true) {
                 ORCReaderTask task = orcReaderTaskList.get(taskIndex);
-                // pass the stripe
-                if (task.pass()) {
-                    ORCReadResult readResult = task.fetchStatistics(sessionProperties);
-                    if (readResult.getResultRows() == 0) {
-                        task.close();
-                        break;
-                    }
-                    return readResult.getChunk();
-                }
 
                 // get the next stripe
                 ORCReadResult readResult = task.next(buffer, sessionProperties);
@@ -129,6 +113,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                 }
 
                 Chunk result = next(buffer,
+                    readOption.getOssColumnTransformer(),
                     inProjectDataTypeList,
                     blockBuilders,
                     condition,
@@ -230,8 +215,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                         blocks[i] =
                             new DecimalBlock(DataTypes.DecimalType, decimalBlock.getMemorySegments(),
                                 decimalBlock.nulls(), decimalBlock.hasNull(), selSize,
-                                selection, decimalBlock.isSimple(), decimalBlock.getInt1Pos(),
-                                decimalBlock.getInt2Pos(), decimalBlock.getFracPos());
+                                selection, decimalBlock.getState());
                     } else if (delayMaterialization && cachedBlock instanceof SliceBlock) {
                         // case 4. slice block delay materialization
                         blocks[i] = new SliceBlock((SliceType) ((SliceBlock) cachedBlock).getType(), 0, selSize,
@@ -285,7 +269,8 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                 return readResult.getChunk();
             }
 
-            Chunk result = next(buffer, inProjectDataTypeList, blockBuilders, context);
+            Chunk result = next(buffer, readOption.getOssColumnTransformer(),
+                inProjectDataTypeList, blockBuilders, context);
             if (result == null) {
                 continue;
             }

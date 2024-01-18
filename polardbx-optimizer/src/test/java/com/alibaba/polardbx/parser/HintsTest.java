@@ -66,6 +66,6 @@ public class HintsTest extends TestCase {
         SQLStatement stmt = parser.parseStatementList().get(0);
         String output = SQLUtils.toMySqlString(stmt);
         Assert.assertEquals("SELECT *\n" +
-                "FROM `test-schema`.t1", output);
+            "FROM t1", output);
     }
 }

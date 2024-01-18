@@ -296,6 +296,7 @@ public class PlanInfo {
         planInfo.estimateExecutionTime = planInfoJson.getDoubleValue("estimateExecutionTime");
         planInfo.origin = planInfoJson.getString("origin");
         planInfo.extend = planInfoJson.getString("extend");
+        planInfo.decodeExtend();
         try {
             planInfo.tablesHashCode = planInfoJson.getInteger("hashcode");
         } catch (Throwable t) {
@@ -327,5 +328,10 @@ public class PlanInfo {
 
     public void setFixHint(String fixHint) {
         this.fixHint = fixHint;
+    }
+
+    // only for ut test
+    public void setId(int id) {
+        this.id = id;
     }
 }

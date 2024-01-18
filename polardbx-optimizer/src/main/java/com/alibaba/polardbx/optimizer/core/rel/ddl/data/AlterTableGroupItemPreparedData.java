@@ -43,6 +43,7 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
      * the alter tablegroup operation is not finish
      */
     private List<PartitionGroupRecord> invisiblePartitionGroups;
+    private boolean operateOnSubPartition;
 
     public String getTableGroupName() {
         return tableGroupName;
@@ -97,8 +98,7 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
         return invisiblePartitionGroups;
     }
 
-    public void setInvisiblePartitionGroups(
-        List<PartitionGroupRecord> invisiblePartitionGroups) {
+    public void setInvisiblePartitionGroups(List<PartitionGroupRecord> invisiblePartitionGroups) {
         this.invisiblePartitionGroups = invisiblePartitionGroups;
     }
 
@@ -124,5 +124,13 @@ public class AlterTableGroupItemPreparedData extends DdlPreparedData {
 
     public void setPrimaryTableName(String primaryTableName) {
         this.primaryTableName = primaryTableName;
+    }
+
+    public boolean isOperateOnSubPartition() {
+        return operateOnSubPartition;
+    }
+
+    public void setOperateOnSubPartition(boolean operateOnSubPartition) {
+        this.operateOnSubPartition = operateOnSubPartition;
     }
 }

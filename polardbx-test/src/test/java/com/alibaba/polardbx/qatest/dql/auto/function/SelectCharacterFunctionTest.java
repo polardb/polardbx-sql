@@ -155,6 +155,14 @@ public class SelectCharacterFunctionTest extends AutoReadBaseTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
+    @Test
+    public void trimOrderByTest() {
+        String sql = String.format("/*+TDDL:ENABLE_PUSH_AGG=false ENABLE_PUSH_PROJECT=false*/"
+            + "select pk, varchar_test, trim(varchar_test) as a from %s order by a", baseOneTableName);
+        System.out.println(sql);
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
     /**
      * @since 5.0.1
      */

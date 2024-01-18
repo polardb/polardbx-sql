@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.gms.ha.impl;
 
+import com.alibaba.polardbx.gms.util.PasswdUtil;
+
 import java.util.Objects;
 
 /**
@@ -27,12 +29,24 @@ public class StorageNodeHaInfo {
     protected StorageRole role;
     protected boolean isHealthy;
     protected int xPort;
+    protected String user;
+    protected String encPasswd;
+    protected final boolean isVip;
 
-    public StorageNodeHaInfo(String addr, StorageRole role, boolean isHealthy, int xPort) {
+    public StorageNodeHaInfo(String addr,
+                             StorageRole role,
+                             boolean isHealthy,
+                             int xPort,
+                             String user,
+                             String passwd,
+                             boolean isVip) {
         this.addr = addr;
         this.role = role;
         this.isHealthy = isHealthy;
         this.xPort = xPort;
+        this.user = user;
+        this.encPasswd = PasswdUtil.encrypt(passwd);
+        this.isVip = isVip;
     }
 
     public String getAddr() {
@@ -79,11 +93,34 @@ public class StorageNodeHaInfo {
         return isHealthy == that.isHealthy &&
             addr.equals(that.addr) &&
             role == that.role &&
-            xPort == that.xPort;
+            xPort == that.xPort &&
+            user.equals(user) &&
+            encPasswd.equals(that.encPasswd) &&
+            isVip == that.isVip;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(addr, role, isHealthy, xPort);
+        return Objects.hash(addr, role, isHealthy, xPort, user, encPasswd, isVip);
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getEncPasswd() {
+        return encPasswd;
+    }
+
+    public void setEncPasswd(String encPasswd) {
+        this.encPasswd = encPasswd;
+    }
+
+    public boolean isVip() {
+        return isVip;
     }
 }

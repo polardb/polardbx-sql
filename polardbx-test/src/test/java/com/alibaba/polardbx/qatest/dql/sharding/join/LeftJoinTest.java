@@ -42,6 +42,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @since 5.0.1
  */
 
+
 public class LeftJoinTest extends ReadBaseTestCase {
 
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();

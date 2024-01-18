@@ -16,9 +16,9 @@
  */
 package org.apache.calcite.sql;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
@@ -33,6 +33,7 @@ import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
 
@@ -447,7 +448,11 @@ public class SqlDataTypeSpec extends SqlNode {
 
             if (charSetName != null) {
                 writer.keyword("CHARACTER SET");
-                writer.identifier(charSetName);
+                if (charSetName.equalsIgnoreCase("UTF-8")) {
+                    writer.keyword("utf8");
+                } else {
+                    writer.identifier(charSetName);
+                }
             }
 
             if (collectionsTypeName != null) {
@@ -475,20 +480,24 @@ public class SqlDataTypeSpec extends SqlNode {
     }
 
     @Override
-    public boolean equalsDeep(SqlNode node, Litmus litmus) {
+    public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
         if (!(node instanceof SqlDataTypeSpec)) {
             return litmus.fail("{} != {}", this, node);
         }
         SqlDataTypeSpec that = (SqlDataTypeSpec) node;
         if (!SqlNode.equalDeep(
             this.collectionsTypeName,
-            that.collectionsTypeName, litmus)) {
+            that.collectionsTypeName, litmus, context)) {
             return litmus.fail(null);
         }
-        if (!this.typeName.equalsDeep(that.typeName, litmus)) {
+        if (!this.typeName.equalsDeep(that.typeName, litmus, context)) {
             return litmus.fail(null);
         }
-        if (this.precision != that.precision) {
+        // fix for 8032
+        final boolean equalInt =
+            this.typeName != null && this.typeName.toString().toLowerCase().endsWith("int") &&
+                (this.precision != 0 && 0 == that.precision || 0 == this.precision && that.precision != 0);
+        if (!equalInt && this.precision != that.precision) {
             return litmus.fail("{} != {}", this, node);
         }
         if (this.scale != that.scale) {
@@ -497,7 +506,11 @@ public class SqlDataTypeSpec extends SqlNode {
         if (!Objects.equals(this.timeZone, that.timeZone)) {
             return litmus.fail("{} != {}", this, node);
         }
-        if (!Objects.equals(this.charSetName, that.charSetName)) {
+        // fix for 8032
+        final boolean implicitUtf8mb3 =
+            (null == this.charSetName && that.charSetName != null && that.charSetName.equalsIgnoreCase("utf8mb3")) ||
+                (this.charSetName != null && this.charSetName.equalsIgnoreCase("utf8mb3") && null == that.charSetName);
+        if (!implicitUtf8mb3 && !Objects.equals(this.charSetName, that.charSetName)) {
             return litmus.fail("{} != {}", this, node);
         }
         return litmus.succeed();
@@ -789,6 +802,10 @@ public class SqlDataTypeSpec extends SqlNode {
         public boolean isA(EnumSet enumSet) {
             return enumSet.contains(this);
         }
+    }
+
+    public boolean isUnsigned() {
+        return unsigned;
     }
 }
 

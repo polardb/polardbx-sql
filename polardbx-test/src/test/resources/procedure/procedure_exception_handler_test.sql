@@ -26,6 +26,31 @@ call bug2260()|
 select @x2|
 drop procedure bug2260|
 
+create procedure bug2260()
+begin
+  declare v1 int;
+  declare continue handler for 4006 set @x2 = 1;
+  select data from dsajlgal_asadngka;
+
+end|
+
+?expect_exception? doesn't exist :
+call bug2260()|
+drop procedure bug2260|
+
+create procedure bug2260()
+begin
+  declare v1 int;
+  declare validate_error condition for 4006;
+  declare continue handler for validate_error set @x2 = 1;
+select data from dsajlgal_asadngka;
+
+end|
+
+?expect_exception? doesn't exist :
+call bug2260()|
+drop procedure bug2260|
+
 drop procedure if exists bug2260|
 create procedure bug2260()
 begin
@@ -208,6 +233,7 @@ drop procedure proc_33618;
 
 drop table if exists t1;
 drop table if exists t2;
+drop view if exists t1;
 DROP PROCEDURE if exists pc;
 DROP PROCEDURE if exists pc_with_flush;
 CREATE TABLE t1(a INTEGER);

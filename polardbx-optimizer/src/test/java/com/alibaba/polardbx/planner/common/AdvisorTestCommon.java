@@ -18,7 +18,6 @@ package com.alibaba.polardbx.planner.common;
 
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
@@ -52,12 +51,10 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
     protected String getPlan(String testSql) {
         String planStr;
         ExecutionContext executionContext = new ExecutionContext();
-        OptimizerContext oc = getContextByAppName(getAppName());
 
         SqlNodeList astList = new FastsqlParser().parse(testSql, executionContext);
 
         SqlNode ast = astList.get(0);
-
 
         final HintPlanner hintPlanner = HintPlanner.getInstance(appName, executionContext);
         executionContext.setInternalSystemSql(false);
@@ -124,9 +121,7 @@ public abstract class AdvisorTestCommon extends PlanTestCommon {
             return sb.toString().trim();
         }
         assertPlanProperty(advisedPlan);
-
         planStr = adviceResult.getAfterPlanForDisplay();
-
         return removeSubqueryHashCode(planStr, advisedPlan, null);
     }
 }

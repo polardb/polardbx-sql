@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 
@@ -55,12 +55,14 @@ public class HashPartRouter extends RangePartRouter {
         return rs;
     }
 
-    public SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum, ExecutionContext ec) {
+    public static SearchDatumInfo buildHashSearchDatumInfo(SearchDatumInfo queryValDatum,
+                                                           SearchDatumHasher hasher,
+                                                           ExecutionContext ec) {
         long hashVal = hasher.calcHashCodeForHashStrategy(ec, queryValDatum);
         PartitionBoundVal[] boundValArr = new PartitionBoundVal[1];
         boundValArr[0] =
             PartitionInfoBuilder
-                .buildOneHashBoundValByLong(null, hashVal, this.boundValDataType,
+                .buildOneHashBoundValByLong(ec, hashVal, hasher.getHashBndValDataType(),
                     PartFieldAccessType.QUERY_PRUNING);
         SearchDatumInfo hashValDatum = new SearchDatumInfo(boundValArr);
         return hashValDatum;

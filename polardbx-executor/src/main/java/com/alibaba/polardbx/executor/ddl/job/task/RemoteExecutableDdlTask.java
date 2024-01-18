@@ -19,13 +19,11 @@ package com.alibaba.polardbx.executor.ddl.job.task;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.node.GmsNodeManager;
-import com.alibaba.polardbx.gms.node.NodeInfo;
-import com.google.common.collect.Lists;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.RandomUtils;
 import org.apache.commons.lang3.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -38,19 +36,31 @@ import java.util.stream.Collectors;
  */
 public interface RemoteExecutableDdlTask {
 
-    default Optional<String> chooseServer(){
-        if(forbidRemoteDdlTask()){
+    default Optional<String> chooseServer() {
+        // choose standby node
+        List<GmsNode> standbyNodeList = GmsNodeManager.getInstance().getStandbyNodes();
+        if (enableStandbyNode() && !standbyNodeList.isEmpty()) {
+            List<String> candidates = standbyNodeList.stream().map(GmsNode::getServerKey).collect(Collectors.toList());
+            candidates.add(null);
+            String chosenNode = candidates.get(RandomUtils.nextInt(0, candidates.size()));
+
+            if (chosenNode != null) {
+                return Optional.of(chosenNode);
+            }
+        }
+
+        if (forbidRemoteDdlTask()) {
             return Optional.empty();
         }
-        List<NodeInfo> remoteNodeList = GmsNodeManager.getInstance().getRemoteNodes();
-        if(CollectionUtils.isEmpty(remoteNodeList)){
+        List<GmsNode> remoteNodeList = GmsNodeManager.getInstance().getRemoteNodes();
+        if (CollectionUtils.isEmpty(remoteNodeList)) {
             //no remote node, so choose local node
             return Optional.empty();
         }
-        List<String> candidates = remoteNodeList.stream().map(NodeInfo::getServerKey).collect(Collectors.toList());
+        List<String> candidates = remoteNodeList.stream().map(GmsNode::getServerKey).collect(Collectors.toList());
         candidates.add(null);
         String chosenNode = candidates.get(RandomUtils.nextInt(0, candidates.size()));
-        if(chosenNode == null){
+        if (chosenNode == null) {
             //choose local node by random
             return Optional.empty();
         }
@@ -58,12 +68,17 @@ public interface RemoteExecutableDdlTask {
         return Optional.of(chosenNode);
     }
 
-    default boolean forbidRemoteDdlTask(){
+    default boolean forbidRemoteDdlTask() {
         String forbidRemoteDdlTaskStr =
-                MetaDbInstConfigManager.getInstance().getInstProperty(ConnectionProperties.FORBID_REMOTE_DDL_TASK, Boolean.TRUE.toString());
-        if(StringUtils.equalsIgnoreCase(forbidRemoteDdlTaskStr, Boolean.TRUE.toString())){
-            return true;
-        }
-        return false;
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.FORBID_REMOTE_DDL_TASK, Boolean.TRUE.toString());
+        return StringUtils.equalsIgnoreCase(forbidRemoteDdlTaskStr, Boolean.TRUE.toString());
+    }
+
+    default boolean enableStandbyNode() {
+        String enableStandbyNodeStr =
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.ENABLE_STANDBY_BACKFILL, Boolean.TRUE.toString());
+        return StringUtils.equalsIgnoreCase(enableStandbyNodeStr, Boolean.TRUE.toString());
     }
 }

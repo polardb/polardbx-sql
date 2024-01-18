@@ -22,10 +22,16 @@ import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.validator.DataOperator;
+import com.alibaba.polardbx.qatest.validator.DataValidator;
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
@@ -43,6 +49,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.usePrepare;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -84,6 +91,22 @@ public class SelectTest {
         public void selectAllFieldTest() {
             String sql = "select * from " + baseOneTableName + " where pk=" + columnDataGenerator.pkValue;
             selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
+        }
+
+        @Test
+        public void xplanPkTest() {
+            if (!useXproto(tddlConnection)) {
+                return;
+            }
+
+            JdbcUtil.executeQuerySuccess(tddlConnection,
+                "trace select * from " + baseOneTableName + " where pk=" + columnDataGenerator.pkValue);
+            final List<List<String>> res =
+                JdbcUtil.getAllStringResult(JdbcUtil.executeQuery("show trace", tddlConnection), false,
+                    ImmutableList.of());
+            final String trace = res.get(0).get(11);
+            Assert.assertTrue(trace.contains("/*PolarDB-X Connection*/"));
+            Assert.assertTrue(trace.contains("plan_digest"));
         }
 
         /**
@@ -188,7 +211,7 @@ public class SelectTest {
             String sql = String
                 .format(
                     "/*+TDDL:Master*/select mtd.pk as ticketDefId from %s as mtd,select_base_one_multi_db_multi_tb as mti "
-                        + "where mtd.pk = mti.integer_test and (case when (mtd.varchar_test = '0' and mtd.tinyint_test = -1) then 1 = 1 else mti.time_test > now() end) "
+                        + "where mtd.pk = mti.integer_test and (case when (mtd.varchar_test = '0' and mtd.tinyint_test = -1) then 1 = 1 else mti.time_test > '12:27:50' end) "
                         + "order by ticketDefId " + "limit 10;",
                     baseOneTableName);
 
@@ -420,7 +443,8 @@ public class SelectTest {
             }
             String sql = "select distinct integer_test from " + baseOneTableName
                 + " order by pk, concat(char_test, 'hehe')";
-            selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
+            // __FIRST_VALUE is not determistic
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
         }
 
         /**
@@ -1040,6 +1064,148 @@ public class SelectTest {
                 JdbcUtil.close(statement2);
             }
 
+        }
+    }
+
+    public static class SelectInTest extends AutoReadBaseTestCase {
+
+        @Test
+        public void testDynamicValues() {
+            String sql = "/*TDDL:a()*/ select 1 in (1, 2*2) as a";
+            String explain = getExplainResult(tddlConnection, sql);
+            Assert.assertTrue(explain != null && explain.contains("?2"));
+
+            sql = "/*TDDL:a()*/ select 1 in (1,2,3,4) as a";
+            explain = getExplainResult(tddlConnection, sql);
+            Assert.assertTrue(explain != null && !explain.contains("?2"));
+
+            sql =
+                "/*TDDL:a()*/ SELECT  * FROM select_base_one_multi_db_multi_tb a join select_base_three_multi_db_multi_tb b on a.pk = b.integer_test where (a.pk, b.pk) in ((1,2),(3,4), (4, 5*6))";
+            explain = getExplainResult(tddlConnection, sql);
+            Assert.assertTrue(explain != null && explain.contains("?2"));
+
+            sql =
+                " /*TDDL:a()*/ SELECT  * FROM select_base_one_multi_db_multi_tb a join select_base_three_multi_db_multi_tb b on a.pk = b.integer_test where (a.pk, b.pk) in ((1,2),(3,4), (4, 5))";
+            explain = getExplainResult(tddlConnection, sql);
+            Assert.assertTrue(explain != null && !explain.contains("?2"));
+        }
+
+        @Test
+        public void testDynamicValues2() {
+            String tableName = "DynamicValues2_" + new Random().nextInt(10000);
+            try {
+                String sql = "/*TDDL:a()*/ select 1 in (1, 2*2) as a";
+                JdbcUtil.executeQuery(sql, tddlConnection);
+                sql = "/*TDDL:a()*/ select 1 in (1,2,3,4) as a";
+                JdbcUtil.executeQuery(sql, tddlConnection);
+                sql = "/*TDDL:a()*/ select 1 not in (1,2,3,4) as a";
+                JdbcUtil.executeQuery(sql, tddlConnection);
+                sql = "/*TDDL:a()*/ select (1,2) in ((1,2),(3,4))";
+                JdbcUtil.executeQuery(sql, tddlConnection);
+                sql = "/*TDDL:a()*/ select (1,2) not in ((1,2),(3,4))";
+                JdbcUtil.executeQuery(sql, tddlConnection);
+
+                DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "drop table if exists " + tableName,
+                    null, false);
+                // create new table and insert data
+                sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (\n" + "  `id` INT UNSIGNED NOT NULL ,\n"
+                    + "  `name` VARCHAR(20), PRIMARY KEY (id)\n"
+                    + ") ";
+                JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+
+                if (usingNewPartDb()) {
+                    sql += " partition BY hash(id) partitions 3;";
+                } else {
+                    sql += " dbpartition BY hash(id) tbpartition by hash(id) tbpartitions 3;";
+                }
+                JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                sql = "insert into " + tableName + "(id,name) values (1,'2'), (2,'b')";
+                DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, false);
+
+                sql = "/*TDDL:a()*/  select * from " + tableName
+                    + " where (`id`) in (1,1,2,3,4,5,6);";
+                DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+                DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "drop table if exists " + tableName,
+                    null, false);
+                // rebuild table by two sharding cols
+                sql = "CREATE TABLE IF NOT EXISTS " + tableName + " (\n" + "  `id` INT UNSIGNED NOT NULL ,\n"
+                    + "  `name` VARCHAR(20), PRIMARY KEY (id)\n"
+                    + ") ";
+                JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+                if (usingNewPartDb()) {
+                    sql += " PARTITION BY KEY(`ID`,`name`) PARTITIONS 4";
+                } else {
+                    sql += " dbpartition BY hash(id) tbpartition by hash(name) tbpartitions 3;";
+                }
+                JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+                sql = "insert into " + tableName + "(id,name) values (1,'2'), (2,'b')";
+                DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, false);
+
+                sql = "/*TDDL:a()*/  select * from " + tableName
+                    + " where (`id`, `name`) in ((1,'2'),(2,'b'),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2));";
+                DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+                sql = "/*TDDL:a()*/  select * from " + tableName
+                    + " where (`id`, `name`) in ((1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,name));";
+                DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+                sql = "select * from " + tableName
+                    + " where (`id`, `name`) in ((1,'2'),(2,'b'),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2),(1,2));";
+                DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+                DataValidator.selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+            } finally {
+                DataOperator.executeOnMysqlAndTddl(mysqlConnection, tddlConnection, "drop table if exists " + tableName,
+                    null, false);
+            }
+        }
+    }
+
+    public static class SelectSubquery {
+        public static final String dbNamePre = "select_subquery_";
+        public static final Random r = new Random();
+
+        @Test
+        public void testSingleTableInDifferentLocality() throws SQLException {
+            String dbName = dbNamePre + r.nextInt(1000);
+            try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+                Statement statement = conn.createStatement();
+                // create database
+                statement.execute("create database if not exists " + dbName + " mode='auto'");
+
+                statement.execute("use " + dbName);
+
+                String createSql = "CREATE TABLE %s (\n"
+                    + "  `id` bigint(11) NOT NULL AUTO_INCREMENT BY GROUP,\n"
+                    + "  `name` varchar(20) DEFAULT NULL,\n"
+                    + "  PRIMARY KEY (`id`)\n"
+                    + ") SINGLE ENGINE=InnoDB DEFAULT CHARSET=utf8 locality = 'dn=%s';";
+
+                ResultSet rs = statement.executeQuery("show storage where INST_KIND='MASTER'");
+                List<String> storageIds = Lists.newArrayList();
+                while (rs.next()) {
+                    storageIds.add(rs.getString("STORAGE_INST_ID"));
+                }
+
+                if (storageIds.size() < 2) {
+                    return;
+                }
+
+                // prepare tables in different storage inst
+                String tb1 = "tb1";
+                String tb2 = "tb2";
+                statement.execute(String.format(createSql, tb1, storageIds.get(0)));
+                statement.execute(String.format(createSql, tb2, storageIds.get(1)));
+
+                // test subquery sql
+                String testSql = "select 1 from %s where name in (select id from %s);";
+                statement.executeQuery(String.format(testSql, tb1, tb2));
+            } finally {
+                ConnectionManager.getInstance().getDruidPolardbxConnection().createStatement()
+                    .execute("drop database if exists " + dbName);
+            }
         }
     }
 }

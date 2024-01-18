@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.session;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
@@ -24,14 +24,14 @@ import com.alibaba.polardbx.server.ServerConnection;
 
 /**
  * 由前后端参与的一次执行会话过程
- * 
+ *
  * @author xianmao.hexm
  */
 public final class ServerSession {
 
     private final ServerConnection source;
 
-    public ServerSession(ServerConnection source){
+    public ServerSession(ServerConnection source) {
         this.source = source;
 
     }

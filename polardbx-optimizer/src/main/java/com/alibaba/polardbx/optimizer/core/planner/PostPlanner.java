@@ -40,6 +40,7 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
+import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -48,6 +49,7 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
@@ -74,7 +76,6 @@ import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
@@ -84,17 +85,23 @@ import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.RecursiveCTE;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalExpand;
+import org.apache.calcite.rel.logical.LogicalOutFile;
 import org.apache.calcite.rel.logical.LogicalRecyclebin;
+import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -130,6 +137,12 @@ public class PostPlanner {
                     this.skipPostPlan = true;
                     return other;
                 } else if (other instanceof SortWindow) {
+                    this.skipPostPlan = true;
+                    return other;
+                } else if (other instanceof HashWindow) {
+                    this.skipPostPlan = true;
+                    return other;
+                } else if (other instanceof RecursiveCTE) {
                     this.skipPostPlan = true;
                     return other;
                 } else {
@@ -273,10 +286,14 @@ public class PostPlanner {
                 boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaNamesOfAst);
                 String groupName = targetTables.keySet().iterator().next();
                 boolean needOnlineColumnModify = false;
+                boolean hasGeneratedColumn = false;
                 for (String tableName : logTableNames) {
                     withGsi &= GlobalIndexMeta.hasIndex(tableName, schemaNamesOfAst, executionContext);
                     needOnlineColumnModify |=
                         TableColumnUtils.isModifying(schemaNamesOfAst, tableName, executionContext);
+                    hasGeneratedColumn |=
+                        GeneratedColumnUtil.containLogicalGeneratedColumn(schemaNamesOfAst, tableName,
+                            executionContext);
                     TableMeta tableMeta = executionContext.getSchemaManager(schemaNamesOfAst).getTable(tableName);
                     if (!isNewPart) {
                         needRelicateWrite &= ComplexTaskPlanUtils
@@ -293,9 +310,10 @@ public class PostPlanner {
                         }
 
                     }
-                    canPushdown &= !withGsi & !needRelicateWrite & !needOnlineColumnModify;
+                    canPushdown &= !withGsi & !needRelicateWrite & !needOnlineColumnModify & !hasGeneratedColumn;
                 }
             }
+            canPushdown &= !RelUtils.existUnPushableLastInsertId(plan);
             canPushdown &= isAllAtOnePhyTb && !existUnPushableRelNode(plan);
             if (canPushdown) {
                 String schemaNamesOfAst = schemaNamesOfPlan.get(0);
@@ -338,9 +356,10 @@ public class PostPlanner {
                     }
 
                     final PhyTableModifyViewBuilder modifyViewBuilder = new PhyTableModifyViewBuilder(sqlTemplate,
-                        targetTables, executionContext, plan, DbType.MYSQL, logTableNames, schemaNamesOfAst);
+                        targetTables, executionContext.getParamMap(), plan, DbType.MYSQL, logTableNames,
+                        schemaNamesOfAst);
                     modifyViewBuilder.setBuildForPushDownOneShardOnly(true);
-                    final List<RelNode> phyTableModifies = modifyViewBuilder.build();
+                    final List<RelNode> phyTableModifies = modifyViewBuilder.build(executionContext);
                     return executionPlan.copy(phyTableModifies.get(0));
                 }
                 case UPDATE: {
@@ -365,13 +384,13 @@ public class PostPlanner {
 
                     final PhyTableModifyViewBuilder modifyViewBuilder = new PhyTableModifyViewBuilder(sqlTemplate,
                         targetTables,
-                        executionContext,
+                        executionContext.getParamMap(),
                         plan,
                         DbType.MYSQL,
                         logTableNames,
                         schemaNamesOfAst);
                     modifyViewBuilder.setBuildForPushDownOneShardOnly(true);
-                    final List<RelNode> phyTableModifies = modifyViewBuilder.build();
+                    final List<RelNode> phyTableModifies = modifyViewBuilder.build(executionContext);
                     return executionPlan.copy(phyTableModifies.get(0));
                 }
                 default:
@@ -439,6 +458,9 @@ public class PostPlanner {
         if (!(plan instanceof DirectTableOperation)) {
             return false;
         }
+        if (((DirectTableOperation) plan).getLockMode() == SqlSelect.LockMode.EXCLUSIVE_LOCK) {
+            return false;
+        }
         Set<Pair<String, String>> tables = executionPlan.getTableSet();
         if (GeneralUtil.isNotEmpty(tables)) {
             Pair<String, String> firstTableSet = tables.iterator().next();
@@ -500,29 +522,32 @@ public class PostPlanner {
         }
 
         boolean pushedDql;
-//        if (PlannerContext.getPlannerContext(plan).isUseMppPlan()) {
-//            if (plan instanceof LogicalView) {
-//                //mpp plan
-//                return !(allTableSingle(((LogicalView) plan).getTableNames(), ((LogicalView) plan).getSchemaName()));
-//            } else {
-//                return false;
-//            }
-//        } else {
-//            pushedDql = !(plan instanceof LogicalModifyView) && plan instanceof LogicalView;
-//        }
-
         pushedDql = !(plan instanceof LogicalModifyView)
             && !(plan instanceof OSSTableScan)
             && plan instanceof LogicalView;
 
         if (pushedDql || plan instanceof LogicalRelocate || plan instanceof BaseTableOperation
-            || plan instanceof LogicalRecyclebin || plan instanceof BroadcastTableModify) {
+            || plan instanceof LogicalRecyclebin || plan instanceof BroadcastTableModify
+            || plan instanceof LogicalOutFile) {
             return true;
         }
 
         if (plan instanceof LogicalModifyView && ((LogicalModifyView) plan).getHintContext() != null
             && ((LogicalModifyView) plan).getHintContext().containsInventoryHint()) {
             return false;
+        }
+
+        // mysql 不支持 Update / Delete limit m,n; 不可下推
+        if (plan instanceof LogicalModify && ((LogicalModify) plan).getOriginalSqlNode() != null) {
+            SqlNode originNode = ((LogicalModify) plan).getOriginalSqlNode();
+            if ((originNode instanceof SqlDelete && ((SqlDelete) originNode).getOffset() != null) ||
+                (originNode instanceof SqlUpdate && ((SqlUpdate) originNode).getOffset() != null)) {
+                return true;
+            }
+        }
+
+        if (plan instanceof LogicalModify && ((LogicalModify) plan).isModifyForeignKey()) {
+            return true;
         }
 
         // For Pushed DML with subquery, sqlTemplate in LogicalModifyView should be replaced by original ast
@@ -558,7 +583,7 @@ public class PostPlanner {
 
         final RelNode plan = executionPlan.getPlan();
         Set<String> schemaNames = executionPlan.getSchemaNames();
-        String key = OptimizerUtils.buildInexprKey(executionContext);
+        String key = OptimizerUtils.buildInExprKey(executionContext);
         PlanShardInfo planShardInfo = executionPlan.getPlanShardInfo(key);
 
         ExtractionResult er = null;
@@ -577,7 +602,10 @@ public class PostPlanner {
             // if no found any schemas in logical plan, then use the default schema to do sharding and plan pushdown
             schemaNameOfPlan = OptimizerContext.getContext(
                 executionContext.getSchemaName()).getSchemaName();
+            // build new set to avoid concurrent modify error
+            schemaNames = new HashSet<>();
             schemaNames.add(schemaNameOfPlan);
+            executionPlan.setSchemaNames(schemaNames);
         } else if (!allowMultiSchema) {
             // if found more than 2 schemas in logical plan, then reject to do plan pushdown
             return new HashMap<>();
@@ -758,13 +786,14 @@ public class PostPlanner {
             @Override
             public void visit(RelNode relNode, int ordinal, RelNode parent) {
                 if (relNode instanceof OSSTableScan) {
+                    // don't optimize oss table scan in post planner
                     exists = true;
                 } else {
                     if (relNode instanceof Project) {
                         exists = PushProjectRule.doNotPush((Project) relNode) ? true : exists;
                     } else if (relNode instanceof Filter) {
                         exists =
-                            RexUtils.containsUnPushableFunction(((Filter) relNode).getCondition(), true) ? true :
+                            RexUtil.containsUnPushableFunction(((Filter) relNode).getCondition(), true) ? true :
                                 exists;
                     }
                 }

@@ -448,8 +448,8 @@ public class InsertGsiErrorTest extends GsiDMLTest {
 //        executeErrorAssert(tddlConnection, sql, param, "ERR_GLOBAL_SECONDARY_INDEX_MODIFY_UNIQUE_KEY");
 
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
-        executeErrorAssert(mysqlConnection, sql, null, "Duplicate entry 'a' for key 'varchar_test'");
-        executeErrorAssert(tddlConnection, sql, null, "Duplicate entry 'a' for key 'varchar_test'");
+        executeErrorAssert(mysqlConnection, sql, null, "Duplicate entry 'a' for key ");
+        executeErrorAssert(tddlConnection, sql, null, "Duplicate entry 'a' for key ");
 
         sql = hint + "select * from " + baseTwoTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);

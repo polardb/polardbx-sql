@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
-import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
@@ -31,10 +30,9 @@ import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
-import com.alibaba.polardbx.common.charset.CollationHandlers;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CollationHandlers;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.protobuf.ByteString;
@@ -44,14 +42,9 @@ import io.airlift.slice.Slices;
 
 import java.sql.Date;
 import java.sql.ResultSet;
-import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.Arrays;
 
 /**
  * datetime(N) type
@@ -350,11 +343,13 @@ public class DatetimeField extends AbstractTemporalField {
     private TypeConversionStatus storeInteger(long value, SessionProperties sessionProperties) {
         if (value < 0) {
             // out of range
+            reset();
             return TypeConversionStatus.TYPE_WARN_OUT_OF_RANGE;
         }
         MysqlDateTime mysqlDateTime = NumericTimeParser.parseDatetimeFromInteger(value, dateFlags(sessionProperties));
         if (mysqlDateTime == null) {
             // bad value
+            reset();
             return TypeConversionStatus.TYPE_ERR_BAD_VALUE;
         }
 

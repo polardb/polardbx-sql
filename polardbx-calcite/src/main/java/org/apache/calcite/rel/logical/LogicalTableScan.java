@@ -126,7 +126,7 @@ public final class LogicalTableScan extends TableScan {
                     return table.getStatistic().getCollations();
                   }
                   return ImmutableList.of();
-                });
+                }).simplify();
     return new LogicalTableScan(cluster, traitSet, relOptTable, hints, indexNode, flashback, partitions);
   }
 

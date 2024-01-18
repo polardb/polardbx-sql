@@ -27,6 +27,16 @@ public class LogicalCreateFileStorage extends BaseDdlOperation {
         this.createFileStorage = (CreateFileStorage) relDdl;
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public CreateFileStorage getCreateFileStorage() {
         return createFileStorage;
     }

@@ -61,6 +61,6 @@ public abstract class AbstractProcedureJobFactory extends DdlJobFactory {
     abstract List<DdlTask> createTasksForOneJob();
 
     protected boolean procedureExists(String procedureSchema, String procedureName) {
-        return ProcedureManager.getInstance().search(procedureSchema, SQLUtils.normalize(procedureName)) != null;
+        return !ProcedureManager.getInstance().notFound(procedureSchema, SQLUtils.normalize(procedureName));
     }
 }

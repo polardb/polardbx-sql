@@ -1,0 +1,10 @@
+## DISABLE_FAST_SQL_PARSER
+## test key/one col/int
+
+create table test_key(
+id int not null auto_increment,
+col1 int,
+col2 varchar(10),
+primary key(id)
+) partition by key() partitions 2;
+show create table test_key;

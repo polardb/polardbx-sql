@@ -1,0 +1,178 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE IF NOT EXISTS tbl_with_gsi1 (
+  a int NOT NULL,
+  b int NOT NULL,
+  c int NOT NULL,
+  d int NOT NULL,
+  GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+     PARTITION p4 VALUES LESS THAN (maxvalue)
+  ),
+  GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+    PARTITION p1 VALUES LESS THAN (100),
+    PARTITION p2 VALUES LESS THAN (200),
+    PARTITION p3 VALUES LESS THAN (300),
+    PARTITION p4 VALUES LESS THAN (maxvalue)
+  )
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_with_gsi2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_with_gsi3 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+GLOBAL INDEX `idxb`(`b`) PARTITION BY RANGE COLUMNS (b) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+),
+GLOBAL INDEX `idxd`(`d`) PARTITION BY RANGE COLUMNS (d) (
+PARTITION p1 VALUES LESS THAN (100),
+PARTITION p2 VALUES LESS THAN (200),
+PARTITION p3 VALUES LESS THAN (300),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+)
+)
+PARTITION BY RANGE COLUMNS (a) (
+PARTITION p1 VALUES LESS THAN (10),
+PARTITION p2 VALUES LESS THAN (20),
+PARTITION p3 VALUES LESS THAN (30),
+PARTITION p4 VALUES LESS THAN (maxvalue)
+);
+
+CREATE TABLE IF NOT EXISTS tbl_bro1 (
+  a int NOT NULL,
+  b int NOT NULL,
+  c int NOT NULL,
+  d int NOT NULL
+) broadcast;
+
+CREATE TABLE IF NOT EXISTS tbl_bro2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) broadcast;
+
+CREATE TABLE IF NOT EXISTS tbl_sin1 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) single;
+
+CREATE TABLE IF NOT EXISTS tbl_sin2 (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL
+) single;
+
+begin;
+
+insert into tbl_with_gsi1 values (11,111,300,111);
+insert into tbl_with_gsi1 values (22,222,300,222);
+insert into tbl_with_gsi1 values (33,333,300,333);
+insert into tbl_with_gsi1 values (44,444,300,444);
+
+insert into tbl_with_gsi2 values (11,111,300,111);
+insert into tbl_with_gsi2 values (22,222,300,222);
+insert into tbl_with_gsi2 values (33,333,300,333);
+insert into tbl_with_gsi2 values (44,444,300,444);
+
+insert into tbl_with_gsi3 values (11,111,300,111);
+insert into tbl_with_gsi3 values (22,222,300,222);
+insert into tbl_with_gsi3 values (33,333,300,333);
+insert into tbl_with_gsi3 values (44,444,300,444);
+
+insert into tbl_with_gsi3 values (11,111,300,111);
+insert into tbl_with_gsi3 values (22,222,300,222);
+insert into tbl_with_gsi3 values (33,333,300,333);
+insert into tbl_with_gsi3 values (44,444,300,444);
+
+insert into tbl_bro1 values (11,111,300,111);
+insert into tbl_bro1 values (22,222,300,222);
+insert into tbl_bro1 values (33,333,300,333);
+insert into tbl_bro1 values (44,444,300,444);
+
+insert into tbl_bro2 values (11,111,300,111);
+insert into tbl_bro2 values (22,222,300,222);
+insert into tbl_bro2 values (33,333,300,333);
+insert into tbl_bro2 values (44,444,300,444);
+
+insert into tbl_sin1 values (11,111,300,111);
+insert into tbl_sin1 values (22,222,300,222);
+insert into tbl_sin1 values (33,333,300,333);
+insert into tbl_sin1 values (44,444,300,444);
+
+insert into tbl_sin2 values (11,111,300,111);
+insert into tbl_sin2 values (22,222,300,222);
+insert into tbl_sin2 values (33,333,300,333);
+insert into tbl_sin2 values (44,444,300,444);
+
+select t1.a,t1.b from tbl_with_gsi1 t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+select t1.a,t1.b from tbl_with_gsi1 partition(p1) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+select t1.a,t1.b from tbl_with_gsi1 partition(p2) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+select t1.a,t1.b from tbl_with_gsi1 partition(p3) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+select t1.a,t1.b from tbl_with_gsi1 partition(p4) t1 join tbl_bro1 t2 on t1.a=t2.a order by t1.a;
+
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p4) t4 on t4.a=t3.a order by t1.a;
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t3.a order by t1.a;
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t2.a order by t1.a;
+select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_sin1 t4 on t4.a=t2.a order by t1.a;
+
+## error_msg: $# non partitioned table #$
+select a,b from tbl_sin1 partition(p1);
+
+## error_msg: $# non partitioned table #$
+select a,b from tbl_bro1 partition(p1);
+
+## error_msg: $# non partitioned table #$
+update tbl_bro1 partition(p1) set a=200 where a=11;
+
+## error_msg: $# non partitioned table #$
+delete tbl_bro1 partition(p1) where a=11;
+
+## error_msg: $# non partitioned table #$
+select t1.a,t1.b from tbl_bro1 partition(p1) t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a order by t1.a;
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p4) t4 on t4.a=t3.a order by t1.a;
+explain select t1.a,t1.b from tbl_bro1 t1 join tbl_with_gsi1 partition(p4) t2 on t1.a=t2.a join tbl_bro2 t3 on t1.a=t3.a join tbl_with_gsi2 partition(p3) t4 on t4.a=t3.a order by t1.a;
+
+rollback;

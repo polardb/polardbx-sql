@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
 public class InformationSchemaTest extends AutoReadBaseTestCase {
 
     private static final String INFORMATION_TEST_DB = "test_information_schema_db";
+    private static final String INFORMATION_TEST_CASE_DB = "test_information_cASE_DB";
 
     private static final String CREATE_TABLE_FORMAT = "CREATE TABLE `%s` (\n"
         + "\t`pk` bigint(11) NOT NULL,\n"
@@ -65,9 +66,16 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         + "\t`timestamp_test` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
         + "\t`year_test` year(4) DEFAULT NULL,\n"
         + "\t`mediumtext_test` mediumtext,\n"
-        + "\tPRIMARY KEY (`pk`)\n"
+        + "\tPRIMARY KEY (`pk`),\n"
+        + "\tUNIQUE KEY (`char_test`, `integer_test`)\n"
         + ")";
 
+    private static final String CREATE_TABLE_FORMAT_MIX_CASE = "CREATE TABLE `%s` (\n"
+        + "\t`pk` bigint(11) NOT NULL,\n"
+        + "\t`INTEGER_teST` int(11) DEFAULT NULL,\n"
+        + "\t`varchaR_TEst` varchar(255) DEFAULT NULL,\n"
+        + "\tPRIMARY KEY (`pk`)\n"
+        + ")";
     private static final String[] mustContainTables = {
         "select_base_one_multi_db_multi_tb",
         "select_base_two_multi_db_multi_tb"};
@@ -102,13 +110,14 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         "select_base_one_multi_db_multi_tb.double_test", "select_base_one_multi_db_multi_tb.decimal_test",
         "select_base_one_multi_db_multi_tb.date_test", "select_base_one_multi_db_multi_tb.time_test",
         "select_base_one_multi_db_multi_tb.datetime_test", "select_base_one_multi_db_multi_tb.timestamp_test",
-        "select_base_one_multi_db_multi_tb.year_test"};
+        "select_base_one_multi_db_multi_tb.year_test",
+        "lowercase.INTEGER_teST", "lowercase.varchaR_TEst"};
 
     private static final String[] mustContainTableIndexes = {
         "select_base_one_multi_db_multi_tb.PRIMARY.pk",
         "select_base_two_multi_db_multi_tb.PRIMARY.pk"};
 
-    private static final String[] mustContainSchema = {INFORMATION_TEST_DB};
+    private static final String[] mustContainSchema = {INFORMATION_TEST_DB, INFORMATION_TEST_CASE_DB};
 
     private static final Set<String> mustContainTablesSet = new HashSet<>();
     private static final Set<String> mustContainTableColumnsSet = new HashSet<>();
@@ -126,15 +135,17 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             mustContainTableIndexesSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + tableIndexName);
         }
         for (String schemaName : mustContainSchema) {
-            mustContainSchemaSet.add(INFORMATION_TEST_DB.toLowerCase() + "." + schemaName);
+            mustContainSchemaSet.add(schemaName.toLowerCase() + "." + schemaName);
         }
     }
 
     @Before
     public void prepareDb() {
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop database if exists " + INFORMATION_TEST_DB);
+        JdbcUtil.dropDatabase(tddlConnection, INFORMATION_TEST_DB);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create database " + INFORMATION_TEST_DB + " mode = 'AUTO'");
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "use " + INFORMATION_TEST_DB);
+        JdbcUtil.dropDatabase(tddlConnection, INFORMATION_TEST_CASE_DB);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "create database " + INFORMATION_TEST_CASE_DB + " mode = 'AUTO'");
+        JdbcUtil.useDb(tddlConnection, INFORMATION_TEST_DB);
         for (String table : mustContainTables) {
             JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_TABLE_FORMAT, table));
         }
@@ -145,11 +156,13 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
             String.format(CREATE_TABLE_FORMAT, "select_base_four_multi_db_multi_tb"));
         JdbcUtil.executeUpdateSuccess(tddlConnection,
             String.format(CREATE_TABLE_FORMAT, "select_base_five_multi_db_multi_tb"));
-
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_TABLE_FORMAT_MIX_CASE, "LoWerCasE"));
     }
 
     @After
     public void clearDB() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "drop database if exists " + INFORMATION_TEST_CASE_DB);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop database if exists " + INFORMATION_TEST_DB);
     }
 
@@ -409,7 +422,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
 
         if (usingNewPartDb()) {
             /**
-             * The performance of information_schema.partitoins is too slow, it will lead to query timeout ,so ignore
+             * The performance of information_schema.partitions is too slow, it will lead to query timeout ,so ignore
              */
             return;
         }
@@ -536,6 +549,21 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         }
     }
 
+    /**
+     * test information schema tables by in expr in different params size
+     */
+    @Test
+    public void testIn() {
+        String sql =
+            "select TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_NAME,CONSTRAINT_TYPE from INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                + "where `TABLE_SCHEMA` = 'drds_mode' and CONSTRAINT_TYPE in ('PRIMARY KEY','UNIQUE KEY')";
+        String sql1 =
+            "select TABLE_SCHEMA,TABLE_NAME,CONSTRAINT_NAME,CONSTRAINT_TYPE from INFORMATION_SCHEMA.TABLE_CONSTRAINTS "
+                + "where `TABLE_SCHEMA` = 'drds_mode' and CONSTRAINT_TYPE in ('PRIMARY KEY')";
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+        JdbcUtil.executeSuccess(tddlConnection, sql1);
+    }
+
     private void checkGlobalIndexes(String tableName, String gsiName, List<String> indexColumns,
                                     List<String> coveringColumns) {
         // search information_schema.GLOBAL_INDEXES
@@ -548,7 +576,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         Assert.assertTrue(results.size() == 1);
 
         // 15 columns in GLOBAL_INDEXES, if the number of column in GLOBAL_INDEXES is changed, please modify this value
-        final int columnCnt = 15;
+        final int columnCnt = 19;
         Assert.assertTrue(results.get(0).size() == columnCnt);
 
         List<String> result = results.get(0).stream()
@@ -596,7 +624,7 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
     }
 
     private int assertContainsAllNames(String sql, int schemaIndex, int nameIndex, Set<String> mustContainNames) {
-        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "/*+TDDL:cmd_extra()*/" + sql);
         Map<String, List<Object>> map = buildTablenameToRecordMap(JdbcUtil.getAllResult(rs), schemaIndex, nameIndex);
         for (String name : mustContainNames) {
             org.junit.Assert.assertTrue(map.containsKey(name) || map.containsKey(name.toUpperCase())
@@ -609,7 +637,8 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
                                                                       int tableNameIndex, int columnNameIndex) {
         Map<String, List<Object>> map = Maps.newHashMap();
         for (List<Object> record : records) {
-            map.put(((String) record.get(tableSchemaIndex)).toLowerCase() + "." + record.get(tableNameIndex) + "."
+            map.put(((String) record.get(tableSchemaIndex)).toLowerCase() + "." + ((String) record.get(
+                tableNameIndex)).toLowerCase() + "."
                 + record.get(columnNameIndex), record);
         }
 

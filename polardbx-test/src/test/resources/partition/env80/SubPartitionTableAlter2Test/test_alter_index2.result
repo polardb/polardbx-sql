@@ -1,0 +1,149 @@
+## DISABLE_FAST_SQL_PARSER
+create table if not exists lc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+subpartition template
+(
+subpartition sp0 values less than ('2020-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+create global index`gsi_lc`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);
+create global index`gsi_rc`
+on `lc_rc_tp1` ( c,d,a,b )
+partition by range columns (c,d)
+(
+partition sp0 values less than ('2021-01-01','a'),
+partition sp1 values less than (maxvalue,maxvalue)
+);
+create global index`gsi_lc_rc`
+on `lc_rc_tp1` ( a,b,c,d )
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+subpartition template
+(
+subpartition sp0 values less than ('2021-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6),(9,9)),
+partition p1 values in ((7,7),(8,8))
+);
+show create table lc_rc_tp1;
+Table,Create Table
+lc_rc_tp1,CREATE TABLE `lc_rc_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	GLOBAL INDEX `gsi_lc` (`a`, `b`, `c`, `d`)
+		PARTITION BY LIST COLUMNS(`a`,`b`)
+		(PARTITION p0 VALUES IN ((5,5),(6,6),(9,9)) ENGINE = InnoDB,
+		 PARTITION p1 VALUES IN ((7,7),(8,8)) ENGINE = InnoDB),
+	GLOBAL INDEX `gsi_lc_rc` (`a`, `b`, `c`, `d`)
+		PARTITION BY LIST COLUMNS(`a`,`b`)
+		SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+		(SUBPARTITION sp0 VALUES LESS THAN ('2021-01-01 00:00:00','a'),
+		 SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+		(PARTITION p0 VALUES IN ((5,5),(6,6),(9,9)),
+		 PARTITION p1 VALUES IN ((7,7),(8,8))),
+	GLOBAL INDEX `gsi_rc` (`c`, `d`, `a`, `b`)
+		PARTITION BY RANGE COLUMNS(`c`,`d`)
+		(PARTITION sp0 VALUES LESS THAN ('2021-01-01 00:00:00','a') ENGINE = InnoDB,
+		 PARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+(SUBPARTITION sp0 VALUES LESS THAN ('2020-01-01 00:00:00','a'),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN ((7,7),(8,8)))
+## add *
+alter index gsi_lc on table lc_rc_tp1
+  add partition ( partition p2 values in ((11,11),(10,10)) );
+## error_msg: $# not support #$
+alter index gsi_lc on table lc_rc_tp1 drop partition p2;
+not support
+## modify add val *
+alter index gsi_lc_rc on table lc_rc_tp1 modify partition p1 add values ( (15,15) );
+## error_msg: $# not support #$
+alter index gsi_lc_rc on table lc_rc_tp1 modify partition p1 drop values ( (15,15) );
+not support
+## split *
+alter index gsi_lc_rc on table lc_rc_tp1
+  split subpartition sp1 into (
+    subpartition sp1 values less than ('2022-01-01','a'),
+    subpartition sp2 values less than (maxvalue, maxvalue)
+  );
+## merge
+alter index gsi_lc_rc on table lc_rc_tp1 merge subpartitions sp1,sp2 to sp1;
+## reorg
+alter index gsi_lc_rc on table lc_rc_tp1
+reorganize subpartition sp0,sp1 into (
+  subpartition sp4 values less than ('2021-01-01','a'),
+  subpartition sp5 values less than ('2028-01-01','a'),
+  subpartition sp3 values less than (maxvalue, maxvalue)
+);
+## error_msg: $# not support #$
+alter index gsi_lc_rc on table lc_rc_tp1
+  drop subpartition sp5;
+not support
+## error_msg: $# not support #$
+alter index gsi_lc_rc on table lc_rc_tp1
+  truncate subpartition sp3;
+not support
+## rename
+alter index gsi_lc_rc on table lc_rc_tp1
+  rename subpartition sp4 to sp0, sp3 to sp1;
+show create table lc_rc_tp1;
+Table,Create Table
+lc_rc_tp1,CREATE TABLE `lc_rc_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	GLOBAL INDEX `gsi_lc` (`a`, `b`, `c`, `d`)
+		PARTITION BY LIST COLUMNS(`a`,`b`)
+		(PARTITION p0 VALUES IN ((5,5),(6,6),(9,9)) ENGINE = InnoDB,
+		 PARTITION p1 VALUES IN ((7,7),(8,8)) ENGINE = InnoDB,
+		 PARTITION p2 VALUES IN ((10,10),(11,11)) ENGINE = InnoDB),
+	GLOBAL INDEX `gsi_lc_rc` (`a`, `b`, `c`, `d`)
+		PARTITION BY LIST COLUMNS(`a`,`b`)
+		SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+		(SUBPARTITION sp0 VALUES LESS THAN ('2021-01-01 00:00:00','a'),
+		 SUBPARTITION sp5 VALUES LESS THAN ('2028-01-01 00:00:00','a'),
+		 SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+		(PARTITION p0 VALUES IN ((5,5),(6,6),(9,9)),
+		 PARTITION p1 VALUES IN ((7,7),(8,8),(15,15))),
+	GLOBAL INDEX `gsi_rc` (`c`, `d`, `a`, `b`)
+		PARTITION BY RANGE COLUMNS(`c`,`d`)
+		(PARTITION sp0 VALUES LESS THAN ('2021-01-01 00:00:00','a') ENGINE = InnoDB,
+		 PARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+(SUBPARTITION sp0 VALUES LESS THAN ('2020-01-01 00:00:00','a'),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN ((7,7),(8,8)))

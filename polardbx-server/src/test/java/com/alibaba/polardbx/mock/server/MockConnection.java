@@ -16,12 +16,11 @@
 
 package com.alibaba.polardbx.mock.server;
 
-import com.alibaba.polardbx.ErrorCode;
-import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
-import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.handler.LoadDataHandler;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.net.ClusterAcceptIdGenerator;
+import com.alibaba.polardbx.net.FrontendConnection;
 
 import java.nio.channels.SocketChannel;
 
@@ -40,14 +39,14 @@ public class MockConnection extends FrontendConnection {
     }
 
     @Override
-    public void handleError(int errCode, Throwable t) {
+    public void handleError(ErrorCode errCode, Throwable t) {
         if (logger.isWarnEnabled()) {
             buildMDC();
             logger.warn("ERROR-CODE: " + errCode, t);
         }
 
         switch (errCode) {
-        case ErrorCode.ERR_HANDLE_DATA:
+        case ERR_HANDLE_DATA:
             writeErrMessage(ErrorCode.ER_YES, t.getMessage());
             break;
         default:
@@ -61,8 +60,13 @@ public class MockConnection extends FrontendConnection {
     }
 
     @Override
-    public LoadDataHandler prepareLoadInfile(String sql) {
-        return null;
+    public boolean prepareLoadInfile(String sql) {
+        return false;
+    }
+
+    @Override
+    public void binlogDump(byte[] data) {
+
     }
 
     @Override

@@ -22,10 +22,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName DrdsShowGlobalIndex
- * @description
- * @Author zzy
- * @Date 2019/10/8 20:06
  */
 public class DrdsShowGlobalIndex extends MySqlStatementImpl implements SQLShowStatement {
 

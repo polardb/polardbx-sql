@@ -134,4 +134,7 @@ public class SqlChangeColumn extends SqlAlterSpecification {
             sourceSql,
             getParserPosition());
     }
+
+    @Override
+    public boolean supportFileStorage() { return true;}
 }

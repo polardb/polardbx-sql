@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
@@ -36,6 +38,19 @@ public class LastInsertId extends AbstractScalarFunction {
 
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
+        // MPP doesn't support LAST_INSERT_ID with parameters.
+        if (args.length > 0 && !ec.getConnection().isMppConnection()) {
+            if (args.length != 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_FUNCTION, "param invalid");
+            }
+            if (args[0] == null) {
+                ec.getConnection().setLastInsertId(0);
+                ec.getConnection().setReturnedLastInsertId(0);
+            } else {
+                ec.getConnection().setLastInsertId(new Long(args[0].toString()));
+                ec.getConnection().setReturnedLastInsertId(new Long(args[0].toString()));
+            }
+        }
         return ec.getConnection().getLastInsertId();
     }
 

@@ -28,12 +28,18 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
@@ -45,6 +51,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /**
  * @author luoyanxin
@@ -57,7 +65,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
                                                    Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                                    Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                    Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                                   Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                                   Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                                    ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -85,27 +93,37 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
                 tablesVersion, true, alterTableGroupSplitPartitionPreparedData.getTargetPhysicalGroups());
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupSplitPartitionPreparedData.getTableGroupName());
+        String firstTbInTg = tableGroupConfig.getAllTables().get(0).getLogTbRec().getTableName();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(firstTbInTg);
+        PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
 
-        Set<Long> outdatedPartitionGroupId = new HashSet<>();
+        Set<Long> outdatedPartitionGroupId =
+            getOldDatePartitionGroups(preparedData,
+                ((AlterTableGroupSplitPartitionPreparedData) preparedData).getSplitPartitions(),
+                ((AlterTableGroupSplitPartitionPreparedData) preparedData).isSplitSubPartition());
         String locality = "";
         for (String splitPartitionName : alterTableGroupSplitPartitionPreparedData.getSplitPartitions()) {
             for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
                 if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
-                    outdatedPartitionGroupId.add(record.id);
                     locality = (record.locality == null) ? "" : record.locality;
                     break;
                 }
             }
         }
         List<String> targetDbList = new ArrayList<>();
-        int targetDbCnt = alterTableGroupSplitPartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
-        List<String> newPartitions = new ArrayList<>();
-        for (int i = 0; i < alterTableGroupSplitPartitionPreparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(alterTableGroupSplitPartitionPreparedData.getTargetGroupDetailInfoExRecords()
-                .get(i % targetDbCnt).phyDbName);
-            newPartitions.add(alterTableGroupSplitPartitionPreparedData.getNewPartitionNames().get(i));
+        List<String> newPartitions = getNewPartitions(partitionInfo);
+
+        Map<String, String> partAndDbMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (PartitionGroupRecord partitionGroupRecord : preparedData.getInvisiblePartitionGroups()) {
+            partAndDbMap.put(partitionGroupRecord.partition_name, partitionGroupRecord.phy_db);
         }
-        List<String> localities = new ArrayList<>(Collections.nCopies(newPartitions.size(), locality));
+        List<String> localities = new ArrayList<>();
+        for (int i = 0; i < newPartitions.size(); i++) {
+            targetDbList.add(partAndDbMap.get(newPartitions.get(i)));
+            localities.add(alterTableGroupSplitPartitionPreparedData.getInvisiblePartitionGroups().get(i)
+                .getLocality());
+        }
+
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
             tableGroupConfig.getTableGroupRecord().getId(),
@@ -155,6 +173,25 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
         return executableDdlJob;
     }
 
+    private List<String> getNewPartitions(PartitionInfo partitionInfo) {
+        AlterTableGroupSplitPartitionPreparedData splitData = (AlterTableGroupSplitPartitionPreparedData) preparedData;
+
+        List<String> newPartitions = preparedData.getNewPartitionNames();
+        PartitionByDefinition subPartBy = partitionInfo.getPartitionBy().getSubPartitionBy();
+        boolean splitTemplateSubPartition =
+            splitData.isSplitSubPartition() && (subPartBy != null && subPartBy.isUseSubPartTemplate());
+        if (splitTemplateSubPartition) {
+            newPartitions = new ArrayList<>();
+            for (String newPartName : preparedData.getNewPartitionNames()) {
+                for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+                    newPartitions.add(
+                        PartitionNameUtil.autoBuildSubPartitionName(partitionSpec.getName(), newPartName));
+                }
+            }
+        }
+        return newPartitions;
+    }
+
     public static ExecutableDdlJob create(@Deprecated DDL ddl,
                                           AlterTableGroupSplitPartitionPreparedData preparedData,
                                           ExecutionContext executionContext) {
@@ -170,7 +207,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
             alterTableGroupSplitPartitionBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableGroupSplitPartitionBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableGroupSplitPartitionBuilder.getOrderedTargetTablesLocations();
         return new AlterTableGroupSplitPartitionJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
@@ -180,7 +217,6 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
     @Override
     protected void excludeResources(Set<String> resources) {
         super.excludeResources(resources);
-
     }
 
 }

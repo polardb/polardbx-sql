@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -119,7 +120,7 @@ public class MdlContextStamped extends MdlContext {
                 tid -> new ConcurrentHashMap<>());
 
             return ticketMap.compute(request.getKey(), (key, ticket) -> {
-                if (null == ticket || !ticket.isValidate()) {
+                if (null == ticket || !ticket.isValidate() || ticket.getType() != request.getType()) {
                     ticket = mdlManager.acquireLock(request, this);
                 }
                 return ticket;
@@ -133,7 +134,7 @@ public class MdlContextStamped extends MdlContext {
     public List<MdlTicket> getWaitFor(MdlKey mdlKey) {
         final MdlManager mdlManager = getMdlManager(mdlKey.getDbName());
         List<MdlTicket> waitForList = mdlManager.getWaitFor(mdlKey);
-        waitForList.removeIf(e->e!=null && e.getContext()==this);
+        waitForList.removeIf(e -> e != null && e.getContext() == this);
         return waitForList;
     }
 

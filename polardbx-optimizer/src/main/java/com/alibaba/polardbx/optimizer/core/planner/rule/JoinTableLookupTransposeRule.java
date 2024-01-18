@@ -69,7 +69,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.mergeProject;
 import static org.apache.calcite.rel.rules.JoinProjectTransposeRule.createProjectExprs;
 import static org.apache.calcite.rel.rules.JoinPushThroughJoinRule.split;
 

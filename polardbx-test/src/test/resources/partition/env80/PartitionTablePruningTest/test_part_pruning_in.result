@@ -1,0 +1,31 @@
+DROP TABLE IF EXISTS application_detail;
+CREATE TABLE `application_detail` (
+	`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+	`scene_id` bigint(20) UNSIGNED NOT NULL,
+	`item_id` bigint(20) UNSIGNED DEFAULT NULL,
+	`seller_id` bigint(20) UNSIGNED DEFAULT NULL,
+	`status` tinyint(4) NOT NULL,
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB AUTO_INCREMENT = 67710200635 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`scene_id`) PARTITIONS 512;
+EXPLAIN SELECT DISTINCT item_id
+FROM application_detail
+WHERE seller_id = 100000105
+	AND scene_id = 208211
+	AND `status` IN (1, 2, 4, 5, 6)
+LIMIT 0, 5;
+
+Logical ExecutionPlan
+PhyTableOperation(tables="application_detail[p152]", sql="SELECT DISTINCT `application_detail`.`item_id` AS `item_id` FROM ? AS `application_detail` WHERE ((`application_detail`.`seller_id` = ?) AND (`application_detail`.`scene_id` = ?) AND (`application_detail`.`status` IN (?))) LIMIT ? OFFSET ?", params="208211,0,100000105,Raw(1,2,4,5,6),5")
+
+EXPLAIN SELECT DISTINCT item_id
+FROM application_detail
+WHERE seller_id = 100000105
+	AND scene_id IN (1, 2, 4, 5, 6)
+LIMIT 0, 5;
+
+Logical ExecutionPlan
+Limit(offset=?2, fetch=?3)
+  HashAgg(group="item_id")
+    Gather(concurrent=true)
+      LogicalView(tables="application_detail[p30,p163,p210,p266,p362]", shardCount=5, sql="SELECT `item_id` FROM `application_detail` AS `application_detail` WHERE ((`seller_id` = ?) AND (`scene_id` IN(?))) GROUP BY `item_id`", isDynamicParam="true")

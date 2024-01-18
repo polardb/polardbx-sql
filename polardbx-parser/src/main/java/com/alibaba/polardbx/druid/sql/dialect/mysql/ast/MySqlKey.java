@@ -26,7 +26,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class MySqlKey extends SQLUnique implements SQLUniqueConstraint, SQLTableConstraint, SQLIndex {
 
-    public MySqlKey(){
+    public MySqlKey() {
         dbType = DbType.mysql;
     }
 

@@ -10,7 +10,7 @@
               `index_schema` varchar(64) not null,
               `index_name` varchar(64) not null,
               `physical_db` varchar(128) default null comment 'Group key',
-              `physical_table` varchar(64) default null comment 'Physical table name',
+              `physical_table` varchar(128) default null comment 'Physical table name',
               `column_index` bigint not null default '-1' comment 'Column index in index table',
               `parameter_method` varchar(64) default null comment 'Parameter method for applying LAST_VALUE to extractor',
               `last_value` longtext,
@@ -29,6 +29,9 @@
         ]]></Create>
         <Change><![CDATA[
             ALTER TABLE `backfill_objects` CONVERT TO CHARACTER SET utf8mb4
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `backfill_objects` modify column physical_table varchar(128) default null comment 'Physical table name'
         ]]></Change>
     </SystemTable>
     <SystemTable name="file_storage_backfill_objects">
@@ -84,6 +87,43 @@
         ]]></Create>
         <Change><![CDATA[
             ALTER TABLE `checker_reports` CONVERT TO CHARACTER SET utf8mb4
+        ]]></Change>
+    </SystemTable>
+    <SystemTable name="changeset_objects">
+        <Create><![CDATA[
+            create table if not exists `changeset_objects` (
+              `id` bigint unsigned not null auto_increment,
+              `changeset_id` bigint unsigned not null,
+              `job_id` bigint unsigned not null,
+              `root_job_id` bigint unsigned not null,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `index_schema` varchar(64) not null,
+              `index_name` varchar(64) not null,
+              `physical_db` varchar(128) default null comment 'Group key',
+              `physical_table` varchar(64) default null comment 'Physical table name',
+              `fetch_times` bigint unsigned not null,
+              `replay_times` bigint unsigned not null,
+              `delete_row_count` bigint unsigned not null,
+              `replace_row_count` bigint unsigned not null,
+              `status` bigint(10) not null default '0' comment '0:INIT,1:RUNNING,2:SUCCESS,3:FAILED',
+              `message` longtext,
+              `start_time` datetime not null default current_timestamp,
+              `fetch_start_time` datetime,
+              `end_time` datetime not null default current_timestamp on update current_timestamp,
+              `extra` longtext,
+              primary key (`id`),
+              unique key `i_cs_db_tb` (`changeset_id`, `physical_db`, `physical_table`),
+              key `i_cs_id` (`changeset_id`),
+              key `i_cs_id_status` (`changeset_id`, `status`),
+              key `i_job_id_status` (`job_id`, `status`)
+            ) charset=utf8mb4
+        ]]></Create>
+        <Change><![CDATA[
+            ALTER TABLE `changeset_objects` CONVERT TO CHARACTER SET utf8mb4
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `changeset_objects` add index `i_job_id_status` (`job_id`, `status`)
         ]]></Change>
     </SystemTable>
 </SystemTables>

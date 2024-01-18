@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.net.packet;
 
+import com.alibaba.polardbx.Capabilities;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 
 /**
@@ -41,6 +42,7 @@ public class MysqlStmtPrepareResponsePacket extends MySQLPacket {
 
     public IPacketOutputProxy write(IPacketOutputProxy proxy) {
         proxy.packetBegin();
+        boolean deprecateEof = proxy.getConnection().isEofDeprecated();
 
         byte packetId = 0;
 
@@ -54,9 +56,11 @@ public class MysqlStmtPrepareResponsePacket extends MySQLPacket {
                 fp.packetId = ++packetId;
                 fp.write(proxy);
             }
-            EOFPacket eof = new EOFPacket();
-            eof.packetId = ++packetId;
-            eof.write(proxy);
+            if (!deprecateEof) {
+                EOFPacket eof = new EOFPacket();
+                eof.packetId = ++packetId;
+                eof.write(proxy);
+            }
         }
 
         // columns
@@ -65,9 +69,11 @@ public class MysqlStmtPrepareResponsePacket extends MySQLPacket {
                 fp.packetId = ++packetId;
                 fp.write(proxy);
             }
-            EOFPacket eof = new EOFPacket();
-            eof.packetId = ++packetId;
-            eof.write(proxy);
+            if (!deprecateEof) {
+                EOFPacket eof = new EOFPacket();
+                eof.packetId = ++packetId;
+                eof.write(proxy);
+            }
         }
 
         proxy.packetEnd();

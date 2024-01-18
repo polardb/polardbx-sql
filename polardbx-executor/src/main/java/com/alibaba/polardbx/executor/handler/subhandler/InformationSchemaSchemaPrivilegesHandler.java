@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
@@ -31,6 +32,9 @@ public class InformationSchemaSchemaPrivilegesHandler extends BaseVirtualViewSub
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
+        if (ConfigDataMode.isFastMock()) {
+            return cursor;
+        }
         PolarPrivManager.getInstance()
             .listSchemaPrivileges(executionContext.getPrivilegeContext().getPolarUserInfo())
             .forEach(cursor::addRow);

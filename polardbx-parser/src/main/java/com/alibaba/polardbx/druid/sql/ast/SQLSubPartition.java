@@ -18,17 +18,19 @@ package com.alibaba.polardbx.druid.sql.ast;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLSubPartition extends SQLObjectImpl {
-    protected SQLName           name;
+    protected SQLName name;
     protected SQLPartitionValue values;
-    protected SQLName           tableSpace;
+    protected SQLName tableSpace;
+
+    protected boolean isAddValues;
 
     // for mysql
-    protected SQLExpr           dataDirectory;
-    protected SQLExpr           indexDirectory;
-    protected SQLExpr           maxRows;
-    protected SQLExpr           minRows;
-    protected SQLExpr           engine;
-    protected SQLExpr           comment;
+    protected SQLExpr dataDirectory;
+    protected SQLExpr indexDirectory;
+    protected SQLExpr maxRows;
+    protected SQLExpr minRows;
+    protected SQLExpr engine;
+    protected SQLExpr comment;
 
     protected SQLName tablespace;
     protected SQLObject storage;
@@ -60,7 +62,7 @@ public class SQLSubPartition extends SQLObjectImpl {
         }
         this.name = name;
     }
-    
+
     public SQLPartitionValue getValues() {
         return values;
     }
@@ -81,6 +83,14 @@ public class SQLSubPartition extends SQLObjectImpl {
             tableSpace.setParent(this);
         }
         this.tableSpace = tableSpace;
+    }
+
+    public boolean isAddValues() {
+        return isAddValues;
+    }
+
+    public void setAddValues(boolean addValues) {
+        isAddValues = addValues;
     }
 
     public SQLExpr getDataDirectory() {

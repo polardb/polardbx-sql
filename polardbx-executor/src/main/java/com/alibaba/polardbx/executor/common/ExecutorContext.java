@@ -21,7 +21,6 @@ import com.alibaba.polardbx.executor.gsi.GsiManager;
 import com.alibaba.polardbx.executor.repo.RepositoryHolder;
 import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
-import com.alibaba.polardbx.gms.node.NodeStatusManager;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
@@ -43,7 +42,6 @@ public class ExecutorContext {
     private AbstractSequenceManager sequenceManager = null;
     private StorageInfoManager storageInfoManager = null;
     private GsiManager gsiManager = null;
-    private NodeStatusManager nodeStatusManager;
 
     private static Map<String, ExecutorContext> executorContextMap = new ConcurrentHashMap<String, ExecutorContext>();
 
@@ -138,14 +136,6 @@ public class ExecutorContext {
 
     public void setGsiManager(GsiManager gsiManager) {
         this.gsiManager = gsiManager;
-    }
-
-    public NodeStatusManager getNodeStatusManager() {
-        return nodeStatusManager;
-    }
-
-    public void setNodeStatusManager(NodeStatusManager nodeStatusManager) {
-        this.nodeStatusManager = nodeStatusManager;
     }
 
     public final static Map<String, ExecutorContext> getExecutorContextMap() {

@@ -19,13 +19,14 @@ package com.alibaba.polardbx.executor.balancer.splitpartition;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.ResultSet;
@@ -41,7 +42,7 @@ import static java.lang.Math.min;
 
 public class SplitPartitionStats {
 
-    private int maxSamples = 10000;
+    private int maxSamples = 200_000;
 
     private float sampleRate = 0.05f;
 
@@ -125,7 +126,7 @@ public class SplitPartitionStats {
             physicalTableName);
     }
 
-    private float floorSampleRate(String physicalGroup, String physicalTable, float sampleRate) {
+    private Pair<Float, Long> floorSampleRate(String physicalGroup, String physicalTable, float sampleRate) {
         String physicalDb = TableGroupLocation.getOrderedGroupList(schemaName).stream()
             .filter(o -> o.groupName.equalsIgnoreCase(physicalGroup)).collect(Collectors.toList()).get(0).phyDbName;
         String COUNT_SQL =
@@ -141,14 +142,16 @@ public class SplitPartitionStats {
             throw new RuntimeException(e);
         }
         float maxSampleRate = (float) (maxSamples / (tableRows * 2.0));
-        return min(maxSampleRate, sampleRate);
+        float finalSampleRate = min(maxSampleRate, sampleRate);
+        return Pair.of(finalSampleRate, tableRows);
     }
 
-    public List<List<Object>> sampleTablePartitions() throws SQLException {
+    public Pair<List<List<Object>>, Long> sampleTablePartitions() throws SQLException {
         // scan sampling
-        List<List<Object>> results = new ArrayList<>();
+        List<List<Object>> resultRows = new ArrayList<>();
         Boolean withHint = checkSupportFastSample();
-        float finalSampleRate = floorSampleRate(physicalGroup, physicalTable, sampleRate);
+        Pair<Float, Long> sampleRateResult = floorSampleRate(physicalGroup, physicalTable, sampleRate);
+        float finalSampleRate = sampleRateResult.getKey();
         String sql = constructScanPartitionSamplingSql(physicalTable, partitionColumnList, finalSampleRate, withHint);
         try (IConnection connection = (IConnection) tGroupDataSource.getConnection();
             Statement statement = connection.createStatement();
@@ -157,11 +160,11 @@ public class SplitPartitionStats {
                 if (!withHint && Math.random() > finalSampleRate) {
                     continue;
                 }
-                results.add(new ArrayList<>());
+                resultRows.add(new ArrayList<>());
                 for (int i = 0; i < partitionColumnList.size(); i++) {
                     try {
                         Object columnValue = resultSet.getObject(partitionColumnList.get(i).getName());
-                        results.get(results.size() - 1).add(columnValue);
+                        resultRows.get(resultRows.size() - 1).add(columnValue);
                     } catch (Throwable e) {
                         continue;
                     }
@@ -171,6 +174,6 @@ public class SplitPartitionStats {
         } catch (Throwable e) {
             throw e;
         }
-        return results;
+        return Pair.of(resultRows, sampleRateResult.getValue());
     }
 }

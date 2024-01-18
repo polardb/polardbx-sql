@@ -19,6 +19,7 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLSyncMetaStatement extends SQLStatementImpl {
@@ -67,5 +68,10 @@ public class SQLSyncMetaStatement extends SQLStatementImpl {
 
     public void setLike(SQLExpr like) {
         this.like = like;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

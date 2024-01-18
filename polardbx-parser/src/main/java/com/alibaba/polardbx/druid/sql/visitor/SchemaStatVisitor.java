@@ -81,7 +81,6 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableExchangePartiti
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableImportPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableOptimizePartition;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReOrganizePartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRebuildPartition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRename;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRepairPartition;
@@ -188,6 +187,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWithSubqueryClause;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableReorgPartition;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
 import com.alibaba.polardbx.druid.sql.repository.SchemaObject;
@@ -488,7 +488,8 @@ public class SchemaStatVisitor extends SQLASTVisitorAdapter {
                 columnTableSource = ((SQLPropertyExpr) selectItemExpr).getResolvedTableSource();
             }
 
-            if (columnTableSource instanceof SQLExprTableSource && ((SQLExprTableSource) columnTableSource)
+            if (columnTableSource instanceof SQLExprTableSource
+                && ((SQLExprTableSource) columnTableSource)
                 .getExpr() instanceof SQLName) {
                 SQLName tableExpr = (SQLName) ((SQLExprTableSource) columnTableSource).getExpr();
                 if (tableExpr instanceof SQLIdentifierExpr) {
@@ -1131,7 +1132,8 @@ public class SchemaStatVisitor extends SQLASTVisitorAdapter {
                             SQLTableSource from = queryBlock.getFrom();
                             if (from instanceof SQLJoinTableSource) {
                                 SQLSelectItem allColumnSelectItem = queryBlock.findAllColumnSelectItem();
-                                if (allColumnSelectItem != null && allColumnSelectItem
+                                if (allColumnSelectItem != null
+                                    && allColumnSelectItem
                                     .getExpr() instanceof SQLPropertyExpr) {
                                     SQLExpr owner = ((SQLPropertyExpr) allColumnSelectItem.getExpr()).getOwner();
                                     if (owner instanceof SQLName) {
@@ -2681,9 +2683,13 @@ public class SchemaStatVisitor extends SQLASTVisitorAdapter {
     public boolean visit(SQLAlterTableDropPartition x) {
         return false;
     }
+@Override
+    public boolean visit(SQLAlterTableDropFile x) {
+        return false;
+    }
 
     @Override
-    public boolean visit(SQLAlterTableReOrganizePartition x) {
+    public boolean visit(SQLAlterTableReorgPartition x) {
         return false;
     }
 
@@ -3234,8 +3240,4 @@ public class SchemaStatVisitor extends SQLASTVisitorAdapter {
         return originalTables;
     }
 
-    @Override
-    public boolean visit(SQLAlterTableDropFile x) {
-        return false;
-    }
 }

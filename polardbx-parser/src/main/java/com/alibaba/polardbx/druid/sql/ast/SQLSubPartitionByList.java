@@ -15,42 +15,37 @@
  */
 package com.alibaba.polardbx.druid.sql.ast;
 
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLSubPartitionByList extends SQLSubPartitionBy {
 
-    protected SQLName column;
-
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {
-            acceptChild(visitor, column);
+            acceptChild(visitor, columns);
             acceptChild(visitor, subPartitionsCount);
         }
         visitor.endVisit(this);
     }
 
-    public SQLName getColumn() {
-        return column;
-    }
-
-    public void setColumn(SQLName column) {
-        if (column != null) {
-            column.setParent(this);
-        }
-        this.column = column;
-    }
-
     public SQLSubPartitionByList clone() {
         SQLSubPartitionByList x = new SQLSubPartitionByList();
-        if (column != null) {
-            x.setColumn(column.clone());
+        for (SQLExpr column : columns) {
+            SQLExpr c2 = column.clone();
+            c2.setParent(x);
+            x.columns.add(c2);
         }
         return x;
     }
 
     public boolean isPartitionByColumn(long columnNameHashCode64) {
-        return column != null
-                && column.nameHashCode64() == columnNameHashCode64;
+        for (SQLExpr column : columns) {
+            if (column instanceof SQLIdentifierExpr
+                && ((SQLIdentifierExpr) column).nameHashCode64() == columnNameHashCode64) {
+                return true;
+            }
+        }
+        return false;
     }
 }

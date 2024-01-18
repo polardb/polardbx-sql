@@ -25,7 +25,6 @@ import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -36,7 +35,6 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
 
 public class NewSequenceTableTest extends BaseSequenceTestCase {
 
@@ -54,6 +52,9 @@ public class NewSequenceTableTest extends BaseSequenceTestCase {
 
     private static final String SELECT_ID = "select id from %s order by id";
     private static final String DELETE_TABLE = "delete from %s";
+
+    protected static final String SET_FAIL_POINT = "set @%s='%s'";
+    protected static final String SET_FP_CLEAR = "set @FP_CLEAR=true";
 
     private static final int BATCH_SIZE = 10;
     private static final int NUM_BATCH = 10;
@@ -140,6 +141,26 @@ public class NewSequenceTableTest extends BaseSequenceTestCase {
         dropTableIfExists(tableName);
     }
 
+    @Test
+    public void testSeqIdempotent() throws Exception {
+        if (!seqType.equals("NEW")) {
+            return;
+        }
+
+        dropTableIfExists(tableName);
+
+        final String failPointKey = "FP_NEW_SEQ_EXCEPTION_RIGHT_AFTER_PHY_CREATION";
+
+        try {
+            injectException(failPointKey, true);
+            createTable();
+        } finally {
+            injectException(failPointKey, false);
+        }
+
+        dropTableIfExists(tableName);
+    }
+
     private void checkSequenceWithTable(long startWith) throws Exception {
         long expectedValue = startWith;
         checkShowNextval(expectedValue);
@@ -222,6 +243,13 @@ public class NewSequenceTableTest extends BaseSequenceTestCase {
     private void alterTable(long startWith) {
         String sql = String.format(ALTER_TABLE, tableName, startWith);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    private void injectException(String failPointKey, boolean enabled) throws SQLException {
+        String sql = enabled ? String.format(SET_FAIL_POINT, failPointKey, "TRUE") : SET_FP_CLEAR;
+        try (PreparedStatement ps = tddlConnection.prepareStatement(sql)) {
+            ps.executeUpdate();
+        }
     }
 
     private void clearTableData() {

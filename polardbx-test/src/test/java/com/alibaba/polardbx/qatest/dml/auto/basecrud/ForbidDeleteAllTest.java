@@ -53,6 +53,7 @@ import static org.hamcrest.CoreMatchers.is;
  * @author arnkore 2017-03-21 17:36
  */
 
+
 //fxj
 public class ForbidDeleteAllTest extends AutoCrudBasedLockTestCase {
     private final String tddlHint = "/*+TDDL:cmd_extra(FORBID_EXECUTE_DML_ALL=true)*/";

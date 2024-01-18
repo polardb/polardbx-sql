@@ -18,6 +18,11 @@ package com.alibaba.polardbx.optimizer.partition;
 
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.boundspec.RangeBoundSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -53,21 +58,23 @@ public class PartitionLocatorTest {
         for (int i = 0; i < boundValList.size(); i++) {
             PartitionSpec p = new PartitionSpec();
             RangeBoundSpec pBoundSpec = new RangeBoundSpec();
-            pBoundSpec.strategy = PartitionStrategy.RANGE;
+            pBoundSpec.setStrategy(PartitionStrategy.RANGE);
+            ;
             Long shardKeyObj = boundValList.get(i);
-            PartitionBoundVal pBoundVal = PartitionBoundVal.createPartitionBoundVal(null, PartitionBoundValueKind.DATUM_NORMAL_VALUE);
+            PartitionBoundVal pBoundVal =
+                PartitionBoundVal.createPartitionBoundVal(null, PartitionBoundValueKind.DATUM_NORMAL_VALUE);
             pBoundSpec.setBoundValue(pBoundVal);
-            p.isMaxValueRange = false;
-            p.boundSpec = pBoundSpec;
-            p.position = Long.valueOf(i + i);
-            p.name = String.format("p%s", i + 1);
-            p.comment = "";
+            p.setMaxValueRange(false);
+            p.setBoundSpec(pBoundSpec);
+            ;
+            p.setPosition(Long.valueOf(i + i));
+            p.setName(String.format("p%s", i + 1));
+            p.setComment("");
             PartitionLocation location = locator.computeLocation(dbName, tbName, p, "test_group");
-            p.location = location;
-            p.boundSpaceComparator = null;
+            p.setLocation(location);
+            p.setBoundSpaceComparator(null);
             partitionSpecs.add(p);
         }
-
 
         for (int i = 0; i < groupCnt; i++) {
             System.out.println(groupStat[i]);

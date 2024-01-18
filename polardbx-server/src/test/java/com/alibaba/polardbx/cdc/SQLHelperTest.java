@@ -26,8 +26,8 @@ import org.junit.Test;
 
 import java.util.List;
 
-import static com.alibaba.polardbx.cdc.SQLHelper.FEATURES;
 import static com.alibaba.polardbx.cdc.SQLHelper.filterColumns;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
 /**
  * created by ziyang.lb
@@ -55,7 +55,7 @@ public class SQLHelperTest {
             + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4";
 
         List<SQLStatement> statementList =
-            SQLParserUtils.createSQLStatementParser(sqlInput, DbType.mysql, FEATURES).parseStatementList();
+            SQLParserUtils.createSQLStatementParser(sqlInput, DbType.mysql, SQL_PARSE_FEATURES).parseStatementList();
         MySqlCreateTableStatement createStmt = (MySqlCreateTableStatement) statementList.get(0);
         filterColumns(createStmt, Lists.newArrayList("b"));
         String result = createStmt.toString();

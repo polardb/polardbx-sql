@@ -1,0 +1,122 @@
+## DISABLE_FAST_SQL_PARSER
+create table if not exists h_rtodays_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( maxvalue )
+),
+partition p3
+(
+subpartition p3sp1 values less than ( to_days('2020-01-01') ),
+subpartition p3sp2 values less than ( to_days('2021-01-01') ),
+subpartition p3sp3 values less than ( maxvalue )
+),partition p4
+(
+subpartition p4sp1 values less than ( to_days('2020-01-01') ),
+subpartition p4sp2 values less than ( to_days('2021-01-01') ),
+subpartition p4sp3 values less than ( maxvalue )
+)
+);
+## route to p4sp1
+insert into h_rtodays_ntp values(0, 1, '2018-01-01', 'A', 'B');
+select part_route('','h_rtodays_ntp', 0,1,'2018-01-01') as route_rs;
+route_rs
+p4sp1
+select * from h_rtodays_ntp where a=0 and b=1 and c='2018-01-01';
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,A,B
+select * from h_rtodays_ntp partition(p4sp1);
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,A,B
+create table if not exists h_hsubstr_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by hash (substr(d,2)) subpartitions 4;
+insert into h_hsubstr_ntp values(0, 1, '2018-01-01', 'A', 'B');
+select part_route('','h_hsubstr_ntp', 0,1,'A') as route_rs;
+route_rs
+p2sp3
+select * from h_hsubstr_ntp where a=0 and b=1 and d='A';
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,A,B
+select * from h_hsubstr_ntp partition(p2sp3);
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,A,B
+create table if not exists h_rsubstr_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (substr(d,2))
+(
+  partition p1 (
+    subpartition p1sp1 values less than ( substr('0abc',2) ),
+    subpartition p1sp2 values less than ( maxvalue )
+  ),
+  partition p2 (
+    subpartition p2sp1 values less than ( substr('0abc', 2) ),
+    subpartition p2sp2 values less than ( substr('0efg', 2) ),
+    subpartition p2sp3 values less than ( maxvalue )
+  )
+);
+show create table h_rsubstr_ntp;
+Table,Create Table
+h_rsubstr_ntp,CREATE TABLE `h_rsubstr_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`a`,`b`)
+SUBPARTITION BY RANGE(SUBSTR(`d`,2))
+(PARTITION p1
+ (SUBPARTITION p1sp1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp1 VALUES LESS THAN ('abc') ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES LESS THAN ('efg') ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+## route to p2sp2
+insert into h_rsubstr_ntp values(0, 1, '2018-01-01', '0efc', 'B');
+select part_route('','h_rsubstr_ntp', 0,1,'0efc') as route_rs;
+route_rs
+p2sp2
+select * from h_rsubstr_ntp where a=0 and b=1 and d='0efc';
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,0efc,B
+select * from h_rsubstr_ntp partition(p2sp2);
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,0efc,B
+explain select * from h_rsubstr_ntp where a=0 and b=1 and d between '0efa' and '0efd';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="h_rsubstr_ntp[p2sp1,p2sp2,p2sp3]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `h_rsubstr_ntp` AS `h_rsubstr_ntp` WHERE ((`a` = ?) AND (`b` = ?) AND (`d` BETWEEN ? AND ?))")
+select * from h_rsubstr_ntp where a=0 and b=1 and d between '0efa' and '0efd';
+a,b,c,d,e
+0,1,2018-01-01 00:00:00.0,0efc,B

@@ -1,0 +1,12 @@
+test_reorg_range_table
+test_reorg_range_tablegroup
+test_reorg_list_table
+test_reorg_list_tablegroup
+test_alter_subpart_values3
+test_alter_subpart_values2
+test_alter_subpart_values
+test_subpart_name_length
+test_create_subpart_index
+test_create_subpart_index2
+test_all_ntp_subpart_split_merge
+test_all_tp_subpart_split_merge

@@ -1,0 +1,48 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_db8"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_locality_db8"
+      - "create database test_locality_db8 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db8;"
+      - "create tablegroup tg1  locality ='dn=$dn1, $dn2';"
+      - "create tablegroup tg2  locality = 'dn=$dn1';"
+      - "create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 tablegroup = 'tg1';"
+      - "create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1,$dn2';"
+      - "create table t3(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1';"
+      - "create table t4(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality = 'dn=$dn1,$dn2';"
+      - "create table s1(x int  AUTO_INCREMENT primary key, y int) single tablegroup = 'tg2';"
+      - "create table s2(x int  AUTO_INCREMENT primary key, y int) single locality = 'dn=$dn1';"
+      - "create table s3(x int  AUTO_INCREMENT primary key, y int) single locality = 'dn=$dn1';"
+      - "create table s4(x int  AUTO_INCREMENT primary key, y int) single locality = 'dn=$dn2';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db8;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table $dn1,$dn2
+        - t3 table $dn1
+        - t4 table $dn1,$dn2
+        - s1 table $dn1
+        - s2 table $dn1
+        - s3 table $dn1
+        - s4 table $dn2
+        - test_locality_db8 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1,$dn2
+        - t2,t4 $tg2 $dn1,$dn2
+        - s1 $tg3 $dn1
+        - s2,s3 $tg4 $dn1
+        - s4 $tg5 $dn2
+        - t3 $tg6 $dn1
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+
+cleanupDDls:
+  - "use polardbx;"
+  - "drop database if exists test_locality_db8;"

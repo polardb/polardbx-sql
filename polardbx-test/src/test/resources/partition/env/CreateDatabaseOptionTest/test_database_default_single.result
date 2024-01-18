@@ -1,0 +1,51 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists autodb_no_ds;
+drop database if exists drdsdb_no_ds;
+drop database if exists autodb_ds_on;
+drop database if exists autodb_ds_on2;
+drop database if exists autodb_ds_off;
+drop database if exists autodb_ds_off2;
+drop database if exists drdsdb_ds_off;
+drop database if exists drdsdb_ds_off2;
+create database autodb_no_ds mode='auto';
+create database drdsdb_no_ds mode='drds';
+show create database autodb_no_ds;
+Database,Create Database
+autodb_no_ds,CREATE DATABASE `autodb_no_ds` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+show create database drdsdb_no_ds;
+Database,Create Database
+drdsdb_no_ds,CREATE DATABASE `drdsdb_no_ds` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
+create database autodb_ds_on2 mode='auto' DEFAULT_SINGLE='on';
+create database autodb_ds_off2 mode='auto' DEFAULT_SINGLE='off';
+set DATABASE_DEFAULT_SINGLE=true;
+create database autodb_ds_on mode='auto';
+create database drdsdb_ds_off mode='drds';
+set DATABASE_DEFAULT_SINGLE=false;
+create database autodb_ds_off mode='auto';
+create database drdsdb_ds_off2 mode='drds';
+show create database autodb_ds_on;
+Database,Create Database
+autodb_ds_on,CREATE DATABASE `autodb_ds_on` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto' DEFAULT_SINGLE = 'on'
+show create database autodb_ds_off;
+Database,Create Database
+autodb_ds_off,CREATE DATABASE `autodb_ds_off` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+show create database autodb_ds_on2;
+Database,Create Database
+autodb_ds_on2,CREATE DATABASE `autodb_ds_on2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto' DEFAULT_SINGLE = 'on'
+show create database autodb_ds_off2;
+Database,Create Database
+autodb_ds_off2,CREATE DATABASE `autodb_ds_off2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+show create database drdsdb_ds_off;
+Database,Create Database
+drdsdb_ds_off,CREATE DATABASE `drdsdb_ds_off` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
+show create database drdsdb_ds_off2;
+Database,Create Database
+drdsdb_ds_off2,CREATE DATABASE `drdsdb_ds_off2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'drds'
+drop database if exists autodb_no_ds;
+drop database if exists drdsdb_no_ds;
+drop database if exists autodb_ds_on;
+drop database if exists autodb_ds_on2;
+drop database if exists autodb_ds_off;
+drop database if exists autodb_ds_off2;
+drop database if exists drdsdb_ds_off;
+drop database if exists drdsdb_ds_off2;

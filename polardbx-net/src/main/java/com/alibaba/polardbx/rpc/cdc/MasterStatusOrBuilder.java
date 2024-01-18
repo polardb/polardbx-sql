@@ -23,70 +23,57 @@ public interface MasterStatusOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.MasterStatus)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>string file = 1;</code>
-     *
-     * @return The file.
-     */
-    java.lang.String getFile();
+  /**
+   * <code>string file = 1;</code>
+   * @return The file.
+   */
+  java.lang.String getFile();
+  /**
+   * <code>string file = 1;</code>
+   * @return The bytes for file.
+   */
+  com.google.protobuf.ByteString
+      getFileBytes();
 
-    /**
-     * <code>string file = 1;</code>
-     *
-     * @return The bytes for file.
-     */
-    com.google.protobuf.ByteString
-    getFileBytes();
+  /**
+   * <code>int64 position = 2;</code>
+   * @return The position.
+   */
+  long getPosition();
 
-    /**
-     * <code>int64 position = 2;</code>
-     *
-     * @return The position.
-     */
-    long getPosition();
+  /**
+   * <code>string binlogDoDB = 3;</code>
+   * @return The binlogDoDB.
+   */
+  java.lang.String getBinlogDoDB();
+  /**
+   * <code>string binlogDoDB = 3;</code>
+   * @return The bytes for binlogDoDB.
+   */
+  com.google.protobuf.ByteString
+      getBinlogDoDBBytes();
 
-    /**
-     * <code>string binlogDoDB = 3;</code>
-     *
-     * @return The binlogDoDB.
-     */
-    java.lang.String getBinlogDoDB();
+  /**
+   * <code>string binlogIgnoreDB = 4;</code>
+   * @return The binlogIgnoreDB.
+   */
+  java.lang.String getBinlogIgnoreDB();
+  /**
+   * <code>string binlogIgnoreDB = 4;</code>
+   * @return The bytes for binlogIgnoreDB.
+   */
+  com.google.protobuf.ByteString
+      getBinlogIgnoreDBBytes();
 
-    /**
-     * <code>string binlogDoDB = 3;</code>
-     *
-     * @return The bytes for binlogDoDB.
-     */
-    com.google.protobuf.ByteString
-    getBinlogDoDBBytes();
-
-    /**
-     * <code>string binlogIgnoreDB = 4;</code>
-     *
-     * @return The binlogIgnoreDB.
-     */
-    java.lang.String getBinlogIgnoreDB();
-
-    /**
-     * <code>string binlogIgnoreDB = 4;</code>
-     *
-     * @return The bytes for binlogIgnoreDB.
-     */
-    com.google.protobuf.ByteString
-    getBinlogIgnoreDBBytes();
-
-    /**
-     * <code>string executedGtidSet = 5;</code>
-     *
-     * @return The executedGtidSet.
-     */
-    java.lang.String getExecutedGtidSet();
-
-    /**
-     * <code>string executedGtidSet = 5;</code>
-     *
-     * @return The bytes for executedGtidSet.
-     */
-    com.google.protobuf.ByteString
-    getExecutedGtidSetBytes();
+  /**
+   * <code>string executedGtidSet = 5;</code>
+   * @return The executedGtidSet.
+   */
+  java.lang.String getExecutedGtidSet();
+  /**
+   * <code>string executedGtidSet = 5;</code>
+   * @return The bytes for executedGtidSet.
+   */
+  com.google.protobuf.ByteString
+      getExecutedGtidSetBytes();
 }

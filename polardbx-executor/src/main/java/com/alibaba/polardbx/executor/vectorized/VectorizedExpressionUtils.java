@@ -23,12 +23,20 @@ import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
+import com.alibaba.polardbx.executor.vectorized.build.CommonExpressionNode;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.google.common.base.Preconditions;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class VectorizedExpressionUtils {
     /**
@@ -274,6 +282,7 @@ public class VectorizedExpressionUtils {
                 builder.append("└ ");
             }
 
+            VectorizedExpression folded = null;
             if (expression instanceof BuiltInFunctionVectorizedExpression) {
                 builder
                     .append("[BuiltIn].")
@@ -284,12 +293,25 @@ public class VectorizedExpressionUtils {
             } else {
                 builder.append(expression.getClass().getSimpleName());
             }
+
+            if (expression instanceof LiteralVectorizedExpression) {
+                folded = ((LiteralVectorizedExpression) expression).getFolded();
+            }
+
             builder.append(", { ");
             String outputDataType = expression.getOutputDataType() == null ? "[Filter]" :
                 expression.getOutputDataType().getClass().getSimpleName();
             builder
-                .append(outputDataType).append(", ")
-                .append(expression.getOutputIndex()).append(" }\n");
+                .append(outputDataType)
+                .append(", ")
+                .append(expression.getOutputIndex())
+                .append(" }")
+                .append(folded != null ? "[constant fold]" : "")
+                .append("\n");
+
+            if (folded != null) {
+                visit(folded, level + 1, builder);
+            }
 
             return builder.toString();
         }
@@ -300,12 +322,14 @@ public class VectorizedExpressionUtils {
         getInputIndex(vectorizedExpression, inputIndex);
         return inputIndex;
     }
+
     public static void getInputIndex(VectorizedExpression vectorizedExpression, List<Integer> inputIndex) {
         VectorizedExpression[] children = vectorizedExpression.getChildren();
         if (children == null || children.length == 0) {
             inputIndex.add(vectorizedExpression.getOutputIndex());
             return;
         }
+
         for (int i = 0; i < children.length; i++) {
             getInputIndex(children[i], inputIndex);
         }

@@ -1,0 +1,6 @@
+test_create_default_single_db
+#test_createdb_with_locality
+test_database_default_single
+#test_default_single_rebalance
+test_default_single_tg
+test_default_single_tg2

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlFlushStatement;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
@@ -34,25 +34,26 @@ import java.util.List;
  */
 public final class FlushTable {
 
-    public static void response(ByteString stmt, ServerConnection c,
-                                int offset, boolean hasMore) {
+    public static boolean response(ByteString stmt, ServerConnection c,
+                                   int offset, boolean hasMore) {
         List<SQLStatement> stmtList = FastsqlUtils.parseSql(stmt);
         if (stmtList.size() != 1) {
             c.writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "dose not support multi statement in flush tables");
-            return;
+            return false;
         }
         if (!(stmtList.get(0) instanceof MySqlFlushStatement)) {
             c.writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "illegal flush statement");
-            return;
+            return false;
         }
         MySqlFlushStatement flushStmt = (MySqlFlushStatement) stmtList.get(0);
         if (!isFlushTableWithReadLock(flushStmt) && !isFlushPrivileges(flushStmt)) {
             c.writeErrMessage(ErrorCode.ERR_HANDLE_DATA, "unsupported flush statement");
-            return;
+            return false;
         }
         // do nothing
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 
     private static boolean isFlushTableWithReadLock(MySqlFlushStatement flushStmt) {

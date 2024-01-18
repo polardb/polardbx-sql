@@ -23,8 +23,7 @@
     select a.id from test_hash_tb a left join test_hash_broadcast b on a.id=b.id where b.id=2 limit 5,10;
 
   plan: |
-
-    LogicalView(tables="optest_0002.test_hash_tb,test_hash_broadcast", sql="SELECT `test_hash_tb`.`id` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_broadcast` AS `test_hash_broadcast` ON (((`test_hash_tb`.`id` = ?) AND (`test_hash_broadcast`.`id` = ?)) AND (`test_hash_tb`.`id` = `test_hash_broadcast`.`id`)) LIMIT ? OFFSET ?")
+    logicalview(tables="optest_0002.test_hash_tb,test_hash_broadcast", sql="select `test_hash_tb`.`id` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_broadcast` as `test_hash_broadcast` on ((`test_hash_tb`.`id` = ?) and (`test_hash_broadcast`.`id` = ?) and (`test_hash_tb`.`id` = `test_hash_broadcast`.`id`)) limit ? offset ?")
 
 -
   sql: |

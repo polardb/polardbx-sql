@@ -1,0 +1,130 @@
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,
+      sum(c2) over (order by c1) ow1,
+      avg(c2) over (partition by c1) ow2 
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,
+      avg(c2) over (partition by c1 order by c1) ow2 
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,
+      avg(c2) over (partition by c1 rows between UNBOUNDED PRECEDING and CURRENT ROW) ow2 
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,
+      avg(c2) over (partition by c1 RANGE between UNBOUNDED PRECEDING and 1 FOLLOWING) ow2 
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+# default frame under row_number is rows between UNBOUNDED PRECEDING and CURRENT ROW
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,          
+      ROW_NUMBER() over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+# ntile can not be processed under hash window
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,          
+      ntile(2) over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      sum(c2) over (partition by c1) ow1,
+      cume_dist() over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      rank() over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    rank or dense_rank functions require order by clause in window specification
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      dense_rank() over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    rank or dense_rank functions require order by clause in window specification
+
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      percent_rank() over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    rank or dense_rank functions require order by clause in window specification
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      nth_value(c2, 1) over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      lead(c2, 1) over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    select *,        
+      lag(c2, 1) over (partition by c1) ow2          
+    from t1;
+
+  plan: |
+    Sql could not be implemented
+
+# window with scalar function
+
+- sql: |
+    /*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ 
+    SELECT (3.14 DIV (   NTH_VALUE(     FROM_DAYS(248630980553), 1   )   OVER()   ) );
+
+  plan: |
+    Sql could not be implemented

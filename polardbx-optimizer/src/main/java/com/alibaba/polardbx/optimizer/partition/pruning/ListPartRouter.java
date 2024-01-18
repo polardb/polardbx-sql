@@ -18,10 +18,11 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -42,6 +43,11 @@ public class ListPartRouter extends PartitionRouter {
     protected Integer[] boundValuePartPosiArr;
 
     /**
+     * the partition count of list partition
+     */
+    protected Integer partitionCount;
+
+    /**
      * The Comparator of the bound value obj
      */
     protected Comparator boundComparator;
@@ -53,10 +59,12 @@ public class ListPartRouter extends PartitionRouter {
 
     /**
      * whether have default partition
-     * */
+     */
     protected boolean hasDefaultPartition = false;
 
     protected int defaultPartitionPosition;
+
+    protected String routerDigest;
 
     public ListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo, Comparator comparator) {
         this.boundComparator = comparator;
@@ -65,7 +73,8 @@ public class ListPartRouter extends PartitionRouter {
         initListPartRouter(boundValPartPosiInfo);
     }
 
-    public ListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo, Comparator comparator, boolean hasDefaultPartition) {
+    public ListPartRouter(TreeMap<Object, Integer> boundValPartPosiInfo, Comparator comparator,
+                          boolean hasDefaultPartition) {
         this.boundComparator = comparator;
         this.allListValuesCount = boundValPartPosiInfo.size();
         this.hasDefaultPartition = hasDefaultPartition;
@@ -93,13 +102,58 @@ public class ListPartRouter extends PartitionRouter {
         int valCnt = boundValPartPosiInfo.size();
         Set<Object> keyInfo = boundValPartPosiInfo.keySet();
         int tmpIdx = 0;
+        Set<Integer> partPostSet = new HashSet<>();
         this.sortedBoundValueObjArr = new Object[valCnt];
         this.boundValuePartPosiArr = new Integer[valCnt];
         for (Object key : keyInfo) {
             this.sortedBoundValueObjArr[tmpIdx] = key;
-            this.boundValuePartPosiArr[tmpIdx] = boundValPartPosiInfo.get(key);
+
+            Integer partPosi = boundValPartPosiInfo.get(key);
+            this.boundValuePartPosiArr[tmpIdx] = partPosi;
+            if (!partPostSet.contains(partPosi)) {
+                partPostSet.add(partPosi);
+            }
+
             tmpIdx++;
         }
+        this.partitionCount = partPostSet.size();
+        if (hasDefaultPartition) {
+            partitionCount++;
+        }
+        initRouterDigest();
+    }
+
+    protected void initRouterDigest() {
+        StringBuilder sb = new StringBuilder("");
+
+        for (int i = 0; i < sortedBoundValueObjArr.length; i++) {
+            Object bndValObj = sortedBoundValueObjArr[i];
+            Integer partPosiOfBndVal = boundValuePartPosiArr[i];
+            if (i > 0) {
+                sb.append(",\n");
+            }
+            sb.append(partPosiOfBndVal).append(":");
+            if (bndValObj instanceof SearchDatumInfo) {
+                SearchDatumInfo datumInfo = (SearchDatumInfo) bndValObj;
+                String oneBndVal = datumInfo.toString();
+                sb.append(oneBndVal);
+            } else if (bndValObj instanceof Long) {
+                Long datumInfo = (Long) bndValObj;
+                String oneBndVal = datumInfo.toString();
+                sb.append("(").append(oneBndVal).append(")");
+            } else {
+                /**
+                 * Should not come here
+                 */
+            }
+        }
+        if (hasDefaultPartition) {
+            if (sortedBoundValueObjArr.length > 0) {
+                sb.append(",");
+            }
+            sb.append(defaultPartitionPosition).append(":(default)");
+        }
+        this.routerDigest = sb.toString();
     }
 
     /**
@@ -381,8 +435,9 @@ public class ListPartRouter extends PartitionRouter {
          * only in ComparisonKind.EQUAL case, and we find target partition, can we prune default partition.
          * in other case, we should always carry default partition.
          * */
-        if(hasDefaultPartition && (comp != ComparisonKind.EQUAL || comp == ComparisonKind.EQUAL && pidArrIdxStart == -1 && pidArrIdxEnd == -1)) {
-            if(!pSet.contains(defaultPartitionPosition)) {
+        if (hasDefaultPartition && (comp != ComparisonKind.EQUAL
+            || comp == ComparisonKind.EQUAL && pidArrIdxStart == -1 && pidArrIdxEnd == -1)) {
+            if (!pSet.contains(defaultPartitionPosition)) {
                 pSet.add(defaultPartitionPosition);
             }
         }
@@ -393,6 +448,16 @@ public class ListPartRouter extends PartitionRouter {
 
         return routerResult;
 
+    }
+
+    @Override
+    public int getPartitionCount() {
+        return partitionCount;
+    }
+
+    @Override
+    public String getDigest() {
+        return this.routerDigest;
     }
 
 }

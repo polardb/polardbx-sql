@@ -1,0 +1,23 @@
+## DISABLE_FAST_SQL_PARSER
+
+create tablegroup tg_list_hash_tp;
+create table if not exists `t_list_hash_tp` (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01'), to_days('2020-01-02') ),
+partition p2 values in ( to_days('2021-01-01'), to_days('2021-01-02') )
+)
+tablegroup = tg_list_hash_tp;
+
+show create table t_list_hash_tp;
+alter tablegroup tg_list_hash_tp modify partition p1 add values ( to_days('2020-02-01'), to_days('2020-02-02') );
+show create table t_list_hash_tp;
+alter tablegroup tg_list_hash_tp modify partition p1 drop values ( to_days('2020-02-01'), to_days('2020-02-02') );
+show create table t_list_hash_tp;

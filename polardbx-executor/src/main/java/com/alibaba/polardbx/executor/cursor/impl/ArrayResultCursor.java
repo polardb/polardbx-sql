@@ -117,4 +117,8 @@ public class ArrayResultCursor extends ResultCursor {
         return tableName;
     }
 
+    @Override
+    public CursorMeta getCursorMeta() {
+        return meta;
+    }
 }

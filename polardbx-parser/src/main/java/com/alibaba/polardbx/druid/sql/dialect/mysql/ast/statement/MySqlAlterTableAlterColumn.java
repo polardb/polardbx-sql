@@ -27,6 +27,7 @@ public class MySqlAlterTableAlterColumn extends MySqlObjectImpl implements SQLAl
 
     private boolean dropDefault = false;
     private SQLExpr defaultExpr;
+    private boolean defaultExprHasLp = false;
 
     @Override
     public void accept0(MySqlASTVisitor visitor) {
@@ -59,6 +60,14 @@ public class MySqlAlterTableAlterColumn extends MySqlObjectImpl implements SQLAl
 
     public void setColumn(SQLName column) {
         this.column = column;
+    }
+
+    public boolean isDefaultExprHasLp() {
+        return defaultExprHasLp;
+    }
+
+    public void setDefaultExprHasLp(boolean defaultExprHasLp) {
+        this.defaultExprHasLp = defaultExprHasLp;
     }
 
 }

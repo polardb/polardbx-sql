@@ -17,38 +17,34 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.common.datatype.DecimalConverter;
-import com.alibaba.polardbx.common.datatype.DecimalStructure;
-import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Preconditions;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
+import static com.alibaba.polardbx.executor.chunk.DecimalBlock.DecimalBlockState.*;
 
 /**
  * Decimal block builder
  */
 public class DecimalBlockBuilder extends AbstractBlockBuilder {
     SliceOutput sliceOutput;
-
     DataType decimalType;
-    private boolean isUnset;
-    private boolean isSimple;
-    private int intWord;
-    private int fracWord;
+
+    // collect state of decimal values.
+    DecimalBlock.DecimalBlockState state;
 
     public DecimalBlockBuilder(int capacity, DataType decimalType) {
         super(capacity);
         this.sliceOutput = new DynamicSliceOutput(capacity * DECIMAL_MEMORY_SIZE);
         this.decimalType = decimalType;
-        this.isUnset = true;
-        this.isSimple = false;
-        this.intWord = -1;
-        this.fracWord = -1;
+
+        this.state = UNSET_STATE;
     }
 
     public DecimalBlockBuilder(int capacity) {
@@ -59,6 +55,7 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
     public void writeDecimal(Decimal value) {
         valueIsNull.add(false);
         sliceOutput.writeBytes(value.getMemorySegment());
+
         updateDecimalInfo(value.getDecimalStructure());
     }
 
@@ -66,8 +63,10 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
         // binary -> decimal
         DecimalStructure d2 = new DecimalStructure();
         DecimalConverter.binToDecimal(bytes, d2, dataType.getPrecision(), dataType.getScale());
+
         valueIsNull.add(false);
         sliceOutput.writeBytes(d2.getDecimalMemorySegment());
+
         updateDecimalInfo(d2);
     }
 
@@ -75,8 +74,10 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
         // binary -> decimal
         DecimalStructure d2 = new DecimalStructure();
         DecimalConverter.binToDecimal(bytes, d2, decimalType.getPrecision(), decimalType.getScale());
+
         valueIsNull.add(false);
         sliceOutput.writeBytes(d2.getDecimalMemorySegment());
+
         updateDecimalInfo(d2);
     }
 
@@ -90,7 +91,6 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
         DecimalStructure d = new DecimalStructure();
         DecimalConverter.parseString(value, offset, length, d, false);
         writeDecimal(new Decimal(d));
-        return;
     }
 
     @Override
@@ -131,29 +131,8 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        int int1Pos = -1, int2Pos = -1, fracPos = -1;
-        if (isSimple) {
-            if (intWord == 0) {
-                int2Pos = -1;
-                int1Pos = -1;
-                fracPos = 0;
-            } else if (intWord == 1) {
-                int2Pos = -1;
-                int1Pos = 0;
-                fracPos = 1;
-            } else if (intWord == 2) {
-                int2Pos = 0;
-                int1Pos = 1;
-                fracPos = 2;
-            }
-        } else {
-            isSimple = false;
-            int1Pos = -1;
-            int2Pos = -1;
-            fracPos = -1;
-        }
         return new DecimalBlock(getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null,
-            sliceOutput.slice(), isSimple, int1Pos, int2Pos, fracPos);
+            sliceOutput.slice(), state);
     }
 
     @Override
@@ -174,48 +153,12 @@ public class DecimalBlockBuilder extends AbstractBlockBuilder {
     }
 
     private void updateDecimalInfo(DecimalStructure d) {
-        if (!isUnset && !isSimple) {
-            // decimal info are not consistent
-            return;
-        }
-        int currentIntWord = DecimalTypeBase.roundUp(d.getIntegers());
-        int currentFracWord = DecimalTypeBase.roundUp(d.getFractions());
-        boolean currentIsNeg = d.isNeg();
-
-        if (isUnset) {
-            isSimple = !currentIsNeg
-                && (currentFracWord == 0 || currentIntWord == 1 || currentIntWord == 2)
-                && currentFracWord == 1;
-            intWord = currentIntWord;
-            fracWord = currentFracWord;
-            isUnset = false;
-        } else {
-            isSimple = intWord == currentIntWord && fracWord == currentFracWord;
-        }
+        DecimalBlock.DecimalBlockState elementState = DecimalBlock.DecimalBlockState.stateOf(d);
+        this.state = this.state.merge(elementState);
     }
 
-    public boolean isSimple() {
-        return isSimple;
-    }
-
-    public void setSimple(boolean simple) {
-        isSimple = simple;
-    }
-
-    public int getIntWord() {
-        return intWord;
-    }
-
-    public void setIntWord(int intWord) {
-        this.intWord = intWord;
-    }
-
-    public int getFracWord() {
-        return fracWord;
-    }
-
-    public void setFracWord(int fracWord) {
-        this.fracWord = fracWord;
+    public DecimalBlock.DecimalBlockState getState() {
+        return this.state;
     }
 
     public void setDecimalType(DataType decimalType) {

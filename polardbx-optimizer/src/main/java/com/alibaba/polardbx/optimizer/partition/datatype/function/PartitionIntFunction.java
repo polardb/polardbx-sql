@@ -16,15 +16,23 @@
 
 package com.alibaba.polardbx.optimizer.partition.datatype.function;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
+import com.alibaba.polardbx.optimizer.core.function.SqlSubStrFunction;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
+import org.apache.calcite.sql.SqlLiteral;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlOperator;
+import org.apache.calcite.sql.fun.SqlSubstringFunction;
+
+import java.util.Arrays;
+import java.util.List;
 
 import java.util.List;
 
@@ -44,6 +52,8 @@ public abstract class PartitionIntFunction extends AbstractScalarFunction {
      * Get the monotonicity of function according to the field type.
      */
     public abstract Monotonicity getMonotonicity(DataType<?> fieldType);
+
+    public abstract SqlOperator getSqlOperator();
 
     /**
      * The intervalType for enumerating partitions when do the partition pruning
@@ -89,18 +99,104 @@ public abstract class PartitionIntFunction extends AbstractScalarFunction {
     abstract public long evalIntEndpoint(PartitionField partitionField, SessionProperties sessionProperties,
                                          boolean[] endpoints);
 
+    /**
+     * eval object by the input of full params fields
+     */
+    public Object evalEndpoint(List<PartitionField> allParamsFields,
+                               SessionProperties sessionProperties,
+                               boolean[] booleans) {
+        throw new NotSupportException();
+    }
+
     public static PartitionIntFunction create(final SqlOperator sqlOperator) {
         if (sqlOperator == TddlOperatorTable.YEAR) {
             return new YearPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.DAYOFMONTH) {
+            return new DayOfMonthPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.DAYOFWEEK) {
+            return new DayOfWeekPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.DAYOFYEAR) {
+            return new DayOfYearPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.WEEKOFYEAR) {
+            return new WeekOfYearPartitionIntFunction(null, null);
         } else if (sqlOperator == TddlOperatorTable.TO_DAYS) {
             return new ToDaysPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.TO_MONTHS) {
+            return new ToMonthsPartitionIntFunction(null, null);
+        } else if (sqlOperator == TddlOperatorTable.TO_WEEKS) {
+            return new ToWeeksPartitionIntFunction(null, null);
         } else if (sqlOperator == TddlOperatorTable.TO_SECONDS) {
             return new ToSecondsPartitionIntFunction(null, null);
         } else if (sqlOperator == TddlOperatorTable.UNIX_TIMESTAMP) {
             return new UnixTimestampPartitionIntFunction(null, null);
         } else if (sqlOperator == TddlOperatorTable.MONTH) {
             return new MonthPartitionIntFunction(null, null);
+        } else if (sqlOperator instanceof SqlSubStrFunction) {
+            SubStrPartitionFunction partFunc = new SubStrPartitionFunction(null, null);
+            partFunc.setPosition(((SqlSubStrFunction) sqlOperator).getPosition());
+            return partFunc;
         }
         return null;
     }
+
+    public static PartitionIntFunction create(SqlOperator sqlOperator, List<SqlNode> operands) {
+        if (sqlOperator instanceof SqlSubStrFunction || sqlOperator instanceof SqlSubstringFunction) {
+            SubStrPartitionFunction partFunc = new SubStrPartitionFunction(null, null);
+            if (operands.size() >= 2 && operands.get(1) instanceof SqlLiteral) {
+                partFunc.setPosition(((SqlLiteral) operands.get(1)).intValue(true));
+                if (operands.size() >= 3 && operands.get(2) instanceof SqlLiteral) {
+                    partFunc.setLength(((SqlLiteral) operands.get(2)).intValue(true));
+                }
+                return partFunc;
+            }
+            return null;
+        } else {
+            return create(sqlOperator);
+        }
+    }
+
+    /**
+     * get the full params fields of current partition function defined in partitionBy
+     * <pre>
+     *      e.g
+     *     partitionFunction: SUBSTR (strObj, pos, len)
+     *
+     *      ddl: create table tbl ( id ...)
+     *           partition by hash(substr(str_col, 1, 3)) partitions 8
+     *
+     *     query: select * from tbl where id=1000
+     *
+     *     then:
+     *
+     *      the result of getFullParamsByPartColFields is
+     *          1000,
+     *          1,
+     *          3
+     * </pre>
+     */
+    public List<PartitionField> getFullParamsByPartColFields(List<PartitionField> partColFields) {
+        return partColFields;
+    }
+
+    @Override
+    public int hashCode() {
+        return Arrays.hashCode(new Object[] {getSqlOperator()});
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (obj == this) {
+            return true;
+        }
+
+        if (!(obj instanceof PartitionIntFunction)) {
+            return false;
+        }
+        PartitionIntFunction otherFn = (PartitionIntFunction) obj;
+        if (!this.getSqlOperator().equals(otherFn.getSqlOperator())) {
+            return false;
+        }
+        return true;
+    }
+
 }

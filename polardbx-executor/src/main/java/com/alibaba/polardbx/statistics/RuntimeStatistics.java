@@ -16,14 +16,10 @@
 
 package com.alibaba.polardbx.statistics;
 
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.CpuCollector;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.FirstThenOtherCursor;
@@ -50,10 +46,14 @@ import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPool;
 import com.alibaba.polardbx.optimizer.parse.SqlTypeUtils;
+import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.statis.MemoryStatisticsGroup;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import com.alibaba.polardbx.optimizer.statis.TaskMemoryStatisticsGroup;
 import com.alibaba.polardbx.optimizer.utils.SimplePlanVisitor;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;

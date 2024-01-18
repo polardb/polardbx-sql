@@ -1,4 +1,11 @@
 - sql: |
+    select ID   from MSTB_SIGN_INFO  where 1= 1    AND PAYMENT_INSTANCE_CODE in( select parvalue   from pl_parlst  where parname= 'SOP202101ACEC')    AND TRADE_DIST= 59383056    AND CHANNEL= '40'    and status= 1;
+
+  plan: |
+    gather(concurrent=true)
+      logicalview(tables="optest_0000.mstb_sign_info_[00-09],pl_parlst", shardcount=10, sql="select `id` from `mstb_sign_info` as `mstb_sign_info` where ((`channel` = '40') and (`status` = 1) and (1 = 1) and (`trade_dist` = 59383056) and (`payment_instance_code` in (select `parvalue` from `pl_parlst` as `pl_parlst` where (`parname` = 'sop202101acec'))))")
+
+- sql: |
     select count(*)
     from
       apple a
@@ -51,8 +58,7 @@
   plan: |
     hashagg(count(a.id)="sum(count(a.id))")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select count(*) as `count(a.id)` from `apple` as `apple` inner join (`boy` as `boy` inner join `car` as `car` on ((`boy`.`id` = `car`.`id`) and (`boy`.`name` <> `car`.`name`))) on (((`apple`.`id` = `car`.`id`) and (`apple`.`id` = `boy`.`id`)) and (`apple`.`size` < `boy`.`height`)) where ((`boy`.`money` > 8) and (`apple`.`pick_date` < 15))")
-
+        logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select count(*) as `count(a.id)` from `apple` as `apple` inner join (`boy` as `boy` inner join `car` as `car` on ((`boy`.`id` = `car`.`id`) and (`boy`.`name` <> `car`.`name`))) on ((`apple`.`id` = `car`.`id`) and (`apple`.`id` = `boy`.`id`) and (`apple`.`size` < `boy`.`height`)) where ((`boy`.`money` > 8) and (`apple`.`pick_date` < 15))")
 - sql: |
     select /*+TDDL:cmd_extra(enable_push_join=true enable_lv_subquery_unwrap=true)*/ a.name
     from
@@ -64,12 +70,11 @@
     project(name="name")
       hashjoin(condition="id = id and id0 = id and origin_place0 <> birth_place and size < height", type="inner")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`id`, `apple`.`name`, `apple`.`size`, `car`.`id` as `id0`, `car`.`origin_place` as `origin_place0` from `apple` as `apple` inner join `car` as `car` on (`apple`.`id` = `car`.`id`) where (((`car`.`id` = `apple`.`id`) and (`car`.`produce_date` < 10)) and (`apple`.`pick_date` < 10))")
+          logicalview(tables="[0000-0003].apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`id`, `apple`.`name`, `apple`.`size`, `car`.`id` as `id0`, `car`.`origin_place` as `origin_place0` from `apple` as `apple` inner join `car` as `car` on (`apple`.`id` = `car`.`id`) where ((`car`.`id` = `apple`.`id`) and (`car`.`produce_date` < 10) and (`apple`.`pick_date` < 10))")
         filter(condition="money > 8")
           hashagg(group="name", id="__first_value(id)", birth_date="__first_value(birth_date)", birth_place="__first_value(birth_place)", money="__first_value(money)", height="__first_value(height)")
             gather(concurrent=true)
               logicalview(tables="[0000-0003].boy_[0-7]", shardcount=8, sql="select `name`, (`id`) as `id`, (`birth_date`) as `birth_date`, (`birth_place`) as `birth_place`, (`money`) as `money`, (`height`) as `height` from `boy` as `boy` group by `name`")
-
 - sql: |
     select a.name
       from
@@ -79,8 +84,7 @@
           where a.size < b.height and b.money > 8 and a.pick_date<10;
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`name` from `apple` as `apple` inner join `boy` as `boy` on ((((`apple`.`id` = `boy`.`id`) and (`apple`.`size` < `boy`.`height`)) and (`boy`.`money` > 8)) and (`apple`.`pick_date` < 10)) inner join `car` as `car` on (((`boy`.`id` = `car`.`id`) and (`apple`.`id` = `car`.`id`)) and (`boy`.`birth_place` <> `car`.`origin_place`)) where (`car`.`produce_date` < 9)")
-
+      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`name` from `apple` as `apple` inner join `boy` as `boy` on ((`apple`.`id` = `boy`.`id`) and (`apple`.`size` < `boy`.`height`) and (`boy`.`money` > 8) and (`apple`.`pick_date` < 10)) inner join `car` as `car` on ((`boy`.`id` = `car`.`id`) and (`apple`.`id` = `car`.`id`) and (`boy`.`birth_place` <> `car`.`origin_place`)) where (`car`.`produce_date` < 9)")
 - sql: |
     select  a.name
     from apple a
@@ -90,8 +94,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select `name` from `apple` as `apple` where (`price` in (select `boy`.`money` from `boy` as `boy` inner join `car` as `car` on (`boy`.`id` = `car`.`id`) where (((((`apple`.`price` = `boy`.`money`) and (`apple`.`id` = `boy`.`id`)) and (`apple`.`size` > `boy`.`height`)) and (`car`.`size` < `apple`.`size`)) and (`boy`.`money` <> `apple`.`origin_place`))))")
-
+      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7],car_[0-7]", shardcount=8, sql="select `name` from `apple` as `apple` where (`price` in (select `boy`.`money` from `boy` as `boy` inner join `car` as `car` on (`boy`.`id` = `car`.`id`) where ((`apple`.`price` = `boy`.`money`) and (`apple`.`id` = `boy`.`id`) and (`apple`.`size` > `boy`.`height`) and (`car`.`size` < `apple`.`size`) and (`boy`.`money` <> `apple`.`origin_place`))))")
 - sql: |
     select b.name
     from boy b join apple on apple.id = b.id
@@ -122,8 +125,7 @@
     from boy b where money = (select id from apple a where a.id = b.id and price = 12);
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].apple_[0-7],boy_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height`, (((select `id` from `apple` as `apple` where ((`price` = 12) and (`id` = `boy`.`id`))))) as `id0` from `boy` as `boy`) as `t1` where (`money` = `id0`)")
-
+      logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7]", shardcount=8, sql="select `name` from (select `id`, `name`, `birth_date`, `birth_place`, `money`, `height` from `boy` as `boy` where (`money` = (((select `id` from `apple` as `apple` where ((`price` = 12) and (`id` = `boy`.`id`))))))) as `t1`")
 - sql: |
     select b.name, (select id from apple a where (id = b.id and exists (select * from car c where c.id = a.id and c.price < a.price)))
     from boy b where id<10;
@@ -177,8 +179,7 @@
             logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`price`, (`boy`.`name`) as `name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100)) where (not exists (select `id` from `car` as `car` where ((`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) group by `apple`.`price`")
       project(id="id")
         mergesort(sort="x asc", offset=0, fetch=20)
-          logicalview(tables="optest_0001.apple_2,boy_2,car_2", sql="select `apple`.`id`, ((`boy`.`birth_date` + `apple`.`pick_date`)) as `x` from `apple` as `apple` inner join `boy` as `boy` on (`apple`.`id` = `boy`.`id`) where ((`apple`.`id` = 10) and (exists (select `id` from `car` as `car` where (((`id` = `apple`.`id`) and (`produce_date` = ((`boy`.`birth_date` + `apple`.`pick_date`)))) and (`id` = 10))))) order by ((`boy`.`birth_date` + `apple`.`pick_date`)) limit 20")
-
+          logicalview(tables="optest_0001.apple_2,boy_2,car_2", sql="select `apple`.`id`, ((`boy`.`birth_date` + `apple`.`pick_date`)) as `x` from `apple` as `apple` inner join `boy` as `boy` on (`apple`.`id` = `boy`.`id`) where ((`apple`.`id` = 10) and (exists (select `id` from `car` as `car` where ((`id` = `apple`.`id`) and (`produce_date` = ((`boy`.`birth_date` + `apple`.`pick_date`))) and (`id` = 10))))) order by ((`boy`.`birth_date` + `apple`.`pick_date`)) limit 20")
 - sql: |
     select distinct b.name
     from boy b join apple on apple.id = b.id
@@ -187,7 +188,7 @@
   plan: |
     hashagg(group="name")
       gather(concurrent=true)
-        logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on (((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100)) and (`apple`.`price` in(12, 3, 4, 6))) where (`boy`.`height` < some (select `size` from `car` as `car` where (((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`)) and (`id` = `boy`.`id`))))")
+        logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`boy`.`money` > 100) and (`apple`.`price` in(12, 3, 4, 6))) where (`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`))))")
 
 - sql: |
     select b.name
@@ -199,8 +200,7 @@
     project(name="name")
       hashagg(group="pick_date", name="__first_value(name)")
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`pick_date`, `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`apple`.`price` in(12, 3, 4, 6))) where ((`boy`.`height` < some (select `size` from `car` as `car` where (((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`)) and (`id` = `boy`.`id`)))) and (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`))))")
-
+          logicalview(tables="[0000-0003].boy_[0-7],apple_[0-7],car_[0-7]", shardcount=8, sql="select `apple`.`pick_date`, `boy`.`name` from `boy` as `boy` inner join `apple` as `apple` on ((`boy`.`id` = `apple`.`id`) and (`apple`.`price` in(12, 3, 4, 6))) where ((`boy`.`height` < some (select `size` from `car` as `car` where ((`boy`.`height` < `size`) and (`origin_place` = `boy`.`birth_place`) and (`id` = `boy`.`id`)))) and (`boy`.`money` > all (select `price` from `apple` as `apple0` where (`id` = `boy`.`id`))))")
 - sql: |
     /*+TDDL:cmd_extra(enable_lv_subquery_unwrap=true)*/
     select b.height , a.size

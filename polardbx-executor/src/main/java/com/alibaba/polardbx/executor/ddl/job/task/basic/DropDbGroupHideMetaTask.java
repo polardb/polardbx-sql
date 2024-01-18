@@ -68,7 +68,7 @@ public class DropDbGroupHideMetaTask extends BaseDdlTask {
         // Check if the group is empty
         final DbGroupInfoManager dgm = DbGroupInfoManager.getInstance();
         List<TableGroupConfig> tableGroupConfigs = TableGroupUtils.getAllTableGroupInfoByDb(schemaName);
-        for (String groupName:targetGroupNames) {
+        for (String groupName : targetGroupNames) {
             DbGroupInfoRecord groupInfo = dgm.queryGroupInfo(schemaName, groupName);
             if (groupInfo != null) {
                 String phyDbName = groupInfo.phyDbName;

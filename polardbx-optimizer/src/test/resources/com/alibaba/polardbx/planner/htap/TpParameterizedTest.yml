@@ -14,4 +14,4 @@
     delete from orders where o_orderkey = 1 or o_orderkey = 1000;
 
   plan: |
-    LogicalModifyView(tables="[0000,0003].orders_[00,15]", shardCount=2, sql="DELETE FROM `orders` WHERE ((`o_orderkey` = ?) OR (`o_orderkey` = ?))")
+    logicalmodifyview(tables="[0000,0003].orders_[00,15]", shardcount=2, sql="delete from `orders` where (`o_orderkey` in(?, ?))")

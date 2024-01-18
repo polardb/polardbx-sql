@@ -32,6 +32,7 @@ import com.alibaba.polardbx.optimizer.context.DdlContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class DdlEngineSchedulerManager {
 
@@ -132,7 +133,6 @@ public class DdlEngineSchedulerManager {
     /**
      * Fetch subjobs of a job, which should be the task type `TaskDelegator`
      *
-     * @param jobId
      * @return subtasks
      */
     public List<DdlEngineTaskRecord> fetchSubJobs(long jobId) {
@@ -144,27 +144,32 @@ public class DdlEngineSchedulerManager {
         }.execute();
     }
 
-    public List<SubJobTask> fetchSubJobsRecursive(long jobId) {
+    public List<SubJobTask> fetchSubJobsRecursive(long jobId, Boolean excludeLeafSubjob) {
         return new DdlEngineAccessorDelegate<List<SubJobTask>>() {
             @Override
             protected List<SubJobTask> invoke() {
-                return fetchSubJobsRecursive(jobId, engineTaskAccessor);
+                return fetchSubJobsRecursive(jobId, engineTaskAccessor, excludeLeafSubjob);
             }
         }.execute();
     }
 
-    protected List<SubJobTask> fetchSubJobsRecursive(long jobId, DdlEngineTaskAccessor accessor) {
+    protected List<SubJobTask> fetchSubJobsRecursive(long jobId, DdlEngineTaskAccessor accessor,
+                                                     Boolean excludeLeafSubjob) {
         List<DdlEngineTaskRecord> records = accessor.query(jobId, SubJobTask.getTaskName());
         List<SubJobTask> subjobs = new ArrayList<>();
 
         for (DdlEngineTaskRecord task : GeneralUtil.emptyIfNull(records)) {
             SubJobTask subjob = (SubJobTask) TaskHelper.fromDdlEngineTaskRecord(task);
-            subjobs.add(subjob);
+            List<SubJobTask> subjobTasks = new ArrayList<>();
             for (long subJobId : subjob.fetchAllSubJobs()) {
-                subjobs.addAll(fetchSubJobsRecursive(subJobId, accessor));
+                subjobTasks.addAll(fetchSubJobsRecursive(subJobId, accessor, excludeLeafSubjob));
+            }
+            //filter leaf subjob.
+            if (!excludeLeafSubjob || subjobTasks.size() > 0) {
+                subjobs.addAll(subjobTasks);
+                subjobs.add(subjob);
             }
         }
-
         return subjobs;
     }
 
@@ -186,12 +191,43 @@ public class DdlEngineSchedulerManager {
         }.execute();
     }
 
+    public List<DdlEngineTaskRecord> fetchAllSuccessiveTaskPartialInfoByJobId(long jobId) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return engineTaskAccessor.queryTaskPartialInfoByJobId(jobId, false);
+            }
+        }.execute();
+    }
+
+    public List<DdlEngineTaskRecord> fetchTaskWithExtraNotNull(long jobId, boolean archive) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                return engineTaskAccessor.queryTaskWithExtraNotNull(jobId, archive);
+            }
+        }.execute();
+    }
+
+    public List<DdlEngineTaskRecord> fetchAllTaskByTaskNames(List<String> taskNames) {
+        return new DdlEngineAccessorDelegate<List<DdlEngineTaskRecord>>() {
+            @Override
+            protected List<DdlEngineTaskRecord> invoke() {
+                List<DdlEngineTaskRecord> resultFromDdlEngineTask =
+                    engineTaskAccessor.queryAllTaskByNames(false, taskNames);
+                List<DdlEngineTaskRecord> resultFromDdlEngineTaskArchive =
+                    engineTaskAccessor.queryAllTaskByNames(true, taskNames);
+                resultFromDdlEngineTask.addAll(resultFromDdlEngineTaskArchive);
+                return resultFromDdlEngineTask;
+            }
+        }.execute();
+    }
+
     /**
      * fetch all the tasks of this job, including subJob's tasks
-     * @param jobId
-     * @return
      */
-    protected List<DdlEngineTaskRecord> fetchAllSuccessiveTaskByJobId(long jobId, boolean archive, DdlEngineTaskAccessor accessor){
+    protected List<DdlEngineTaskRecord> fetchAllSuccessiveTaskByJobId(long jobId, boolean archive,
+                                                                      DdlEngineTaskAccessor accessor) {
         return accessor.queryTaskSimpleInfoByJobId(jobId, archive);
     }
 

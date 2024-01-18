@@ -104,6 +104,9 @@ public class FetchSPMSyncAction implements ISyncAction {
         result.addColumn("ORIGIN", DataTypes.StringType);
         result.addColumn("PARAMETERIZED_SQL", DataTypes.StringType);
         result.addColumn("EXTERNALIZED_PLAN", DataTypes.StringType);
+        result.addColumn("IS_REBUILD_AT_LOAD", DataTypes.StringType);
+        result.addColumn("HINT", DataTypes.StringType);
+        result.addColumn("USE_POST_PLANNER", DataTypes.StringType);
 
         if (baselineMap == null) {
             return result;
@@ -113,6 +116,28 @@ public class FetchSPMSyncAction implements ISyncAction {
             String paramSql = entry.getKey();
             BaselineInfo baselineInfo = entry.getValue();
             Set<Point> points = baselineInfo.getPointSet();
+            if (baselineInfo.isRebuildAtLoad()) {
+                result.addRow(new Object[] {
+                    baselineInfo.getId(),
+                    schemaName,
+                    0, // plan id
+                    1, // isFixed
+                    1, // isAccepted
+                    0, // chooseCount
+                    null, // point info
+                    null, // point info
+                    null, // point info
+                    null, // point info
+                    null, // point info
+                    null, // point info
+                    null, // workload type
+                    paramSql,
+                    "", // plan
+                    baselineInfo.isRebuildAtLoad() + "",
+                    baselineInfo.getHint(),
+                    baselineInfo.isUsePostPlanner() + ""
+                });
+            }
             for (PlanInfo planInfo : baselineInfo.getPlans()) {
                 RelNode plan = planInfo.getPlan(null, null);
                 String planExplain = null;
@@ -139,7 +164,10 @@ public class FetchSPMSyncAction implements ISyncAction {
                     point == null ? null : point.getMinRowcountExpected() + "",
                     planInfo.getOrigin(),
                     paramSql,
-                    planExplain
+                    planExplain,
+                    baselineInfo.isRebuildAtLoad() + "",
+                    baselineInfo.getHint(),
+                    baselineInfo.isUsePostPlanner() + ""
                 });
             }
         }

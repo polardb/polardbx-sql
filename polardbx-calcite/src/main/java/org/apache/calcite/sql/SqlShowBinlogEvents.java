@@ -16,11 +16,9 @@
 
 package org.apache.calcite.sql;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-
 import org.apache.calcite.sql.parser.SqlParserPos;
+
+import java.util.List;
 
 /**
  * @Author ShuGuang
@@ -29,7 +27,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  */
 public class SqlShowBinlogEvents extends SqlShow {
 
-    private SqlNode logName, pos, limit;
+    private SqlNode with,logName, pos, limit;
 
     public SqlShowBinlogEvents(SqlParserPos parserPos,
                                List<SqlSpecialIdentifier> specialIdentifiers,
@@ -40,10 +38,23 @@ public class SqlShowBinlogEvents extends SqlShow {
         this.limit = limit;
     }
 
+    public SqlShowBinlogEvents(SqlParserPos parserPos,
+                               List<SqlSpecialIdentifier> specialIdentifiers,
+                               List<SqlNode> operands, SqlNode with, SqlNode logName, SqlNode pos, SqlNode limit) {
+        super(parserPos, specialIdentifiers, operands);
+        this.with = with;
+        this.logName = logName;
+        this.pos = pos;
+        this.limit = limit;
+    }
 
     @Override
     public SqlKind getShowKind() {
         return SqlKind.SHOW_BINLOG_EVENTS;
+    }
+
+    public SqlNode getWith() {
+        return with;
     }
 
     public SqlNode getLogName() {

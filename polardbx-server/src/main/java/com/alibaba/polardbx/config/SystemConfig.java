@@ -73,7 +73,7 @@ public final class SystemConfig {
     @Deprecated
     private volatile int processorHandler = DEFAULT_PROCESSOR;
     private volatile int processorKillExecutor = DEFAULT_PROCESSOR;
-    private volatile int timerExecutor = DEFAULT_PROCESSOR;
+    private volatile int syncExecutor = DEFAULT_PROCESSOR;
     private volatile int serverExecutor = DEFAULT_PROCESSOR * processors;
     private volatile int managerExecutor = DEFAULT_PROCESSOR;
 
@@ -87,8 +87,8 @@ public final class SystemConfig {
     private volatile String clusterName = null;
     private volatile String unitName = null;
     private volatile String instanceId = null;
-    private volatile String instanceType = null;
     private volatile String masterInstanceId = null;
+    private volatile String instanceType = null;
     // 信任的ip子网列表
     private volatile String trustedIps = null;
     // 全局黑名单,不允许访问任何DRDS DB,防攻击
@@ -150,6 +150,14 @@ public final class SystemConfig {
      * 针对SQL使用走MPP路由，默认不走，通过hint方式开启
      */
     private boolean enableMpp = false;
+
+    /**
+     * 是否打开MPP的利用Leader节点做服务发现功能，leader节点配置在diamond或者环境变量中
+     * ZERO_DB：MPP的节点服务发现策略：默认用0号库的服务发现
+     * DIAMOND：集团内用diamond设置master节点，采用mpprpc
+     */
+
+    private String nodeDiscoveryMode = "ZERO_DB";
 
     /**
      * 默认使用保留一个备库的备库路由策略， RESERVE_ONE_SLAVE
@@ -233,6 +241,11 @@ public final class SystemConfig {
      */
     private String balanceWindow;
 
+    /**
+     * Allow move the single table with locality='balance_single_table=on' during scale-out/scale-in
+     */
+    private boolean allowMovingBalancedSingeTable = false;
+
     private boolean dropOldDataBaseAfterSwitchDataSource = true;
 
     /**
@@ -254,6 +267,7 @@ public final class SystemConfig {
      * Some special settings that are forbidden externally while are allowed internally for test.
      */
     private boolean supportSingleDbMultiTbs = false;
+    private boolean supportRemoveDdl = false;
     private boolean supportDropAutoSeq = false;
     private boolean allowSimpleSequence = false;
 
@@ -524,12 +538,12 @@ public final class SystemConfig {
         this.managerExecutor = managerExecutor;
     }
 
-    public int getTimerExecutor() {
-        return timerExecutor;
+    public int getSyncExecutor() {
+        return syncExecutor;
     }
 
-    public void setTimerExecutor(int timerExecutor) {
-        this.timerExecutor = timerExecutor;
+    public void setSyncExecutor(int syncExecutor) {
+        this.syncExecutor = syncExecutor;
     }
 
     public long getIdleTimeout() {
@@ -787,6 +801,14 @@ public final class SystemConfig {
         this.enableMpp = enableMpp;
     }
 
+    public String getNodeDiscoveryMode() {
+        return nodeDiscoveryMode;
+    }
+
+    public void setNodeDiscoveryMode(String nodeDiscoveryMode) {
+        this.nodeDiscoveryMode = nodeDiscoveryMode;
+    }
+
     public boolean isEnableBucketExecutor() {
         return enableBucketExecutor;
     }
@@ -955,6 +977,14 @@ public final class SystemConfig {
 
     public void setSupportSingleDbMultiTbs(boolean supportSingleDbMultiTbs) {
         this.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
+    }
+
+    public boolean isSupportRemoveDdl() {
+        return supportRemoveDdl;
+    }
+
+    public void setSupportRemoveDdl(boolean supportRemoveDdl) {
+        this.supportRemoveDdl = supportRemoveDdl;
     }
 
     public boolean isSupportDropAutoSeq() {
@@ -1156,4 +1186,13 @@ public final class SystemConfig {
     public void setSecretKey(String secretKey) {
         this.secretKey = secretKey;
     }
+
+    public boolean isAllowMovingBalancedSingeTable() {
+        return allowMovingBalancedSingeTable;
+    }
+
+    public void setAllowMovingBalancedSingeTable(boolean allowMovingBalancedSingeTable) {
+        this.allowMovingBalancedSingeTable = allowMovingBalancedSingeTable;
+    }
+
 }

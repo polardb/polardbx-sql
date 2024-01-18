@@ -1,0 +1,309 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx;
+drop database if exists `myds_db2`;
+CREATE DATABASE if NOT EXISTS `myds_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto' DEFAULT_SINGLE='on';
+CREATE TABLE `myds_db2`.`tb1` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show create table `myds_db2`.`tb1`;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='balance_single_table=on' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_loff` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=off';
+show create table `myds_db2`.`tb1_loff`;
+Table,Create Table
+tb1_loff,CREATE TABLE `tb1_loff` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_lon` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on';
+show create table `myds_db2`.`tb1_lon`;
+Table,Create Table
+tb1_lon,CREATE TABLE `tb1_lon` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='balance_single_table=on' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_ldn` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='dn=polardbx-storage-0-master';
+show create table `myds_db2`.`tb1_ldn`;
+Table,Create Table
+tb1_ldn,CREATE TABLE `tb1_ldn` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='dn=polardbx-storage-0-master' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_s_loff` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=off'
+SINGLE;
+show create table `myds_db2`.`tb1_s_loff`;
+Table,Create Table
+tb1_s_loff,CREATE TABLE `tb1_s_loff` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_s_lon` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on'
+SINGLE;
+show create table `myds_db2`.`tb1_s_lon`;
+Table,Create Table
+tb1_s_lon,CREATE TABLE `tb1_s_lon` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='balance_single_table=on' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb1_s_ldn` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='dn=polardbx-storage-0-master'
+SINGLE;
+show create table `myds_db2`.`tb1_s_ldn`;
+Table,Create Table
+tb1_s_ldn,CREATE TABLE `tb1_s_ldn` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='dn=polardbx-storage-0-master' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb2` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show create table `myds_db2`.`tb2`;
+Table,Create Table
+tb2,CREATE TABLE `tb2` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_loff` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=off';
+show create table `myds_db2`.`tb2_loff`;
+Table,Create Table
+tb2_loff,CREATE TABLE `tb2_loff` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_lon` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on';
+show create table `myds_db2`.`tb2_lon`;
+Table,Create Table
+tb2_lon,CREATE TABLE `tb2_lon` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='balance_single_table=on' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_ldn` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='dn=polardbx-storage-0-master';
+show create table `myds_db2`.`tb2_ldn`;
+Table,Create Table
+tb2_ldn,CREATE TABLE `tb2_ldn` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='dn=polardbx-storage-0-master' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_s_loff` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=off'
+SINGLE;
+show create table `myds_db2`.`tb2_s_loff`;
+Table,Create Table
+tb2_s_loff,CREATE TABLE `tb2_s_loff` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_s_lon` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on'
+SINGLE;
+show create table `myds_db2`.`tb2_s_lon`;
+Table,Create Table
+tb2_s_lon,CREATE TABLE `tb2_s_lon` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='balance_single_table=on' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb2_s_ldn` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='dn=polardbx-storage-0-master'
+SINGLE;
+show create table `myds_db2`.`tb2_s_ldn`;
+Table,Create Table
+tb2_s_ldn,CREATE TABLE `tb2_s_ldn` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+/* LOCALITY='dn=polardbx-storage-0-master' */
+SINGLE
+CREATE TABLE `myds_db2`.`tb3_bro` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST;
+show create table  `myds_db2`.`tb3_bro`;
+Table,Create Table
+tb3_bro,CREATE TABLE `tb3_bro` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+CREATE TABLE `myds_db2`.`tb3_part` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(id) PARTITIONS 4;
+show create table  `myds_db2`.`tb3_part`;
+Table,Create Table
+tb3_part,CREATE TABLE `tb3_part` (
+	`id` int(11) NOT NULL AUTO_INCREMENT,
+	`k` int(11) NOT NULL DEFAULT '0',
+	`c` char(120) NOT NULL DEFAULT '',
+	`pad` char(60) NOT NULL DEFAULT '',
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 4
+#select tg_name,table_name,rw_dn  from information_schema.partitions_meta where table_schema='myds_db2' order by tg_name,table_name;
+use polardbx;
+drop database if exists myds_db2;

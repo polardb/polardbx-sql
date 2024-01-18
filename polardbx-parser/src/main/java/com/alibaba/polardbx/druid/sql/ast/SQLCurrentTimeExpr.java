@@ -41,8 +41,12 @@ public class SQLCurrentTimeExpr extends SQLExprImpl {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLCurrentTimeExpr that = (SQLCurrentTimeExpr) o;
 
@@ -67,13 +71,15 @@ public class SQLCurrentTimeExpr extends SQLExprImpl {
         LOCALTIME("LOCALTIME"),
         LOCALTIMESTAMP("LOCALTIMESTAMP"),
         SYSDATE("SYSDATE"),
+        UTC_DATE("UTC_DATE"),
+        UTC_TIME("UTC_TIME"),
+        UTC_TIMESTAMP("UTC_TIMESTAMP"),
         ;
 
         public final String name;
         public final String name_lower;
 
-        Type(String name)
-        {
+        Type(String name) {
             this.name = name;
             this.name_lower = name.toLowerCase();
         }

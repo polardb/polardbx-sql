@@ -20,10 +20,8 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.utils.bloomfilter.MinMaxFilterInfo;
 import com.alibaba.polardbx.executor.chunk.Block;
 
-
 /**
  * @author chenzilin
- * @date 2021/12/14 15:15
  */
 public class DecimalMinMaxFilter extends MinMaxFilter {
 
@@ -70,7 +68,9 @@ public class DecimalMinMaxFilter extends MinMaxFilter {
 
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
-        return new MinMaxFilterInfo(MinMaxFilterInfo.TYPE.DECIMAL, null, null, min.toString(), max.toString(), null, null, null, null);
+        return new MinMaxFilterInfo(MinMaxFilterInfo.TYPE.DECIMAL, null, null, min == null ? null : min.toString(),
+            max == null ? null : max.toString(), null,
+            null, null, null);
     }
 
     @Override

@@ -441,9 +441,8 @@
                 )
 
   plan: |
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (EXISTS (SELECT `id` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (((`test_hash_tb`.`name` = `name`) AND (`test_hash_tb`.`id` = `id`)) AND (`int_col5` < 30))))")
+    gather(concurrent=true)
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (exists (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`test_hash_tb`.`name` = `name`) and (`test_hash_tb`.`id` = `id`) and (`int_col5` < 30))))")
 
 - #// @desc
   #// IN,????????????, where??????
@@ -459,8 +458,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`name` = `b`.`name`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`))))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select `b`.`id` from `test_hash_tb6` as `b` where ((`a`.`name` = `b`.`name`) and (`b`.`int_col5` < 30) and (`a`.`id` = `b`.`id`))))")
 
 - #// @desc
   #// IN,????????????, where , agg?? ???
@@ -495,8 +493,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id`))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select `b`.`id` from `test_hash_tb6` as `b` where ((`a`.`id` = `b`.`id`) and (`b`.`int_col5` < 30) and (`a`.`id` = `b`.`id`)) group by `b`.`id`))")
 
 - #// @desc
   #// IN,????????????, where , agg , limit ?? ???
@@ -546,8 +543,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id` HAVING (`id` <> 1) LIMIT 100 OFFSET 0))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select `b`.`id` from `test_hash_tb6` as `b` where ((`a`.`id` = `b`.`id`) and (`b`.`int_col5` < 30) and (`a`.`id` = `b`.`id`)) group by `b`.`id` having (`id` <> 1) limit 100 offset 0))")
 
 - #// @desc
   #// IN,????????????, where , agg , limit?? ???
@@ -599,8 +595,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`id` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`id` = `b`.`id`) AND (`b`.`int_col5` < 30)) AND (`a`.`id` = `b`.`id`)) GROUP BY `b`.`id` HAVING (`id` <> 1) ORDER BY `id` LIMIT 100 OFFSET 0))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select `b`.`id` from `test_hash_tb6` as `b` where ((`a`.`id` = `b`.`id`) and (`b`.`int_col5` < 30) and (`a`.`id` = `b`.`id`)) group by `b`.`id` having (`id` <> 1) order by `id` limit 100 offset 0))")
 
 - #// @desc
   #// IN,??????????????????
@@ -679,8 +674,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT `b`.`int_col1` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`name` = `b`.`name`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`id`))))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select `b`.`int_col1` from `test_hash_tb6` as `b` where ((`a`.`name` = `b`.`name`) and (`b`.`int_col1` > 2048) and (`a`.`id` = `b`.`id`))))")
 
 - #// @desc
   #// IN,??????????????, where , group by?? ???
@@ -697,15 +691,14 @@
                 )
 
   plan: |
-
-    Project(id="id")
-      MaterializedSemiJoin(condition="int_col1 = int_col1 AND id = int_col1", type="semi")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`id` > 2048) AND (`int_col1` > 2048)) AND (((`int_col1`, `id`)) IN (...)))")
-        Project(int_col1="int_col1")
-          HashAgg(group="int_col1", sum(int_col2)="SUM(sum(int_col2))")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, SUM(`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048) GROUP BY `int_col1`")
+    project(id="id")
+      materializedsemijoin(condition="int_col1 = int_col1 and id = int_col1", type="semi")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1` from `test_hash_tb` as `test_hash_tb` where ((`id` > 2048) and (`int_col1` > 2048) and (((`int_col1`, `id`)) in (...)))")
+        project(int_col1="int_col1")
+          hashagg(group="int_col1", sum(int_col2)="sum(sum(int_col2))")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col1`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 2048) group by `int_col1`")
 
 - #// @desc
   #// IN,??????????????, where , group by?? ????
@@ -722,8 +715,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1`))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select sum(`b`.`int_col2`) as `sum(int_col2)` from `test_hash_tb6` as `b` where ((`a`.`int_col1` = `b`.`int_col1`) and (`b`.`int_col1` > 2048) and (`a`.`id` = `b`.`int_col1`)) group by `b`.`int_col1`))")
 
 - #// @desc
   #// IN,??????????????, where , group by , order by?? ???
@@ -741,15 +733,14 @@
                 )
 
   plan: |
-
-    Project(id="id")
-      MaterializedSemiJoin(condition="int_col1 = int_col1 AND id = int_col1", type="semi")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb` WHERE (((`id` > 2048) AND (`int_col1` > 2048)) AND (((`int_col1`, `id`)) IN (...)))")
-        Project(int_col1="int_col1")
-          HashAgg(group="int_col1", sum(int_col2)="SUM(sum(int_col2))")
-            Gather(concurrent=true)
-              LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, SUM(`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048) GROUP BY `int_col1`")
+    project(id="id")
+      materializedsemijoin(condition="int_col1 = int_col1 and id = int_col1", type="semi")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1` from `test_hash_tb` as `test_hash_tb` where ((`id` > 2048) and (`int_col1` > 2048) and (((`int_col1`, `id`)) in (...)))")
+        project(int_col1="int_col1")
+          hashagg(group="int_col1", sum(int_col2)="sum(sum(int_col2))")
+            gather(concurrent=true)
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col1`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 2048) group by `int_col1`")
 
 - #// @desc
   #// IN,??????????????, where , group by , order by?? ????
@@ -767,8 +758,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1`))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select sum(`b`.`int_col2`) as `sum(int_col2)` from `test_hash_tb6` as `b` where ((`a`.`int_col1` = `b`.`int_col1`) and (`b`.`int_col1` > 2048) and (`a`.`id` = `b`.`int_col1`)) group by `b`.`int_col1` order by `b`.`int_col1`))")
 
 - #// @desc
   #// IN,??????????????, where , group by , order by , limit?? ???
@@ -820,8 +810,7 @@
                 )
 
   plan: |
-
-    LogicalView(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="SELECT `a`.`id` FROM `test_hash_tb5` AS `a` WHERE (EXISTS (SELECT SUM(`b`.`int_col2`) AS `sum(int_col2)` FROM `test_hash_tb6` AS `b` WHERE (((`a`.`int_col1` = `b`.`int_col1`) AND (`b`.`int_col1` > 2048)) AND (`a`.`id` = `b`.`int_col1`)) GROUP BY `b`.`int_col1` ORDER BY `b`.`int_col1` LIMIT 2399 OFFSET 1111))")
+    logicalview(tables="optest_0000.test_hash_tb5,test_hash_tb6", sql="select `a`.`id` from `test_hash_tb5` as `a` where (exists (select sum(`b`.`int_col2`) as `sum(int_col2)` from `test_hash_tb6` as `b` where ((`a`.`int_col1` = `b`.`int_col1`) and (`b`.`int_col1` > 2048) and (`a`.`id` = `b`.`int_col1`)) group by `b`.`int_col1` order by `b`.`int_col1` limit 2399 offset 1111))")
 
 -
 

@@ -158,6 +158,6 @@ public class HintPushdownOperator extends BaseHintOperator {
     }
 
     public Map<String, Map<String, Comparative>> buildComparative() {
-        return buildComparative(this.table, this.condition, this.paramIndexMap, null, ec);
+        return buildComparative(this.table, this.condition, this.paramIndexMap, null, null, ec);
     }
 }

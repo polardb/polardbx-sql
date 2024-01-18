@@ -1,0 +1,40 @@
+## DISABLE_FAST_SQL_PARSER
+drop table if exists `t_order1`;
+drop table if exists `t_order2`;
+CREATE TABLE `t_order1` (
+`x` int NOT NULL PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`create_time` timestamp NOT NULL,
+key `idx` (`create_time`)
+);
+show create table t_order1;
+Table,Create Table
+t_order1,CREATE TABLE `t_order1` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`x`),
+	LOCAL KEY `idx` (`create_time`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+show full create table t_order1;
+Table,Create Table
+t_order1,CREATE PARTITION TABLE `t_order1` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	PRIMARY KEY (`x`),
+	LOCAL KEY `idx` (`create_time`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+## error_msg: $# for auto partition not support yet! #$
+CREATE TABLE `t_order2` (
+`create_time` timestamp NOT NULL PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+);
+for auto partition not support yet!

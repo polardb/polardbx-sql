@@ -1,0 +1,29 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop tablegroup if exists list_tg;
+create tablegroup if not exists list_tg;
+CREATE TABLE mylist_tbl_test(
+id bigint not null auto_increment,
+sellerId bigint not null,
+buyerId bigint not null,
+primary key(id)
+)
+PARTITION BY LIST COLUMNS(sellerId)
+SUBPARTITION BY KEY(sellerId,id)
+(
+PARTITION p1 VALUES IN (2563613536,3982196496) SUBPARTITIONS 1,
+PARTITION p2 VALUES IN (8409) SUBPARTITIONS 1,
+PARTITION p3 VALUES IN (8320) SUBPARTITIONS 1,
+PARTITION pd VALUES IN (DEFAULT) SUBPARTITIONS 4
+)
+tablegroup=list_tg;
+
+select pg.id = tp.group_id is_pg_id_equal, tp.part_name name
+from
+metadb.partition_group pg inner join
+metadb.table_partitions tp
+on pg.partition_name=tp.part_name
+and tp.part_level=2 and tp.table_name='mylist_tbl_test'
+where pg.tg_id=(select group_id from metadb.table_partitions where table_name='mylist_tbl_test' and part_level in (0))
+order by name
+;

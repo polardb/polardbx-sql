@@ -28,6 +28,8 @@ import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.chunk.MutableChunk;
+import com.alibaba.polardbx.executor.operator.AbstractOSSTableScanExec;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanExec;
 import com.alibaba.polardbx.executor.operator.DrivingStreamTableScanSortExec;
 import com.alibaba.polardbx.executor.operator.Executor;
@@ -69,8 +71,8 @@ import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
+import org.jetbrains.annotations.NotNull;
 
-import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -100,11 +102,12 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
     private List<LookupEquiJoinKey> allJoinKeys; // including null-safe equal (`<=>`)
     private LookupPredicate predicates;
     private List<DataType> dataTypeList;
+    private boolean randomSplits;
 
     public LogicalViewExecutorFactory(
         LogicalView logicalView, int totalPrefetch, int parallelism, long maxRowCount, boolean bSort,
         long fetch, long skip, SpillerFactory spillerFactory, Map<Integer, BloomFilterExpression> bloomFilters,
-        boolean enableRuntimeFilter) {
+        boolean enableRuntimeFilter, boolean randomSplits) {
         this.logicalView = logicalView;
         this.totalPrefetch = totalPrefetch;
         this.meta = CursorMeta.build(CalciteUtils.buildColumnMeta(logicalView, "TableScanColumns"));
@@ -114,23 +117,13 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
         this.fetch = fetch;
         this.skip = skip;
         this.spillerFactory = spillerFactory;
+        this.randomSplits = randomSplits;
 
         if (logicalView.getJoin() != null) {
             Join join = logicalView.getJoin();
             this.allJoinKeys = EquiJoinUtils.buildLookupEquiJoinKeys(join, join.getOuter(), join.getInner(),
-                (RexCall) join.getCondition(), join.getJoinType(), true);
-            RelMetadataQuery mq = join.getCluster().getMetadataQuery();
-            List<String> columnOrigins = Lists.newArrayList();
-            synchronized (mq) {
-                for (int i = 0; i < logicalView.getRowType().getFieldCount(); i++) {
-                    RelColumnOrigin columnOrigin = mq.getColumnOrigin(logicalView, i);
-                    if (columnOrigin == null) {
-                        columnOrigins.add(logicalView.getRowType().getFieldNames().get(i));
-                    } else {
-                        columnOrigins.add(columnOrigin.getColumnName());
-                    }
-                }
-            }
+                (RexCall) join.getCondition(), join.getJoinType());
+            List<String> columnOrigins = logicalView.getColumnOrigins();
             this.predicates = new LookupPredicateBuilder(join, columnOrigins).build(allJoinKeys);
         }
 
@@ -162,7 +155,6 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
     @NotNull
     private Executor buildTableScanExec(ExecutionContext context) {
-
         TableScanExec scanExec;
         Join join = logicalView.getJoin();
         if (join != null) {
@@ -179,7 +171,7 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
             if (bSort) {
                 long limit = context.getParamManager().getLong(ConnectionParams.MERGE_SORT_BUFFER_SIZE);
-                if (limit > 0) {
+                if (limit > 0 && logicalView.pushedRelNodeIsSort()) {
                     this.scanClient = new MergeSortWithBufferTableScanClient(
                         context, meta, useTransactionConnection, totalPrefetch);
                 } else {
@@ -203,6 +195,10 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
             }
 
             scanExec = buildTableScanExec(scanClient, context);
+
+            if (randomSplits) {
+                scanExec.setRandomSplits(randomSplits);
+            }
         }
         scanExec.setId(logicalView.getRelatedId());
         if (context.getRuntimeStatistics() != null) {
@@ -213,11 +209,15 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
 
     private Executor buildOSSTableScanExec(ExecutionContext context) {
         OSSTableScan ossTableScan = (OSSTableScan) logicalView;
+
         AbstractOSSTableScanExec exec = AbstractOSSTableScanExec.create(ossTableScan, context, dataTypeList);
+
         OrcTableScan orcTableScan = ossTableScan.getOrcNode();
         if (!orcTableScan.getFilters().isEmpty()) {
             RexNode filterCondition = orcTableScan.getFilters().get(0);
+
             List<DataType<?>> inputTypes = orcTableScan.getInProjectsDataType();
+
             // binding vec expression
             RexNode root = VectorizedExpressionBuilder.rewriteRoot(filterCondition, true);
             InputRefTypeChecker inputRefTypeChecker = new InputRefTypeChecker(inputTypes);
@@ -230,12 +230,14 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
                 .addEmptySlots(inputTypes)
                 .addEmptySlots(filterOutputTypes)
                 .build();
+
             // prepare filter bitmap
             List<Integer> inputIndex = VectorizedExpressionUtils.getInputIndex(vectorizedExpression);
             int[] filterBitmap = new int[inputTypes.size() + filterOutputTypes.size()];
             for (int i : inputIndex) {
                 filterBitmap[i] = 1;
             }
+
             exec.setPreAllocatedChunk(preAllocatedChunk);
             exec.setFilterInputTypes(inputTypes);
             exec.setFilterOutputTypes(filterOutputTypes);
@@ -251,12 +253,13 @@ public class LogicalViewExecutorFactory extends ExecutorFactory {
                 RuntimeStatHelper.registerStatForExec(logicalView, exec, context);
             }
         }
+
         if (filterExpression != null) {
             exec.initWaitFuture(filterExpression.getWaitBloomFuture());
         }
+
         return exec;
     }
-
 
     private TableScanExec buildTableScanExec(TableScanClient scanClient, ExecutionContext context) {
         int stepSize = context.getParamManager().getInt(ConnectionParams.RESUME_SCAN_STEP_SIZE);

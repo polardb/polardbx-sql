@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSetPartitionsLocalityJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.handler.LogicalRebalanceHandler;
@@ -43,7 +44,6 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupSetPartitionsLocality;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlAlterTableGroup;
-import org.apache.calcite.sql.SqlAlterTableGroupSetLocality;
 import org.apache.calcite.sql.SqlAlterTableGroupSetPartitionsLocality;
 import org.apache.commons.lang.StringUtils;
 
@@ -78,6 +78,8 @@ public class LogicalAlterTableGroupSetPartitionsLocalityHandler extends LogicalC
 
         initDdlContext(logicalDdlPlan, executionContext);
 
+        // Validate the plan on file storage first
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         // Validate the plan first and then return immediately if needed.
         boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
 

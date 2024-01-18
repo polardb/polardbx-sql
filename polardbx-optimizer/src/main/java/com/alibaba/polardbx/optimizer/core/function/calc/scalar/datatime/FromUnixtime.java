@@ -16,19 +16,27 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.datatime;
 
+import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DivStructure;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.calculator.MySQLTimeCalculator;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import com.google.common.base.Preconditions;
 
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.time.ZoneId;
+import java.util.Calendar;
 import java.util.List;
-import java.util.Calendar;
-import java.util.Calendar;
 import java.util.Locale;
 import java.util.TimeZone;
 
@@ -307,14 +315,25 @@ public class FromUnixtime extends AbstractScalarFunction {
             }
         }
 
-        Long time = DataTypes.LongType.convertFrom(args[0]);
-        java.sql.Timestamp timestamp = new java.sql.Timestamp(time * 1000);
+        if (args.length == 1) {
+            final ZoneId zoneId = ec.getTimeZone() == null
+                ? TimeZone.getDefault().toZoneId()
+                : ec.getTimeZone().getZoneId();
 
-        TimeZone timeZone = null;
-        if (ec.getTimeZone() != null) {
-            timeZone = ec.getTimeZone().getTimeZone();
-        }
-        if (args.length >= 2) {
+            MysqlDateTime mysqlDateTime = evaluateOneParam(args[0], zoneId);
+
+            return mysqlDateTime == null ? null : new OriginalTimestamp(mysqlDateTime);
+
+        } else if (args.length >= 2) {
+            // old logic
+            Long time = DataTypes.LongType.convertFrom(args[0]);
+            java.sql.Timestamp timestamp = new java.sql.Timestamp(time * 1000);
+
+            TimeZone timeZone = null;
+            if (ec.getTimeZone() != null) {
+                timeZone = ec.getTimeZone().getTimeZone();
+            }
+
             String format = DataTypes.StringType.convertFrom(args[1]);
             try {
                 SimpleDateFormat dateFormat = new SimpleDateFormat(
@@ -327,9 +346,66 @@ public class FromUnixtime extends AbstractScalarFunction {
             } catch (IllegalArgumentException e) {
                 return format;
             }
-        } else {
-            return resultType.convertFrom(TimeZoneUtils.convertToDateTime(timestamp, timeZone));
         }
+
+        return null;
+    }
+
+    private MysqlDateTime evaluateOneParam(Object arg, ZoneId zoneId) {
+        Preconditions.checkNotNull(arg);
+
+        boolean hasFractional;
+        // get fractions after point.
+        if (arg instanceof OriginalTemporalValue) {
+            hasFractional = ((OriginalTemporalValue) arg).getMysqlDateTime().getSecondPart() != 0;
+        } else if (arg instanceof Decimal) {
+            hasFractional = ((Decimal) arg).scale() > 0;
+        } else if (arg instanceof Number && !(arg instanceof Double || arg instanceof Float)) {
+            hasFractional = false;
+        } else {
+            hasFractional = true;
+        }
+
+        DivStructure divStructure;
+        if (hasFractional) {
+            // convert to decimal structure and get div structure
+            Decimal decimal = DataTypes.DecimalType.convertFrom(arg);
+            if (decimal == null) {
+                return null;
+            }
+
+            divStructure = DivStructure.fromDecimal(decimal);
+            if (divStructure == null) {
+                return null;
+            }
+        } else {
+            Long longVal = DataTypes.LongType.convertFrom(arg);
+            divStructure = new DivStructure();
+            divStructure.setQuot(longVal);
+            divStructure.setRem(0);
+        }
+
+        // check boundary of div structure.
+        if (divStructure.getQuot() > Integer.MAX_VALUE
+            || divStructure.getQuot() < 0
+            || divStructure.getRem() < 0) {
+            return null;
+        }
+
+        // Try convert
+        MySQLTimeVal timeVal = new MySQLTimeVal(divStructure.getQuot(), 0);
+        MysqlDateTime mysqlDateTime = MySQLTimeConverter.convertTimestampToDatetime(timeVal, zoneId);
+        if (mysqlDateTime == null) {
+            return null;
+        }
+
+        // get micro and nano part to round
+        long micro = !hasFractional ? 0 : divStructure.getRem() / 1000;
+        int nano = (int) (divStructure.getRem() % 1000);
+
+        mysqlDateTime.setSecondPart(micro * 1000);
+        MysqlDateTime result = MySQLTimeCalculator.datetimeAddNanoWithRound(mysqlDateTime, nano);
+        return result;
     }
 
     @Override

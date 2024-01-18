@@ -21,6 +21,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.oss.filesystem.NFSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -87,6 +88,15 @@ public class FileStorageMetaStore {
                     ossFileSystem.getMetaCache().invalidate(path);
                     // NOTE: replace filesystem, bypass data cache
                     fileSystem = ossFileSystem;
+                } else if (fileMergeCachingFileSystem.getDataTier() instanceof NFSFileSystem) {
+                    NFSFileSystem nfsFileSystem = (NFSFileSystem) fileMergeCachingFileSystem.getDataTier();
+                    // NOTE: invalidate meta cache
+                    nfsFileSystem.getMetaCache().invalidate(path);
+                    // NOTE: replace filesystem, bypass data cache
+                    fileSystem = nfsFileSystem;
+                } else {
+                    // NOTE: external disk
+                    fileSystem = fileMergeCachingFileSystem.getDataTier();
                 }
             }
 
@@ -110,7 +120,9 @@ public class FileStorageMetaStore {
                     JSONArray jsonArray = jsonObject.getJSONArray("files");
                     for (int i = 0; i < jsonArray.size(); i++) {
                         JSONObject fileJson = jsonArray.getJSONObject(i);
-                        OssFileMeta ossFileMeta = new OssFileMeta(fileJson.getString("fileName"), fileJson.getLongValue("commitTs"), fileJson.getLong("removeTs"));
+                        OssFileMeta ossFileMeta =
+                            new OssFileMeta(fileJson.getString("fileName"), fileJson.getLongValue("commitTs"),
+                                fileJson.getLong("removeTs"));
                         fileMetaList.add(ossFileMeta);
                     }
                 }

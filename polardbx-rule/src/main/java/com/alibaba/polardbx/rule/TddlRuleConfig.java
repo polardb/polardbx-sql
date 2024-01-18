@@ -41,6 +41,9 @@ public abstract class TddlRuleConfig extends AbstractLifecycle implements Lifecy
     protected String appName;
     protected String unitName;
 
+    protected String appRuleString;
+
+
     /**
      * key = 0(old),1(new),2,3,4... value= version
      */
@@ -137,5 +140,13 @@ public abstract class TddlRuleConfig extends AbstractLifecycle implements Lifecy
 
     public long getLastTimestamp() {
         return lastTimestamp;
+    }
+
+    public String getAppRuleString() {
+        return appRuleString;
+    }
+
+    public void setAppRuleString(String appRuleString) {
+        this.appRuleString = appRuleString;
     }
 }

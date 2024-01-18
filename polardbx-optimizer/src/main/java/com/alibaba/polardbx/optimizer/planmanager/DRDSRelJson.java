@@ -381,6 +381,8 @@ public class DRDSRelJson extends RelJson {
         case DYNAMIC_PARAM:
             map = jsonBuilder.map();
             map.put("index", ((RexDynamicParam) node).getIndex());
+            map.put("skindex", ((RexDynamicParam) node).getSkIndex());
+            map.put("subindex", ((RexDynamicParam) node).getSubIndex());
             map.put("reltype", toJson(node.getType()));
             map.put("type", "DYNAMIC");
             if (((RexDynamicParam) node).getSemiType() != null) {
@@ -593,8 +595,25 @@ public class DRDSRelJson extends RelJson {
                     rexDynamicParam.setMaxOnerow(maxonerow);
                     return rexDynamicParam;
                 }
+                int subindex = -1;
+                int skindex = -1;
+                Object tmp = map.get("subindex");
+                if (tmp instanceof Integer) {
+                    subindex = (int) tmp;
+                } else if (tmp instanceof String) {
+                    subindex = Integer.parseInt((String) tmp);
+                }
+
+                tmp = map.get("skindex");
+                if (tmp instanceof Integer) {
+                    skindex = (int) tmp;
+                } else if (tmp instanceof String) {
+                    skindex = Integer.parseInt((String) tmp);
+                }
                 RexDynamicParam rexDynamicParam = new RexDynamicParam(toType(typeFactory, map.get("reltype")),
                     (Integer) map.get("index"));
+                rexDynamicParam.setSubIndex(subindex);
+                rexDynamicParam.setSkIndex(skindex);
                 return rexDynamicParam;
             }
 

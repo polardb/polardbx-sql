@@ -20,6 +20,17 @@ package com.alibaba.polardbx.optimizer.utils;
  * @author chenghui.lch
  */
 public class IntervalEndPointInfo {
+
+    /**
+     * <pre>
+     * cmpDirection=true  <=>  const < col or const <= col, so const is the left end point,
+     * cmpDirection=false <=>  col < const or col <= const, so const is NOT the left end point,
+     *
+     * includeEndPoint=true <=> const <= col or col <= const
+     * includeEndPoint=false <=> const < col or col < const
+     * </pre>
+     */
+
     protected boolean cmpDirection;
     protected boolean includeEndPoint = new Boolean(true);
 

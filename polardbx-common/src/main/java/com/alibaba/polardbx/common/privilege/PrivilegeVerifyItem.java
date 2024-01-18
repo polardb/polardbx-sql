@@ -21,11 +21,24 @@ import com.taobao.tddl.common.privilege.PrivilegePoint;
 public class PrivilegeVerifyItem {
     private String db;
     private String table;
+    private boolean isAnyTable = false;
     private PrivilegePoint privilegePoint;
+
+    /**
+     * 系统内部生成的查询
+     */
+    private boolean internalQuery = false;
 
     public PrivilegeVerifyItem(String db, String table, PrivilegePoint privilegePoint) {
         this.db = db;
         this.table = table;
+        this.privilegePoint = privilegePoint;
+    }
+
+    public PrivilegeVerifyItem(String db, String table, boolean isAnyTable, PrivilegePoint privilegePoint) {
+        this.db = db;
+        this.table = table;
+        this.isAnyTable = isAnyTable;
         this.privilegePoint = privilegePoint;
     }
 
@@ -56,4 +69,17 @@ public class PrivilegeVerifyItem {
     public void setPrivilegePoint(PrivilegePoint privilegePoint) {
         this.privilegePoint = privilegePoint;
     }
+
+    public boolean isInternalQuery() {
+        return internalQuery;
+    }
+
+    public void setInternalQuery(boolean internalQuery) {
+        this.internalQuery = internalQuery;
+    }
+
+    public boolean isAnyTable() {
+        return isAnyTable;
+    }
+
 }

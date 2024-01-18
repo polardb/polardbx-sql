@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.mdl;
 import com.alibaba.polardbx.common.utils.Assert;
 
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
+
 import java.util.concurrent.locks.StampedLock;
 
 /**
@@ -40,6 +41,10 @@ public abstract class MdlLock {
     }
 
     public abstract long writeLock();
+
+    public abstract long tryConvertToWriteLock(long stamp);
+
+    public abstract long tryConvertToReadLock(long stamp);
 
     public abstract long readLock();
 

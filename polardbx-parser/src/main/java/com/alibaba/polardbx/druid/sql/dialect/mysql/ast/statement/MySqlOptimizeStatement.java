@@ -15,6 +15,7 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -23,10 +24,10 @@ import java.util.List;
 
 public class MySqlOptimizeStatement extends MySqlStatementImpl {
 
-    private boolean                          noWriteToBinlog = false;
-    private boolean                          local           = false;
+    private boolean noWriteToBinlog = false;
+    private boolean local = false;
 
-    protected final List<SQLExprTableSource> tableSources    = new ArrayList<SQLExprTableSource>();
+    protected final List<SQLExprTableSource> tableSources = new ArrayList<SQLExprTableSource>();
 
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
@@ -60,5 +61,10 @@ public class MySqlOptimizeStatement extends MySqlStatementImpl {
             tableSource.setParent(this);
         }
         this.tableSources.add(tableSource);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

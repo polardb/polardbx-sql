@@ -22,13 +22,16 @@ import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.util.Litmus;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.SQLException;
+import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAssert;
+import static org.hamcrest.Matchers.is;
 
 /**
  * @author chenmo.cm
@@ -623,6 +626,29 @@ public class CreateGsiTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createPrimaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
         JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+    }
+
+    @Test
+    public void testPlan() {
+
+        String primaryTableName = "tbl_check_plan";
+        String gsiName = "tbl_check_plan_gsi";
+        String createPrimaryTable =
+            String.format("create table %s (a bigint(11) , b int(11), c int) dbpartition by hash(a)", primaryTableName);
+        String insert1 = String.format("insert into %s(a,b,c) values (%d,%d,%d);", primaryTableName, 2, 5, 3);
+        String insert2 = String.format("insert into %s(a,b,c) values (%d,%d,%d);", primaryTableName, 1, 5, 3);
+        String update = String.format("trace update %s set a = 4 where a = 1", primaryTableName);
+        String createGsi = String.format(
+            "/*+TDDL:CMD_EXTRA(GSI_FINAL_STATUS_DEBUG=DELETE_ONLY) */ alter table %s add global index %s(a,b,c) dbpartition by hash(a)",
+            primaryTableName, gsiName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS " + primaryTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createPrimaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, update);
+        List<List<String>> trace = getTrace(tddlConnection);
+        Assert.assertThat(trace.toString(), trace.size(), is(4));
     }
 
     private String buildCreateTable(String gsiDef) {

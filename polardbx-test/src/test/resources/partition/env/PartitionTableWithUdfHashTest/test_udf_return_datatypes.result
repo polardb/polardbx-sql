@@ -1,0 +1,51 @@
+## DISABLE_FAST_SQL_PARSER
+create table uh_myf1bint2bint(c1 bigint not null)
+partition by udf_hash(myf1bint2bint(c1))
+partitions 2 (
+  partition p1 values less than(0),
+  partition p2 values less than(9223372036854775807)
+);
+show create table uh_myf1bint2bint;
+Table,Create Table
+uh_myf1bint2bint,CREATE TABLE `uh_myf1bint2bint` (
+	`c1` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY UDF_HASH(myf1bint2bint(`c1`))
+PARTITIONS 2
+(PARTITION p1 VALUES LESS THAN (0) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (9223372036854775807) ENGINE = InnoDB)
+create table h_myf1bint2bint(c1 bigint not null)
+partition by hash(myf1bint2bint(c1))
+partitions 2;
+show create table h_myf1bint2bint;
+Table,Create Table
+h_myf1bint2bint,CREATE TABLE `h_myf1bint2bint` (
+	`c1` bigint(20) NOT NULL,
+	KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(myf1bint2bint(`c1`))
+PARTITIONS 2
+## error_msg: $# not allowed #$
+create table uh_myf1bint2var(c1 bigint not null)
+partition by udf_hash(myf1bint2var(c1))
+partitions 2 (
+partition p1 values less than(0),
+partition p2 values less than(9223372036854775807)
+);
+not allowed
+## error_msg: $# not allowed #$
+create table h_myf1bint2var(c1 bigint not null)
+partition by hash(myf1bint2var(c1))
+partitions 2;
+not allowed
+## error_msg: $# not allowed #$
+create table r_myf1bint2var(c1 bigint not null)
+partition by range(myf1bint2var(c1))
+( partition p1 values less than(maxvalue));
+not allowed
+## error_msg: $# not allowed #$
+create table l_myf1bint2var(c1 bigint not null)
+partition by list(myf1bint2var(c1))
+( partition p1 values in(default));
+not allowed

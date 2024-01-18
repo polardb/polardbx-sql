@@ -1,0 +1,98 @@
+storageList: [$dn1, $dn2]
+dbName: "test_repartition_locality"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_repartition_locality; "
+      - "create database test_repartition_locality mode = auto"
+      - "use test_repartition_locality"
+      - "create table t1(a int, b int) single locality = 'dn=$dn1';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "use test_repartition_locality"
+      - "alter table t1 partition by hash(a) partitions 16 locality = '';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table ""
+      tableGroupMatchCheck:
+        - t1 $tg1 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+  - prepareDDls:
+      - "use test_repartition_locality"
+      - "alter table t1 partition by hash(a) partitions 16 locality = 'dn=$dn2';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn2
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn2
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "use test_repartition_locality"
+      - "alter table t1 single locality = 'dn=$dn2';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn2
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn2
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  - prepareDDls:
+      - "use test_repartition_locality"
+      - "alter table t1 single locality = '';"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t1 table ""
+      tableGroupMatchCheck:
+        - t1 $tg1 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "use polardbx;"
+  - "use polardbx;"
+  - "drop database if exists test_repartition_locality;"

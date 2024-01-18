@@ -462,7 +462,7 @@
 
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` not in (select `id` from `test_hash_tb2` as `test_hash_tb2` where (((`int_col5` < 30) and (`test_hash_tb`.`id` = `id`)) and (`test_hash_tb`.`name` = `name`))))")
+      logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` not in (select `id` from `test_hash_tb2` as `test_hash_tb2` where ((`int_col5` < 30) and (`test_hash_tb`.`id` = `id`) and (`test_hash_tb`.`name` = `name`))))")
 
 - #// @desc
   #// IN,????????????, where??????

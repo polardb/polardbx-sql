@@ -1,0 +1,55 @@
+drop table if exists t1;
+drop table if exists t2;
+
+create table t1 (
+  a int,
+  b datetime,
+  c varchar(10)
+);
+
+create table t2 (
+a int,
+b datetime,
+c varchar(10),
+global index(b),
+index(b),
+global index(c),
+index(c)
+);
+
+show create table t2;
+
+show full create table t2;
+
+alter table t1 add index b1(b);
+
+alter table t1 add global index b2(b);
+
+show create table t1;
+
+show full create table t1;
+
+alter table t1 add index c1(c);
+
+alter table t1 add global index c2(c);
+
+show create table t1;
+
+show full create table t1;
+
+create global index b3 on t1(b);
+
+create global index c3 on t1(c);
+
+show create table t1;
+
+show full create table t1;
+
+create global index b4 on t1(b);
+
+create global index c4 on t1(c);
+
+show create table t1;
+
+show full create table t1;
+

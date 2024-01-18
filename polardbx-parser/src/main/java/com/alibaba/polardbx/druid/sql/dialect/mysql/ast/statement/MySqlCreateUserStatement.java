@@ -18,7 +18,6 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
-import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlObjectImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;

@@ -38,6 +38,7 @@ import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.util.Util;
 
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableMergePartitionHandler extends LogicalCommonDdlHandler {
@@ -68,9 +69,11 @@ public class LogicalAlterTableMergePartitionHandler extends LogicalCommonDdlHand
 
         String targetPartitionName =
             Util.last(((SqlIdentifier) (sqlAlterTableGroupMergePartition.getTargetPartitionName())).names);
-        Set<String> partitionsToBeMerged = sqlAlterTableGroupMergePartition.getOldPartitions().stream()
+        Set<String> partitionsToBeMerged = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
+        partitionsToBeMerged.addAll(sqlAlterTableGroupMergePartition.getOldPartitions().stream()
             .map(o -> Util.last(((SqlIdentifier) (o)).names).toLowerCase()).collect(
-                Collectors.toSet());
+                Collectors.toSet()));
 
         String logicalTableName = Util.last(((SqlIdentifier) alterTable.getTableName()).names);
         String schemaName = alterTableMergePartition.getSchemaName();
@@ -87,9 +90,10 @@ public class LogicalAlterTableMergePartitionHandler extends LogicalCommonDdlHand
         TableGroupConfig tableGroupConfig =
             tableGroupInfoManager.getTableGroupConfigById(tableMeta.getPartitionInfo().getTableGroupId());
 
-        AlterTableGroupUtils.alterTableGroupMergePartitionCheck(tableGroupConfig, targetPartitionName,
+        AlterTableGroupUtils.alterTableGroupMergePartitionCheck(sqlAlterTableGroupMergePartition, tableGroupConfig,
+            targetPartitionName,
             partitionsToBeMerged, executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

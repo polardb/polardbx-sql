@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.topology;
 
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
 
 import java.sql.ResultSet;
@@ -45,6 +46,23 @@ public class DbInfoRecord implements SystemTableRecord {
     public static final int DB_STATUS_CREATING = 1;
     public static final int DB_STATUS_DROPPING = 2;
 
+    /**
+     * The db can be read/write/read-write
+     */
+    public static final int DB_READ_WRITE = 0;
+    public static final int DB_READ_ONLY = 1;
+    public static final int DB_WRITE_ONLY = 2;  //temporarily not used
+
+    /**
+     * The attr key of extra field of db for encryption option
+     */
+    public static final String EXTRA_KEY_ENCRYPTION = "encryption";
+
+    /**
+     * The attr key of extra field of db for if using default single table option
+     */
+    public static final String EXTRA_KEY_DEFAULT_SINGLE = "default_single";
+
     public long id;
     public Timestamp gmtCreated;
     public Timestamp gmtModified;
@@ -54,6 +72,11 @@ public class DbInfoRecord implements SystemTableRecord {
     public String collation;
     public int dbType;
     public int dbStatus;
+    public int readWriteStatus;
+    public JSONObject extra;
+
+    public DbInfoRecord() {
+    }
 
     public boolean isUserDb() {
         return this.dbType == DB_TYPE_PART_DB || this.dbType == DB_TYPE_NEW_PART_DB;
@@ -64,7 +87,19 @@ public class DbInfoRecord implements SystemTableRecord {
     }
 
     public boolean isSharding() {
-        return this.dbType != DB_TYPE_PART_DB;
+        return this.dbType == DB_TYPE_PART_DB;
+    }
+
+    public boolean isReadOnly() {
+        return this.readWriteStatus == DB_READ_ONLY;
+    }
+
+    public Boolean isEncryption() {
+        return extra == null ? null : extra.getBoolean(DbInfoRecord.EXTRA_KEY_ENCRYPTION);
+    }
+
+    public Boolean isDefaultSingle() {
+        return extra == null ? null : extra.getBoolean(DbInfoRecord.EXTRA_KEY_DEFAULT_SINGLE);
     }
 
     @Override
@@ -78,6 +113,9 @@ public class DbInfoRecord implements SystemTableRecord {
         this.collation = rs.getString("collation");
         this.dbType = rs.getInt("db_type");
         this.dbStatus = rs.getInt("db_status");
+        this.readWriteStatus = rs.getInt("read_write_status");
+        this.extra = JSONObject.parseObject(rs.getString("extra"));
+
         return this;
     }
 

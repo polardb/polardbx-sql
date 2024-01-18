@@ -20,18 +20,28 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.type.TransactionType;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IMppReadOnlyTransaction;
+import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Map;
 
 public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMppReadOnlyTransaction, ITsoTransaction {
 
     private long tsoTimestamp = -1;
-    private Map<String, Long> lsnMap;
+    private Map<String, Long> dnLsnMap;
     private boolean omitTso;
     private boolean lizard1PC;
 
@@ -55,8 +65,8 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     }
 
     @Override
-    public void setLsnMap(Map<String, Long> lsnMap) {
-        this.lsnMap = lsnMap;
+    public void setDnLsnMap(Map<String, Long> dnLsnMap) {
+        this.dnLsnMap = dnLsnMap;
     }
 
     @Override
@@ -66,20 +76,39 @@ public class MppReadOnlyTransaction extends AutoCommitTransaction implements IMp
     }
 
     @Override
-    public IConnection getConnection(String schemaName, String group, Long grpConnId, IDataSource ds, RW rw, ExecutionContext ec)
+    public IConnection getConnection(String schemaName, String group, Long grpConnId, IDataSource ds, RW rw,
+                                     ExecutionContext ec)
         throws SQLException {
         throw new NotSupportException();
     }
 
     @Override
+    public TransactionType getType() {
+        return TransactionType.TSO_MPP;
+    }
+
+//    @Override
+//    protected void updateSlowTransaction() {
+//        updateSlowTSOTransaction(statisticSchema);
+//    }
+
+    @Override
     public IConnection getConnection(String schemaName, String groupName, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
-        IConnection connection = super.getConnection(schemaName, groupName, ds, rw, ec);
-        if (lsnMap.get(groupName) != null) {
+        if (!begun) {
+            statisticSchema = schemaName;
+            recordTransaction();
+            begun = true;
+        }
+        MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
+        IConnection connection = getRealConnection(schemaName, groupName, ds, masterSlave);
+        String masterId = ds.getMasterDNId();
+        connection = new DeferredConnection(connection, ec.getParamManager().getBoolean(
+            ConnectionParams.USING_RDS_RESULT_SKIP));
+        if (dnLsnMap.get(masterId) != null && (ConfigDataMode.isSlaveMode()
+            || DynamicConfig.getInstance().enableFollowReadForPolarDBX())) {
             //为了支持主实例也可以运行MPP的情况，目前主实例只能去和主库连接，所以不需要使用LSN
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute(String.format("SET read_lsn = %d", lsnMap.get(groupName)));
-            }
+            connection.executeLater(String.format("SET read_lsn = %d", dnLsnMap.get(masterId)));
         }
         if (omitTso) {
             useCtsTransaction(connection, lizard1PC);

@@ -16,26 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.planmanager;
 
-import com.alibaba.polardbx.common.properties.DynamicConfig;
-import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.alibaba.polardbx.druid.sql.ast.TDDLHint;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
-import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
-import com.alibaba.polardbx.optimizer.sharding.label.Label;
-import com.alibaba.polardbx.optimizer.sharding.label.PredicateNode;
-import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -44,10 +26,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.ast.TDDLHint;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLDeleteStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLInsertStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLUpdateStatement;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -55,12 +33,11 @@ import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MetaDbSchema;
 import com.alibaba.polardbx.optimizer.config.schema.MysqlSchema;
 import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlaceHolderExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.CollectTableNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
@@ -74,9 +51,6 @@ import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
-import com.alibaba.polardbx.rule.MappingRule;
-import com.alibaba.polardbx.rule.TableRule;
-import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -100,6 +74,7 @@ import org.apache.calcite.sql.TDDLSqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.JsonBuilder;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -109,6 +84,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -118,6 +94,7 @@ import java.util.zip.Inflater;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MAX_TOLERANCE_RATIO;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MINOR_TOLERANCE_RATIO;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
+import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainCostTrace;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainExecute;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
@@ -266,6 +243,10 @@ public class PlanManagerUtil {
         }
         ParamManager paramManager = executionContext.getParamManager();
 
+        if (executionContext.isUseHint()) {
+            return false;
+        }
+
         if (!paramManager.getBoolean(ConnectionParams.ENABLE_SPM)) {
             return false;
         }
@@ -292,6 +273,29 @@ public class PlanManagerUtil {
         return canConvertToJson(executionPlan, paramManager);
     }
 
+    /**
+     * Plan with pushdown hint is not serializable, so that their baseline info is marked with rebuildAtLoad flag
+     *
+     * @return true if plan is serializable
+     */
+    public static boolean serializableSpmPlan(String schemaName, ExecutionPlan executionPlan) {
+        final String parameterizedSql = Optional
+            .ofNullable(executionPlan.getCacheKey())
+            .map(PlanCache.CacheKey::getParameterizedSql)
+            .orElse(null);
+
+        if (parameterizedSql == null) {
+            return false;
+        }
+        final BaselineInfo baselineInfo = PlanManager.getInstance().getBaselineMap(schemaName).get(parameterizedSql);
+
+        if (null == baselineInfo) {
+            return false;
+        }
+
+        return !baselineInfo.isRebuildAtLoad();
+    }
+
     public static boolean canConvertToJson(ExecutionPlan executionPlan, ParamManager paramManager) {
 
         if (executionPlan == PlaceHolderExecutionPlan.INSTANCE) {
@@ -314,6 +318,11 @@ public class PlanManagerUtil {
             return false;
         }
         if (!plannerContext.getSqlKind().belongsTo(SqlKind.QUERY)) {
+            return false;
+        }
+
+        // do not support plan with constant params
+        if (executionPlan.getConstantParams() != null) {
             return false;
         }
 
@@ -497,6 +506,10 @@ public class PlanManagerUtil {
 
     public static boolean useSpm(SqlParameterized sqlParameterized, ExecutionContext ec) {
         ExplainResult explain = ec.getExplain();
+        if (ec.isUseHint()) {
+            return false;
+        }
+
         if (isExplainOptimizer(explain)) {
             return false;
         }
@@ -516,6 +529,11 @@ public class PlanManagerUtil {
         if (isExplainStatistics(explain)) {
             return false;
         }
+
+        if (isExplainCostTrace(explain)) {
+            return false;
+        }
+
         if (!sqlParameterized.needCache()) {
             return false;
         }
@@ -530,6 +548,11 @@ public class PlanManagerUtil {
         }
 
         if (ec.getLoadDataContext() != null) {
+            return false;
+        }
+
+        if (ec.getExtraCmds().get(ConnectionProperties.PARTITION_NAME) != null &&
+            !ec.getExtraCmds().get(ConnectionProperties.PARTITION_NAME).toString().isEmpty()) {
             return false;
         }
 
@@ -587,6 +610,15 @@ public class PlanManagerUtil {
         if (points == null) {
             return "";
         }
+
+        List<Map<String, Object>> abstractPointList = pointsTolist(points);
+
+        final JsonBuilder jsonBuilder = new JsonBuilder();
+        return jsonBuilder.toJsonString(abstractPointList);
+    }
+
+    @NotNull
+    public static List<Map<String, Object>> pointsTolist(Collection<Point> points) {
         final JsonBuilder jsonBuilder = new JsonBuilder();
         List<Map<String, Object>> abstractPointList = Lists.newArrayList();
         for (Point point : points) {
@@ -602,7 +634,7 @@ public class PlanManagerUtil {
                 .put("xRowcountExpected", jsonBuilder.toJsonString(point.getPhyFeedBack().getExaminedRowCount()));
             abstractPointList.add(abstractPoint);
         }
-        return jsonBuilder.toJsonString(abstractPointList);
+        return abstractPointList;
     }
 
     public static Set<Point> jsonToPoints(String parameterSql,
@@ -716,5 +748,9 @@ public class PlanManagerUtil {
             }
         }
         return columnsMap;
+    }
+
+    public static boolean canOptByForcePrimary(ExecutionPlan plan, ExecutionContext ec) {
+        return plan.isCanOptByForcePrimary() && ec.enableForcePrimaryForTso();
     }
 }

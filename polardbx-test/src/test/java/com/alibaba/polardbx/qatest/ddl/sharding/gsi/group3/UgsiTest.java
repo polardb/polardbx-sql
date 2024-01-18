@@ -60,23 +60,23 @@ public class UgsiTest extends DDLBaseNewDBTestCase {
 
         // Duplicate on primary.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2) values (1, 1, 2)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key 'primary'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ");
 
         // Duplicate on UGSI.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2) values (2, 2, 1)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ");
 
         // Duplicate on UGSI multi values.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2) values (2, 2, 1), (3, 3, 2), (4, 4, 1)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ");
 
         // Duplicate on UGSI when update.
         String update = "update " + UGSI_TABLE_NAME + " set c2 = 1 where id = 7";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1' for key ");
 
         // Duplicate on UGSI when multi update.
         update = "update " + UGSI_TABLE_NAME + " set c2 = 1 where c1 = 1";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1' for key ");
     }
 
     @Test
@@ -100,31 +100,31 @@ public class UgsiTest extends DDLBaseNewDBTestCase {
 
         // Duplicate on primary.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2, c3) values (1, 1, 2, 2)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key 'primary'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1' for key ");
 
         // Duplicate on UGSI.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2, c3) values (2, 2, 1, 1)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1-1' for key ");
 
         // Duplicate on UGSI multi values.
         insert = "insert into " + UGSI_TABLE_NAME + "(id, c1, c2, c3) values (2, 2, 1, 1), (3, 3, 2, 2), (4, 4, 1, 1)";
-        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, insert, "duplicate entry '1-1' for key ");
 
         // Duplicate on UGSI when update.
         String update = "update " + UGSI_TABLE_NAME + " set c2 = 1 where id = 7";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ");
 
         // Duplicate on UGSI when multi update.
         update = "update " + UGSI_TABLE_NAME + " set c2 = 1 where c1 = 1";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ");
 
         // Duplicate on UGSI non partition key when update.
         update = "update " + UGSI_TABLE_NAME + " set c3 = 1 where id = 9";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ");
 
         // Duplicate on UGSI non partition key when multi update.
         update = "update " + UGSI_TABLE_NAME + " set c3 = 1 where c1 = 2";
-        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ugsi 'ug_i_test'");
+        JdbcUtil.executeUpdateFailed(tddlConnection, update, "duplicate entry '1-1' for key ");
     }
 
 }

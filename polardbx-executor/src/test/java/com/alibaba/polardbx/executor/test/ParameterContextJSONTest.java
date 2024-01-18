@@ -20,21 +20,26 @@ import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.mpp.metadata.DefinedJsonSerde;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.google.common.collect.Sets;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -47,9 +52,11 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.TreeMap;
 
 import static com.alibaba.polardbx.common.utils.hash.HashMethodInfo.XXHASH_METHOD;
@@ -66,8 +73,49 @@ public class ParameterContextJSONTest {
         module1.addDeserializer(ParameterContext.class, new DefinedJsonSerde.ParameterContextDeserializer());
         module1.addSerializer(RawString.class, new DefinedJsonSerde.RawStringSerializer());
         module1.addDeserializer(RawString.class, new DefinedJsonSerde.RawStringDeserializer());
+        module1.addSerializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringSerializer());
+        module1.addDeserializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringDeserializer());
 
         objectMapper.registerModule(module1);
+        objectMapper.registerModule(new JavaTimeModule());
+    }
+
+    @Test
+    public void testSession() throws Exception {
+        SessionRepresentation sessionRepresentation = new SessionRepresentation(
+            "traceId",
+            "catalog",
+            "scheam",
+            "user",
+            "host",
+            "encoding",
+            "connstring",
+            "sqlMode",
+            4,
+            1000,
+            true,
+            1000,
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            new HashSet<>(),
+            new HashMap<>(),
+            new HashMap<>(),
+            false,
+            -1,
+            new InternalTimeZone(TimeZone.getDefault(), "test"),
+            1,
+            new HashMap<>(),
+            false,
+            false,
+            WorkloadType.TP,
+            null);
+
+        String json = objectMapper.writeValueAsString(sessionRepresentation);
+        System.out.println(json);
+        SessionRepresentation target = objectMapper.readValue(json, sessionRepresentation.getClass());
+        Assert.assertTrue(target.getDnLsnMap() != null);
     }
 
     @Test
@@ -116,6 +164,25 @@ public class ParameterContextJSONTest {
         System.out.println(json);
         RawString target = objectMapper.readValue(json, source.getClass());
         Assert.assertTrue(target.toString().equals(source.toString()));
+    }
+
+    @Test
+    public void testPruneRawStringListList() throws JsonProcessingException {
+        List<Object> objectList1 = Lists.newArrayList("123", 4.5f, "null", null);
+        List<Object> objectList2 = Lists.newArrayList("1234", 4.6f, "null", null);
+        List<Object> objectList3 = Lists.newArrayList("12345", 4.7f, "null", null);
+        List<List<Object>> objectListList = Lists.newArrayList(objectList1, objectList2, objectList3);
+        PruneRawString source = new PruneRawString(objectListList, PruneRawString.PRUNE_MODE.RANGE, 1, 2, null);
+        String json = objectMapper.writeValueAsString(source);
+        System.out.println(json);
+        PruneRawString target = objectMapper.readValue(json, source.getClass());
+        System.out.println(source.toString());
+        System.out.println(target.toString());
+        Assert.assertTrue(target.getObjList().size() == 1);
+        Assert.assertTrue(target.getObj(0, 0).equals("1234"));
+        Assert.assertTrue(target.getObj(0, 1).toString().equals("4.6"));
+        Assert.assertTrue(target.toString().equals(source.toString()));
+        Assert.assertTrue(target.buildRawString().equals(source.buildRawString()));
     }
 
     @Test

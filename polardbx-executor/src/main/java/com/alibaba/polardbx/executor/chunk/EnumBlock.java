@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
-import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.Map;
@@ -37,17 +35,14 @@ public class EnumBlock extends AbstractCommonBlock {
     private final int[] offsets;
     private final char[] data;
     private final Map<String, Integer> enumValues;
-    private final EnumType enumType;
 
     EnumBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets, char[] data,
               final Map<String, Integer> enumValues) {
         super(DataTypes.StringType, positionCount, valueIsNull, valueIsNull != null);
         this.offsets = offsets;
         this.data = data;
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + sizeOf(data);
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data) + sizeOf(valueIsNull);
         this.enumValues = enumValues;
-        this.enumType = new EnumType(enumValues);
+        updateSizeInfo();
     }
 
     EnumBlock(int positionCount, boolean[] valueIsNull, int[] offsets, char[] data,
@@ -55,10 +50,8 @@ public class EnumBlock extends AbstractCommonBlock {
         super(DataTypes.StringType, positionCount, valueIsNull, hasNull);
         this.offsets = offsets;
         this.data = data;
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + sizeOf(data);
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data);
         this.enumValues = enumValues;
-        this.enumType = new EnumType(enumValues);
+        updateSizeInfo();
     }
 
     @Override
@@ -74,8 +67,7 @@ public class EnumBlock extends AbstractCommonBlock {
 
     @Override
     public Object getObject(int position) {
-        return isNull(position) ? null :
-            new EnumValue(enumType, getString(position));
+        return isNull(position) ? null : getString(position);
     }
 
     @Override
@@ -175,6 +167,12 @@ public class EnumBlock extends AbstractCommonBlock {
 
     public char[] getData() {
         return data;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
+        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
     }
 }
 

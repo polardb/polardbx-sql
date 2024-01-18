@@ -50,4 +50,8 @@ public class StringUtils {
         }
         return s;
     }
+
+    public static String funcNameToClassName(String funcName) {
+        return funcName.substring(0, 1).toUpperCase() + funcName.substring(1).toLowerCase();
+    }
 }

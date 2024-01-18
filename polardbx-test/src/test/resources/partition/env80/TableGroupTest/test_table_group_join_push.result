@@ -1,0 +1,103 @@
+CREATE TABLEGROUP tg1111;
+CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`) PARTITIONS 4
+TABLEGROUP = tg1111;
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 4
+tablegroup = `tg1111`
+CREATE TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`) PARTITIONS 4
+TABLEGROUP = tg1111;
+
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 4
+tablegroup = `tg1111`
+CREATE TABLE `t3` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`a`, `b`, `c`) PARTITIONS 4
+TABLEGROUP = tg1111;
+
+SHOW FULL CREATE TABLE t3;
+Table,Create Table
+t3,CREATE TABLE `t3` (
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	`c` int(11) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	LOCAL KEY `auto_shard_key_a_b_c` USING BTREE (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`,`c`)
+PARTITIONS 4
+tablegroup = `tg1111`
+EXPLAIN SELECT t1.a
+FROM t1
+	JOIN t2 ON t1.a = t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2,p3,p4],t2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+EXPLAIN SELECT t1.a
+FROM t1
+	JOIN t3 ON t1.a = t3.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2,p3,p4],t3[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t3` AS `t3` ON (`t1`.`a` = `t3`.`a`)")
+EXPLAIN SELECT t2.a
+FROM t2
+	JOIN t3 ON t2.a = t3.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t2[p1,p2,p3,p4],t3[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t2`.`a` FROM `t2` AS `t2` INNER JOIN `t3` AS `t3` ON (`t2`.`a` = `t3`.`a`)")
+EXPLAIN SELECT t1.a
+FROM t1
+	JOIN t2 ON t1.a = t2.a
+	JOIN t3 ON t2.a = t3.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1,p2,p3,p4],t2[p1,p2,p3,p4],t3[p1,p2,p3,p4]", shardCount=4, sql="SELECT `t1`.`a` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`) INNER JOIN `t3` AS `t3` ON ((`t1`.`a` = `t3`.`a`) AND (`t2`.`a` = `t3`.`a`))")
+EXPLAIN SELECT t2.a
+FROM t2
+	JOIN t3 ON t2.b = t3.b;
+Logical ExecutionPlan
+Project(a="a")
+  BKAJoin(condition="b = b", type="inner")
+    Gather(concurrent=true)
+      LogicalView(tables="t3[p1,p2,p3,p4]", shardCount=4, sql="SELECT `b` FROM `t3` AS `t3`")
+    Gather(concurrent=true)
+      LogicalView(tables="t2[p1,p2,p3,p4]", shardCount=4, sql="SELECT `a`, `b` FROM `t2` AS `t2` WHERE (`b` IN (...))")
+EXPLAIN UPDATE t1
+SET b = 100
+WHERE a = 100;
+Logical ExecutionPlan
+LogicalModifyView(tables="t1[p2]", sql="UPDATE `t1` AS `t1` SET `b` = ? WHERE (`a` = ?)")
+EXPLAIN UPDATE t1
+SET b = 100;
+Logical ExecutionPlan
+LogicalModifyView(tables="t1[p1,p2,p3,p4]", shardCount=4, sql="UPDATE `t1` AS `t1` SET `b` = ?")

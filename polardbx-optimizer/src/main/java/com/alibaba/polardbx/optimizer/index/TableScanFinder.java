@@ -17,14 +17,12 @@
 package com.alibaba.polardbx.optimizer.index;
 
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.math.Log;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
-import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
@@ -44,10 +42,14 @@ public class TableScanFinder extends RelShuttleImpl {
 
     private List<Pair<String, TableScan>> result = new ArrayList<>();
 
+    private boolean usingPartitions;
+
+    private boolean usingFlashBack;
     private String schemaName;
 
     public TableScanFinder() {
-
+        this.usingPartitions = false;
+        this.usingFlashBack = false;
     }
 
     @Override
@@ -57,6 +59,8 @@ public class TableScanFinder extends RelShuttleImpl {
             ((LogicalView) scan).getPushedRelNode().accept(this);
         }
         result.add(Pair.of(schemaName, scan));
+        usingPartitions |= (scan.getPartitions() != null);
+        usingFlashBack |= (scan.getFlashback() != null);
         return scan;
     }
 
@@ -84,6 +88,15 @@ public class TableScanFinder extends RelShuttleImpl {
 
     public List<Pair<String, TableScan>> getResult() {
         return result;
+    }
+
+    /**
+     * ignore sql with partition or flash back
+     *
+     * @return true if the sql uses partition or flashBack
+     */
+    public boolean shouldSkip() {
+        return usingPartitions || usingFlashBack;
     }
 
     public Map<String, Map<String, List<TableScan>>> getMappedResult(String schema) {

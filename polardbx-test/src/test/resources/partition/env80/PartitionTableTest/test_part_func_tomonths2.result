@@ -1,0 +1,62 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+DROP TABLE IF EXISTS `hash_to_months`;
+CREATE TABLE IF NOT EXISTS `hash_to_months` (
+`dt` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_MONTHS(`dt`))
+PARTITIONS 8;
+show create table hash_to_months;
+Table,Create Table
+hash_to_months,CREATE TABLE `hash_to_months` (
+	`dt` date DEFAULT NULL,
+	KEY `auto_shard_key_dt` USING BTREE (`dt`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_MONTHS(`dt`))
+PARTITIONS 8
+explain select dt from hash_to_months where dt = '2021-12-01';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_months[p3]", sql="SELECT `dt` FROM `hash_to_months` AS `hash_to_months` WHERE (`dt` = ?)")
+explain select dt from hash_to_months where dt = '2021-11-01';
+Logical ExecutionPlan
+LogicalView(tables="hash_to_months[p5]", sql="SELECT `dt` FROM `hash_to_months` AS `hash_to_months` WHERE (`dt` = ?)")
+select part_route('', 'hash_to_months', '2022-01-01');
+part_route('', 'hash_to_months', '2022-01-01')
+p3
+select part_route('', 'hash_to_months', '2022-02-01');
+part_route('', 'hash_to_months', '2022-02-01')
+p3
+select part_route('', 'hash_to_months', '2022-03-01');
+part_route('', 'hash_to_months', '2022-03-01')
+p3
+select part_route('', 'hash_to_months', '2022-04-01');
+part_route('', 'hash_to_months', '2022-04-01')
+p8
+select part_route('', 'hash_to_months', '2022-05-01');
+part_route('', 'hash_to_months', '2022-05-01')
+p8
+select part_route('', 'hash_to_months', '2022-06-01');
+part_route('', 'hash_to_months', '2022-06-01')
+p8
+select part_route('', 'hash_to_months', '2022-07-01');
+part_route('', 'hash_to_months', '2022-07-01')
+p8
+select part_route('', 'hash_to_months', '2022-08-01');
+part_route('', 'hash_to_months', '2022-08-01')
+p8
+select part_route('', 'hash_to_months', '2022-09-01');
+part_route('', 'hash_to_months', '2022-09-01')
+p2
+select part_route('', 'hash_to_months', '2022-10-01');
+part_route('', 'hash_to_months', '2022-10-01')
+p1
+select part_route('', 'hash_to_months', '2022-11-01');
+part_route('', 'hash_to_months', '2022-11-01')
+p1
+select part_route('', 'hash_to_months', '2022-12-01');
+part_route('', 'hash_to_months', '2022-12-01')
+p1
+explain select dt from hash_to_months where dt between '2022-05-01' and '2022-11-1';
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="hash_to_months[p1,p2,p8]", shardCount=3, sql="SELECT `dt` FROM `hash_to_months` AS `hash_to_months` WHERE (`dt` BETWEEN ? AND ?)")

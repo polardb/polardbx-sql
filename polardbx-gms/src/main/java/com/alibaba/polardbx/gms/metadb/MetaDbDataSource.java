@@ -74,23 +74,35 @@ public class MetaDbDataSource extends AbstractLifecycle {
         GmsJdbcUtil.getJdbcConnPropsFromPropertiesMap(GmsJdbcUtil.getDefaultConnPropertiesForMetaDb());
     protected static MetaDbDataSource instance;
 
-    protected List<String> metaDbAddrList;
-    protected String metaDbName;
-    protected String metaDbProp;
-    protected String metaDbUser;
-    protected String metaDbEncPasswd;
+    /**
+     * ============================= DN properties of Leader Area  ====================================
+     * ================================================================================================
+     */
+    protected volatile Pair<String, Integer> metaDbAvailableAddr;
 
+    /**
+     * ============================= DN properties of Memory Area  ====================================
+     * ================================================================================================
+     */
+    protected volatile int metaDbXport = -1;
+    protected MetaDbHaSwitcher metaDbHaSwitcher = new MetaDbHaSwitcher(this);
     // HA Wrapper for the physical DataSource of MetaDb
     protected MetaDbDataSourceHaWrapper physicalDataSourceHaWrapper;
     // Use to dynamic config the druid of MetaDb
     protected MetaDbConnConf conf;
 
+    /**
+     * ============================= DN properties of MetaDB Area  ====================================
+     * ================================================================================================
+     */
+    protected List<Pair<String, Boolean>> metaDbAddrList;
+    protected String metaDbName;
+    protected String metaDbProp;
+    protected String metaDbUser;
+    protected String metaDbEncPasswd;
     protected volatile int metaDbStorageType = -1;
     protected volatile String metaDbVipAddrStr;
-
-    protected volatile Pair<String, Integer> metaDbAvailableAddr;
-    protected volatile int metaDbXport = -1;
-    protected MetaDbHaSwitcher metaDbHaSwitcher = new MetaDbHaSwitcher(this);
+    protected volatile StorageInfoRecord metaDbVipInfo;
 
     protected MetaDbDataSource(String addrListStr, String dbName, String properties, String user, String passwd) {
         this.metaDbAddrList = getMetaDbAddrInfo(addrListStr);
@@ -101,15 +113,16 @@ public class MetaDbDataSource extends AbstractLifecycle {
         this.conf = new MetaDbConnConf();
     }
 
-    protected List<String> getMetaDbAddrInfo(String addrListStr) {
-        List<String> addrList = new ArrayList<>();
+    protected List<Pair<String, Boolean>> getMetaDbAddrInfo(String addrListStr) {
+        List<Pair<String, Boolean>> addrList = new ArrayList<>();
         String[] addrArr = addrListStr.split(",");
         for (int i = 0; i < addrArr.length; i++) {
             String addrArrTrim = addrArr[i].trim();
             if (addrArrTrim.isEmpty()) {
                 continue;
             }
-            addrList.add(addrArrTrim);
+            // Note: all MetaDB addr from config/env treated as vip address
+            addrList.add(new Pair<>(addrArrTrim, true));
         }
         return addrList;
     }
@@ -125,7 +138,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
     private void initTsoServicesX(XDataSource dataSource) {
         try (Connection conn = dataSource.getConnection()) {
             if (conn.unwrap(XConnection.class).getSession().getClient().getBaseVersion()
-                == XClient.DnBaseVersion.DN_RDS_80_X_CLUSTER || XConfig.GALAXY_X_PROTOCOL || XConfig.OPEN_XRPC_PROTOCOL) {
+                == XClient.DnBaseVersion.DN_RDS_80_X_CLUSTER || XConfig.GALAXY_X_PROTOCOL
+                || XConfig.OPEN_XRPC_PROTOCOL) {
                 try (Statement stmt = conn.createStatement()) {
                     stmt.executeUpdate("create sequence mysql.gts_base cache 2 TIMESTAMP");
                 }
@@ -203,14 +217,22 @@ public class MetaDbDataSource extends AbstractLifecycle {
         }
     }
 
-    protected DataSource buildAndInitMetaDbDataSource(Pair<String, Integer> metaDbAvailableAddr, int xport) {
+    protected DataSource buildAndInitMetaDbDataSource(Pair<String, Integer> metaDbAvailableAddr,
+                                                      int xport,
+                                                      String metaDbAvailableAddrUser,
+                                                      String metaDbAvailableAddrPasswdEnc) {
+
+        String user = metaDbAvailableAddrUser;
+        String passwdEnc = metaDbAvailableAddrPasswdEnc;
+        String dbName = this.metaDbName;
+
         // Note: Xproto is enabled when property in server.properties is enabled.
         final int defaultXport = XConnectionManager.getInstance().getMetaDbPort(); // Global switch.
         if (defaultXport > 0 || (0 == defaultXport && xport > 0)) {
             final XDataSource newDs =
                 new XDataSource(metaDbAvailableAddr.getKey(), defaultXport > 0 ? defaultXport : xport,
-                    this.metaDbUser, PasswdUtil.decrypt(this.metaDbEncPasswd),
-                    this.metaDbName, "metaDbXDataSource");
+                    user, PasswdUtil.decrypt(passwdEnc),
+                    dbName, "metaDbXDataSource");
             initXDataSourceByJdbcProps(newDs, this.metaDbProp, this.conf);
             return newDs;
         } else {
@@ -239,12 +261,18 @@ public class MetaDbDataSource extends AbstractLifecycle {
                 return;
             }
 
+            int xportOfAvailableAddr = haSwitchParams.xport;
+            String userOfAvailableAddr = haSwitchParams.userName;
+            String passwdEncOfAvailableAddr = haSwitchParams.passwdEnc;
+
             MetaDbLogUtil.META_DB_LOG.info("MetaDB HA cur:" + curLeaderAddrStr + " to:" + availableAddr + " old xport:"
-                + this.metaDbDataSource.metaDbXport + " new xport:" + haSwitchParams.xport);
+                + this.metaDbDataSource.metaDbXport + " new xport:" + xportOfAvailableAddr);
 
             // build new datasource by new available addr
             Pair<String, Integer> newAvailableIpPort = AddressUtils.getIpPortPairByAddrStr(availableAddr);
-            DataSource newDataSource = buildAndInitMetaDbDataSource(newAvailableIpPort, haSwitchParams.xport);
+            DataSource newDataSource =
+                buildAndInitMetaDbDataSource(newAvailableIpPort, xportOfAvailableAddr, userOfAvailableAddr,
+                    passwdEncOfAvailableAddr);
 
             // use new datasource to refresh old datasource
             MetaDbDataSourceHaWrapper haWrapper = this.metaDbDataSource.physicalDataSourceHaWrapper;
@@ -253,7 +281,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
 
             // update current available addr
             this.metaDbDataSource.metaDbAvailableAddr = newAvailableIpPort;
-            this.metaDbDataSource.metaDbXport = haSwitchParams.xport;
+            this.metaDbDataSource.metaDbXport = xportOfAvailableAddr;
 
             ((XDataSource) oldDruidDataSource).close();
         }
@@ -261,12 +289,12 @@ public class MetaDbDataSource extends AbstractLifecycle {
 
     protected void initMetaDbAvaliableAddr() {
 
-        List<String> addrListOfMetaStorage = new ArrayList<>();
+        List<Pair<String, Boolean>> addrListOfMetaStorage = new ArrayList<>();
         List<StorageInfoRecord> storageInfoRecordsWithVip;
         List<StorageInfoRecord> storageInfoRecords = new ArrayList<>();
         if (this.metaDbAddrList.size() == 1) {
             // leaderAddr maybe a vip
-            String leaderAddr = metaDbAddrList.get(0);
+            String leaderAddr = metaDbAddrList.get(0).getKey();
             Pair<String, Integer> ipPort = AddressUtils.getIpPortPairByAddrStr(leaderAddr);
 
             // Fetch all storage host list from metadb by the metaDbAddrList set by startup.sh params
@@ -317,6 +345,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
                     }
                     if (storageInfo.isVip == StorageInfoRecord.IS_VIP_TRUE) {
                         this.metaDbVipAddrStr = AddressUtils.getAddrStrByIpPort(storageInfo.ip, storageInfo.port);
+                        this.metaDbVipInfo = storageInfo;
                         if (storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_XCLUSTER ||
                             storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_RDS80_XCLUSTER ||
                             storageInfo.storageType == StorageInfoRecord.STORAGE_TYPE_GALAXY_CLUSTER) {
@@ -344,6 +373,7 @@ public class MetaDbDataSource extends AbstractLifecycle {
                                 StorageInfoRecord storageInfo = storageInfoRecords.get(0);
                                 this.metaDbVipAddrStr =
                                     AddressUtils.getAddrStrByIpPort(storageInfo.ip, storageInfo.port);
+                                this.metaDbVipInfo = storageInfo;
                             }
                         }
 
@@ -378,14 +408,15 @@ public class MetaDbDataSource extends AbstractLifecycle {
         /**
          * Remove duplicate addr of metaDb storage
          */
-        Set<String> addrSetOfMetaDbStorage = new HashSet<>();
-        addrSetOfMetaDbStorage.addAll(addrListOfMetaStorage);
+        Set<Pair<String, Boolean>> addrSetOfMetaDbStorage = new HashSet<>(addrListOfMetaStorage);
         for (int i = 0; i < storageInfoRecords.size(); i++) {
             StorageInfoRecord storageInfoRecord = storageInfoRecords.get(i);
             String addrOfStorage = AddressUtils.getAddrStrByIpPort(storageInfoRecord.ip, storageInfoRecord.port);
-            if (!addrSetOfMetaDbStorage.contains(addrOfStorage)) {
-                addrListOfMetaStorage.add(addrOfStorage);
-                addrSetOfMetaDbStorage.add(addrOfStorage);
+            final Pair<String, Boolean> pair =
+                new Pair<>(addrOfStorage, storageInfoRecord.isVip == StorageInfoRecord.IS_VIP_TRUE);
+            if (!addrSetOfMetaDbStorage.contains(pair)) {
+                addrListOfMetaStorage.add(pair);
+                addrSetOfMetaDbStorage.add(pair);
             }
         }
 
@@ -421,8 +452,21 @@ public class MetaDbDataSource extends AbstractLifecycle {
         }
         Pair<String, Integer> leaderAddr = AddressUtils.getIpPortPairByAddrStr(leaderAddrStr);
 
+        // check leaderAddrStr is vip address or not
+        boolean isVipAddr = true;
+        for (Map.Entry<String, StorageNodeHaInfo> addrRoleInfo : addrRoleInfoMap.entrySet()) {
+            if (addrRoleInfo.getKey().equals(leaderAddrStr) && !addrRoleInfo.getValue().isVip()) {
+                isVipAddr = false;
+                break; // found one with same addr but not vip, means vip is set to actual leader addr
+            }
+        }
+
+        MetaDbLogUtil.META_DB_LOG.info("XCluster MetaDB init vipAddr="
+            + (null == this.metaDbVipAddrStr ? "null" : this.metaDbVipAddrStr)
+            + " leaderAddr=" + leaderAddr + " isVip=" + (isVipAddr ? "true" : "false"));
+
         this.metaDbAvailableAddr = leaderAddr;
-        if (leaderAddrStr.equals(this.metaDbVipAddrStr)) {
+        if (isVipAddr) {
             if (XConfig.VIP_WITH_X_PROTOCOL) {
                 this.metaDbXport = this.metaDbAvailableAddr.getValue();
             } else if (XConfig.GALAXY_X_PROTOCOL || XConfig.OPEN_XRPC_PROTOCOL) {
@@ -490,7 +534,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
         return instance;
     }
 
-    public static void initMetaDbDataSource(String addrs, String dbName, String props, String usr, String pwd) {
+    public synchronized static void initMetaDbDataSource(String addrs, String dbName, String props, String usr,
+                                                         String pwd) {
 
         if (addrs == null || addrs.isEmpty()) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Init meta db error, url is null");
@@ -504,8 +549,13 @@ public class MetaDbDataSource extends AbstractLifecycle {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "Init meta db error, passwd is null");
         }
 
-        MetaDbDataSource metaDbDataSource = new MetaDbDataSource(addrs, dbName, props, usr, pwd);
-        instance = metaDbDataSource;
+        if (instance == null) {
+            /**
+             * Only allow creating the MetaDbDataSource object once for the whole cn-node during initing
+             */
+            MetaDbDataSource metaDbDataSource = new MetaDbDataSource(addrs, dbName, props, usr, pwd);
+            instance = metaDbDataSource;
+        }
 
         // Init meta db datasource
         try {

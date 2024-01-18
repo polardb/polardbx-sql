@@ -37,9 +37,11 @@ import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.dal.BaseDalOperation;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
@@ -148,7 +150,10 @@ public class ExecutorHelper {
     public static Cursor executeByCursor(RelNode plan, ExecutionContext context, boolean cacheOutput,
                                          boolean asyncCacheOutput) {
         String schema = null;
-        if (plan instanceof AbstractRelNode) {
+
+        if (plan instanceof DirectMultiDBTableOperation) {
+            schema = ((DirectMultiDBTableOperation) plan).getBaseSchemaName(context);
+        } else if (plan instanceof AbstractRelNode) {
             schema = ((AbstractRelNode) plan).getSchemaName();
             if (StringUtils.isEmpty(schema)) {
                 schema = context.getSchemaName();
@@ -175,7 +180,7 @@ public class ExecutorHelper {
         }
 
         if (cacheOutput) {
-            long estimateRowSize = MemoryEstimator.estimateRowSize(plan.getRowType());
+            long estimateRowSize = MemoryEstimator.estimateRowSize(plan.getRowType(), null);
             if (asyncCacheOutput) {
                 return new AsyncCacheCursor(
                     context, ServiceProvider.getInstance().getServer().getSpillerFactory(), cursor, estimateRowSize);
@@ -200,8 +205,11 @@ public class ExecutorHelper {
             } else if (RelUtils.isSimpleMergeSortPlan(plan)) {
                 long limit = context.getParamManager().getLong(ConnectionParams.MERGE_SORT_BUFFER_SIZE);
                 if (limit > 0) {
+                    MergeSort mergeSort = (MergeSort) plan;
                     //the simple merge-sort plan is forced routed by Local Executor.
-                    context.getExtraCmds().put(ConnectionProperties.MERGE_UNION_SIZE, 0);
+                    if (mergeSort.withOrderBy()) {
+                        context.getExtraCmds().put(ConnectionProperties.MERGE_UNION_SIZE, 0);
+                    }
                     context.getExtraCmds().put(ConnectionProperties.PARALLELISM, 1);
                     targetMode =
                         WorkloadUtil.isApWorkload(workloadType) ? ExecutorMode.AP_LOCAL : ExecutorMode.TP_LOCAL;
@@ -280,10 +288,12 @@ public class ExecutorHelper {
             plan instanceof LogicalOutFile ||
             plan instanceof BaseDalOperation ||
             plan instanceof BroadcastTableModify ||
-            plan instanceof Gather &&
-                (((Gather) plan).getInput() instanceof LogicalView && !(((Gather) plan).getInput() instanceof OSSTableScan)) ||
-            plan instanceof Gather && ((Gather) plan).getInput() instanceof BaseQueryOperation ||
-            plan instanceof BaseQueryOperation; // Maybe produced by PostPlanner
+            (plan instanceof Gather
+                && ((Gather) plan).getInput() instanceof LogicalView
+                && !(((Gather) plan).getInput() instanceof OSSTableScan)) ||
+            (plan instanceof Gather
+                && ((Gather) plan).getInput() instanceof BaseQueryOperation) ||
+            (plan instanceof BaseQueryOperation); // Maybe produced by PostPlanner
 
         return ret || !isAssignableFrom(plan.getClass());
     }

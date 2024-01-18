@@ -18,26 +18,35 @@ package com.alibaba.polardbx.executor.ddl.newengine.job;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.TaskScheduler;
-import com.alibaba.polardbx.executor.ddl.newengine.dag.TopologicalSorter;
 import com.google.common.base.Preconditions;
+import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 public abstract class AbstractDdlJob implements DdlJob {
 
-    protected final DirectedAcyclicGraph taskGraph = DirectedAcyclicGraph.create();
+    protected final DirectedAcyclicGraph taskGraph;
     protected final Set<String> excludeResources = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     protected final Set<String> sharedResources = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
     protected int maxParallelism = 1;
+
+    public AbstractDdlJob() {
+        taskGraph = DirectedAcyclicGraph.create();
+    }
+
+    public AbstractDdlJob(DirectedAcyclicGraph taskGraph) {
+        this.taskGraph = taskGraph;
+    }
 
     @Override
     public DdlJob addTask(DdlTask task) {
@@ -186,12 +195,7 @@ public abstract class AbstractDdlJob implements DdlJob {
 
     @Override
     public boolean isValid() {
-        return !TopologicalSorter.hasCycle(taskGraph.clone());
-    }
-
-    @Override
-    public TopologicalSorter createTaskIterator() {
-        return TopologicalSorter.create(taskGraph);
+        return !taskGraph.hasCycle();
     }
 
     @Override
@@ -255,6 +259,42 @@ public abstract class AbstractDdlJob implements DdlJob {
             return 0;
         }
         return taskGraph.vertexCount();
+    }
+
+    @Override
+    public List<String> getExplainInfo() {
+        try {
+            List<String> result = new ArrayList<>();
+            List<DirectedAcyclicGraph.Vertex> vertexes = taskGraph.getSequentialVertexByTopologyOrder();
+            if (vertexes.isEmpty()) {
+                return result;
+            }
+
+            for (DirectedAcyclicGraph.Vertex vertex : vertexes) {
+                DdlTask ddlTask = vertex.object;
+                List<String> taskExplainInfos = ddlTask.explainInfo();
+                for (String taskExplainInfo : taskExplainInfos) {
+                    if (!StringUtils.isEmpty(taskExplainInfo)) {
+                        result.add(taskExplainInfo);
+                    }
+                }
+            }
+            String excludeResource =
+                StringUtil.join(", ", getExcludeResources().stream().collect(Collectors.toList())).toString();
+            String shareResource =
+                StringUtil.join(", ", getExcludeResources().stream().collect(Collectors.toList())).toString();
+            if (!StringUtil.isNullOrEmpty(excludeResource)) {
+                result.add(String.format("EXCLUDE_RESOURCE( %s )", excludeResource));
+            }
+            if (!StringUtil.isNullOrEmpty(shareResource)) {
+                result.add(String.format("SHARE_RESOURCE( %s )", shareResource));
+            }
+
+            return result;
+        } catch (Throwable t) {
+            throw GeneralUtil.nestedException("explainTasks failed:  " + t.getMessage(), t);
+        }
+
     }
 }
 

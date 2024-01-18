@@ -1,0 +1,38 @@
+DROP TABLE IF EXISTS tbl_ubigint;
+CREATE TABLE IF NOT EXISTS tbl_ubigint (
+	a bigint UNSIGNED NOT NULL
+)
+PARTITION BY RANGE (a) (
+	PARTITION p0 VALUES LESS THAN (9223372036854775800),
+	PARTITION p1 VALUES LESS THAN (9223372036854775808),
+	PARTITION p2 VALUES LESS THAN (18446744073709551610),
+	PARTITION p3 VALUES LESS THAN (18446744073709551615)
+);
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a = 18446744073709551611;
+Logical ExecutionPlan
+LogicalView(tables="tbl_ubigint[p3]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a = 18446744073709551609;
+Logical ExecutionPlan
+LogicalView(tables="tbl_ubigint[p2]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a < 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_ubigint[p0,p1]", shardCount=2, sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` < ?)")
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a > 9223372036854775808;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_ubigint[p2,p3]", shardCount=2, sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` > ?)")
+EXPLAIN SELECT a
+FROM tbl_ubigint
+WHERE a >= 9223372036854775800;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_ubigint[p1,p2,p3]", shardCount=3, sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` >= ?)")

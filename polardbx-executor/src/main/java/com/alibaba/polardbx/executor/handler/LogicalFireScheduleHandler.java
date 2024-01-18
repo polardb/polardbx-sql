@@ -31,7 +31,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlFireSchedule;
 
 public class LogicalFireScheduleHandler extends HandlerCommon {
-
     private static final Logger logger = LoggerFactory.getLogger(LogicalFireScheduleHandler.class);
 
     public LogicalFireScheduleHandler(IRepository repo) {
@@ -42,13 +41,13 @@ public class LogicalFireScheduleHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         SqlFireSchedule fireSchedule = (SqlFireSchedule) ((LogicalDal) logicalPlan).getNativeSqlNode();
         long scheduleId = fireSchedule.getScheduleId();
-
         ScheduledJobsRecord record = ScheduledJobsManager.queryScheduledJobById(scheduleId);
         if (record == null) {
             return new AffectRowCursor(0);
         }
         PolarPrivilegeUtils.checkPrivilege(record.getTableSchema(), record.getTableName(), PrivilegePoint.ALTER,
             executionContext);
+
         logger.info(String.format("fire scheduled job:[%s]", scheduleId));
         int row = ScheduledJobsManager.fireScheduledJob(scheduleId);
         return new AffectRowCursor(row);

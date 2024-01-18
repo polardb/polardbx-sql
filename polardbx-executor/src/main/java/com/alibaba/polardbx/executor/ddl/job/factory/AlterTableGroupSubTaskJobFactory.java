@@ -17,16 +17,20 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPartLocalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.tablegroup.AlterTableGroupItemBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropIndexPhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcTableGroupDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupAddSubTaskMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -64,28 +68,32 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     @Deprecated
     protected final DDL ddl;
     protected final AlterTableGroupItemPreparedData preparedData;
-    private final List<PhyDdlTableOperation> phyDdlTableOperations;
-    private final Map<String, List<List<String>>> tableTopology;
-    private final Map<String, Set<String>> targetTableTopology;
-    private final Map<String, Set<String>> sourceTableTopology;
-    protected final List<Pair<String, String>> orderedTargetTableLocations;
-    private final boolean skipBackfill;
-    private final ComplexTaskMetaManager.ComplexTaskType taskType;
+    private final AlterTableGroupBasePreparedData parentPrepareData;
+    protected final List<PhyDdlTableOperation> phyDdlTableOperations;
+    protected final Map<String, List<List<String>>> tableTopology;
+    protected final Map<String, Set<String>> targetTableTopology;
+    protected final Map<String, Set<String>> sourceTableTopology;
+    protected final Map<String, Pair<String, String>> orderedTargetTableLocations;
+    protected final boolean skipBackfill;
+    protected final ComplexTaskMetaManager.ComplexTaskType taskType;
     protected final ExecutionContext executionContext;
-    private final String targetPartition;
-    private DdlTask cdcTableGroupDdlMarkTask;
+    protected final String targetPartition;
+    protected DdlTask cdcTableGroupDdlMarkTask;
 
-    public AlterTableGroupSubTaskJobFactory(DDL ddl, AlterTableGroupItemPreparedData preparedData,
+    public AlterTableGroupSubTaskJobFactory(DDL ddl,
+                                            AlterTableGroupBasePreparedData parentPrepareData,
+                                            AlterTableGroupItemPreparedData preparedData,
                                             List<PhyDdlTableOperation> phyDdlTableOperations,
                                             Map<String, List<List<String>>> tableTopology,
                                             Map<String, Set<String>> targetTableTopology,
                                             Map<String, Set<String>> sourceTableTopology,
-                                            List<Pair<String, String>> orderedTargetTableLocations,
+                                            Map<String, Pair<String, String>> orderedTargetTableLocations,
                                             String targetPartition,
                                             boolean skipBackfill,
                                             ComplexTaskMetaManager.ComplexTaskType taskType,
                                             ExecutionContext executionContext) {
         this.preparedData = preparedData;
+        this.parentPrepareData = parentPrepareData;
         this.phyDdlTableOperations = phyDdlTableOperations;
         this.ddl = ddl;
         this.tableTopology = tableTopology;
@@ -131,6 +139,10 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         List<DdlTask> taskList = new ArrayList<>();
         //1. validate
         //taskList.add(validateTask);
+
+        //1. add logical foreign key
+        DdlTask addLogicalForeignKeyTask = getPushDownForeignKeysTask(schemaName, tableName, true);
+        taskList.add(addLogicalForeignKeyTask);
 
         //2. create physical table
         //2.1 insert meta to complex_task_outline
@@ -191,16 +203,20 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         SqlKind sqlKind = ddl.kind();
         DdlContext dc = executionContext.getDdlContext();
 
+        // drop logical foreign key
+        DdlTask dropLogicalForeignKeyTask = getPushDownForeignKeysTask(schemaName, tableName, false);
+        taskList.add(dropLogicalForeignKeyTask);
+
         Map<String, Set<String>> newTopology = newPartitionInfo.getTopology();
         DdlTask cdcDdlMarkTask =
-            new CdcTableGroupDdlMarkTask(schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
+            new CdcTableGroupDdlMarkTask(tableGroupName, schemaName, tableName, sqlKind, newTopology, dc.getDdlStmt());
         if (stayAtPublic) {
             cdcTableGroupDdlMarkTask = cdcDdlMarkTask;
         }
 
         final ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(taskList);
-        executableDdlJob.labelAsHead(addMetaTask);
+        executableDdlJob.labelAsHead(addLogicalForeignKeyTask);
         if (!stayAtCreating) {
             executableDdlJob.labelAsTail(taskList.get(taskList.size() - 1));
         } else {
@@ -224,23 +240,28 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
     }
 
     protected PartitionInfo generateNewPartitionInfo() {
-        String schemaName = preparedData.getSchemaName();
-        String tableName = preparedData.getTableName();
-        String tableGroupName = preparedData.getTableGroupName();
-
         PartitionInfo curPartitionInfo =
-            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
-        List<PartitionGroupRecord> inVisiblePartitionGroupRecords = preparedData.getInvisiblePartitionGroups();
+            OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
+                .getPartitionInfo(preparedData.getTableName());
+
+        List<PartitionGroupRecord> invisiblePartitionGroupRecords = preparedData.getInvisiblePartitionGroups();
 
         SqlNode sqlAlterTableGroupSpecNode = ((SqlAlterTableGroup) ddl.getSqlNode()).getAlters().get(0);
+        String tableGroupName = preparedData.getTableGroupName();
 
         PartitionInfo newPartInfo =
             AlterTableGroupSnapShotUtils
-                .getNewPartitionInfo(curPartitionInfo, inVisiblePartitionGroupRecords, sqlAlterTableGroupSpecNode,
+                .getNewPartitionInfo(
+                    getParentPrepareData(),
+                    curPartitionInfo,
+                    true,
+                    sqlAlterTableGroupSpecNode,
+                    preparedData.getOldPartitionNames(),
+                    preparedData.getNewPartitionNames(),
                     tableGroupName,
                     targetPartition,
+                    invisiblePartitionGroupRecords,
                     orderedTargetTableLocations,
-                    preparedData.getNewPartitionNames(),
                     executionContext);
 
         return newPartInfo;
@@ -253,11 +274,13 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
                 executionContext.getParamManager().getInt(ConnectionParams.MAX_PHYSICAL_PARTITION_COUNT);
         }
 
-        if (newPartInfo.getPartitionBy().getPartitions().size() > maxPhysicalPartitions) {
+        int phyPartCntOfNewPartInfo = newPartInfo.getPartitionBy().getPhysicalPartitions().size();
+        if (phyPartCntOfNewPartInfo > maxPhysicalPartitions) {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_INVALID_PARAMS,
                 String
-                    .format("Too many partitions [%s] (including subpartitions) after alter tablegroup",
-                        newPartInfo.getPartitionBy().getPartitions().size()));
+                    .format(
+                        "Too many partitions [%s] (including subpartitions) after altering tablegroup is not allowed",
+                        phyPartCntOfNewPartInfo));
         }
     }
 
@@ -277,10 +300,29 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
         for (int i = 0; i < curPartInfo.getPartitionBy().getPartitions().size(); i++) {
             PartitionSpec curPartSpec = curPartInfo.getPartitionBy().getPartitions().get(i);
             PartitionSpec newPartSpec = newPartInfo.getPartitionBy().getPartitions().get(i);
-            if (curPartSpec.getBoundSpaceComparator()
+            if (!curPartSpec.getStrategy().isList() && curPartSpec.getBoundSpaceComparator()
                 .compare(curPartSpec.getBoundSpec().getSingleDatum(), newPartSpec.getBoundSpec().getSingleDatum())
                 != 0) {
                 return true;
+            }
+            if (curPartSpec.getStrategy().isList() && !curPartSpec.getBoundSpec().equals(newPartSpec.getBoundSpec())) {
+                return true;
+            }
+            if (GeneralUtil.emptyIfNull(curPartSpec.getSubPartitions()).size() != GeneralUtil.emptyIfNull(
+                newPartSpec.getSubPartitions()).size()) {
+                return true;
+            }
+            if (GeneralUtil.isNotEmpty(curPartSpec.getSubPartitions())) {
+                for (int j = 0; j < curPartSpec.getSubPartitions().size(); j++) {
+                    PartitionSpec curSubPartSpec = curPartSpec.getSubPartitions().get(j);
+                    PartitionSpec newSubPartSpec = newPartSpec.getSubPartitions().get(j);
+                    if (curSubPartSpec.getBoundSpaceComparator()
+                        .compare(curSubPartSpec.getBoundSpec().getSingleDatum(),
+                            newSubPartSpec.getBoundSpec().getSingleDatum())
+                        != 0) {
+                        return true;
+                    }
+                }
             }
         }
         return false;
@@ -295,7 +337,8 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
                 .getTableGroupConfigByName(targetTableGroup);
         List<PartitionGroupRecord> partitionGroupRecords = targetTableGroupInfo.getPartitionGroupRecords();
-        List<PartitionSpec> partitionSpecs = newPartInfo.getPartitionBy().getPartitions();
+        //List<PartitionSpec> partitionSpecs = newPartInfo.getPartitionBy().getPartitions();
+        List<PartitionSpec> partitionSpecs = newPartInfo.getPartitionBy().getPhysicalPartitions();
         assert partitionGroupRecords.size() == partitionSpecs.size();
         newPartInfo.setTableGroupId(targetTableGroupInfo.getTableGroupRecord().id);
         for (int i = 0; i < partitionSpecs.size(); i++) {
@@ -308,6 +351,21 @@ public class AlterTableGroupSubTaskJobFactory extends DdlJobFactory {
                         + parentPrepareData.getTargetTableGroup());
             }
             partitionSpecs.get(i).getLocation().setPartitionGroupId(partitionGroupRecord.get().id);
+        }
+    }
+
+    public AlterTableGroupBasePreparedData getParentPrepareData() {
+        return parentPrepareData;
+    }
+
+    DdlTask getPushDownForeignKeysTask(String schemaName, String tableName, boolean add) {
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        List<ForeignKeyData> pushDownForeignKeys = new ArrayList<>(tableMeta.getForeignKeys().values());
+
+        if (add) {
+            return new AddLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
+        } else {
+            return new DropLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
         }
     }
 }

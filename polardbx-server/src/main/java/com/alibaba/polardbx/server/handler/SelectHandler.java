@@ -19,6 +19,7 @@ package com.alibaba.polardbx.server.handler;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseSelect;
+import com.alibaba.polardbx.server.response.SelectPolardbVersion;
 import com.alibaba.polardbx.server.response.SelectCurrentTransId;
 import com.alibaba.polardbx.server.response.SelectCurrentTransPolicy;
 import com.alibaba.polardbx.server.response.SelectDatabase;
@@ -38,56 +39,45 @@ import com.alibaba.polardbx.server.util.LogUtils;
  */
 public final class SelectHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, int offs, boolean hasMore) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offs, boolean hasMore) {
         Object[] exData = new Object[2];
         boolean recordSql = true;
         Throwable sqlEx = null;
         try {
             switch (ServerParseSelect.parse(stmt, offs, exData)) {
             case ServerParseSelect.VERSION_COMMENT:
-                SelectVersionComment.response(c, hasMore);
-                break;
+                return SelectVersionComment.response(c, hasMore);
             case ServerParseSelect.DATABASE:
-                SelectDatabase.response(c, hasMore);
-                break;
+                return SelectDatabase.response(c, hasMore);
             case ServerParseSelect.USER:
-                SelectUser.response(c, hasMore);
-                break;
+                return SelectUser.response(c, hasMore);
             case ServerParseSelect.VERSION:
-                SelectVersion.response(c, hasMore);
-                break;
+                return SelectVersion.response(c, hasMore);
+            case ServerParseSelect.POLARDB_VERSION:
+                return SelectPolardbVersion.response(c, hasMore);
             case ServerParseSelect.LASTTXCXID:
-                SelectLastTxcId.response(exData, c, hasMore);
-                break;
+                return SelectLastTxcId.response(exData, c, hasMore);
             case ServerParseSelect.SESSION_TX_READ_ONLY:
-                SelectSessionTxReadOnly.response(c, hasMore);
-                break;
+                return SelectSessionTxReadOnly.response(c, hasMore);
             case ServerParseSelect.CURRENT_TRANS_ID:
-                SelectCurrentTransId.response(c, hasMore);
-                break;
+                return SelectCurrentTransId.response(c, hasMore);
             case ServerParseSelect.CURRENT_TRANS_POLICY:
-                SelectCurrentTransPolicy.response(c, hasMore);
-                break;
+                return SelectCurrentTransPolicy.response(c, hasMore);
             case ServerParseSelect.LITERAL_NUMBER:
-                SelectLiteralNumber.response(c, hasMore, (Long) exData[0]);
-                break;
+                return SelectLiteralNumber.response(c, hasMore, (Long) exData[0]);
             case ServerParseSelect.TSO_TIMESTAMP:
-                SelectTsoTimestamp.response(c, hasMore);
-                break;
+                return SelectTsoTimestamp.response(c, hasMore);
             case ServerParseSelect.EXTRACT_TRACE_ID:
-                SelectExtractTraceId.response(c, hasMore, (Long) exData[0]);
-                break;
+                return SelectExtractTraceId.response(c, hasMore, (Long) exData[0]);
             case ServerParseSelect.SEQ_NEXTVAL_BENCHMARK:
-                SelectSequenceBenchmark.response(c, hasMore, exData, true);
                 recordSql = false;
-                break;
+                return SelectSequenceBenchmark.response(c, hasMore, exData, true);
             case ServerParseSelect.SEQ_SKIP_BENCHMARK:
-                SelectSequenceBenchmark.response(c, hasMore, exData, false);
                 recordSql = false;
-                break;
+                return SelectSequenceBenchmark.response(c, hasMore, exData, false);
             default:
-                c.execute(stmt, hasMore);
                 recordSql = false;
+                return c.execute(stmt, hasMore);
             }
         } catch (Throwable ex) {
             sqlEx = ex;

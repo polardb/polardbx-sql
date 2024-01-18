@@ -18,28 +18,18 @@ package com.alibaba.polardbx.qatest.ddl.auto.dag;
 
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.serializable.SerializableClassMapper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
-import com.alibaba.polardbx.gms.lease.LeaseManager;
-import com.alibaba.polardbx.gms.lease.impl.LeaseManagerImpl;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
-import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
-import com.clearspring.analytics.util.Lists;
 import com.google.common.base.Strings;
-import org.apache.commons.lang3.RandomUtils;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
-
-import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 
 @Ignore
 public class DdlTaskCompressTest {
@@ -77,7 +67,6 @@ public class DdlTaskCompressTest {
         MetaDbDataSource.initMetaDbDataSource(addr, dbName, props, usr, pwd);
     }
 
-
     @Test
     public void testCompressDecompress() throws InterruptedException {
 
@@ -93,7 +82,6 @@ public class DdlTaskCompressTest {
         final DdlEngineTaskRecord record = TaskHelper.toDdlEngineTaskRecord(task);
         System.out.println("payload string length after compress: " + record.value.length());
         System.out.println("payload byte length after compress: " + record.value.getBytes().length);
-
 
         new DdlEngineAccessorDelegate<Void>() {
             @Override

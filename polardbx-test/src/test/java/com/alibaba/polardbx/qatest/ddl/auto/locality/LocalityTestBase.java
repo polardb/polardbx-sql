@@ -77,7 +77,8 @@ public abstract class LocalityTestBase extends BaseTestCase {
             " where TABLE_SCHEMA = " + StringUtils.quote(schema) + " and table_name = " + StringUtils.quote(tableName);
         final String summarySql = "select table_group_name, sum(data_length), sum(index_length), sum(table_rows) "
             + fromClause + whereClause;
-        final String selectColumns = " partition_name, table_rows, data_length, index_length, bound_value ";
+        final String selectColumns =
+            " partition_name, table_rows, data_length, index_length, bound_value, storage_inst_id ";
         final String partitionSql = "select" + selectColumns + fromClause + whereClause;
 
         TableDetails result = new TableDetails();
@@ -97,7 +98,9 @@ public abstract class LocalityTestBase extends BaseTestCase {
                 long dataLength = rs.getLong(3);
                 long indexLength = rs.getLong(4);
                 String boundValue = rs.getString(5);
-                PartitionDetail pd = new PartitionDetail(partitionName, rows, dataLength, indexLength, boundValue);
+                String storageInstId = rs.getString(6);
+                PartitionDetail pd =
+                    new PartitionDetail(partitionName, rows, dataLength, indexLength, boundValue, storageInstId);
                 result.partitions.add(pd);
             }
         }
@@ -142,7 +145,7 @@ public abstract class LocalityTestBase extends BaseTestCase {
         List<StorageNodeBean> dnList = getStorageInfo();
         return dnList.stream()
             .filter(x -> "MASTER".equals(x.instKind))
-            .sorted(Comparator.comparing(o->o.deletable))
+            .sorted(Comparator.comparing(o -> o.deletable))
             .map(x -> x.instance)
             .collect(Collectors.toList());
     }
@@ -183,7 +186,7 @@ public abstract class LocalityTestBase extends BaseTestCase {
      * Choose a random datanode from cluster
      */
 
-    public String chooseDatanode(){
+    public String chooseDatanode() {
         return chooseDatanode(false);
     }
 
@@ -193,15 +196,14 @@ public abstract class LocalityTestBase extends BaseTestCase {
             throw new RuntimeException("datanode is empty");
         }
         Random random = new Random();
-        return firstDn?dnList.get(0):dnList.get(random.nextInt(dnList.size()));
+        return firstDn ? dnList.get(0) : dnList.get(random.nextInt(dnList.size()));
     }
 
     public List<LocalityBean> getLocalityBeanInfos() {
         return getLocalityInfo();
     }
 
-
-//    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
+    //    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
 //    | OBJECT_ID | OBJECT_NAME  | OBJECT_TYPE | LOCALITY                                               | OBJECT_GROUP_ELEMENT |
 //    +-----------+--------------+-------------+--------------------------------------------------------+----------------------+
 //    | 127       | db1          | database    |                                                        |                      |
@@ -335,8 +337,6 @@ public abstract class LocalityTestBase extends BaseTestCase {
 
     }
 
-
-
     public static class PartitionDetail {
         public String partitionName;
         public long dataLength;
@@ -344,12 +344,16 @@ public abstract class LocalityTestBase extends BaseTestCase {
         public long rows;
         public String bound;
 
-        public PartitionDetail(String partitionName, long dataLength, long indexLength, long rows, String bound) {
+        public String storageInstId;
+
+        public PartitionDetail(String partitionName, long rows, long dataLength, long indexLength, String bound,
+                               String storageInstId) {
             this.partitionName = partitionName;
             this.dataLength = dataLength;
             this.indexLength = indexLength;
             this.rows = rows;
             this.bound = bound;
+            this.storageInstId = storageInstId;
         }
 
         @Override
@@ -359,7 +363,8 @@ public abstract class LocalityTestBase extends BaseTestCase {
                 ", dataLength=" + dataLength +
                 ", indexLength=" + indexLength +
                 ", rows=" + rows +
-                ", bound='" + bound + '\'' +
+                ", bound='" + bound +
+                ", storageInstId='" + storageInstId + '\'' +
                 '}';
         }
     }

@@ -51,7 +51,7 @@ public abstract class NumericTestBase extends CrudBasedLockTestCase {
 
     protected static final String INSERT_SQL_FORMAT = "insert into %s (%s) values (?)";
     protected static final String INSERT_SQL_FORMAT_2 = "insert into %s (%s, %s) values (?, ?)";
-    protected static final String SQL_CREATE_TEST_TABLE = "create table if not exists %s (\n"
+    public static final String SQL_CREATE_TEST_TABLE = "create table if not exists %s (\n"
         + "  pk bigint auto_increment,\n"
         + "  decimal_test_high decimal(65, 30),\n"
         + "  decimal_test_low decimal(15, 5),\n"
@@ -138,7 +138,7 @@ public abstract class NumericTestBase extends CrudBasedLockTestCase {
         return getGenerator(col, false);
     }
 
-    protected Supplier<Object> getGenerator(final String col, boolean hasNull) {
+    public static Supplier<Object> getGenerator(final String col, boolean hasNull) {
         switch (col) {
         case DECIMAL_TEST_HIGH:
             return () -> hasNull && CastTestUtils.useNull() ? null :

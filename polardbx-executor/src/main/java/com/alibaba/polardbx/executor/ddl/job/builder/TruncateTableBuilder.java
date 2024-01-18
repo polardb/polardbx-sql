@@ -17,8 +17,20 @@
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
+import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalTruncateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.TruncateTablePreparedData;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.rel.ddl.DropTable;
+import org.apache.calcite.rel.ddl.TruncateTable;
+import org.apache.calcite.sql.SqlDdlNodes;
+import org.apache.calcite.sql.SqlDropTable;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlTruncateTable;
+import org.apache.calcite.sql.parser.SqlParserPos;
 
 public class TruncateTableBuilder extends DdlPhyPlanBuilder {
 
@@ -27,6 +39,30 @@ public class TruncateTableBuilder extends DdlPhyPlanBuilder {
     public TruncateTableBuilder(DDL ddl, TruncateTablePreparedData preparedData, ExecutionContext executionContext) {
         super(ddl, preparedData, executionContext);
         this.preparedData = preparedData;
+    }
+
+    public static TruncateTableBuilder createBuilder(String schemaName,
+                                                     String logicalTableName,
+                                                     boolean ifExists,
+                                                     ExecutionContext executionContext) {
+        ReplaceTableNameWithQuestionMarkVisitor visitor =
+            new ReplaceTableNameWithQuestionMarkVisitor(schemaName, executionContext);
+
+        SqlIdentifier logicalTableNameNode = new SqlIdentifier(logicalTableName, SqlParserPos.ZERO);
+
+        SqlTruncateTable sqlTruncateTable =
+            SqlDdlNodes.truncateTable(SqlParserPos.ZERO, ifExists, logicalTableNameNode, true);
+        sqlTruncateTable = (SqlTruncateTable) sqlTruncateTable.accept(visitor);
+
+        final RelOptCluster cluster = SqlConverter.getInstance(executionContext).createRelOptCluster(null);
+        TruncateTable truncateTable = TruncateTable.create(cluster, sqlTruncateTable, logicalTableNameNode, false);
+
+        LogicalTruncateTable logicalTruncateTable = LogicalTruncateTable.create(truncateTable);
+        logicalTruncateTable.setSchemaName(schemaName);
+        logicalTruncateTable.prepareData(executionContext);
+
+        return new TruncateTableBuilder(truncateTable, logicalTruncateTable.getTruncateTableWithGsiPreparedData()
+            .getPrimaryTablePreparedData(), executionContext);
     }
 
     @Override

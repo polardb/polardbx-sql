@@ -23,7 +23,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionTableType;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.LinkedHashMap;
@@ -83,7 +83,8 @@ public class CreatePartitionTableWithGsiBuilder {
     }
 
     private void buildIndexTablePhysicalPlans() {
-        for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : preparedData.getIndexTablePreparedDataMap().entrySet()) {
+        for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : preparedData.getIndexTablePreparedDataMap()
+            .entrySet()) {
             buildIndexTablePhysicalPlans(entry.getKey(), entry.getValue());
         }
     }

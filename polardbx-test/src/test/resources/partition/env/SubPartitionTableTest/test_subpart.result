@@ -1,0 +1,113 @@
+## DISABLE_FAST_SQL_PARSER
+## test range col/one col/int
+drop table if exists rc_key_tp;
+create table if not exists rc_key_tp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+subpartitions 4
+( partition p0 values less than ('2020-01-01','abc'),
+  partition p1 values less than ('2022-01-01', 'efg'),
+  partition p2 values less than (maxvalue, maxvalue)
+);
+drop table if exists rc_key_ntp;
+create table if not exists rc_key_ntp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b)
+(partition p0 values less than ('2020-01-01','abc') (
+    subpartition sp0,
+    subpartition sp1
+  ),partition p1 values less than ('2023-01-01', 'efg') (
+    subpartition sp2,
+    subpartition sp3
+  ),partition p2 values less than (maxvalue,maxvalue) (
+    subpartition sp4,
+    subpartition sp5)
+);
+create table if not exists key_nsp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key(c,d)
+partitions 5;
+drop table if exists lc_key_tp;
+create table if not exists lc_key_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b)
+subpartitions 4
+(
+partition p0 values in (('2020-01-01','abc')),
+partition p1 values in (('2022-01-01', 'efg')),
+partition p2 values in (('2023-01-01', 'efg'))
+);
+create table if not exists lc_key_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b)
+(
+partition p0 values in (('2020-01-01','abc')) (
+subpartition sp0,
+subpartition sp1
+),
+partition p1 values in (('2022-01-01', 'efg')) (
+subpartition sp2,
+subpartition sp3
+),
+partition p2 values in (('2024-01-01', 'efg')) (
+subpartition sp4,
+subpartition sp5
+)
+);
+create table if not exists rc_key_ntp_dup (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (d,a)
+(partition p0 values less than ('2020-01-01','abc') (
+subpartition sp0,
+subpartition sp1
+),partition p1 values less than ('2023-01-01', 'efg') (
+subpartition sp2,
+subpartition sp3
+),partition p2 values less than (maxvalue,maxvalue) (
+subpartition sp4,
+subpartition sp5)
+);
+#insert into rc_key_ntp values (100, 200, '2022-01-01', '100', '200');
+#insert into rc_key_ntp_dup values (100, 200, '2022-01-01', '100', '200');
+#show create table tbl;
+#insert into tbl values (10),(99),(100),(101);
+#select * from tbl order by a;
+#explain select * from tbl where a=99 order by a;
+#explain select * from tbl where a=200 order by a;
+#explain select * from tbl where a<200 order by a;
+#drop table if exists tbl;

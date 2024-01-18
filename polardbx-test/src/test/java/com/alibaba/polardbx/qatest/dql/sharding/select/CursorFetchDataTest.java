@@ -20,12 +20,15 @@ import com.alibaba.polardbx.qatest.BaseTestCase;
 import com.alibaba.polardbx.qatest.constant.GsiConstant;
 import com.alibaba.polardbx.qatest.constant.TableConstant;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.RandomUtils;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -36,6 +39,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.constant.GsiConstant.COLUMN_DEF_MAP;
@@ -100,12 +112,11 @@ public class CursorFetchDataTest extends BaseTestCase {
         String mysqlError;
 
         try (final Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true")) {
-            JdbcUtil.executeUpdateSuccess(conn, "SET ENABLE_CURSOR_FETCH = TRUE");
-            polarXError = fetchTableDataWithConn(tableName, fetchSize, conn, autocommit, true);
+            polarXError = fetchTableDataWithConn(tableName, fetchSize, conn, autocommit);
         }
 
         try (final Connection conn = getMysqlConnectionWithExtraParams("&useCursorFetch=true")) {
-            mysqlError = fetchTableDataWithConn(mysqlTableName, fetchSize, conn, autocommit, false);
+            mysqlError = fetchTableDataWithConn(mysqlTableName, fetchSize, conn, autocommit);
         }
 
         // Compare errors.
@@ -122,8 +133,7 @@ public class CursorFetchDataTest extends BaseTestCase {
 
     }
 
-    private String fetchTableDataWithConn(String tableName, int fetchSize, Connection conn, boolean autocommit,
-                                          boolean polarx)
+    private String fetchTableDataWithConn(String tableName, int fetchSize, Connection conn, boolean autocommit)
         throws SQLException {
         conn.setAutoCommit(autocommit);
         final String sql = "select * from " + tableName + " order by id";
@@ -148,11 +158,6 @@ public class CursorFetchDataTest extends BaseTestCase {
             }
         }
 
-        if (!polarx) {
-            return "";
-        }
-
-        // Not allow this cases in polardb-x:
         // 1. Prepare a statement 1.
         try (final PreparedStatement ps = conn
             .prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
@@ -160,20 +165,12 @@ public class CursorFetchDataTest extends BaseTestCase {
             ps.setFetchSize(3);
             // 3. Execute statement 1.
             ps.executeQuery();
-
-            boolean fail = false;
             // 4. Before fetching data for statement 1, execute a statement 2.
-            try (final Statement stmt = conn
-                .createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                // 5. Set fetch size for statement 2.
-                stmt.setFetchSize(2);
-                // 6. Execute statement 2.
-                stmt.executeQuery(sql);
-            } catch (SQLException e) {
-                fail = true;
-                Assert.assertTrue(e.getMessage().contains("Not allow to execute commands except for"));
-            }
-            Assert.assertTrue(fail);
+            Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            // 5. Set fetch size for statement 2.
+            stmt.setFetchSize(2);
+            // 6. Execute statement 2.
+            stmt.executeQuery(sql);
         } finally {
             if (!autocommit) {
                 conn.rollback();
@@ -258,8 +255,8 @@ public class CursorFetchDataTest extends BaseTestCase {
             for (String tableName : tableNames) {
                 // Only allow the following cases:
                 try (final Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
-                    final Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                    JdbcUtil.executeUpdateSuccess(conn, "SET ENABLE_CURSOR_FETCH = TRUE");
+                    final Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY,
+                        ResultSet.CONCUR_READ_ONLY)) {
                     try {
                         stmt.execute("begin");
                         String sql = "select * from " + tableName + " order by id";
@@ -280,10 +277,9 @@ public class CursorFetchDataTest extends BaseTestCase {
                     }
                 }
 
-                // Not allow the following cases:
                 try (final Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
-                    final Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                    JdbcUtil.executeUpdateSuccess(conn, "SET ENABLE_CURSOR_FETCH = TRUE");
+                    final Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY,
+                        ResultSet.CONCUR_READ_ONLY)) {
                     try {
                         stmt.execute("begin");
                         String sql = "select * from " + tableName + " order by id";
@@ -291,29 +287,13 @@ public class CursorFetchDataTest extends BaseTestCase {
                         ResultSet rs = stmt.executeQuery(sql);
                         fetchRowData(rs);
 
-                        boolean fail = false;
-                        // Create another statement in the same connection, which is not allowed.
-                        try (final Statement stmt2 =
-                            conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                            stmt2.setFetchSize(2);
-                            try {
-                                stmt2.executeQuery(sql);
-                            } catch (SQLException e) {
-                                fail = true;
-                                Assert.assertTrue(e.getMessage().contains("Not allow to execute commands except for"));
-                            }
-                            Assert.assertTrue(fail);
-                        }
+                        // Create another statement in the same connection
+                        Statement stmt2 = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                        stmt2.setFetchSize(2);
+                        stmt2.executeQuery(sql);
 
-                        fail = false;
-                        try {
-                            stmt.setFetchSize(3);
-                            stmt.executeQuery(sql);
-                        } catch (SQLException e) {
-                            fail = true;
-                            Assert.assertTrue(e.getMessage().contains("Not allow to execute commands except for"));
-                        }
-                        Assert.assertTrue(fail);
+                        stmt.setFetchSize(3);
+                        stmt.executeQuery(sql);
                     } catch (Throwable t) {
                         stmt.executeQuery("rollback");
                     }
@@ -419,7 +399,6 @@ public class CursorFetchDataTest extends BaseTestCase {
                     try (final Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
                         final Statement stmt = conn
                             .createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                        JdbcUtil.executeUpdateSuccess(conn, "SET ENABLE_CURSOR_FETCH = TRUE");
                         stmt.setFetchSize(1);
                         final ResultSet rs2 = stmt.executeQuery(selectSql);
                         int i = 0;
@@ -460,27 +439,425 @@ public class CursorFetchDataTest extends BaseTestCase {
     }
 
     @Test
-    public void testSwitch() {
-        final String tableName = "cursor_fetch_data_test_switch";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE IF EXISTS " + tableName);
-        try {
-            String sql = "create table " + tableName + " (id int primary key, a int) dbpartition by hash(id)";
-            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-
-            boolean fail = false;
-            try (final Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
-                final Statement stmt = conn.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_CURSOR_FETCH = false");
-                stmt.setFetchSize(2);
-                sql = "select * from " + tableName;
-                stmt.execute(sql);
-            } catch (Exception e) {
-                fail = true;
-                System.out.println(e.getMessage());
-            }
-            Assert.assertTrue(fail);
-        } finally {
-            JdbcUtil.executeUpdate(tddlConnection, "DROP TABLE IF EXISTS " + tableName, false, true);
+    public void testMultipleTransaction() throws SQLException {
+        for (int i = 1; i < 16; i++) {
+            testMultipleTransactionInternal(i);
         }
+    }
+
+    private void testMultipleTransactionInternal(int flag) throws SQLException {
+        Connection mysqlConn = getMysqlConnectionWithExtraParams("&useCursorFetch=true");
+        Connection tddlConn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
+
+        String tableName = "cursor_multi_trx_test_tbl";
+        dropTable(tableName, mysqlConn);
+        dropTable(tableName, tddlConn);
+
+        // Init
+        String createSql = String.format("create table %s (a int primary key, b int)", tableName);
+        String partDef = "dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(mysqlConn, createSql);
+        JdbcUtil.executeUpdateSuccess(tddlConn, createSql + partDef);
+
+        List<ResultSet> mysqlRs = new ArrayList<>();
+        List<ResultSet> tddlRs = new ArrayList<>();
+
+        for (int i = 0; i < 100; i++) {
+            String insert = String.format("insert into %s values (%d,%d)", tableName, i, i);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConn, insert);
+        }
+
+        String query = String.format("select * from %s order by a", tableName);
+
+        // Phase 1, no transaction
+        if ((flag & 1) != 0) {
+            mysqlConn.setAutoCommit(true);
+            tddlConn.setAutoCommit(true);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            String update = String.format("update %s set b=a*2", tableName);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, update);
+            JdbcUtil.executeUpdateSuccess(tddlConn, update);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+        }
+
+        // Phase 2, transaction, commit
+        if ((flag & 2) != 0) {
+            mysqlConn.setAutoCommit(false);
+            tddlConn.setAutoCommit(false);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            String update = String.format("update %s set b=a*3", tableName);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, update);
+            JdbcUtil.executeUpdateSuccess(tddlConn, update);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            mysqlConn.commit();
+            tddlConn.commit();
+        }
+
+        // Phase 3, transaction, rollback
+        if ((flag & 4) != 0) {
+            mysqlConn.setAutoCommit(false);
+            tddlConn.setAutoCommit(false);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            String update = String.format("update %s set b=a*4", tableName);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, update);
+            JdbcUtil.executeUpdateSuccess(tddlConn, update);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            mysqlConn.rollback();
+            tddlConn.rollback();
+        }
+
+        // Phase 4, no transaction
+        if ((flag & 8) != 0) {
+            mysqlConn.setAutoCommit(true);
+            tddlConn.setAutoCommit(true);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+
+            String update = String.format("update %s set b=a*52", tableName);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, update);
+            JdbcUtil.executeUpdateSuccess(tddlConn, update);
+
+            mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+            tddlRs.add(getCursorFetchRs(tddlConn, query));
+            checkAllPs(mysqlRs, tddlRs, 1);
+        }
+
+        // Finally, check all rs
+        mysqlRs.add(getCursorFetchRs(mysqlConn, query));
+        tddlRs.add(getCursorFetchRs(tddlConn, query));
+        checkAllPs(mysqlRs, tddlRs, 100);
+
+        // Close
+        mysqlConn.close();
+        tddlConn.close();
+    }
+
+    private ResultSet getCursorFetchRs(Connection conn, String sql) throws SQLException {
+        PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+        ps.setFetchSize(1);
+        return ps.executeQuery();
+    }
+
+    private void checkAllPs(List<ResultSet> mysqlRs, List<ResultSet> tddlRs, int num) throws SQLException {
+        Assert.assertEquals(mysqlRs.size(), tddlRs.size());
+        for (int i = 0; i < mysqlRs.size(); i++) {
+            ResultSet rs1 = mysqlRs.get(i);
+            ResultSet rs2 = tddlRs.get(i);
+
+            for (int j = 0; j < num; j++) {
+                boolean next1 = rs1.next();
+                boolean next2 = rs2.next();
+                Assert.assertEquals(next1, next2);
+                if (!next1) {
+                    System.out.println(i + " " + j);
+                    break;
+                }
+
+                List<String> row1 = getOneRow(rs1);
+                List<String> row2 = getOneRow(rs2);
+                Assert.assertArrayEquals(row1.toArray(), row2.toArray());
+            }
+        }
+    }
+
+    private void checkAllPs(ResultSet mysqlRs, ResultSet tddlRs, int num) throws SQLException {
+        checkAllPs(ImmutableList.of(mysqlRs), ImmutableList.of(tddlRs), num);
+    }
+
+    private List<String> getOneRow(ResultSet rs) throws SQLException {
+        List<String> oneResult = new ArrayList<>();
+        int columnCount = rs.getMetaData().getColumnCount();
+        for (int i = 1; i <= columnCount; i++) {
+            if (rs.getObject(i) == null) {
+                oneResult.add(null);
+            } else {
+                oneResult.add(rs.getString(i));
+            }
+        }
+        return oneResult;
+    }
+
+    @Test
+    public void testReuseWriteConn() throws Exception {
+        String tableName1 = "cursor_test_reuse_write_conn_tbl_1";
+        String tableName2 = "cursor_test_reuse_write_conn_tbl_2";
+
+        dropTable(tableName1, tddlConnection);
+        dropTable(tableName2, tddlConnection);
+
+        String createSql1 = String.format(
+            "create table %s (a int primary key, b int) dbpartition by hash(a) tbpartition by hash(a) tbpartitions 2",
+            tableName1);
+        String createSql2 = String.format(
+            "create table %s (a int primary key, b int) dbpartition by hash(b) tbpartition by hash(b) tbpartitions 3",
+            tableName2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
+
+        // Load some data
+        int batchSize = 10000;
+
+        final List<Callable<Void>> tasks = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            int tid = i;
+            tasks.add(() -> {
+                try (Connection conn = getPolardbxConnectionWithExtraParams("&useServerPrepStmts=true")) {
+                    List<List<Object>> params = new ArrayList<>();
+                    for (int j = tid * batchSize; j < (tid + 1) * batchSize; j++) {
+                        List<Object> param = new ArrayList<>();
+                        param.add(j);
+                        param.add(j);
+                        params.add(param);
+                    }
+                    String insert = String.format("insert into %s values (?,?)", tableName1);
+                    JdbcUtil.updateDataBatch(conn, insert, params);
+                }
+                return null;
+            });
+        }
+
+        for (int i = 0; i < 10; i++) {
+            int tid = i;
+            tasks.add(() -> {
+                try (Connection conn = getPolardbxConnectionWithExtraParams("&useServerPrepStmts=true")) {
+                    List<List<Object>> params = new ArrayList<>();
+                    for (int j = tid * batchSize; j < (tid + 1) * batchSize; j++) {
+                        List<Object> param = new ArrayList<>();
+                        param.add(j);
+                        param.add(j);
+                        params.add(param);
+                    }
+                    String insert = String.format("insert into %s values (?,?)", tableName2);
+                    JdbcUtil.updateDataBatch(conn, insert, params);
+                }
+                return null;
+            });
+        }
+
+        ExecutorService threadPool = Executors.newCachedThreadPool();
+
+        ArrayList<Future<Void>> results = new ArrayList<>();
+        for (Callable<Void> task : tasks) {
+            results.add(threadPool.submit(task));
+        }
+
+        for (Future<Void> result : results) {
+            result.get();
+        }
+
+        try (Connection conn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true")) {
+            List<ResultSet> rs = new ArrayList<>();
+            for (int i = 0; i < 10; i++) {
+                PreparedStatement ps = conn.prepareStatement(String.format(
+                        "/*+TDDL:BKA_JOIN(%s,%s)*/ select * from %s join %s on %s.a=%s.a limit 50000 for update",
+                        tableName1, tableName2, tableName1, tableName2, tableName1, tableName2),
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+                ps.setFetchSize(10);
+                rs.add(ps.executeQuery());
+                System.out.println(i);
+            }
+
+            for (int i = 0; i < 10; i++) {
+                JdbcUtil.getAllResult(rs.get(i));
+            }
+        }
+    }
+
+    @Test
+    public void testReusePreparedStatement() throws SQLException {
+        String tableName = "cursor_test_reuse_ps_tbl";
+        Connection mysqlConn = getMysqlConnectionWithExtraParams("&useCursorFetch=true");
+        Connection tddlConn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
+
+        dropTable(tableName, mysqlConn);
+        dropTable(tableName, tddlConn);
+
+        String createTable = String.format("create table %s (a int primary key, b int)", tableName);
+        String partDef = "dbpartition by hash(a)";
+
+        JdbcUtil.executeUpdateSuccess(mysqlConn, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConn, createTable + partDef);
+
+        for (int i = 0; i < 10; i++) {
+            String insert = String.format("insert into %s values (%d,%d)", tableName, i, i);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConn, insert);
+        }
+
+        String select = String.format("select * from %s order by a", tableName);
+        PreparedStatement ps1 = mysqlConn.prepareStatement(select);
+        PreparedStatement ps2 = tddlConn.prepareStatement(select);
+        ps1.setFetchSize(1);
+        ps2.setFetchSize(2);
+
+        ResultSet rs1 = ps1.executeQuery();
+        ResultSet rs2 = ps2.executeQuery();
+        checkAllPs(rs1, rs2, 5);
+
+        rs1 = ps1.executeQuery();
+        rs2 = ps2.executeQuery();
+        checkAllPs(rs1, rs2, 10);
+
+        // Close
+        mysqlConn.close();
+        tddlConn.close();
+    }
+
+    @Test
+    public void testLargeData() throws SQLException {
+        String tableName = "cursor_test_large_tbl";
+        Connection tddlConn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true");
+        dropTable(tableName, tddlConn);
+
+        String create = String.format("create table %s (a int primary key, b longtext)", tableName);
+        String partDef = "dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(tddlConn, create + partDef);
+
+        final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+        char[] chars = new char[8000000];
+        final Random rand = new Random();
+        for (int i = 0; i < chars.length; i++) {
+            chars[i] = AB.charAt(rand.nextInt(AB.length()));
+        }
+        String data = new String(chars);
+
+        int n = 10;
+        for (int i = 0; i < n; i++) {
+            String insert = String.format("insert into %s values(%d,'%s')", tableName, i, data);
+            JdbcUtil.executeUpdateSuccess(tddlConn, insert);
+        }
+
+        String select = String.format("select * from %s", tableName);
+        PreparedStatement ps1 = tddlConn.prepareStatement(select);
+        ps1.setFetchSize(1);
+        ResultSet rs = ps1.executeQuery();
+        List<List<Object>> r = JdbcUtil.getAllResult(rs);
+        Assert.assertEquals(n, r.size());
+
+        rs = JdbcUtil.executeQuery("select found_rows()", tddlConn);
+        rs.next();
+        Assert.assertEquals(String.valueOf(n), rs.getString(1));
+
+        tddlConn.close();
+    }
+
+    @Test
+    public void testTwoPreparedStmt() throws SQLException {
+        Connection mysqlConn = getMysqlConnectionWithExtraParams("&useCursorFetch=true&defaultFetchSize=1");
+        Connection tddlConn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true&defaultFetchSize=1");
+
+        String tableName = "cursor_two_ps_test_tbl";
+        dropTable(tableName, mysqlConn);
+        dropTable(tableName, tddlConn);
+
+        // Init
+        String createSql = String.format("create table %s (a int primary key, b int)", tableName);
+        String partDef = "dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(mysqlConn, createSql);
+        JdbcUtil.executeUpdateSuccess(tddlConn, createSql + partDef);
+
+        List<ResultSet> mysqlRs = new ArrayList<>();
+        List<ResultSet> tddlRs = new ArrayList<>();
+
+        for (int i = 0; i < 100; i++) {
+            String insert = String.format("insert into %s values (%d,%d)", tableName, i, i);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConn, insert);
+        }
+
+        String query = String.format("select * from %s order by a", tableName);
+
+        List<PreparedStatement> mysqlPs = new ArrayList<>();
+        List<PreparedStatement> tddlPs = new ArrayList<>();
+
+        mysqlPs.add(mysqlConn.prepareStatement(query));
+        tddlPs.add(tddlConn.prepareStatement(query));
+
+        String update = String.format("update %s set b=a*2", tableName);
+        JdbcUtil.executeUpdateSuccess(mysqlConn, update);
+        JdbcUtil.executeUpdateSuccess(tddlConn, update);
+
+        mysqlPs.add(mysqlConn.prepareStatement(query));
+        tddlPs.add(tddlConn.prepareStatement(query));
+
+        for (int i = 0; i < mysqlPs.size(); i++) {
+            mysqlRs.add(mysqlPs.get(i).executeQuery());
+            tddlRs.add(tddlPs.get(i).executeQuery());
+        }
+
+        checkAllPs(mysqlRs, tddlRs, 100);
+
+        // Close
+        mysqlConn.close();
+        tddlConn.close();
+    }
+
+    @Test
+    public void testSqlSelectLimit() throws SQLException {
+        Connection mysqlConn = getMysqlConnectionWithExtraParams("&useCursorFetch=true&defaultFetchSize=1");
+        Connection tddlConn = getPolardbxConnectionWithExtraParams("&useCursorFetch=true&defaultFetchSize=1");
+
+        String tableName = "cursor_limit_test_tbl";
+        dropTable(tableName, mysqlConn);
+        dropTable(tableName, tddlConn);
+
+        // Init
+        String createSql = String.format("create table %s (a int primary key, b int)", tableName);
+        String partDef = "dbpartition by hash(a)";
+        JdbcUtil.executeUpdateSuccess(mysqlConn, createSql);
+        JdbcUtil.executeUpdateSuccess(tddlConn, createSql + partDef);
+
+        for (int i = 0; i < 100; i++) {
+            String insert = String.format("insert into %s values (%d,%d)", tableName, i, i);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, insert);
+            JdbcUtil.executeUpdateSuccess(tddlConn, insert);
+        }
+
+        Long[] sqlSelectLimits = new Long[] {1L, 10L, 200L, Long.MAX_VALUE};
+
+        String query = String.format("select * from %s order by a", tableName);
+
+        List<ResultSet> mysqlRs = new ArrayList<>();
+        List<ResultSet> tddlRs = new ArrayList<>();
+
+        for (Long limit : sqlSelectLimits) {
+            JdbcUtil.executeUpdateSuccess(mysqlConn, "SET SQL_SELECT_LIMIT=" + limit);
+            JdbcUtil.executeUpdateSuccess(tddlConn, "SET SQL_SELECT_LIMIT=" + limit);
+
+            mysqlRs.add(mysqlConn.prepareStatement(query).executeQuery());
+            tddlRs.add(tddlConn.prepareStatement(query).executeQuery());
+        }
+
+        checkAllPs(mysqlRs, tddlRs, 100);
+
+        // Close
+        mysqlConn.close();
+        tddlConn.close();
     }
 }

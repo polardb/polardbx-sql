@@ -19,15 +19,15 @@ package com.alibaba.polardbx.executor.operator;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.archive.predicate.OSSPredicateBuilder;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.archive.reader.ORCReadResult;
+import com.alibaba.polardbx.executor.archive.reader.ORCReaderWithAggTask;
+import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
 import com.alibaba.polardbx.executor.archive.reader.OSSReadOption;
 import com.alibaba.polardbx.executor.archive.reader.UnPushableORCReaderTask;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -38,8 +38,8 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.google.common.collect.Maps;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.apache.calcite.rel.core.AggregateCall;
@@ -48,8 +48,6 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexNode;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
-import org.apache.orc.sarg.SearchArgument;
-import org.apache.orc.sarg.SearchArgumentFactory;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -78,13 +76,12 @@ public class OSSTableScanClient implements Closeable {
     private List<OssSplit> splits;
     private int splitIndex;
 
-    private Pool<VectorizedRowBatch> pool;
+    private Map<Integer, Pool<VectorizedRowBatch>> poolMap;
     private ConcurrentLinkedQueue<ResultFromOSS> results;
 
     private ExecutionContext context;
     private SessionProperties sessionProperties;
     private final int chunkLimit;
-
     private volatile SettableFuture<?> waitBloomFilterFuture = null;
     private volatile boolean needWaitBloomFilter;
 
@@ -109,14 +106,14 @@ public class OSSTableScanClient implements Closeable {
         this.sessionProperties = SessionProperties.fromExecutionContext(context);
         this.chunkLimit = (int) context.getParamManager().getLong(ConnectionParams.OSS_ORC_INDEX_STRIDE);
 
-        this.pool = new Pool<>(POOL_SIZE, TIMEOUT);
+        this.poolMap = Maps.newTreeMap();
         this.results = new ConcurrentLinkedQueue<>();
 
         this.isFinished = false;
         this.isClosed = false;
 
         this.initializer = new OSSTableClientInitializer(ossTableScan);
-        this.initializer.initialSearchArgs();
+        this.initializer.prepareSearchArgs();
         this.dataTypeList = dataTypeList;
         this.aggCalls = ossTableScan.getAgg() == null ? null : ossTableScan.getAgg().getAggCallList();
         this.aggColumns = ossTableScan.getAggColumns();
@@ -133,6 +130,10 @@ public class OSSTableScanClient implements Closeable {
         throwIfFailed();
         if (needWaitBloomFilter && waitBloomFilterFuture != null && !waitBloomFilterFuture.isDone()) {
             return;
+        }
+
+        for (int i = 0; i < splits.size(); i++) {
+            this.poolMap.put(i, new Pool<>(POOL_SIZE, TIMEOUT));
         }
 
         // For all split, build orc read task and fetch the results.
@@ -166,11 +167,7 @@ public class OSSTableScanClient implements Closeable {
     }
 
     public synchronized void recycle(ResultFromOSS result) throws InterruptedException {
-        pool.recycle(result.getBatch());
-    }
-
-    public synchronized void recycle(VectorizedRowBatch batch) throws InterruptedException {
-        pool.recycle(batch);
+        poolMap.get(result.getPoolIndex()).recycle(result.getBatch());
     }
 
     public synchronized ListenableFuture<?> isBlocked() {
@@ -188,6 +185,11 @@ public class OSSTableScanClient implements Closeable {
                 return future;
             }
         }
+    }
+
+    public synchronized void setIsFinish() {
+        this.isFinished = true;
+        notifyBlockedCallers();
     }
 
     private boolean isReady() {
@@ -253,15 +255,14 @@ public class OSSTableScanClient implements Closeable {
                     for (OSSReadOption readOption : readOptions) {
                         for (int i = 0; i < readOption.getTableFileList().size(); i++) {
                             // supply initial elements to pool.
-                            pool.supply(() -> readOption.getReadSchema().createRowBatch(chunkLimit));
+                            poolMap.get(splitIndex).supply(() -> readOption.getReadSchema().createRowBatch(chunkLimit));
                             // do fetch file rows.
-                            foreachFile(readOption, i);
+                            foreachFile(readOption, i, splitIndex);
                         }
                     }
                 }
                 // If physical table list or file list is empty, notify the blocked thread there.
-                notifyBlockedCallers();
-                isFinished = true;
+                setIsFinish();
             } catch (Throwable t) {
                 setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, t.getMessage(), t));
             }
@@ -270,15 +271,17 @@ public class OSSTableScanClient implements Closeable {
             return null;
         }
 
-        private void foreachFile(OSSReadOption readOption, int fileIndex) {
+        private void foreachFile(OSSReadOption readOption, int fileIndex, int poolIndex) {
             String tableFile = readOption.getTableFileList().get(fileIndex);
             FileMeta fileMeta = readOption.getPhyTableFileMetas().get(fileIndex);
             PruningResult pruningResult = readOption.getPruningResultList().get(fileIndex);
 
             // build orc reader task for each file.
             UnPushableORCReaderTask task =
-                new UnPushableORCReaderTask(readOption, tableFile, fileMeta, pruningResult, context,
-                    dataTypeList, aggCalls, aggColumns);
+                aggCalls == null ?
+                    new UnPushableORCReaderTask(readOption, tableFile, fileMeta, pruningResult, context) :
+                    new ORCReaderWithAggTask(readOption, tableFile, fileMeta, pruningResult, context,
+                        dataTypeList, aggCalls, aggColumns);
             task.init();
 
             // register for resource management.
@@ -289,7 +292,7 @@ public class OSSTableScanClient implements Closeable {
                 VectorizedRowBatch batch = null;
                 boolean needRecycle = true;
                 try {
-                    batch = pool.poll();
+                    batch = poolMap.get(poolIndex).poll();
                     if (batch == null) {
                         throw GeneralUtil.nestedException(String.format("cannot fetch file data in %s ms.", TIMEOUT));
                     }
@@ -308,7 +311,9 @@ public class OSSTableScanClient implements Closeable {
                         // Fill the result and notify the block callers.
                         // Do not recycle the batch.
                         needRecycle = false;
-                        results.add(new ResultFromOSS(batch));
+                        results.add(new ResultFromOSS(batch,
+                            task.getOssReadOption().getOssColumnTransformer(),
+                            poolIndex));
                     }
                     notifyBlockedCallers();
                 } catch (Throwable t) {
@@ -316,7 +321,7 @@ public class OSSTableScanClient implements Closeable {
                 } finally {
                     if (batch != null && needRecycle) {
                         try {
-                            pool.recycle(batch);
+                            poolMap.get(poolIndex).recycle(batch);
                         } catch (InterruptedException e) {
                             setException(new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, e, e.getMessage()));
                         }
@@ -325,7 +330,6 @@ public class OSSTableScanClient implements Closeable {
             }
         }
     }
-
 
     /**
      * The Pool hold all the buffer in a Prefetch thread.
@@ -373,10 +377,10 @@ public class OSSTableScanClient implements Closeable {
 
     private class OSSTableClientInitializer {
         private OSSTableScan ossTableScan;
-        private SearchArgument searchArgument;
-        private String[] columns;
         private volatile Map<Integer, BloomFilterInfo> bloomFilterInfos;
+        private RexNode bloomFilterCondition;
         private volatile ScheduledFuture<?> monitorWaitBloomFilterFuture;
+
         private final Object lock = new Object();
 
         OSSTableClientInitializer(OSSTableScan ossTableScan) {
@@ -387,18 +391,16 @@ public class OSSTableScanClient implements Closeable {
             OssSplit ossSplit = splits.get(splitIndex);
             if (!ossSplit.isInit()) {
                 synchronized (lock) {
-                    ossSplit.init(ossTableScan, context, searchArgument, columns);
+                    ossSplit.init(ossTableScan, context, sessionProperties, bloomFilterInfos, bloomFilterCondition);
                 }
             }
             return ossSplit.getReadOptions();
         }
 
-        public void initialSearchArgs() {
-            if (ossTableScan.getOrcNode().getFilters().isEmpty()) {
-                buildSearchArgumentAndColumns(null);
-            } else {
-                buildSearchArgumentAndColumns(ossTableScan.getOrcNode().getFilters().get(0));
-            }
+        /**
+         * record all information needed for SearchArgs build in ossSplit
+         */
+        public void prepareSearchArgs() {
         }
 
         public synchronized void initWaitFuture(ListenableFuture<List<BloomFilterInfo>> listListenableFuture) {
@@ -438,73 +440,47 @@ public class OSSTableScanClient implements Closeable {
 
                 Map<Integer, RexCall> bloomFiltersMap = ossTableScan.getBloomFiltersMap();
 
-                RexNode bloomFilterCondition;
                 if (bloomFiltersMap.size() == 1) {
                     bloomFilterCondition = bloomFiltersMap.values().iterator().next();
                 } else {
                     bloomFilterCondition = rexBuilder
-                        .makeCall(TddlOperatorTable.AND, bloomFiltersMap.values().stream().collect(Collectors.toList()));
-                }
-
-                if (ossTableScan.getOrcNode().getFilters().isEmpty()) {
-                    buildSearchArgumentAndColumns(bloomFilterCondition);
-                } else {
-                    buildSearchArgumentAndColumns(rexBuilder
-                        .makeCall(TddlOperatorTable.AND, ossTableScan.getOrcNode().getFilters().get(0),
-                            bloomFilterCondition));
+                        .makeCall(TddlOperatorTable.AND,
+                            bloomFiltersMap.values().stream().collect(Collectors.toList()));
                 }
 
             } catch (Throwable t) {
                 throw new TddlNestableRuntimeException(t);
             }
         }
-
-        private void buildSearchArgumentAndColumns(RexNode rexNode) {
-            // init searchArgument and columns
-            if (rexNode == null) {
-                // full scan
-                searchArgument = SearchArgumentFactory
-                    .newBuilder()
-                    .literal(SearchArgument.TruthValue.YES_NO)
-                    .build();
-                columns = null;
-            } else {
-                Parameters parameters = context.getParams();
-                OSSPredicateBuilder predicateBuilder =
-                    new OSSPredicateBuilder(parameters, ossTableScan.getOrcNode().getInputProjectRowType().getFieldList(),
-                        bloomFilterInfos, ossTableScan.getOrcNode().getRowType().getFieldList(),
-                        CBOUtil.getTableMeta(ossTableScan.getTable()), sessionProperties);
-                Boolean valid = rexNode.accept(predicateBuilder);
-                if (valid != null && valid.booleanValue()) {
-                    searchArgument = predicateBuilder.build();
-                    columns = predicateBuilder.columns();
-                } else {
-                    // full scan
-                    searchArgument = SearchArgumentFactory
-                        .newBuilder()
-                        .literal(SearchArgument.TruthValue.YES_NO)
-                        .build();
-                    columns = null;
-                }
-            }
-        }
     }
 
     /**
-     * a of results from
+     * a union of result whether from orcfile or statistics
      */
     public class ResultFromOSS {
         private Chunk chunk;
         private VectorizedRowBatch batch;
+
+        private int poolIndex;
+
+        private OSSColumnTransformer ossColumnTransformer;
 
         public ResultFromOSS(Chunk chunk) {
             this.chunk = chunk;
             this.batch = null;
         }
 
-        public ResultFromOSS(VectorizedRowBatch batch) {
+        public ResultFromOSS(VectorizedRowBatch batch,
+                             OSSColumnTransformer ossColumnTransformer,
+                             int poolIndex) {
             this.chunk = null;
             this.batch = batch;
+            this.ossColumnTransformer = ossColumnTransformer;
+            this.poolIndex = poolIndex;
+        }
+
+        public int getPoolIndex() {
+            return poolIndex;
         }
 
         public VectorizedRowBatch getBatch() {
@@ -517,6 +493,10 @@ public class OSSTableScanClient implements Closeable {
 
         public boolean isChunk() {
             return chunk != null;
+        }
+
+        public OSSColumnTransformer getOssColumnTransformer() {
+            return ossColumnTransformer;
         }
 
         boolean shouldRecycle() {

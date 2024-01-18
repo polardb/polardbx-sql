@@ -1,0 +1,102 @@
+- sql: |
+    select my_func(1,1);
+
+  plan: |
+    project(my_func(1, 1)="my_func(cast(1), cast(1))")
+      values(table="dual")
+
+- sql: |
+    select my_func(1,"1");
+
+  plan: |
+    project(my_func(1, '1')="my_func(1, '1')")
+      values(table="dual")
+
+- sql: |
+    select my_func(1,"1"), my_func(id, data) from test_single_table;
+
+  plan: |
+    project(my_func(1, '1')="my_func(1, '1')", my_func(id, data)="my_func(id, data)")
+      logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select * from test_single_table where my_func(id, "polarx") = 100;
+
+  plan: |
+    filter(condition="my_func(id, 'polarx') = 100")
+      logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select sum(my_func(id, "polarx")) from test_single_table;
+
+  plan: |
+    hashagg(sum(my_func(id, 'polarx'))="sum($f0)")
+      project($f0="my_func(id, 'polarx')")
+        logicalview(tables="optest_0000.test_single_table", sql="select `id` from `test_single_table` as `test_single_table`")
+
+- sql: |
+    select * from test_single_table where id in (my_func(1, "23"), my_func(2, "33"));
+
+  plan: |
+    filter(condition="id in row(my_func(1, '23'), my_func(2, '33'))")
+      logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
+
+
+- sql: |
+    select my_func(id,"1"), my_func(1, name) from test_hash_tb;
+
+  plan: |
+    project(my_func(id, '1')="my_func(id, '1')", my_func(1, name)="my_func(1, name)")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
+- sql: |
+    select * from test_hash_tb where my_func(id, "polarx") = 100;
+
+  plan: |
+    filter(condition="my_func(id, 'polarx') = 100")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select * from test_hash_tb where my_func(id, "polarx") = id;
+
+  plan: |
+    filter(condition="my_func(id, 'polarx') = id")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select id, sum(my_func(id, "polarx")) from test_hash_tb group by id;
+
+  plan: |
+    sortagg(group="id", sum(my_func(id, 'polarx'))="sum($f1)")
+      project(id="id", $f1="my_func(id, 'polarx')")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` order by `id`")
+- sql: |
+    select * from test_hash_tb where id in (my_func(1, "23"));
+
+  plan: |
+    filter(condition="id in row(my_func(1, '23'))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name`, `create_time` from `test_hash_tb` as `test_hash_tb`")
+
+- sql: |
+    select my_func(a.id, b.name) from test_hash_tb a join test_hash_tb2 b on a.id = b.id;
+
+  plan: |
+    project(my_func(a.id, b.name)="my_func(id, name0)")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb,test_hash_tb2", shardcount=4, sql="select `test_hash_tb`.`id`, `test_hash_tb2`.`name` as `name0` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb2` as `test_hash_tb2` on (`test_hash_tb`.`id` = `test_hash_tb2`.`id`)")
+- sql: |
+    /*+TDDL: IGNORE_UN_PUSHABLE_FUNC_IN_JOIN=false */ select my_func(a.id, b.name) from test_hash_tb a join test_hash_tb2 b on a.id = b.id where a.id in (my_func(1, "23"));
+
+  plan: |
+    project(my_func(a.id, b.name)="my_func(id0, name)")
+      hashjoin(condition="id = id", type="inner")
+        filter(condition="id in row(my_func(1, '23'))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `name` from `test_hash_tb2` as `test_hash_tb2`")
+        filter(condition="id in row(my_func(1, '23'))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")

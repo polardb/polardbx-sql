@@ -22,14 +22,29 @@ import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IConnectionHolder;
+import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.stats.TransactionStatistics;
+import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.sql.SQLException;
+import java.util.Optional;
+import java.util.function.Supplier;
+
+import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
 
 /**
  * @author mengshi.sunmengshi 2013-12-6 上午11:31:29
@@ -41,9 +56,18 @@ public class AutoCommitTransaction extends BaseTransaction {
 
     final protected AutoCommitConnectionHolder ch;
 
+    protected final boolean consistentReplicaRead;
+
     public AutoCommitTransaction(ExecutionContext ec, ITransactionManager manager) {
         super(ec, manager);
         ch = new AutoCommitConnectionHolder();
+        this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
+            ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
+    }
+
+    @Override
+    public TransactionType getType() {
+        return TransactionType.AUTO_COMMIT;
     }
 
     /**
@@ -53,16 +77,17 @@ public class AutoCommitTransaction extends BaseTransaction {
     public IConnection getConnection(String schemaName, String groupName, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
         MasterSlave masterSlave = ExecUtils.getMasterSlave(false, rw.equals(RW.WRITE), ec);
-        return getSelfConnection(schemaName, groupName, ds, masterSlave);
+        IConnection connection = getRealConnection(schemaName, groupName, ds, masterSlave);
+        return sendLsn(connection, schemaName, groupName, masterSlave, () -> -1L);
     }
 
-    protected IConnection getSelfConnection(
+    protected IConnection getRealConnection(
         String schemaName, String groupName, IDataSource ds, MasterSlave masterSlave)
         throws SQLException {
         if (groupName == null) {
             throw new IllegalArgumentException("group name is null");
         }
-        if(ds==null){
+        if (ds == null) {
             throw new IllegalArgumentException("DataSource is null");
         }
 
@@ -73,7 +98,6 @@ public class AutoCommitTransaction extends BaseTransaction {
             }
 
             if (!begun) {
-                beginTransaction();
                 begun = true;
             }
 
@@ -85,22 +109,48 @@ public class AutoCommitTransaction extends BaseTransaction {
         }
     }
 
+    protected IConnection sendLsn(
+        IConnection connection, String schemaName, String group, MasterSlave masterSlave, Supplier<Long> tso)
+        throws SQLException {
+        boolean needReadLsn = needReadLsn(this, schemaName, masterSlave, consistentReplicaRead);
+        if (needReadLsn) {
+
+            TopologyHandler topology;
+            if (schemaName != null) {
+                topology = ExecutorContext.getContext(schemaName).getTopologyExecutor().getTopology();
+            } else {
+                topology = ((com.alibaba.polardbx.transaction.TransactionManager) manager).getTransactionExecutor()
+                    .getTopology();
+            }
+            long masterLsn = GroupingFetchLSN.getInstance().fetchLSN(topology, group, null, tso.get());
+            connection.executeLater(String.format("SET read_lsn = %d", masterLsn));
+        }
+        return connection;
+    }
+
     @Override
     public void commit() {
+        long commitStartTime = System.nanoTime();
         if (logger.isDebugEnabled()) {
             logger.debug("commit");
         }
         // do nothing
 
+        stat.setIfUnknown(TransactionStatistics.Status.COMMIT);
+        stat.commitTime = System.nanoTime() - commitStartTime;
         close();
     }
 
     @Override
     public void rollback() {
-
+        long commitStartTime = System.nanoTime();
         if (logger.isDebugEnabled()) {
             logger.debug("rollback");
         }
+        stat.setIfUnknown(TransactionStatistics.Status.ROLLBACK);
+        stat.commitTime = System.nanoTime() - commitStartTime;
+        Optional.ofNullable(OptimizerContext.getTransStat(statisticSchema))
+            .ifPresent(s -> s.countRollback.incrementAndGet());
     }
 
     @Override

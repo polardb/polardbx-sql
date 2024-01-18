@@ -1,0 +1,27 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE IF NOT EXISTS `sig_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 300005 DEFAULT CHARSET = utf8mb4
+SINGLE;
+
+show rule from sig_tbl_bigint;
+
+CREATE TABLE IF NOT EXISTS `bro_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 400021 DEFAULT CHARSET = utf8mb4
+BROADCAST;
+
+show rule from bro_tbl_bigint;
+
+CREATE TABLE IF NOT EXISTS `hash_tbl_bigint` (
+`a` bigint(20) UNSIGNED NOT NULL,
+KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS 32;
+
+show rule from hash_tbl_bigint;
+show rule;

@@ -28,7 +28,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * String Block
- *
  */
 public class StringBlock extends AbstractCommonBlock {
     private static final String EMPTY_STRING = "";
@@ -43,8 +42,7 @@ public class StringBlock extends AbstractCommonBlock {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.offsets = offsets;
         this.data = data;
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + sizeOf(data);
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data) + sizeOf(valueIsNull);
+        updateSizeInfo();
     }
 
     @Override
@@ -182,5 +180,11 @@ public class StringBlock extends AbstractCommonBlock {
 
     public char[] getData() {
         return data;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
+        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
     }
 }

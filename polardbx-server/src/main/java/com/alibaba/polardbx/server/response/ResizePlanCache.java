@@ -16,13 +16,10 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
-import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.matrix.jdbc.TDataSource;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -31,9 +28,9 @@ import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.server.handler.SetHandler;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 
@@ -48,7 +45,7 @@ public final class ResizePlanCache {
     private static final int FIELD_COUNT = 5;
     private static final ResultSetHeaderPacket HEADER_PACKET = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] FIELD_PACKETS = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket EOF_PACKET = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -69,22 +66,20 @@ public final class ResizePlanCache {
 
         FIELD_PACKETS[i] = PacketUtil.getField("NEW_CAPACITY", Fields.FIELD_TYPE_LONG);
         FIELD_PACKETS[i++].packetId = ++packetId;
-
-        EOF_PACKET.packetId = ++packetId;
     }
 
-    public static void response(ByteString stmt, ServerConnection c,
-                                int offset, boolean hasMore) {
+    public static boolean response(ByteString stmt, ServerConnection c,
+                                   int offset, boolean hasMore) {
         String newSizeStr = stmt.substring(offset).trim();
         try {
             int newSize = Integer.parseInt(newSizeStr);
-            response(c, newSize, hasMore);
+            return response(c, newSize, hasMore);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(String.format("'%s is illegal'", newSizeStr));
         }
     }
 
-    public static void response(ServerConnection c, int newSize, boolean hasMore) {
+    public static boolean response(ServerConnection c, int newSize, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -97,14 +92,21 @@ public final class ResizePlanCache {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = EOF_PACKET.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = EOF_PACKET.packetId;
         String charset = c.getCharset();
 
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(newSize));
+        ByteString stmt = ByteString.from("set global PLAN_CACHE_SIZE = " + newSize);
+        SetHandler.handleV2(stmt, c, 3, false, true);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new ResizePlanCacheSyncAction(newSize),
+            SystemDbHelper.INFO_SCHEMA_DB_NAME);
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {
                 continue;
@@ -118,14 +120,14 @@ public final class ResizePlanCache {
                 row.add(StringUtil.encode(DataTypes.StringType.convertFrom(conn.get("NEW_CNT")), charset));
                 row.add(StringUtil.encode(DataTypes.StringType.convertFrom(conn.get("NEW_CAPACITY")), charset));
 
-                row.packetId = ++packetId;
+                row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);
             }
         }
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -133,6 +135,7 @@ public final class ResizePlanCache {
 
         // post write
         proxy.packetEnd();
+        return true;
     }
 
 }

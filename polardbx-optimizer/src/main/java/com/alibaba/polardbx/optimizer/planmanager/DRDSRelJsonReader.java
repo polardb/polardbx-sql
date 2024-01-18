@@ -173,7 +173,6 @@ public class DRDSRelJsonReader {
         Integer relatedId = null;
         if (jsonRel.get("relatedId") instanceof Integer) {
             relatedId = (Integer) jsonRel.get("relatedId");
-            ;
         } else {
             relatedId = null;
         }
@@ -485,8 +484,8 @@ public class DRDSRelJsonReader {
             public ImmutableSet<CorrelationId> getVariablesSet() {
                 if (jsonRel.get("variablesSet") != null) {
                     Set<CorrelationId> correlationIdSet = new HashSet<>();
-                    for (Object id : (List)jsonRel.get("variablesSet")) {
-                        correlationIdSet.add(new CorrelationId(((Number)id).intValue()));
+                    for (Object id : (List) jsonRel.get("variablesSet")) {
+                        correlationIdSet.add(new CorrelationId(((Number) id).intValue()));
                     }
                     return ImmutableSet.copyOf(correlationIdSet);
                 } else {
@@ -497,6 +496,7 @@ public class DRDSRelJsonReader {
             public void setLastRel(RelNode relNode) {
                 that.setLastRel(relNode);
             }
+
             public RelNode getLastRel() {
                 return that.getLastRel();
             }
@@ -791,8 +791,8 @@ public class DRDSRelJsonReader {
             public ImmutableSet<CorrelationId> getVariablesSet() {
                 if (jsonRel.get("variablesSet") != null) {
                     Set<CorrelationId> correlationIdSet = new HashSet<>();
-                    for (Object id : (List)jsonRel.get("variablesSet")) {
-                        correlationIdSet.add(new CorrelationId(((Number)id).intValue()));
+                    for (Object id : (List) jsonRel.get("variablesSet")) {
+                        correlationIdSet.add(new CorrelationId(((Number) id).intValue()));
                     }
                     return ImmutableSet.copyOf(correlationIdSet);
                 } else {
@@ -803,6 +803,7 @@ public class DRDSRelJsonReader {
             public void setLastRel(RelNode relNode) {
                 that.setLastRel(relNode);
             }
+
             public RelNode getLastRel() {
                 return that.getLastRel();
             }
@@ -846,6 +847,7 @@ public class DRDSRelJsonReader {
     public RelNode getLastRel() {
         return lastRel;
     }
+
     public void setLastRel(RelNode lastRel) {
         this.lastRel = lastRel;
     }

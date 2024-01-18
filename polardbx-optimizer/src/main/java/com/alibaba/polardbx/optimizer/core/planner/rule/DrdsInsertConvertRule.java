@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.planner.rule;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
@@ -27,6 +28,7 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 
 /**
  * @author chenmo.cm
@@ -47,11 +49,13 @@ public class DrdsInsertConvertRule extends ConverterRule {
     public RelNode convert(RelNode rel) {
         final LogicalInsert logicalInsert = (LogicalInsert) rel;
         TableMeta tableMeta = CBOUtil.getTableMeta(logicalInsert.getTable());
-        if (Engine.isFileStore(tableMeta.getEngine())) {
-            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "dml in file store");
-        }
+        // support load data in oss
+        if (PlannerContext.getPlannerContext(logicalInsert).getExecutionContext().getLoadDataContext() == null)
+            if (Engine.isFileStore(tableMeta.getEngine())) {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "dml in file store");
+            }
         RelTraitSet relTraitSet = logicalInsert.getTraitSet().simplify();
         return logicalInsert.copy(relTraitSet.replace(DrdsConvention.INSTANCE),
-            convertList(logicalInsert.getInputs(), DrdsConvention.INSTANCE));
+                convertList(logicalInsert.getInputs(), DrdsConvention.INSTANCE));
     }
 }

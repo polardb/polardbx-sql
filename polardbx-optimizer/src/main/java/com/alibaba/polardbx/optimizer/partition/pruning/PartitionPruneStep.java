@@ -18,6 +18,9 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+
+import java.util.List;
 
 /**
  * @author chenghui.lch
@@ -26,18 +29,21 @@ public interface PartitionPruneStep extends PartitionPruneBase {
 
     String getStepDigest();
 
+    PartKeyLevel getPartLevel();
+
     PartitionInfo getPartitionInfo();
 
     PartPruneStepType getStepType();
 
-    PartPrunedResult prunePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx);
+    PartPrunedResult prunePartitions(ExecutionContext context,
+                                     PartPruneStepPruningContext pruningCtx,
+                                     List<Integer> parentPartPosiSet);
 
     StepIntervalMerger getIntervalMerger();
 
     boolean needMergeRanges(PartPruneStepPruningContext pruningCtx);
-    
-    int getOpStepCount();
 
+    int getOpStepCount();
 
 }
 

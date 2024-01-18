@@ -24,8 +24,10 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableExtractPartition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableExtractPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.util.Util;
 
@@ -44,8 +46,18 @@ public class LogicalAlterTableExtractPartitionProxyHandler extends LogicalAlterT
         PartitionInfo partitionInfo =
             executionContext.getSchemaManager(logicalDdlPlan.getSchemaName()).getTddlRuleManager()
                 .getPartitionInfoManager().getPartitionInfo(objectName);
-        PartitionStrategy strategy = partitionInfo.getPartitionBy().getStrategy();
+        SqlAlterTableExtractPartition sqlAlterTableExtractPartition =
+            (SqlAlterTableExtractPartition) ((SqlAlterTable) alterTable.getSqlNode()).getAlters().get(0);
+        boolean isExtractSubPartition = sqlAlterTableExtractPartition.isExtractSubPartition();
 
+        PartitionStrategy strategy;
+        if (isExtractSubPartition) {
+            strategy = partitionInfo.getPartitionBy().getSubPartitionBy().getStrategy();
+        } else {
+            strategy = partitionInfo.getPartitionBy().getStrategy();
+        }
+
+        String splitSql;
         if (strategy != PartitionStrategy.LIST && strategy != PartitionStrategy.LIST_COLUMNS) {
             /**
              * 1. convert
@@ -54,10 +66,15 @@ public class LogicalAlterTableExtractPartitionProxyHandler extends LogicalAlterT
              *      sql 'split into [newPartitionName] partitions 1 by hot value(10)'
              * 2. use new sql to build split partition subJob
              * */
-            String splitSql =
-                AlterTableGroupUtils.convertExtractPartitionToSplitPartitionSql(alterTableExtractPartition, true,
-                    executionContext);
-            return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
+            if (isExtractSubPartition) {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractToSplitSqlForSubpartition(alterTableExtractPartition, true,
+                        executionContext);
+            } else {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractPartitionToSplitPartitionSql(alterTableExtractPartition, true,
+                        executionContext);
+            }
         } else {
             /**
              * 1. convert
@@ -66,10 +83,15 @@ public class LogicalAlterTableExtractPartitionProxyHandler extends LogicalAlterT
              *      sql 'split partition p1 into (partition p11 values in(10), partition p1 values in(xxx))'
              * 2. use new sql to build split partition subJob
              * */
-            String splitSql = AlterTableGroupUtils.convertExtractListRelToSplitListSql(alterTableExtractPartition, true,
-                executionContext);
-
-            return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
+            if (isExtractSubPartition) {
+                splitSql =
+                    AlterTableGroupUtils.convertExtractListToSplitListForSubpartition(alterTableExtractPartition, true,
+                        executionContext);
+            } else {
+                splitSql = AlterTableGroupUtils.convertExtractListRelToSplitListSql(alterTableExtractPartition, true,
+                    executionContext);
+            }
         }
+        return ActionUtils.convertToDelegatorJob(executionContext.getSchemaName(), splitSql);
     }
 }

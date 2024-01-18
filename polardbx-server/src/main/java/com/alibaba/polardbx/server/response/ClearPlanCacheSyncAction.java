@@ -46,7 +46,7 @@ public class ClearPlanCacheSyncAction implements ISyncAction {
     public ResultCursor sync() {
         SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
         String schemaName = schema.getDataSource().getSchemaName();
-        PlanManager.getInstance().cleanCache(schemaName);
+        PlanManager.getInstance().invalidateSchema(schemaName);
         return null;
     }
 }

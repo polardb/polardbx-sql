@@ -42,6 +42,7 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.mysqlDBName1;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXShardingDBName1;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
+
 public class IndexLookupTest extends ReadBaseTestCase {
 
     enum Sharding {

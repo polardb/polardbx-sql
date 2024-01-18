@@ -21,15 +21,29 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang3.StringUtils;
 
+import javax.annotation.concurrent.Immutable;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Objects;
+
+import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
 public class GsiValidator {
 
@@ -74,6 +88,16 @@ public class GsiValidator {
     }
 
     /**
+     * validate if the indexName is gsi
+     */
+    public static void validateGsi(String schemaName, String indexName) {
+        if (!TableValidator.checkTableIsGsi(schemaName, indexName)) {
+            String errMsg = String.format("Global Secondary Index %s doesn't exists", indexName);
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_EXECUTE, errMsg);
+        }
+    }
+
+    /**
      * validate if the indexName is exist
      */
     public static void validateGsiExistence(String schemaName,
@@ -107,15 +131,41 @@ public class GsiValidator {
                                                   String tableName,
                                                   ExecutionContext executionContext) {
         boolean isGsi = TableValidator.checkTableIsGsi(schemaName, tableName);
-        boolean hasGsi = TableValidator.checkTableWithGsi(schemaName, tableName);
-
-        if (hasGsi && !executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_ALTER_GSI_INDIRECTLY)) {
-            throw new TddlRuntimeException(
-                ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_PRIMARY_TABLE_DIRECTLY,
-                tableName);
+        if (!isGsi) {
+            return;
         }
 
-        if (isGsi && !executionContext.getParamManager().getBoolean(ConnectionParams.DDL_ON_GSI)) {
+        // only  isRandomTableNamePatternEnabled = true; gsi can be renamed
+        boolean canRename;
+        TddlRuleManager tr = executionContext.getSchemaManager(schemaName).getTddlRuleManager();
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            PartitionInfo partitionInfo = tr.getPartitionInfoManager().getPartitionInfo(tableName);
+            canRename = partitionInfo.isRandomTableNamePatternEnabled();
+        } else {
+            TableRule tableRule = tr.getTableRule(tableName);
+            canRename = false;
+
+            if (tableRule != null) {
+                String tableNamePattern = tableRule.getTbNamePattern();
+                if (TStringUtil.isEmpty(tableNamePattern)
+                    || tableNamePattern.length() <= RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME) {
+                    // Must be single or broadcast table.
+                    canRename = false;
+                } else if (TStringUtil.startsWithIgnoreCase(tableNamePattern, tableName)) {
+                    // Not renamed yet.
+                    String randomSuffix = tableRule.extractRandomSuffix();
+                    canRename = TStringUtil.isNotEmpty(randomSuffix);
+                } else {
+                    // The table may have been renamed when logical table name
+                    // is supported, so that the table name pattern's prefix is
+                    // not the logical table name, so it should be safe to
+                    // contain random string.
+                    canRename = true;
+                }
+            }
+        }
+
+        if (!canRename) {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_WITH_DDL,
                 tableName);
         }

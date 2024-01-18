@@ -40,11 +40,11 @@ public class SQLDropDatabaseStatement extends SQLStatementImpl implements SQLDro
     private boolean physical;
 
     public SQLDropDatabaseStatement() {
-        
+
     }
-    
+
     public SQLDropDatabaseStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override
@@ -115,7 +115,8 @@ public class SQLDropDatabaseStatement extends SQLStatementImpl implements SQLDro
         }
 
         if (database instanceof SQLIdentifierExpr) {
-            SQLPropertyExpr propertyExpr = new SQLPropertyExpr(new SQLIdentifierExpr(server), ((SQLIdentifierExpr) database).getName());
+            SQLPropertyExpr propertyExpr =
+                new SQLPropertyExpr(new SQLIdentifierExpr(server), ((SQLIdentifierExpr) database).getName());
             propertyExpr.setParent(this);
             database = propertyExpr;
             return true;

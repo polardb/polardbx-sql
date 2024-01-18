@@ -1,0 +1,37 @@
+## DISABLE_FAST_SQL_PARSER
+create database if not exists db_um8_ci charset utf8mb4 collate utf8mb4_general_ci mode=auto;
+show create database db_um8_ci;
+Database,Create Database
+db_um8_ci,CREATE DATABASE `db_um8_ci` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto'
+drop database if exists db_um8_ci;
+create database if not exists db_um8_bin charset utf8mb4 collate utf8mb4_bin mode=auto;
+show create database db_um8_bin;
+Database,Create Database
+db_um8_bin,CREATE DATABASE `db_um8_bin` CHARSET = `utf8mb4` COLLATE = `utf8mb4_bin` MODE = 'auto'
+drop database if exists db_um8_bin;
+## error_msg: $# is not supported #$
+create database if not exists db_um8_rci charset utf8mb4 collate utf8mb4_roman_ci mode=auto;
+is not supported
+create database if not exists db_gbk_ci charset gbk collate gbk_chinese_ci mode=auto;
+show create database db_gbk_ci;
+Database,Create Database
+db_gbk_ci,CREATE DATABASE `db_gbk_ci` CHARSET = `gbk` COLLATE = `gbk_chinese_ci` MODE = 'auto'
+drop database if exists db_gbk_ci;
+create database if not exists db_latin1_bin charset latin1 collate latin1_bin mode=auto;
+show create database db_latin1_bin;
+Database,Create Database
+db_latin1_bin,CREATE DATABASE `db_latin1_bin` CHARSET = `latin1` COLLATE = `latin1_bin` MODE = 'auto'
+drop database if exists db_latin1_bin;
+## error_msg: $# is not supported #$
+create database db_latin1_bin charset gbk collate latin1_bin mode=auto;
+is not supported
+set session COLLATION_SERVER='utf8mb4_german2_ci';
+## error_msg: $# is not supported #$
+create database db_char_def mode=auto;
+is not supported
+set session COLLATION_SERVER='utf8mb4_bin';
+create database db_char_def mode=auto;
+show create database db_char_def;
+Database,Create Database
+db_char_def,CREATE DATABASE `db_char_def` CHARSET = `utf8mb4` COLLATE = `utf8mb4_bin` MODE = 'auto'
+drop database if exists db_char_def;

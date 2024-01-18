@@ -22,8 +22,10 @@ import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -44,15 +46,17 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @Slf4j
 public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
 
+    private String tableGroup;
     private String logicalTableName;
     private SqlKind sqlKind;
     private Map<String, Set<String>> targetTableTopology;
     private String ddlStmt;
 
     @JSONCreator
-    public CdcTableGroupDdlMarkTask(String schemaName, String logicalTableName, SqlKind sqlKind,
+    public CdcTableGroupDdlMarkTask(String tableGroup, String schemaName, String logicalTableName, SqlKind sqlKind,
                                     Map<String, Set<String>> targetTableTopology, String ddlStmt) {
         super(schemaName);
+        this.tableGroup = tableGroup;
         this.logicalTableName = logicalTableName;
         this.sqlKind = sqlKind;
         this.targetTableTopology = targetTableTopology;
@@ -66,6 +70,10 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
     }
 
     private void mark4TableGroupChange(ExecutionContext executionContext) {
+        if (TableGroupNameUtil.isOssTg(tableGroup) || CBOUtil.isGsi(schemaName, logicalTableName)) {
+            return;
+        }
+
         log.info("new topology for table {} is {}", logicalTableName, targetTableTopology);
         DdlContext ddlContext = executionContext.getDdlContext();
 

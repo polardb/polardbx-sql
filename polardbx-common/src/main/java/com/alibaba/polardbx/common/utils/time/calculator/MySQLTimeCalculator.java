@@ -472,4 +472,78 @@ public class MySQLTimeCalculator {
     public static int calWeekDay(long dayNumber, boolean isSundayFirstDayOfWeek) {
         return (int) ((dayNumber + 5L + (isSundayFirstDayOfWeek ? 1L : 0L)) % 7);
     }
+
+    /**
+     * Cacl the day of the year for date,  in the range 1 to 366.
+     *
+     * @return Returns 0 if date is invalid
+     */
+    public static long calDayOfYear(long year, long month, long day) {
+        if (year == 0) {
+            return calDayNumber(0L, month, day);
+        } else {
+            return calDayNumber(year, month, day) - calDayNumber(year - 1, 12, 31);
+        }
+    }
+
+    /**
+     * Calculate the weekday index for date
+     *
+     * @return 1 = Sunday, 2 = Monday..., 7 = Saturday
+     */
+    public static long calDayOfWeek(long year, long month, long day) {
+        long dayNumber = calDayNumber(year, month, day);
+        return calWeekDay(dayNumber, true) + 1;
+    }
+
+    /**
+     * Cacl the weekIdx of the year, in the range 1 to 53.
+     * This function comply with mysql, which means Monday is the first day of week,
+     * and week 1 is the first week of the year only if it contains 4 or more days.
+     * reference: https://dev.mysql.com/doc/refman/5.7/en/date-and-time-functions.html#function_weekofyear
+     *
+     * @return the week of this year in the range 1 to 53.
+     */
+    public static long calWeekOfYear(long year, long month, long day) {
+        long dayNumberOfFirstWeek = calDayNumberOfFirstWeekDayOfYear(year);
+        long dayNumber = calDayNumber(year, month, day);
+        if (dayNumber >= dayNumberOfFirstWeek) {
+            return (int) ((dayNumber - dayNumberOfFirstWeek) / 7 + 1);
+        } else {
+            //today belongs to last year's week
+            long dayNumberOfFirstWeekLastYear = calDayNumberOfFirstWeekDayOfYear(year - 1);
+            return (int) ((dayNumber - dayNumberOfFirstWeekLastYear) / 7 + 1);
+        }
+    }
+
+    /**
+     * Cacl the day number of the first week's first day
+     * This function comply with mysql, which means Monday is the first day of week,
+     * and week 1 is the first week of the year only if it contains 4 or more days.
+     */
+    private static long calDayNumberOfFirstWeekDayOfYear(long year) {
+        long dayNumberOfNewYearDay = calDayNumber(year, 1L, 1L);
+        long weekDayOfNewYearDay = calWeekDay(dayNumberOfNewYearDay, false) + 1;
+        if (weekDayOfNewYearDay <= 4) {
+            return dayNumberOfNewYearDay - weekDayOfNewYearDay + 1;
+        } else {
+            return dayNumberOfNewYearDay + (7 - weekDayOfNewYearDay + 1);
+        }
+    }
+
+    /**
+     * Cacl the weeks from year 0.
+     */
+    public static long calToWeeks(long year, long month, long day) {
+        long dayNumber = calDayNumber(year, month, day);
+        return (dayNumber - 1) / 7;
+    }
+
+    /**
+     * Cacl the months from year 0.
+     */
+    public static long calToMonths(long year, long month, long day) {
+        return year * 12 + month;
+    }
+
 }

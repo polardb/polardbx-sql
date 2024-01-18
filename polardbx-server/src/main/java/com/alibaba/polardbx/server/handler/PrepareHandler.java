@@ -65,9 +65,8 @@ public final class PrepareHandler {
      * Process the statement like prepare stmt1 from 'select * from table_0
      * where id = ?'
      */
-    public static void handle(ByteString stmt, ServerConnection c, boolean hasMore,
-                              boolean inProcedureCall) {
-        long lastActiveTime = System.nanoTime();
+    public static boolean handle(ByteString stmt, ServerConnection c, boolean hasMore,
+                                 boolean inProcedureCall) {
         try {
             c.checkPreparedStmtCount();
             parseAndSaveStmt(stmt, c);
@@ -75,11 +74,11 @@ public final class PrepareHandler {
                 response(c, hasMore);
             }
         } catch (SQLException e) {
-            c.writeErrMessage(e.getErrorCode(), e.getMessage());
+            c.writeErrMessage(e.getErrorCode(), null, e.getMessage());
+            return false;
         }
-        c.getStatistics().timeCost += (System.nanoTime() - lastActiveTime) / 1000;
-        c.getStatistics().request++;
-        MatrixStatistics.requestAllDB.incrementAndGet();
+        // prepare 请求不计入QPS
+        return true;
     }
 
     private static void response(ServerConnection c, boolean hasMore) {

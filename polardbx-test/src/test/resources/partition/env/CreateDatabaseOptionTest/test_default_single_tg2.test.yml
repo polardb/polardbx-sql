@@ -1,0 +1,41 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop database if exists `myds_db2`;
+CREATE DATABASE if NOT EXISTS `myds_db2` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto' DEFAULT_SINGLE = 'on';
+
+CREATE TABLE `myds_db2`.`t1` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=off'
+SINGLE;
+
+
+CREATE TABLE `myds_db2`.`t2` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on'
+SINGLE;
+
+CREATE TABLE `myds_db2`.`t3` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+LOCALITY='balance_single_table=on'
+SINGLE;
+
+use myds_db2;
+show tables;
+select count(distinct TABLE_GROUP_NAME) as tg_cnt from information_schema.table_group where table_schema='myds_db2';
+use polardbx;
+drop database if exists myds_db2;

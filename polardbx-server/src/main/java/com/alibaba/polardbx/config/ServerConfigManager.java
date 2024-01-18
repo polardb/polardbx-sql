@@ -16,21 +16,35 @@
 
 package com.alibaba.polardbx.config;
 
+import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.Group;
+import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.executor.ddl.sync.JobRequest;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.matrix.config.MatrixConfigHolder;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.matrix.jdbc.utils.TDataSourceInitUtils;
 import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
+
+import java.util.List;
+import java.util.Map;
 
 import java.util.List;
 import java.util.Map;
@@ -58,7 +72,6 @@ public class ServerConfigManager implements IServerConfigManager {
 
         // Fetch loaded SchemaConfig by dbName
         SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(dbName);
-
         if (schema != null) {
             TDataSource ds = schema.getDataSource();
             if (ds != null) {
@@ -80,15 +93,43 @@ public class ServerConfigManager implements IServerConfigManager {
     }
 
     @Override
-    public Pair<String, String> findGroupByUniqueId(long uniqueId) {
+    public Pair<String, String> findGroupByUniqueId(long uniqueId, Map<String, List<String>> schemaAndGroupsCache) {
         for (SchemaConfig schemaConfig : CobarServer.getInstance().getConfig().getSchemas().values()) {
             // Only search in the loaded schema
+            String schemaName = schemaConfig.getName();
             if (schemaConfig.getDataSource().isInited()) {
-                String schemaName = schemaConfig.getName();
                 for (Group group : schemaConfig.getDataSource().getConfigHolder().getMatrix().getGroups()) {
                     String groupName = group.getName();
                     if (IServerConfigManager.getGroupUniqueId(schemaName, groupName) == uniqueId) {
                         return Pair.of(schemaName, groupName);
+                    }
+                }
+            } else {
+                List<String> groups = schemaAndGroupsCache.computeIfAbsent(schemaName, k -> {
+                    // This schema does not init, find groups through metadb.
+                    List<String> groups0 = new ArrayList<>();
+                    DbGroupInfoAccessor dbGroupInfoAccessor = new DbGroupInfoAccessor();
+                    if (null != MetaDbDataSource.getInstance()) {
+                        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+                            dbGroupInfoAccessor.setConnection(conn);
+                            List<DbGroupInfoRecord> dbGroupInfoRecords = dbGroupInfoAccessor.queryDbGroupByDbName(k);
+                            for (DbGroupInfoRecord dbGroupInfoRecord : dbGroupInfoRecords) {
+                                groups0.add(dbGroupInfoRecord.groupName.toUpperCase());
+                            }
+                        } catch (Throwable t) {
+                            logger.error(t);
+                            return null;
+                        }
+                    }
+                    return groups0.isEmpty() ? null : groups0;
+                });
+
+                if (null != groups) {
+                    for (String group : groups) {
+                        if (IServerConfigManager.getGroupUniqueId(schemaName, group) == uniqueId) {
+                            // Found expected group but it does not init.
+                            return Pair.of(schemaName, null);
+                        }
                     }
                 }
             }
@@ -151,6 +192,17 @@ public class ServerConfigManager implements IServerConfigManager {
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNEXPECTED, "TDataSource is not ready");
         }
+    }
+
+    @Override
+    public List<String> getLoadedSchemas() {
+        final List<String> loadedSchemas = new ArrayList<>();
+        for (SchemaConfig schemaConfig : CobarServer.getInstance().getConfig().getSchemas().values()) {
+            if (schemaConfig.getDataSource().isInited()) {
+                loadedSchemas.add(schemaConfig.getName());
+            }
+        }
+        return loadedSchemas;
     }
 
 }

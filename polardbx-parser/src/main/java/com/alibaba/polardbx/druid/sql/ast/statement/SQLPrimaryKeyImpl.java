@@ -19,7 +19,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLPrimaryKeyImpl extends SQLUnique implements SQLPrimaryKey, SQLTableConstraint {
     protected boolean disableNovalidate = false;
-    protected boolean clustered         = false; // sql server
+    protected boolean clustered = false; // sql server
 
     public SQLPrimaryKeyImpl() {
 

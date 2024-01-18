@@ -189,13 +189,13 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
 
         boolean tryCreateResult = tryCreateCclTrigger(maxConcurrency, maxCclRule, (int) slowSqlTime, sqlType);
         if (!tryCreateResult) {
-            if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FailedMessage)) {
+            if (!executionContext.getExtraDatas().containsKey(ExecutionContext.FAILED_MESSAGE)) {
                 executionContext.getExtraDatas()
-                    .put(ExecutionContext.FailedMessage, Lists.newArrayListWithCapacity(1));
+                    .put(ExecutionContext.FAILED_MESSAGE, Lists.newArrayListWithCapacity(1));
             }
             List<ExecutionContext.ErrorMessage> errorMessages =
                 (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas()
-                    .get(ExecutionContext.FailedMessage);
+                    .get(ExecutionContext.FAILED_MESSAGE);
             errorMessages.add(new ExecutionContext.ErrorMessage(ErrorCode.ERR_CCL.getCode(), null,
                 "The ccl trigger has been existing"));
         }

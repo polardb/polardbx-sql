@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
@@ -74,7 +75,17 @@ public class PolarSetPasswordHandler extends AbstractPrivilegeCommandHandler {
             SQLSetStatement statement =
                 (SQLSetStatement) FastsqlUtils.parseSql(sql, SQLParserFeature.IgnoreNameQuotes).get(0);
             SQLAssignItem assignItem = statement.getItems().get(0);
-            MySqlUserName userName = (MySqlUserName) assignItem.getTarget();
+            MySqlUserName userName = null;
+            if (assignItem.getTarget() != null) {
+                if (assignItem.getTarget() instanceof MySqlUserName) {
+                    userName = (MySqlUserName) assignItem.getTarget();
+                } else if (assignItem.getTarget() instanceof SQLIdentifierExpr) {
+                    userName = MySqlUserName.fromIdentifier((SQLIdentifierExpr) assignItem.getTarget());
+                } else {
+                    throw new SQLSyntaxErrorException("failed to parse username: " + assignItem.getTarget().toString());
+                }
+            }
+
             String password = "";
 
             if (assignItem.getValue() instanceof SQLCharExpr) {

@@ -67,9 +67,9 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
     private final Map<String, List<String>> dropColumns;
 
     public RemovePartitioningJobFactory(String schemaName, String primaryTableName, String indexTableName,
-                                         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData,
-                                         Map<String, List<String>> dropColumns,
-                                         ExecutionContext executionContext) {
+                                        Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData,
+                                        Map<String, List<String>> dropColumns,
+                                        ExecutionContext executionContext) {
         this.schemaName = schemaName;
         this.primaryTableName = primaryTableName;
         this.indexTableName = indexTableName;
@@ -129,6 +129,7 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
         DropGlobalIndexPreparedData dropGlobalIndexPreparedData =
             new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
         dropGlobalIndexPreparedData.setRepartition(true);
+        dropGlobalIndexPreparedData.setRepartitionTableName(primaryTableName);
         ExecutableDdlJob dropGsiJob =
             DropGsiJobFactory.create(dropGlobalIndexPreparedData, executionContext, false, false);
         // rollback is not supported after CutOver
@@ -164,7 +165,6 @@ public class RemovePartitioningJobFactory extends DdlJobFactory {
 
         return alterRemovePartitioningJob;
     }
-
 
     @Override
     protected void excludeResources(Set<String> resources) {

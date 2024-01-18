@@ -32,12 +32,12 @@ import java.util.List;
  * @author chenghui.lch
  */
 @Ignore
-
 public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
     public PartitionColumnTypeTestBase.TestParameter parameter;
     protected boolean testQueryByPrepStmt = false;
     protected String testDbName;
+    protected boolean usePartOnMysql = true;
 
     public PartitionColumnTypeTestBase(PartitionColumnTypeTestBase.TestParameter parameter) {
         this.parameter = parameter;
@@ -100,6 +100,10 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
             String createTbl =
                 String.format("create table if not exists %s (%s) %s", tblName, colDefs, partDefs);
+            String createTblMySql = createTbl;
+            if (!usePartOnMysql) {
+                createTblMySql = String.format("create table if not exists %s (%s)", tblName, colDefs);
+            }
 
             String valuesStr = String.join(",", parameter.insertValues);
             String insertSql = String.format("insert into %s(%s) values %s", tblName, cols, valuesStr);
@@ -222,7 +226,7 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
 
             logSql(castStr, "create", createTbl);
             JdbcUtil.executeUpdateSuccess(polarConn, createTbl);
-            JdbcUtil.executeUpdateSuccess(mysqlConn, createTbl);
+            JdbcUtil.executeUpdateSuccess(mysqlConn, createTblMySql);
 
             if (!StringUtil.isEmpty(insertPrepStmt)) {
                 logSql(castStr, "insertPrepStmt", insertPrepStmt);
@@ -244,7 +248,7 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
                 logSql(castStr, "full-scan-select", fullScanSql);
                 execPrepStmtsByParams(fullScanSql, new ArrayList<>(), mysqlConn, polarConn);
             } catch (Throwable ex) {
-                Assert.fail(String.format("table data is diff:%s",fullScanSql));
+                Assert.fail(String.format("table data is diff:%s", fullScanSql));
                 throw ex;
             }
 
@@ -418,17 +422,25 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
             if (i > 0) {
                 sb.append(",");
             }
-            sb.append(genStringHexBinaryByCharset(values[i], charset, true, true));
+            sb.append(genStringHexBinaryByCharset(values[i], charset, true, true, false));
         }
         sb.append(")");
         return sb.toString();
     }
 
     protected static String genStringHexBinaryByCharset(String value, String charset) {
-        return genStringHexBinaryByCharset(value, charset, true, false);
+        return genStringHexBinaryByCharset(value, charset, true, false, false);
     }
 
-    protected static String genStringHexBinaryByCharset(String value, String charset, boolean prefixCharset, boolean isForList) {
+    protected static String genStringHexBinaryByCharset(String value, String charset, boolean prefixCharset,
+                                                        boolean isForList) {
+        return genStringHexBinaryByCharset(value, charset, prefixCharset, isForList, false);
+    }
+
+    protected static String genStringHexBinaryByCharset(String value, String charset,
+                                                        boolean prefixCharset,
+                                                        boolean isForList,
+                                                        boolean use0xFormat) {
         StringBuilder sb = new StringBuilder("");
         byte[] byteArr = null;
         try {
@@ -440,20 +452,29 @@ public class PartitionColumnTypeTestBase extends PartitionTestBase {
         if (!isForList) {
             sb.append("(");
         }
-        if (prefixCharset) {
-            sb.append(" _");
-            sb.append(charset);
-            sb.append(" ");
+        if (!use0xFormat) {
+            if (prefixCharset) {
+                sb.append(" _");
+                sb.append(charset);
+                sb.append(" ");
+            }
+            sb.append("x'");
+        } else {
+            sb.append("0x");
         }
-        sb.append("x'");
+
         for (int i = 0; i < byteArr.length; i++) {
             sb.append(HexUtils.getHexString(byteArr[i], 1));
         }
-        sb.append("'");
+
+        if (!use0xFormat) {
+            sb.append("'");
+        }
+
         if (!isForList) {
             sb.append(")");
         }
+
         return sb.toString();
     }
-
 }

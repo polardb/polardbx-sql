@@ -26,7 +26,7 @@ public class SQLPurgeRecyclebinStatement extends SQLStatementImpl implements SQL
     }
 
     public SQLPurgeRecyclebinStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

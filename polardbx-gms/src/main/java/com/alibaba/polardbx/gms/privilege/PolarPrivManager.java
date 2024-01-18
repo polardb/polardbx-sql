@@ -547,7 +547,7 @@ public class PolarPrivManager {
             "All accounts must have same account type!");
 
         {
-            checkModifyReservedAccounts(granter, grantees, false);
+            checkModifyReservedAccounts(granter, grantees, true);
             PermissionCheckContext context = new PermissionCheckContext(granter.getAccountId(), activeRoles,
                 Permission.instancePermission(PrivilegeKind.CREATE_USER));
             if (!checkPermission(context)) {

@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.OkPacket;
@@ -32,18 +32,18 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
  */
 public final class ClearPlanCache {
 
-    public static void response(ServerConnection c, boolean hasMore) {
+    public static boolean response(ServerConnection c, boolean hasMore) {
         // 取得SCHEMA
         String db = c.getSchema();
         if (db == null) {
             c.writeErrMessage(ErrorCode.ER_NO_DB_ERROR, "No database selected");
-            return;
+            return false;
         }
 
         SchemaConfig schema = CobarServer.getInstance().getConfig().getSchemas().get(db);
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + db + "'");
-            return;
+            return false;
         }
 
         TDataSource ds = schema.getDataSource();
@@ -52,7 +52,7 @@ public final class ClearPlanCache {
                 ds.init();
             } catch (Throwable e) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
+                return false;
             }
         }
 
@@ -60,6 +60,7 @@ public final class ClearPlanCache {
         SyncManagerHelper.sync(new ClearPlanCacheSyncAction(db), c.getSchema());
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
+        return true;
     }
 
 }

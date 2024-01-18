@@ -17,13 +17,17 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.factory.MoveDatabasesJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMoveDatabases;
+import org.apache.calcite.rel.RelNode;
 
 /**
  * Created by luoyanxin.
@@ -51,6 +55,47 @@ public class LogicalMoveDatabaseHandler extends LogicalCommonDdlHandler {
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         return false;
+    }
+
+    @Override
+    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        BaseDdlOperation logicalDdlPlan = (BaseDdlOperation) logicalPlan;
+
+        executionContext.getServerVariables().put("foreign_key_checks", false);
+        initDdlContext(logicalDdlPlan, executionContext);
+
+        // Validate the plan on file storage first
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
+        // Validate the plan first and then return immediately if needed.
+        boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
+
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
+
+        if (isNewPartDb) {
+            setPartitionDbIndexAndPhyTable(logicalDdlPlan);
+        } else {
+            setDbIndexAndPhyTable(logicalDdlPlan);
+        }
+
+        // Build a specific DDL job by subclass.
+        DdlJob ddlJob = returnImmediately ?
+            new TransientDdlJob() :
+            buildDdlJob(logicalDdlPlan, executionContext);
+
+        // Validate the DDL job before request.
+        validateJob(logicalDdlPlan, ddlJob, executionContext);
+
+        if (executionContext.getDdlContext().getExplain()) {
+            return buildExplainResultCursor(logicalDdlPlan, ddlJob, executionContext);
+        }
+
+        // Handle the client DDL request on the worker side.
+        handleDdlRequest(ddlJob, executionContext);
+
+        if (executionContext.getDdlContext().isSubJob()) {
+            return buildSubJobResultCursor(ddlJob, executionContext);
+        }
+        return buildResultCursor(logicalDdlPlan, ddlJob, executionContext);
     }
 
 }

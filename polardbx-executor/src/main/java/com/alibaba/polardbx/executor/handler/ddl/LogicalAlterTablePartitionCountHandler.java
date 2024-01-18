@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -41,6 +42,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPre
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.sql.SqlAddIndex;
+import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIndexDefinition;
@@ -115,7 +117,7 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
         SqlAlterTablePartitionCount ast = (SqlAlterTablePartitionCount) logicalDdlPlan.relDdl.sqlNode;
         String schemaName = ast.getSchemaName();
         String primaryTableName = ast.getPrimaryTableName();
-        int partitions = ast.getPartitionCount();
+        int partitionCnt = ast.getPartitionCount();
 
         // logical table name --> new logical table name
         List<AlterTablePartitionsPrepareData> createGsiPrepareDataList = new ArrayList<>();
@@ -127,6 +129,7 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
             targetTableName = GsiUtils.generateRandomGsiName(primaryTableName);
         }
         tableNameMap.put(primaryTableName, targetTableName);
+        ast.setLogicalSecondaryTableName(targetTableName);
         createGsiPrepareDataList.add(new AlterTablePartitionsPrepareData(primaryTableName, targetTableName));
 
         // handle gsi table
@@ -148,11 +151,18 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
                     OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(indexName);
                 PartitionByDefinition partitionByDefinition = partitionInfo.getPartitionBy();
 
-                // for auto partition table, create index like mysql, we will create gsi with partition by key(...)
-                if (!partitionByDefinition.getStrategy().isKey()
-                    || partitionByDefinition.getPartitions().size() == partitions
-                    || partitionInfo.getActualPartitionColumns().size() != 1) {
-                    continue;
+                List<List<String>> allLevelActualPartCols = partitionInfo.getAllLevelActualPartCols();
+                boolean useSubPartBy = partitionInfo.getPartitionBy().getSubPartitionBy() != null;
+
+                if (!useSubPartBy) {
+                    // for auto partition table, create index like mysql, we will create gsi with partition by key(...)
+                    if (!partitionByDefinition.getStrategy().isKey()
+                        || partitionByDefinition.getPartitions().size() == partitionCnt
+                        || allLevelActualPartCols.get(0).size() != 1) {
+                        continue;
+                    }
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT);
                 }
 
                 final String newIndexName = GsiUtils.generateRandomGsiName(indexName);
@@ -169,14 +179,16 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
 
         List<SqlIndexDefinition> repartitionGsi = AlterRepartitionUtils.initIndexInfo(
             schemaName,
-            partitions,
+            partitionCnt,
             createGsiPrepareDataList,
             primaryTableInfo.getValue(),
             primaryTableInfo.getKey()
         );
 
         List<SqlAddIndex> sqlAddIndexList = repartitionGsi.stream().map(e ->
-            new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
+            StringUtils.equalsIgnoreCase(e.getType(), "UNIQUE") ?
+                new SqlAddUniqueIndex(SqlParserPos.ZERO, e.getIndexName(), e) :
+                new SqlAddIndex(SqlParserPos.ZERO, e.getIndexName(), e)
         ).collect(Collectors.toList());
         ast.getAlters().addAll(sqlAddIndexList);
     }

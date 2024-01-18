@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLBeginStatement extends SQLStatementImpl {
@@ -28,5 +29,10 @@ public class SQLBeginStatement extends SQLStatementImpl {
         if (visitor.visit(this)) {
         }
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

@@ -59,7 +59,6 @@ public class DynamicParamExpression extends AbstractExpression {
     // RexDynamic For scalar subqery
     private RexDynamicParam sbExprRex;
 
-
     /**
      * label if DynamicParamExpression contain valueObj itself
      */
@@ -103,7 +102,9 @@ public class DynamicParamExpression extends AbstractExpression {
     public Object eval(Row row, ExecutionContext ec) {
         if (index == PlannerUtils.SCALAR_SUBQUERY_PARAM_INDEX) {
             Object[] valRs = new Object[1];
-            boolean fetchSucc = SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(this.sbExprRex, ec.getScalarSubqueryCtxMap(), true, valRs);
+            boolean fetchSucc =
+                SubQueryDynamicParamUtils.fetchScalarSubQueryConstantValue(this.sbExprRex, ec.getScalarSubqueryCtxMap(),
+                    true, valRs);
             if (fetchSucc) {
                 Object scalarSbVal = valRs[0];
                 if (scalarSbVal == RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY) {
@@ -122,9 +123,9 @@ public class DynamicParamExpression extends AbstractExpression {
             return null;
         }
         Object value = pc.getValue();
-        if (value instanceof RawString && subIndex != -1) {
+        if (value instanceof RawString) {
             RawString rawString = (RawString) value;
-            return convertParameterType(rawString.getObj(subIndex, skIndex));
+            return convertParameterType(rawString.acquireObject(subIndex, skIndex));
         }
         return convertParameterType(value);
     }
@@ -165,8 +166,6 @@ public class DynamicParamExpression extends AbstractExpression {
     private static Object convertParameterType(Object in) {
         if (in instanceof BigDecimal) {
             return Decimal.fromBigDecimal((BigDecimal) in);
-        } else if (in instanceof RawString) {
-            return ((RawString) in).getObjList();
         }
         return in;
     }

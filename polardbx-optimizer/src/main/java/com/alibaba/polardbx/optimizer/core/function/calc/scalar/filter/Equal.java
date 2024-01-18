@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
@@ -39,7 +40,7 @@ public class Equal extends AbstractCollationScalarFunction {
                 return null;
             }
         }
-        DataType type = getEqualType(Arrays.asList(args));
+        DataType type = operandTypes == null ? getEqualType(Arrays.asList(args)) : getCompareType();
         return type.compare(args[0], args[1]) == 0 ? 1L : 0L;
     }
 

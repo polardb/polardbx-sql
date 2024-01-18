@@ -23,39 +23,45 @@ public interface ShowBinlogEventsRequestOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.ShowBinlogEventsRequest)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The logName.
-     */
-    java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The logName.
+   */
+  java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The bytes for logName.
+   */
+  com.google.protobuf.ByteString
+      getLogNameBytes();
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The bytes for logName.
-     */
-    com.google.protobuf.ByteString
-    getLogNameBytes();
+  /**
+   * <code>int64 pos = 2;</code>
+   * @return The pos.
+   */
+  long getPos();
 
-    /**
-     * <code>int64 pos = 2;</code>
-     *
-     * @return The pos.
-     */
-    long getPos();
+  /**
+   * <code>int64 offset = 3;</code>
+   * @return The offset.
+   */
+  long getOffset();
 
-    /**
-     * <code>int64 offset = 3;</code>
-     *
-     * @return The offset.
-     */
-    long getOffset();
+  /**
+   * <code>int64 rowCount = 4;</code>
+   * @return The rowCount.
+   */
+  long getRowCount();
 
-    /**
-     * <code>int64 rowCount = 4;</code>
-     *
-     * @return The rowCount.
-     */
-    long getRowCount();
+  /**
+   * <code>string streamName = 5;</code>
+   * @return The streamName.
+   */
+  java.lang.String getStreamName();
+  /**
+   * <code>string streamName = 5;</code>
+   * @return The bytes for streamName.
+   */
+  com.google.protobuf.ByteString
+      getStreamNameBytes();
 }

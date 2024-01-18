@@ -255,6 +255,9 @@
               `index_status` bigint(10) not null default '0' comment '0:CREATING,1:DELETE_ONLY,2:WRITE_ONLY,3:WRITE_REORG,4:PUBLIC,5:DELETE_REORG,6:REMOVING,7:ABSENT',
               `version` bigint not null default '1',
               `flag` bigint unsigned default '0',
+              `visible` bigint not null default '0' comment '0:VISIBLE,1:INVISIBLE',
+              `visit_frequency` bigint unsigned not null default 0,
+              `last_access_time` datetime default null,
               primary key (`id`),
               unique key (`table_schema`, `table_name`, `index_name`, `column_name`),
               key `i_index_name_version` (`index_name`, `version`),
@@ -270,6 +273,15 @@
         <Change><![CDATA[
             alter table `indexes` add key (`table_name`)
         ]]></Change>
+        <Change><![CDATA[
+            alter table `indexes` add column `visible` bigint not null default '0' comment '0:VISIBLE,1:INVISIBLE'
+        ]]>
+        </Change>
+        <Change><![CDATA[
+            alter table `indexes` add column `visit_frequency` bigint unsigned not null default 0,
+            add column `last_access_time` datetime default null
+        ]]>
+        </Change>>
     </SystemTable>
 
     <SystemTable name="locality_info">
@@ -285,6 +297,21 @@
 
               PRIMARY KEY(`id`),
               UNIQUE KEY(`object_type`, `object_id`)
+        ) CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="storage_pool_info">
+        <Create><![CDATA[
+        CREATE TABLE STORAGE_POOL_INFO (
+              `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+              `name` varchar(64) NOT NULL,
+              `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              `undeletable_dn_id` varchar(64) NOT NULL,
+              `dn_ids` text NOT NULL COMMENT 'dn id list',
+              `extras` text COMMENT 'extras',
+              PRIMARY KEY(`id`),
+              UNIQUE KEY(`name`)
         ) CHARSET=utf8;
         ]]></Create>
     </SystemTable>
@@ -375,7 +402,8 @@
               `pivot_date_expr` varchar(512) not null,
               `archive_table_name` varchar(255) default null,
               `archive_table_schema` varchar(255) default null,
-               unique key `uk_scheme_table`(`table_schema`,`table_name`)
+               unique key `uk_scheme_table`(`table_schema`,`table_name`),
+               key `archive_scheme_table_index`(`archive_table_schema`,`archive_table_name`)
         ) charset=utf8
         ]]></Create>
         <Change><![CDATA[
@@ -383,6 +411,9 @@
         ]]> </Change>
         <Change><![CDATA[
             alter table `table_local_partitions` add column `archive_table_schema` varchar(255) default null
+        ]]> </Change>
+        <Change><![CDATA[
+            alter table `table_local_partitions` add key `archive_scheme_table_index`(`archive_table_schema`,`archive_table_name`)
         ]]> </Change>
     </SystemTable>
 
@@ -411,7 +442,7 @@
             `logical_table_name` varchar(255) not null,
             key `table_index`(`table_schema`, `table_name`),
             key `task_id` (`task_id`),
-            key `column_meta_index`(`table_file_name`, `column_index`, `stripe_index`),
+            key `column_meta_index`(`table_file_name`(255), `column_index`, `stripe_index`),
             primary key (`column_meta_id`)
         ) charset=utf8
         ]]></Create>

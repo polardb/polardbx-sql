@@ -16,16 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -59,18 +58,65 @@ public class PushProjectRule extends RelOptRule {
         operand(LogicalView.class, none())), "INSTANCE");
 
     @Override
+    public boolean matches(RelOptRuleCall call) {
+        return true;
+    }
+
+    @Override
     public void onMatch(RelOptRuleCall call) {
         Project project = (Project) call.rels[0];
         LogicalView logicalView = (LogicalView) call.rels[1];
+        PlannerContext context = call.getPlanner().getContext().unwrap(PlannerContext.class);
 
         if (logicalView instanceof OSSTableScan) {
-            if (!((OSSTableScan)logicalView).canPushFilterProject()) {
+            if (!((OSSTableScan) logicalView).canPushFilterProject()) {
                 return;
             }
             // only push column ref
             PushProjector pushProjector =
                 new PushProjector(
-                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView, PushProjector.ExprCondition.FALSE, call.builder());
+                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView,
+                    PushProjector.ExprCondition.FALSE, call.builder());
+            RelNode pushProjectorResult = pushProjector.convertProject(null);
+            if (pushProjectorResult == null || !(pushProjectorResult instanceof Project)) {
+                return;
+            }
+            Project topProject = (Project) pushProjectorResult;
+            if (topProject.getInput() instanceof Project) {
+                Project refProject = (Project) topProject.getInput();
+                if (refProject.getInput() instanceof OSSTableScan) {
+                    OSSTableScan ossTableScan = (OSSTableScan) refProject.getInput();
+
+                    LogicalView newOssTableScan = logicalView.copy(ossTableScan.getTraitSet());
+                    // push column ref project
+                    newOssTableScan.push(refProject);
+
+                    LogicalProject logicalProjectStay =
+                        LogicalProject.create(newOssTableScan, topProject.getProjects(), topProject.getRowType());
+
+                    call.transformTo(logicalProjectStay);
+                }
+            } else if (topProject.getInput() instanceof OSSTableScan) {
+                OSSTableScan ossTableScan = (OSSTableScan) topProject.getInput();
+
+                LogicalView newOssTableScan = logicalView.copy(ossTableScan.getTraitSet());
+                // push column ref project
+                newOssTableScan.push(topProject);
+                call.transformTo(newOssTableScan);
+                return;
+            }
+            return;
+        }
+
+        if (logicalView instanceof OSSTableScan) {
+            if (!((OSSTableScan) logicalView).canPushFilterProject()) {
+                return;
+            }
+            // only push column ref
+            PushProjector pushProjector =
+                new PushProjector(
+                    project, call.builder().getRexBuilder().makeLiteral(true), logicalView,
+                    PushProjector.ExprCondition.FALSE, call.builder());
             RelNode pushProjectorResult = pushProjector.convertProject(null);
             if (pushProjectorResult == null || !(pushProjectorResult instanceof Project)) {
                 return;
@@ -104,7 +150,7 @@ public class PushProjectRule extends RelOptRule {
         }
 
         // 判断是否有需要特殊处理的Project
-        if (remainProject(project)) {
+        if (remainProject(project) || RelUtils.isNotPushLastInsertId(context, project)) {
             // 不下压或者构造新的project下压，保留原先的project
 
             // if project has subquery with single table && logicalview only possess single table,
@@ -150,8 +196,26 @@ public class PushProjectRule extends RelOptRule {
                     LogicalProject.create(newLogicalView, stayPros, project.getRowType());
 
                 call.transformTo(logicalProjectStay);
+            } else {
+                // try to push column ref
+                RelNode pushProjectorResult =
+                    new PushProjector(
+                        project, call.builder().getRexBuilder().makeLiteral(true), logicalView,
+                        PushProjector.ExprCondition.FALSE, call.builder()).convertProject(null);
+                if (!(pushProjectorResult instanceof Project)) {
+                    return;
+                }
+                Project topProject = (Project) pushProjectorResult;
+                if (topProject.getInput() instanceof Project) {
+                    LogicalView newLogicalView = logicalView.copy(project.getTraitSet());
+                    // push column ref project
+                    newLogicalView.push(topProject.getInput());
+
+                    LogicalProject logicalProjectStay =
+                        LogicalProject.create(newLogicalView, topProject.getProjects(), topProject.getRowType());
+                    call.transformTo(logicalProjectStay);
+                }
             }
-            return;
         } else {
             LogicalView newLogicalView = logicalView.copy(project.getTraitSet());
             // 下压project
@@ -208,7 +272,7 @@ public class PushProjectRule extends RelOptRule {
             return true;
         }
 
-        if (RexUtils.containsUnPushableFunction(node, postPlanner)) {
+        if (RexUtil.containsUnPushableFunction(node, postPlanner)) {
             return true;
         }
         return false;

@@ -14,13 +14,12 @@
     project(avg_yearly="$f0 / 7.0")
       hashagg($f0="sum(l_extendedprice)")
         filter(condition="l_quantity < 0.2 * f16w0$o0")
-          sortwindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", f4w0$o0="window#0avg($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded preceding aggs [avg($2)])")
-            memsort(sort="l_partkey asc")
-              bkajoin(condition="l_partkey = p_partkey", type="inner")
-                gather(concurrent=true)
-                  logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where ((`p_container` = 'med box') and (`p_brand` = 'brand#23'))")
-                gather(concurrent=true)
-                  logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` where (`l_partkey` in (...))")
+          hashwindow(p_partkey="p_partkey", l_partkey="l_partkey", l_quantity="l_quantity", l_extendedprice="l_extendedprice", f4w0$o0="window#0avg($2)", reference windows="window#0=window(partition {1} order by [] range between unbounded preceding and unbounded following aggs [avg($2)])")
+            bkajoin(condition="l_partkey = p_partkey", type="inner")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey` from `part` as `part` where ((`p_container` = 'med box') and (`p_brand` = 'brand#23'))")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_partkey`, `l_quantity`, `l_extendedprice` from `lineitem` as `lineitem` where (`l_partkey` in (...))")
 
 - sql: |
     select * from (select
@@ -103,12 +102,12 @@
     );
 
   plan: |
-    HashAgg(revenue="SUM(__*__)")
-      BKAJoin(condition="p_partkey = l_partkey AND ((p_partkey = l_partkey AND = AND IN AND >= AND <= AND BETWEEN ASYMMETRIC AND IN AND =) OR (p_partkey = l_partkey AND =4 AND IN5 AND >=6 AND <=7 AND BETWEEN ASYMMETRIC6 AND IN AND =) OR (p_partkey = l_partkey AND =7 AND IN8 AND >=8 AND <=7 AND BETWEEN ASYMMETRIC9 AND IN AND =))", type="inner")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].part_[00-15]", shardCount=16, sql="SELECT `p_partkey`, (`p_brand` = 'Brand#12') AS `=`, (`p_container` IN('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG')) AS `IN`, (`p_size` BETWEEN 1 AND 5) AS `BETWEEN ASYMMETRIC`, (`p_brand` = 'Brand#23') AS `=4`, (`p_container` IN('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK')) AS `IN5`, (`p_size` BETWEEN 1 AND 10) AS `BETWEEN ASYMMETRIC6`, (`p_brand` = 'Brand#34') AS `=7`, (`p_container` IN('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG')) AS `IN8`, (`p_size` BETWEEN 1 AND 15) AS `BETWEEN ASYMMETRIC9` FROM `part` AS `part` WHERE (((((`p_brand` = 'Brand#12') AND (`p_container` IN('SM CASE', 'SM BOX', 'SM PACK', 'SM PKG'))) AND (`p_size` BETWEEN 1 AND 5)) OR (((`p_brand` = 'Brand#23') AND (`p_container` IN('MED BAG', 'MED BOX', 'MED PKG', 'MED PACK'))) AND (`p_size` BETWEEN 1 AND 10))) OR (((`p_brand` = 'Brand#34') AND (`p_container` IN('LG CASE', 'LG BOX', 'LG PACK', 'LG PKG'))) AND (`p_size` BETWEEN 1 AND 15)))")
-        Gather(concurrent=true)
-          LogicalView(tables="[0000-0003].lineitem_[00-15]", shardCount=16, sql="SELECT `l_partkey`, (`l_extendedprice` * (1 - `l_discount`)) AS `__*__`, (`l_quantity` >= 1) AS `>=`, (`l_quantity` <= (1 + 10)) AS `<=`, (`l_shipmode` IN('AIR', 'AIR REG')) AS `IN`, (`l_shipinstruct` = 'DELIVER IN PERSON') AS `=`, (`l_quantity` >= 10) AS `>=6`, (`l_quantity` <= (20 + 10)) AS `<=7`, (`l_quantity` >= 20) AS `>=8` FROM `lineitem` AS `lineitem` WHERE (((((((`l_quantity` >= 1) AND (`l_quantity` <= (1 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON')) OR ((((`l_quantity` >= 10) AND (`l_quantity` <= (20 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON'))) OR ((((`l_quantity` >= 20) AND (`l_quantity` <= (20 + 10))) AND (`l_shipmode` IN('AIR', 'AIR REG'))) AND (`l_shipinstruct` = 'DELIVER IN PERSON'))) AND (`l_partkey` IN (...)))")
+    hashagg(revenue="sum(__*__)")
+      bkajoin(condition="p_partkey = l_partkey and ((p_partkey = l_partkey and = and in and >= and <= and between asymmetric and in and =) or (p_partkey = l_partkey and =4 and in5 and >=6 and <=7 and between asymmetric6 and in and =) or (p_partkey = l_partkey and =7 and in8 and >=8 and <=7 and between asymmetric9 and in and =))", type="inner")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].part_[00-15]", shardcount=16, sql="select `p_partkey`, (`p_brand` = 'brand#12') as `=`, (`p_container` in('sm case', 'sm box', 'sm pack', 'sm pkg')) as `in`, (`p_size` between 1 and 5) as `between asymmetric`, (`p_brand` = 'brand#23') as `=4`, (`p_container` in('med bag', 'med box', 'med pkg', 'med pack')) as `in5`, (`p_size` between 1 and 10) as `between asymmetric6`, (`p_brand` = 'brand#34') as `=7`, (`p_container` in('lg case', 'lg box', 'lg pack', 'lg pkg')) as `in8`, (`p_size` between 1 and 15) as `between asymmetric9` from `part` as `part` where (((`p_brand` = 'brand#12') and (`p_container` in('sm case', 'sm box', 'sm pack', 'sm pkg')) and (`p_size` between 1 and 5)) or ((`p_brand` = 'brand#23') and (`p_container` in('med bag', 'med box', 'med pkg', 'med pack')) and (`p_size` between 1 and 10)) or ((`p_brand` = 'brand#34') and (`p_container` in('lg case', 'lg box', 'lg pack', 'lg pkg')) and (`p_size` between 1 and 15)))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_partkey`, (`l_extendedprice` * (1 - `l_discount`)) as `__*__`, (`l_quantity` >= 1) as `>=`, (`l_quantity` <= (1 + 10)) as `<=`, (`l_shipmode` in('air', 'air reg')) as `in`, (`l_shipinstruct` = 'deliver in person') as `=`, (`l_quantity` >= 10) as `>=6`, (`l_quantity` <= (20 + 10)) as `<=7`, (`l_quantity` >= 20) as `>=8` from `lineitem` as `lineitem` where ((((`l_quantity` >= 1) and (`l_quantity` <= (1 + 10)) and (`l_shipmode` in('air', 'air reg')) and (`l_shipinstruct` = 'deliver in person')) or ((`l_quantity` >= 10) and (`l_quantity` <= (20 + 10)) and (`l_shipmode` in('air', 'air reg')) and (`l_shipinstruct` = 'deliver in person')) or ((`l_quantity` >= 20) and (`l_quantity` <= (20 + 10)) and (`l_shipmode` in('air', 'air reg')) and (`l_shipinstruct` = 'deliver in person'))) and (`l_partkey` in (...)))")
 
 - sql: |
     select * from orders where o_custkey = 1;

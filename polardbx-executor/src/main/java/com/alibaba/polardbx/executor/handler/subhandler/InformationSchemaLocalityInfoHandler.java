@@ -16,7 +16,11 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.model.privilege.DbInfo;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
@@ -25,6 +29,7 @@ import com.alibaba.polardbx.gms.locality.LocalityInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
+import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
@@ -32,13 +37,17 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaLocalityInfo;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @author moyi
@@ -58,21 +67,15 @@ public class InformationSchemaLocalityInfoHandler extends BaseVirtualViewSubClas
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
 
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
-            LocalityInfoAccessor accessor = new LocalityInfoAccessor();
-            accessor.setConnection(conn);
-            List<LocalityInfoRecord> records = accessor.getAllLocality();
-            for (LocalityInfoRecord record : records) {
-                String name = objectName(executionContext, record.objectType, record.objectId);
-                cursor.addRow(new Object[] {
-                    record.id,
-                    LocalityInfoRecord.typeName(record.objectType),
-                    name,
-                    record.objectId,
-                    record.primaryZone,
-                    record.locality,
-                    record.gmtCreated,
-                    record.gmtModified,
-                });
+            DbInfoManager dbInfoManager = DbInfoManager.getInstance();
+            for (DbInfoRecord dbInfoRecord : dbInfoManager.getDbInfoList()) {
+                String schemaName = dbInfoRecord.dbName;
+                Boolean isNewPartition = dbInfoRecord.isPartition();
+                if (isNewPartition) {
+                    handleNewPartitionDatabase(executionContext, schemaName, cursor);
+                } else {
+//                    handleDrdsDatabase(executionContext, schemaName, dbInfoRecord.id, cursor);
+                }
             }
         } catch (SQLException e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
@@ -80,6 +83,74 @@ public class InformationSchemaLocalityInfoHandler extends BaseVirtualViewSubClas
         }
 
         return cursor;
+    }
+
+    private void handleDrdsDatabase(ExecutionContext executionContext, String schemaName, Long id,
+                                    ArrayResultCursor result) {
+        result.addRow(new Object[] {schemaName, "database", schemaName, id, "", "", "", ""});
+    }
+
+    private void handleNewPartitionDatabase(ExecutionContext executionContext, String schemaName,
+                                            ArrayResultCursor result) {
+        TableGroupInfoManager tableGroupInfoManager =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schemaName).getPartitionInfoManager();
+        LocalityManager localityManager = LocalityManager.getInstance();
+
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            List<TableGroupConfig> tableGroupConfigList =
+                tableGroupInfoManager.getTableGroupConfigInfoCache().values().stream().collect(
+                    Collectors.toList());
+            DbInfoManager dbInfoManager = DbInfoManager.getInstance();
+            TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(connection);
+            List<TablesRecord> tableInfoList = tableInfoManager.queryTables(schemaName);
+            List<PartitionGroupRecord> partitionGroupRecordList = new ArrayList<>();
+
+            //database
+            Long objectId;
+            String objectName, locality;
+            objectId = dbInfoManager.getDbInfo(schemaName).id;
+            objectName = schemaName;
+            locality = localityManager.getLocalityOfDb(objectId).getLocality();
+            result.addRow(new Object[] {schemaName, "database", objectName, objectId, "", locality, "", ""});
+
+            for (TablesRecord tableInfo : tableInfoList) {
+                objectId = tableInfo.id;
+                objectName = tableInfo.tableName;
+                locality = partitionInfoManager.getPartitionInfo(objectName).getLocality();
+                result.addRow(new Object[] {schemaName, "table", objectName, objectId, "", locality, "", ""});
+//                result.addRow(new Object[]{objectId, objectName, "table", locality, ""});
+            }
+
+            for (TableGroupConfig tableGroupConfig : tableGroupConfigList) {
+                objectId = tableGroupConfig.getTableGroupRecord().getId();
+                partitionGroupRecordList = tableGroupConfig.getPartitionGroupRecords();
+                objectName = tableGroupConfig.getTableGroupRecord().getTg_name();
+                locality = tableGroupConfig.getLocalityDesc().toString();
+                List<String> tableList =
+                    tableGroupConfig.getAllTables().stream().map(o -> o.getTableName()).collect(Collectors.toList());
+                String tableListString = String.join(",", tableList);
+                result.addRow(
+                    new Object[] {schemaName, "tablegroup", objectName, objectId, "", locality, tableListString, ""});
+                for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecordList) {
+                    Long partitionGroupId = partitionGroupRecord.id;
+                    String partitionGroupName = partitionGroupRecord.partition_name;
+                    locality = partitionGroupRecord.getLocality();
+                    String physicalDb = partitionGroupRecord.getPhy_db();
+                    if (!StringUtils.isEmpty(locality)) {
+                        result.addRow(new Object[] {
+                            schemaName, "partitiongroup", objectName, objectId, "", locality, "", physicalDb});
+//                        result.addRow(new Object[]{partitionGroupId, objectName + "." + partitionGroupName, "partitiongroup", locality, ""});
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            String errMsg = String.format(
+                "error occurs while show locality: %s, the error is %s", schemaName, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, errMsg);
+        } finally {
+        }
     }
 
     private String objectName(ExecutionContext ec, int objectType, long objectId) {

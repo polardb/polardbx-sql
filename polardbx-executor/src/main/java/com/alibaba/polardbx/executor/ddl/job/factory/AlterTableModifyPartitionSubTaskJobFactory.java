@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
@@ -28,9 +27,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlNode;
 
@@ -47,7 +44,7 @@ public class AlterTableModifyPartitionSubTaskJobFactory extends AlterTableGroupM
                                                       Map<String, List<List<String>>> tableTopology,
                                                       Map<String, Set<String>> targetTableTopology,
                                                       Map<String, Set<String>> sourceTableTopology,
-                                                      List<Pair<String, String>> orderedTargetTableLocations,
+                                                      Map<String, Pair<String, String>> orderedTargetTableLocations,
                                                       String targetPartition,
                                                       boolean skipBackfill,
                                                       ExecutionContext executionContext) {
@@ -71,20 +68,40 @@ public class AlterTableModifyPartitionSubTaskJobFactory extends AlterTableGroupM
 
         SqlNode sqlAlterTableSpecNode = ((SqlAlterTable) ddl.getSqlNode()).getAlters().get(0);
 
-        PartitionInfo newPartInfo =
-            AlterTableGroupSnapShotUtils
-                .getNewPartitionInfoForModifyPartition(curPartitionInfo, sqlAlterTableSpecNode,
-                    parentPreparedData.getPartBoundExprInfo(),
-                    orderedTargetTableLocations,
-                    executionContext);
+        //parentPreparedData.prepareInvisiblePartitionGroup();
+        List<PartitionGroupRecord> invisiblePartitionGroup = parentPreparedData.getInvisiblePartitionGroups();
+
+        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+            .getNewPartitionInfo(
+                parentPreparedData,
+                curPartitionInfo,
+                false,
+                sqlAlterTableSpecNode,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                parentPreparedData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                orderedTargetTableLocations,
+                executionContext);
 
         if (parentPreparedData.isMoveToExistTableGroup()) {
             updateNewPartitionInfoByTargetGroup(parentPreparedData, newPartInfo);
         }
 
+        /**
+         * For list partition drop values , eg.
+         *      list p1: (v1,v2,v3)
+         *      modify partition drop values (v2)
+         * its drop values process is combined as two steps::
+         *  ==>
+         *    1. split p1 to  p1(v1,v3) and p1'(v2)
+         *    2. drop partition p1'
+         * , so the p1' is the newTempPartitionSpec of all values to be dropped
+         */
         if (parentPreparedData.isDropVal()) {
-            tempPartitionInfo = buildNewTempPartitionSpec(newPartInfo);
-            newPartInfo.getPartitionBy().getPartitions().add(tempPartitionInfo);
+            tempPartitionSpecs = buildAndAppendNewTempPartitionSpec(newPartInfo);
+            //newPartInfo.getPartitionBy().getPartitions().add(tempPartitionInfo);
         }
         PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
         PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);

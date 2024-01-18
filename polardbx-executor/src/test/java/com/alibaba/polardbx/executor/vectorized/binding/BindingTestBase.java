@@ -86,6 +86,7 @@ import org.junit.Assert;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -399,6 +400,11 @@ public class BindingTestBase {
                     this.hashCode());
                 throw new RuntimeException(error);
             }
+        }
+
+        @Override
+        public Collection<TableMeta> getAllTables() {
+            return tableMetaMap.values();
         }
 
         @Override

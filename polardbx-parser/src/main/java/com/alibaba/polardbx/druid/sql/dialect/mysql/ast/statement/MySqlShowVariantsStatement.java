@@ -20,7 +20,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowVariantsStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
-    private boolean global  = false;
+    private boolean global = false;
     private boolean session = false;
 
     private SQLExpr like;

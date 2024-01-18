@@ -91,7 +91,7 @@ public class CreateIndexWithGsiBuilder {
             final SqlIdentifier localIndexName = new SqlIdentifier(localIndexNameString, SqlParserPos.ZERO);
 
             final String origSql = ((SqlCreateIndex) originalSqlNode).getSourceSql();
-            final List<SQLStatement> stmts = SQLUtils.parseStatements(origSql, JdbcConstants.MYSQL);
+            final List<SQLStatement> stmts = SQLUtils.parseStatementsWithDefaultFeatures(origSql, JdbcConstants.MYSQL);
             final SQLCreateIndexStatement stmt = ((SQLCreateIndexStatement) stmts.get(0));
             stmt.setGlobal(false);
             stmt.setClustered(false);

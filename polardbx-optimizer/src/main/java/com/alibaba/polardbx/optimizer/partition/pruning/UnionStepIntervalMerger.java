@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +41,7 @@ public class UnionStepIntervalMerger implements StepIntervalMerger {
         List<StepIntervalInfo> allowedMergingRngListOfCurrUnionStep = new ArrayList<>();
         List<StepIntervalInfo> forbidMergingRngListOfCurrentUnionStep = new ArrayList<>();
 
+        PartKeyLevel partLevel = unionStep.getPartLevel();
         for (int i = 0; i < unionStep.getSubSteps().size(); i++) {
             PartitionPruneStep subPruneStep = unionStep.getSubSteps().get(i);
 
@@ -69,6 +71,7 @@ public class UnionStepIntervalMerger implements StepIntervalMerger {
                     stepIntervalInfoCombine.setStepIntervalInfoCombine(true);
                     stepIntervalInfoCombine.setForbidMerging(true);
                     stepIntervalInfoCombine.setSubStepIntervalInfos(subAllMergingRngList);
+                    stepIntervalInfoCombine.setPartLevel(partLevel);
                     forbidMergingRngListOfCurrentUnionStep.add(stepIntervalInfoCombine);
                 } else {
                     allowedMergingRngListOfCurrUnionStep.addAll(subAllowedMergingRngList);
@@ -83,7 +86,7 @@ public class UnionStepIntervalMerger implements StepIntervalMerger {
         }
 
         List<StepIntervalInfo> resultRanges = PartitionPruneStepIntervalAnalyzer
-            .mergeIntervalsForUnionStep(partInfo, allowedMergingRngListOfCurrUnionStep);
+            .mergeIntervalsForUnionStep(partInfo, partLevel, allowedMergingRngListOfCurrUnionStep);
         resultRanges.addAll(forbidMergingRngListOfCurrentUnionStep);
 
         return resultRanges;

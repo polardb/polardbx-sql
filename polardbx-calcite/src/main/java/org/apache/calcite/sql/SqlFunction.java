@@ -77,7 +77,7 @@ public class SqlFunction extends SqlOperator {
         NON_PUSHDOWN_FUNCTION.add("DATABASE");
         NON_PUSHDOWN_FUNCTION.add("FOUND_ROWS");
         NON_PUSHDOWN_FUNCTION.add("ICU_VERSION");
-        NON_PUSHDOWN_FUNCTION.add("LAST_INSERT_ID");
+//        NON_PUSHDOWN_FUNCTION.add("LAST_INSERT_ID");
         NON_PUSHDOWN_FUNCTION.add("ROLES_GRAPHML");
         NON_PUSHDOWN_FUNCTION.add("ROW_COUNT");
         NON_PUSHDOWN_FUNCTION.add("SCHEMA");
@@ -170,6 +170,24 @@ public class SqlFunction extends SqlOperator {
         // We leave sqlIdentifier as null to indicate
         // that this is a builtin.  Same for paramTypes.
         this(name, null, kind, returnTypeInference, operandTypeInference,
+            operandTypeChecker, null, category);
+
+        assert !((category == SqlFunctionCategory.USER_DEFINED_CONSTRUCTOR)
+            && (returnTypeInference == null));
+    }
+
+    // TODO whether we should remove this
+    public SqlFunction(
+        SqlIdentifier identifier,
+        String name,
+        SqlKind kind,
+        SqlReturnTypeInference returnTypeInference,
+        SqlOperandTypeInference operandTypeInference,
+        SqlOperandTypeChecker operandTypeChecker,
+        SqlFunctionCategory category) {
+        // We leave sqlIdentifier as null to indicate
+        // that this is a builtin.  Same for paramTypes.
+        this(name, identifier, kind, returnTypeInference, operandTypeInference,
             operandTypeChecker, null, category);
 
         assert !((category == SqlFunctionCategory.USER_DEFINED_CONSTRUCTOR)
@@ -383,8 +401,9 @@ public class SqlFunction extends SqlOperator {
                     true);
                 // lookup user defined function
                 if (function == null) {
-                  function = (SqlFunction) SqlUtil.lookupRoutine(validator.getOperatorTable(),
-                        new SqlIdentifier(replaceUdfName(getNameAsId().getSimple()), SqlParserPos.ZERO), argTypes, argNames,
+                    function = (SqlFunction) SqlUtil.lookupRoutine(validator.getOperatorTable(),
+                        new SqlIdentifier(replaceUdfName(getNameAsId().getSimple()), SqlParserPos.ZERO), argTypes,
+                        argNames,
                         getFunctionType(), SqlSyntax.FUNCTION, getKind(),
                         validator.getCatalogReader().nameMatcher(),
                         true);
@@ -446,6 +465,9 @@ public class SqlFunction extends SqlOperator {
 
     @Override
     public boolean canPushDown(boolean withScaleOut) {
+        if (withScaleOut && this instanceof SqlUserDefinedFunction) {
+            return false;
+        }
         return canPushDown();
     }
 
@@ -457,9 +479,9 @@ public class SqlFunction extends SqlOperator {
         return super.isDeterministic();
     }
 
-  public static String replaceUdfName(String simpleName) {
-    return "mysql." + simpleName;
-  }
+    public static String replaceUdfName(String simpleName) {
+        return "mysql." + simpleName.toLowerCase();
+    }
 }
 
 // End SqlFunction.java

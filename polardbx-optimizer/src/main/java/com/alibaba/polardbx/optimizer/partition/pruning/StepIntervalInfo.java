@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -33,6 +35,7 @@ public class StepIntervalInfo {
     protected PartitionPruneStep maxValStep;
 
     protected RangeIntervalType rangeType;
+    protected PartKeyLevel partLevel;
 
     /**
      * Label if current interval is build from a single-point interval,
@@ -53,7 +56,7 @@ public class StepIntervalInfo {
     protected boolean forbidMerging = false;
     protected PartitionPruneStep finalStep;
 
-    protected boolean isStepIntervalInfoCombine= false;
+    protected boolean isStepIntervalInfoCombine = false;
     protected PartPruneStepType stepCombineType;
     protected List<StepIntervalInfo> subStepIntervalInfos = new ArrayList<>();
 
@@ -68,6 +71,17 @@ public class StepIntervalInfo {
         this.rangeType = rng.getRangeType();
         this.buildFromSingePointInterval = rng.isBuildFromSinglePointInterval();
         this.isSinglePointInterval = rng.isSinglePointInterval();
+        this.partLevel = rng.getPartLevel();
+    }
+
+    public PartKeyLevel getPartLevel() {
+        if (this.minValStep != null) {
+            return minValStep.getPartLevel();
+        }
+        if (this.maxValStep != null) {
+            return maxValStep.getPartLevel();
+        }
+        return this.partLevel;
     }
 
     public PartitionPruneStep getMinValStep() {
@@ -120,6 +134,7 @@ public class StepIntervalInfo {
         newRng.setRangeType(rangeType);
         newRng.setBuildFromSingePointInterval(this.buildFromSingePointInterval);
         newRng.setSinglePointInterval(this.isSinglePointInterval);
+        newRng.setPartLevel(partLevel);
         return newRng;
     }
 
@@ -172,7 +187,6 @@ public class StepIntervalInfo {
         this.subStepIntervalInfos = subStepIntervalInfos;
     }
 
-
     public PartPruneStepType getStepCombineType() {
         return stepCombineType;
     }
@@ -181,4 +195,7 @@ public class StepIntervalInfo {
         this.stepCombineType = stepCombineType;
     }
 
+    public void setPartLevel(PartKeyLevel partLevel) {
+        this.partLevel = partLevel;
+    }
 }

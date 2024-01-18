@@ -19,7 +19,9 @@ package com.alibaba.polardbx.gms.metadb.table;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -31,9 +33,11 @@ import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import javax.sql.DataSource;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class IndexesAccessor extends AbstractAccessor {
 
@@ -80,7 +84,7 @@ public class IndexesAccessor extends AbstractAccessor {
             + "`comment`, `index_comment`";
 
     private static final String SELECT_CLAUSE_EXT =
-        ", `index_column_type`, `index_location`, `index_table_name`, `index_status`, `version`, `flag`";
+        ", `index_column_type`, `index_location`, `index_table_name`, `index_status`, `version`, `flag`, `visible`, `visit_frequency`, `last_access_time`";
 
     private static final String SELECT_INFO_SCHEMA =
         SELECT_CLAUSE + FROM_INDEXES_INFO_SCHEMA + WHERE_SCHEMA_TABLE;
@@ -106,7 +110,25 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String SELECT_ALL_INDEXES =
         SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE + WHERE_SCHEMA + ORDER_BY_SEQ;
 
+    private static final String SELECT_ALL_PUBLIC_GSI =
+        SELECT_CLAUSE + SELECT_CLAUSE_EXT + FROM_INDEXES_TABLE
+            + " where `index_status` = 4 and `index_location` = 1 and `seq_in_index` = 1";
+
+    private static final String SELECT_FK_REF_INDEX =
+        SELECT_CLAUSE + " from (" + SELECT_CLAUSE + ", GROUP_CONCAT(`column_name`" +
+            ORDER_BY_SEQ + ") as `column_names`" +
+            FROM_INDEXES_TABLE + WHERE_SCHEMA_TABLE +
+            " group by `index_name`) as `t` where `t`.`column_names` like ";
+
     private static final String UPDATE_INDEXES = "update " + INDEXES_TABLE + " set ";
+
+    protected static final String UPDATE_VISIT_FREQUENCY =
+        UPDATE_INDEXES + "`visit_frequency`=`visit_frequency` + ? where `table_schema`=? and `index_name`=?";
+
+    protected static final String UPDATE_LAST_ACCESS_TIME = UPDATE_INDEXES
+        + "`last_access_time`=? where `table_schema`=? and `index_name`=? and (`last_access_time` is null or `last_access_time` < ?)";
+
+    protected static final String RESET_STATISTICS = UPDATE_INDEXES + "`visit_frequency`= 0, `last_access_time`= null";
 
     private static final String UPDATE_INDEXES_NAME =
         UPDATE_INDEXES + "`index_name` = ?" + WHERE_SCHEMA_TABLE_ONE_INDEX;
@@ -116,13 +138,22 @@ public class IndexesAccessor extends AbstractAccessor {
     private static final String UPDATE_INDEXES_STATUS = UPDATE_INDEXES + "`index_status` = ?";
 
     private static final String UPDATE_INDEXES_STATUS_ALL = UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE;
+    private static final String UPDATE_LOCAL_INDEXES_STATUS_ALL =
+        UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE + " and `index_location` = 0";
 
     private static final String UPDATE_INDEXES_STATUS_SPECIFIED = UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE_INDEXES;
 
     private static final String UPDATE_INDEXES_STATUS_SPECIFIED_GSI_COLUMNS =
         UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE_INDEXES_COLUMNS_STATUS_GSI;
 
+    private static final String UPDATE_INDEXES_STATUS_SPECIFIED_COLUMNS =
+        UPDATE_INDEXES_STATUS + WHERE_SCHEMA_TABLE + "and `column_name` in (%s)";
+
     private static final String UPDATE_INDEXES_RENAME = UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE;
+
+    private static final String UPDATE_INDEXES_TABLE_NAME =
+        UPDATE_INDEXES + "`index_name` = ?, `index_table_name` = `index_name`"
+            + WHERE_SCHEMA + " and `index_name` = ?";
 
     private static final String UPDATE_LOCAL_INDEXES_RENAME =
         UPDATE_INDEXES + "`table_name` = ?" + WHERE_SCHEMA_TABLE + " and `index_location` = 0";
@@ -235,6 +266,90 @@ public class IndexesAccessor extends AbstractAccessor {
             phyTableName, dataSource);
     }
 
+    public List<IndexesInfoSchemaRecord> queryForeignKeyRefIndexes(String tableSchema, String tableName,
+                                                                   List<String> columnNames) {
+        String c = generateFkReferenceTableColumNames(columnNames);
+        String sql = SELECT_FK_REF_INDEX + "'" + c + "%'";
+        return query(sql, INDEXES_TABLE, IndexesInfoSchemaRecord.class, tableSchema, tableName);
+    }
+
+    public List<IndexesRecord> queryAllPublicGsi() {
+        return query(SELECT_ALL_PUBLIC_GSI, INDEXES_TABLE, IndexesRecord.class, (String) null);
+    }
+
+    public List<IndexesRecord> queryGsiByCondition(Set<String> schemaNames, Set<String> tableNames, String tableLike,
+                                                   Set<String> indexNames, String indexLike) {
+        String sql = generateGsiStatisticsByConditionSql(schemaNames, tableNames, tableLike, indexNames, indexLike);
+        if (sql == null) {
+            return new ArrayList<>();
+        }
+        return query(sql, INDEXES_TABLE, IndexesRecord.class, (String) null);
+    }
+
+    public int[] updateVisitFrequency(List<IndexesRecord> records) {
+        if (records.isEmpty()) {
+            return new int[0];
+        }
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        try {
+            for (int i = 0; i < records.size(); i++) {
+                String schemaName = records.get(i).indexSchema;
+                String gsiName = records.get(i).indexName;
+                Long freq = records.get(i).visitFrequency;
+                Map<Integer, ParameterContext> params = new HashMap<>();
+                int index = 0;
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, freq);
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, schemaName);
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, gsiName);
+                paramsBatch.add(params);
+            }
+            return MetaDbUtil.update(UPDATE_VISIT_FREQUENCY, paramsBatch, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to update records, " + UPDATE_VISIT_FREQUENCY, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update table ",
+                INDEXES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int[] updateLastAccessTime(List<IndexesRecord> records) {
+        if (records.isEmpty()) {
+            return new int[0];
+        }
+        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
+        try {
+            for (int i = 0; i < records.size(); i++) {
+                String schemaName = records.get(i).indexSchema;
+                String gsiName = records.get(i).indexName;
+                Date lastAccessTime = records.get(i).lastAccessTime;
+                Map<Integer, ParameterContext> params = new HashMap<>();
+                int index = 0;
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setTimestamp1, lastAccessTime);
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, schemaName);
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, gsiName);
+                MetaDbUtil.setParameter(++index, params, ParameterMethod.setTimestamp1, lastAccessTime);
+                paramsBatch.add(params);
+            }
+            return MetaDbUtil.update(UPDATE_LAST_ACCESS_TIME, paramsBatch, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to update records, " + UPDATE_LAST_ACCESS_TIME, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update table ",
+                INDEXES_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public void resetAllStatistics() {
+        try {
+            MetaDbUtil.execute(RESET_STATISTICS, connection);
+        } catch (Exception e) {
+            LOGGER.error("Failed to reset statistics, " + UPDATE_LAST_ACCESS_TIME, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "update table ",
+                INDEXES_TABLE,
+                e.getMessage());
+        }
+    }
+
     public List<IndexesRecord> query(String tableSchema) {
         return query(SELECT_ALL_INDEXES, INDEXES_TABLE, IndexesRecord.class, tableSchema);
     }
@@ -275,6 +390,10 @@ public class IndexesAccessor extends AbstractAccessor {
         return update(UPDATE_INDEXES_STATUS_ALL, INDEXES_TABLE, tableSchema, tableName, newStatus);
     }
 
+    public int updateStatusExceptGsi(String tableSchema, String tableName, int newStatus) {
+        return update(UPDATE_LOCAL_INDEXES_STATUS_ALL, INDEXES_TABLE, tableSchema, tableName, newStatus);
+    }
+
     public int updateStatus(String tableSchema, String tableName, List<String> indexNames, int newStatus) {
         Map<Integer, ParameterContext> params = buildParams(tableSchema, tableName, indexNames, newStatus);
         return update(String.format(UPDATE_INDEXES_STATUS_SPECIFIED, concatParams(indexNames)), INDEXES_TABLE, params);
@@ -301,26 +420,45 @@ public class IndexesAccessor extends AbstractAccessor {
             INDEXES_TABLE, params);
     }
 
+    public int updateColumnStatus(String tableSchema, String tableName, List<String> columns, int newStatus) {
+        List<String> paramValues = new ArrayList<>();
+        paramValues.add(String.valueOf(newStatus));
+        paramValues.add(tableSchema);
+        paramValues.add(tableName);
+        if (GeneralUtil.isNotEmpty(columns)) {
+            paramValues.addAll(columns);
+        }
+
+        Map<Integer, ParameterContext> params = MetaDbUtil.buildStringParameters(paramValues.toArray(new String[0]));
+
+        return update(
+            String.format(UPDATE_INDEXES_STATUS_SPECIFIED_COLUMNS, concatParams(columns)), INDEXES_TABLE, params);
+    }
+
     public int updateColumnName(String tableSchema, String tableName, String newColumnName, String oldColumnName) {
         Map<Integer, ParameterContext> params = MetaDbUtil
             .buildStringParameters(new String[] {newColumnName, tableSchema, tableName, oldColumnName});
         return update(UPDATE_INDEXES_COLUMN_NAME, INDEXES_TABLE, params);
     }
 
-    public int[] rename(String tableSchema, String tableName, Map<String, String> indexNamePairs) {
-        List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(indexNamePairs.size());
-        for (Map.Entry<String, String> indexName : indexNamePairs.entrySet()) {
-            String newIndexName = indexName.getKey();
-            String oldIndexName = indexName.getValue();
+    public int[] rename(String tableSchema, String tableName, List<Pair<String, String>> indexNamePairs) {
+        int[] affectedRows = new int[indexNamePairs.size()];
+        for (int i = 0; i < indexNamePairs.size(); i++) {
+            String newIndexName = indexNamePairs.get(i).getKey();
+            String oldIndexName = indexNamePairs.get(i).getValue();
             Map<Integer, ParameterContext> params =
                 MetaDbUtil.buildStringParameters(new String[] {newIndexName, tableSchema, tableName, oldIndexName});
-            paramsBatch.add(params);
+            affectedRows[i] = update(UPDATE_INDEXES_NAME, INDEXES_TABLE, params);
         }
-        return update(UPDATE_INDEXES_NAME, INDEXES_TABLE, paramsBatch);
+        return affectedRows;
     }
 
     public int rename(String tableSchema, String tableName, String newTableName) {
         return update(UPDATE_INDEXES_RENAME, INDEXES_TABLE, tableSchema, tableName, newTableName);
+    }
+
+    public void renameGsiIndexes(String tableSchema, String indexName, String newIndexName) {
+        update(UPDATE_INDEXES_TABLE_NAME, INDEXES_TABLE, tableSchema, indexName, newIndexName);
     }
 
     public int renameLocalIndexes(String tableSchema, String tableName, String newTableName) {
@@ -351,6 +489,80 @@ public class IndexesAccessor extends AbstractAccessor {
 
     public int deletePrimaryKey(String tableSchema, String tableName) {
         return delete(DELETE_PRIMARY_KEY, INDEXES_TABLE, tableSchema, tableName);
+    }
+
+    private String generateGsiStatisticsByConditionSql(Set<String> schemaNames, Set<String> tableNames,
+                                                       String tableLike, Set<String> indexNames, String indexLike) {
+        StringBuilder sb = new StringBuilder();
+        if (schemaNames == null || schemaNames.isEmpty()) {
+            return null;
+        }
+
+        int schemaIndex = 0;
+        for (String schemaName : schemaNames) {
+            if (schemaIndex != 0) {
+                sb.append(" union all ");
+            }
+            sb.append(
+                "select * from " + INDEXES_TABLE +
+                    " where `index_status` = 4 and `index_location` = 1 and `seq_in_index` = 1 and `index_schema` = "
+            );
+            sb.append("'" + schemaName + "' ");
+
+            if (tableNames != null && !tableNames.isEmpty()) {
+                sb.append(" and (");
+                int tableIndex = 0;
+                for (String tableName : tableNames) {
+                    String filter = "table_name = '" + tableName + "'";
+                    if (tableIndex != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    tableIndex++;
+                }
+                sb.append(")");
+            }
+
+            if (tableLike != null) {
+                String filter = " and table_name like '" + tableLike + "%'";
+                sb.append(filter);
+            }
+
+            if (indexNames != null && !indexNames.isEmpty()) {
+                sb.append(" and (");
+                int index = 0;
+                for (String indexName : indexNames) {
+                    String filter = "index_name = '" + indexName + "'";
+                    if (index != 0) {
+                        sb.append(" or ");
+                    }
+                    sb.append(filter);
+                    index++;
+                }
+                sb.append(")");
+            }
+
+            if (indexLike != null) {
+                String filter = " and index_name like '" + indexLike + "'%";
+                sb.append(filter);
+            }
+
+            schemaIndex++;
+        }
+
+        return sb.toString();
+    }
+
+    private String generateFkReferenceTableColumNames(List<String> columnNames) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < columnNames.size(); i++) {
+            if (i != 0) {
+                sb.append(",").append(columnNames.get(i));
+            } else {
+                sb.append(columnNames.get(i));
+            }
+        }
+        return sb.toString();
     }
 
 }

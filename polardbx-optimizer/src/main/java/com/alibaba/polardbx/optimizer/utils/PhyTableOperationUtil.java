@@ -30,17 +30,18 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.partition.PartSpecSearcher;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import org.apache.calcite.schema.Table;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSelect;
 
 import java.util.ArrayList;
@@ -93,7 +94,21 @@ public class PhyTableOperationUtil {
         }
 
         if (!ec.isShareReadView()) {
-            return;
+            boolean allowGroupParallelismWithoutShareReadView =
+                ec.getParamManager().getBoolean(ConnectionParams.ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW);
+            if (allowGroupParallelismWithoutShareReadView) {
+                if (trans.getTransactionClass() == ITransactionPolicy.TransactionClass.AUTO_COMMIT
+                    && ec.isAutoCommit()) {
+                    boolean isAutoCommitReadOnlyQuery = OptimizerUtils.isSelectQuery(ec);
+                    if (!isAutoCommitReadOnlyQuery) {
+                        return;
+                    }
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            }
         }
 
         if (!ec.getExtraCmds().containsKey(ConnectionProperties.ENABLE_GROUP_PARALLELISM)) {
@@ -154,6 +169,9 @@ public class PhyTableOperationUtil {
         if (phyOp instanceof PhyTableOperation) {
             Long connKey = fetchPhyOpIntraGroupConnKey((PhyTableOperation) phyOp, ec);
             return computeGrpConnIdByGrpConnKey(connKey, grpParallelism);
+        } else if (phyOp instanceof DirectMultiDBTableOperation) {
+            Long connKey = fetchMultiDBIntraGroupConnKey((DirectMultiDBTableOperation) phyOp, grpIdx, ec);
+            return computeGrpConnIdByGrpConnKey(connKey, grpParallelism);
         } else {
             Long connKey = fetchNonPhyOpIntraGroupConnKey(phyOp, grpIdx, phyTables, ec);
             return computeGrpConnIdByGrpConnKey(connKey, grpParallelism);
@@ -184,6 +202,8 @@ public class PhyTableOperationUtil {
         } else {
             if (phyOp instanceof PhyTableOperation) {
                 return fetchPhyOpIntraGroupConnKey((PhyTableOperation) phyOp, ec);
+            } else if (phyOp instanceof DirectMultiDBTableOperation) {
+                return fetchMultiDBIntraGroupConnKey((DirectMultiDBTableOperation) phyOp, grpIdx, ec);
             } else {
                 return fetchNonPhyOpIntraGroupConnKey((BaseTableOperation) phyOp, grpIdx, phyTables, ec);
             }
@@ -248,6 +268,47 @@ public class PhyTableOperationUtil {
             String firstPhyTbl = tablesList.get(0).get(firstPartLogTbIdx);
             PartitionInfo partInfo;
             TableMeta tbMeta = ec.getSchemaManager(schemaName).getTable(firstPartLogTb);
+            if (isReplicatedNode) {
+                partInfo = tbMeta.getNewPartitionInfo();
+            } else {
+                partInfo = tbMeta.getPartitionInfo();
+            }
+            Long connKey = tryFetchIntraGroupConnKeyFromPartSpec(grpIdx, firstPhyTbl, partInfo);
+            logConnGrpKeyIfNeed(grpIdx, firstPhyTbl, isReplicatedNode, partInfo, tbMeta, connKey, ec);
+            return connKey;
+        } catch (Throwable ex) {
+            logger.warn(ex);
+            throw ex;
+        }
+    }
+
+    // Use by DirectMultiDBTableOperation
+    private static Long fetchMultiDBIntraGroupConnKey(
+        DirectMultiDBTableOperation phyTbOp, String grpIdx, ExecutionContext ec) {
+        try {
+            String schemaName = phyTbOp.getBaseSchemaName(ec);
+            if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+                return null;
+            }
+            SqlKind sqlKind = phyTbOp.getKind();
+            if (!sqlKind.belongsTo(SqlKind.DML) && !sqlKind.belongsTo(SqlKind.QUERY)) {
+                return null;
+            }
+
+            ITransaction trans = ec.getTransaction();
+            ITransactionPolicy.TransactionClass tranClass = trans.getTransactionClass();
+            if (!(tranClass == ITransactionPolicy.TransactionClass.XA
+                || tranClass == ITransactionPolicy.TransactionClass.TSO)) {
+                return null;
+            }
+
+            List<String> logTbs = phyTbOp.getLogicalTables(schemaName);
+            List<String> phyTables = phyTbOp.getPhysicalTables(schemaName);
+            String logTb = logTbs.get(0);
+            String firstPhyTbl = phyTables.get(0);
+            boolean isReplicatedNode = phyTbOp.isReplicateRelNode();
+            PartitionInfo partInfo;
+            TableMeta tbMeta = ec.getSchemaManager(schemaName).getTable(logTb);
             if (isReplicatedNode) {
                 partInfo = tbMeta.getNewPartitionInfo();
             } else {
@@ -342,7 +403,8 @@ public class PhyTableOperationUtil {
             sb.append(", tbMetaAddr=").append(System.identityHashCode(tbMeta));
             sb.append(", partInfoAddr=").append(System.identityHashCode(partInfo));
             sb.append(", searcherAddr=").append(System.identityHashCode(specSearcher));
-            sb.append(", partSpecsAddr=").append(System.identityHashCode(partInfo.getPartitionBy().getPartitions()));
+            sb.append(", partSpecsAddr=")
+                .append(System.identityHashCode(partInfo.getPartitionBy().getPhysicalPartitions()));
             logger.warn(sb.toString());
         } catch (Exception ex) {
             logger.warn(ex);

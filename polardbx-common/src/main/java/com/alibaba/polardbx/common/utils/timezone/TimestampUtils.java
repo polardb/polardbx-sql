@@ -70,7 +70,7 @@ public class TimestampUtils {
         return convertBetweenTimeZones(timestampString, fromTimeZone, null, precision);
     }
 
-    private static String convertBetweenTimeZones(String timestampString, TimeZone fromTimeZone, TimeZone toTimeZone,
+    public static String convertBetweenTimeZones(String timestampString, TimeZone fromTimeZone, TimeZone toTimeZone,
                                                   long precision) {
         boolean needTimeZoneConversion = needTimeZoneConversion(fromTimeZone) || needTimeZoneConversion(toTimeZone);
         if (!needTimeZoneConversion ||

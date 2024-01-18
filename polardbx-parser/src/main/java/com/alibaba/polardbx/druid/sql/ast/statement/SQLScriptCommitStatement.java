@@ -16,16 +16,22 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLScriptCommitStatement extends SQLStatementImpl {
 
-    public SQLScriptCommitStatement(){
+    public SQLScriptCommitStatement() {
 
     }
 
     public void accept0(SQLASTVisitor visitor) {
         visitor.visit(this);
         visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

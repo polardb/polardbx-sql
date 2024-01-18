@@ -1,0 +1,173 @@
+schemaName: "rebalance_test_d26"
+dnNum: 2
+singleBalanceCaseBeans:
+  # case generate by python scripts:
+  #  import numpy as np
+  #  m = 5
+  #  n, upper_bound = 24, 1e6
+  #  w = np.random.lognormal(m, 1, n) single locality='balance_single_table=on' "
+  #  ranges = w * upper_bound/w.sum() single locality='balance_single_table=on' "
+  #  bounds = [int(sum(ranges[0:i]) single locality='balance_single_table=on' ") for i in range(1, n + 1)]
+  #  bounds[-1] = "MAXVALUE"
+  #  print(",\n".join([sql_temp.format(i + 1, bounds[i]) single locality='balance_single_table=on' " for i in range(n)]))
+  - createTableActions:
+
+    - tableName: "t0"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t0` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t1"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+    - tableName: "t2"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t2` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t3"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t3` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "t4"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t4` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t5"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t5` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "t6"
+      # m = 4
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t6` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t7"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t7` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 60000
+
+
+    - tableName: "t8"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t8` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t9"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t9` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 60000
+
+
+    - tableName: "t10"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t10` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "t11"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t11` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    manipulateActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
+      expectedManipulateColumns: [ 2 ]
+      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"]
+    dataDistributionCheckActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "rebalance_test_d26"
+      objectType: "database"
+      expectedMu: 0.1

@@ -21,7 +21,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowHMSMetaStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
-    private SQLName    name;
+    private SQLName name;
 
     public SQLName getName() {
         return name;

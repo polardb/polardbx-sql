@@ -90,6 +90,13 @@ public class DdlPlanAccessor extends AbstractAccessor {
             "WHERE " +
             " `plan_id` = ? ";
 
+    private static final String UPDATE_STATE_BY_JOBID =
+        "UPDATE " + DDL_PLAN + " " +
+            "SET `state` = ? " +
+            " , `result` = ? " +
+            "WHERE " +
+            " `job_id` = ? ";
+
     public boolean updateState(long planId,
                                DdlPlanState newState,
                                String result,
@@ -106,6 +113,24 @@ public class DdlPlanAccessor extends AbstractAccessor {
             throw logAndThrow(
                 "Failed to Update " + DDL_PLAN +
                     " for plan_id " + planId + " to state " + newState.name(),
+                "update", e);
+        }
+    }
+
+    public boolean updateStateByJobId(DdlPlanState newState,
+                                      String result,
+                                      long jobId) {
+        try {
+            final Map<Integer, ParameterContext> params = new HashMap<>(4);
+            int index = 1;
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, newState.name());
+            MetaDbUtil.setParameter(index++, params, ParameterMethod.setString, result);
+            MetaDbUtil.setParameter(index, params, ParameterMethod.setLong, jobId);
+            return MetaDbUtil.update(UPDATE_STATE_BY_JOBID, params, connection) > 0;
+        } catch (Exception e) {
+            throw logAndThrow(
+                "Failed to Update " + DDL_PLAN +
+                    " for job_id " + jobId + " to state " + newState.name(),
                 "update", e);
         }
     }

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
 import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
@@ -81,6 +82,22 @@ public class SelectTest {
         public void selectAllFieldTest() {
             String sql = "select * from " + baseOneTableName + " where pk=" + columnDataGenerator.pkValue;
             selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
+        }
+
+        @Test
+        public void xplanPkTest() {
+            if (!useXproto(tddlConnection)) {
+                return;
+            }
+
+            JdbcUtil.executeQuerySuccess(tddlConnection,
+                "trace select * from " + baseOneTableName + " where pk=" + columnDataGenerator.pkValue);
+            final List<List<String>> res =
+                JdbcUtil.getAllStringResult(JdbcUtil.executeQuery("show trace", tddlConnection), false,
+                    ImmutableList.of());
+            final String trace = res.get(0).get(11);
+            Assert.assertTrue(trace.contains("/*PolarDB-X Connection*/"));
+            Assert.assertTrue(trace.contains("plan_digest"));
         }
 
         /**
@@ -417,7 +434,8 @@ public class SelectTest {
             }
             String sql = "select distinct integer_test from " + baseOneTableName
                 + " order by pk, concat(char_test, 'hehe')";
-            selectOrderAssert(sql, null, mysqlConnection, tddlConnection);
+            // __FIRST_VALUE is not deterministic
+            selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
         }
 
         /**

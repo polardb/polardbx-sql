@@ -17,18 +17,16 @@
 package com.alibaba.polardbx.config;
 
 import com.alibaba.fastjson.parser.ParserConfig;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.InstanceRole;
 import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
-
 
 public class ConfigDataMode {
 
     public static final String CONFIG_MODE = "tddl.config.mode";
 
-
     private static Mode mode;
-
 
     private static Mode configServerMode;
 
@@ -43,10 +41,8 @@ public class ConfigDataMode {
     private static boolean supportDropAutoSeq = false;
     private static boolean allowSimpleSequence = false;
 
-    private static boolean supportSlaveRead = false;
-
+    // Default isolation level be set in `ServerLoader.configSystem`
     private static int txIsolation;
-
     private static String cluster;
 
     static {
@@ -91,16 +87,13 @@ public class ConfigDataMode {
         supportSingleDbMultiTbs = BooleanUtils.toBoolean(singleDbMultiTbsSupported);
 
         String removeDdlSupported = System.getProperty("supportRemoveDdl");
-            supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
+        supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
 
-            String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
-            supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
+        String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
+        supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
 
         String simpleSequenceAllowed = System.getProperty("allowSimpleSequence");
         allowSimpleSequence = BooleanUtils.toBoolean(simpleSequenceAllowed);
-
-        String supportSlaveReaded = System.getProperty("supportSlaveRead");
-        supportSlaveRead = BooleanUtils.toBoolean(supportSlaveReaded);
     }
 
     public static void reload() {
@@ -139,6 +132,33 @@ public class ConfigDataMode {
         }
     }
 
+    public enum LearnerMode {
+        ONLY_READ("ONLY_READ"),
+        ALLOW_INIT_DML("ALLOW_INIT_DML"),
+        ALLOW_USE_DML("ALLOW_USE_DML");
+
+        private String name;
+
+        LearnerMode(String name) {
+            this.name = name;
+        }
+
+        public static LearnerMode nameOf(String m) {
+            for (LearnerMode mode : LearnerMode.values()) {
+                if (StringUtils.equalsIgnoreCase(mode.name(), m)) {
+                    return mode;
+                }
+            }
+
+            return null;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+    }
+
     public static Mode getMode() {
         return mode;
     }
@@ -163,12 +183,36 @@ public class ConfigDataMode {
         return mode != null && mode == Mode.FAST_MOCK;
     }
 
+    // ========= The DB type of Server =========
+    public static boolean isPolarDbX() {
+        if (isFastMock()) {
+            return false;
+        }
+        // PolarDbX load configs by GMS/MetaDB
+        return configServerMode == Mode.GMS;
+    }
+
+    public static boolean isDRDS() {
+        return !isPolarDbX();
+    }
+
+    // ========= The instance role of Server =========
+    // Check master for all DB type
     public static boolean isMasterMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER;
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
+            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+                DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_INIT_DML) > 0);
     }
 
     public static boolean isSlaveMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.LEARNER;
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE && (
+            DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_USE_DML) < 0);
+    }
+
+    public static boolean needInitMasterModeResource() {
+        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
+            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+                DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ONLY_READ) > 0);
     }
 
     public static long getRefreshConfigTimestamp() {
@@ -257,9 +301,5 @@ public class ConfigDataMode {
 
     public static void setTxIsolation(int txIsolation) {
         ConfigDataMode.txIsolation = txIsolation;
-    }
-
-    public static boolean enableSlaveReadForPolarDbX() {
-        return supportSlaveRead && isMasterMode();
     }
 }

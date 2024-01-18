@@ -3,7 +3,7 @@
 To get started with PolarDB-X, you will use the PXD tool. 
 With PXD installed, you can run a PolarDB-X with just one-click.
 > Notes:
-> - PXD is mainly used for test or development, for production environment please use [GalaxyKube](https://github.com/ApsaraDB/galaxykube) to deploy PolarDB-X on K8S.
+> - PXD is mainly used for test or development, for production environment please use [PolarDB-X Operator](https://github.com/polardb/polardbx-operator) to deploy PolarDB-X on K8S.
 
 ## Prerequisites
 Deploying PolarDB-X via PXD tool requires Python3 and Docker to be installed first. 

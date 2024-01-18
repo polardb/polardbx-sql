@@ -52,14 +52,17 @@ public class InformationSchemaSPM extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("CHOOSE_COUNT", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("SELECTIVITY_SPACE", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PARAMS", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns
-            .add(new RelDataTypeFieldImpl("RECENTLY_CHOOSE_RATE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("RECENTLY_CHOOSE_RATE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("EXPECTED_ROWS", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("MAX_ROWS_FEEDBACK", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("MIN_ROWS_FEEDBACK", 11, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("ORIGIN", 12, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("PARAMETERIZED_SQL", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("EXTERNALIZED_PLAN", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("IS_REBUILD_AT_LOAD", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("HINT", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("USE_POST_PLANNER", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

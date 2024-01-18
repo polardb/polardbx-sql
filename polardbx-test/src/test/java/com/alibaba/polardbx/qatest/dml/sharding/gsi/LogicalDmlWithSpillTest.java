@@ -33,6 +33,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnM
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class LogicalDmlWithSpillTest extends ReadBaseTestCase {
 
     private String checkSql =

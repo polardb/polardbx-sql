@@ -53,8 +53,8 @@ public class JsonQuote extends JsonExtraFunction {
     public Object compute(Object[] args, ExecutionContext ec) {
         Object unquotedStr = args[0];
 
-        if (unquotedStr == null || unquotedStr == JSONConstants.NULL_VALUE) {
-            return JSONConstants.NULL_VALUE;
+        if (unquotedStr == null) {
+            return null;
         }
 
         return JSON.toJSONString(DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, args[0]));

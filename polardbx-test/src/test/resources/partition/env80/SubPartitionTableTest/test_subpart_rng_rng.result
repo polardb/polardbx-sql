@@ -1,0 +1,420 @@
+## DISABLE_FAST_SQL_PARSER
+##======= r-r =========
+## r-r-tp
+drop table if exists r_r_tp;
+create table if not exists r_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a) (
+subpartition sp0 values less than (100),
+subpartition sp1 values less than (maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_r_tp;
+Table,Create Table
+r_r_tp,CREATE TABLE `r_r_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY RANGE(`a`)
+(SUBPARTITION sp0 VALUES LESS THAN (100),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE))
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-r-tp2
+drop table if exists r_r_tp2;
+create table if not exists r_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a)
+subpartition template
+(
+subpartition sp0 values less than (100),
+subpartition sp1 values less than (maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_r_tp2;
+Table,Create Table
+r_r_tp2,CREATE TABLE `r_r_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY RANGE(`a`)
+(SUBPARTITION sp0 VALUES LESS THAN (100),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE))
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-r-ntp
+drop table if exists r_r_ntp;
+create table if not exists r_r_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range(a)
+(
+partition p0 values less than (2020)
+(
+  subpartition sp0 values less than (100),
+  subpartition sp1 values less than (maxvalue)
+),
+partition p1 values less than (2021)
+(
+subpartition sp2 values less than (200),
+subpartition sp3 values less than (maxvalue)
+),
+partition p2 values less than (maxvalue)(
+subpartition sp4 values less than (300),
+subpartition sp5 values less than (maxvalue)
+)
+);
+show create table r_r_ntp;
+Table,Create Table
+r_r_ntp,CREATE TABLE `r_r_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY RANGE(`a`)
+(PARTITION p0 VALUES LESS THAN (2020)
+ (SUBPARTITION sp0 VALUES LESS THAN (100) ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN (2021)
+ (SUBPARTITION sp2 VALUES LESS THAN (200) ENGINE = InnoDB,
+  SUBPARTITION sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION sp4 VALUES LESS THAN (300) ENGINE = InnoDB,
+  SUBPARTITION sp5 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+##======= r-rc =========
+## r-rc-tp
+drop table if exists r_rc_tp;
+create table if not exists r_rc_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range columns (a,b) (
+subpartition sp0 values less than (100,100),
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+)
+(
+partition p0 values less than (2020),
+partition p1 values less than (2021),
+partition p2 values less than (maxvalue)
+);
+show create table r_rc_tp;
+Table,Create Table
+r_rc_tp,CREATE TABLE `r_rc_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(SUBPARTITION sp0 VALUES LESS THAN (100,100),
+ SUBPARTITION sp1 VALUES LESS THAN (200,200),
+ SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES LESS THAN (2020),
+ PARTITION p1 VALUES LESS THAN (2021),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE))
+## r-rc-ntp
+drop table if exists r_rc_ntp;
+create table if not exists r_rc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (year(c))
+subpartition by range columns (a,b)
+(
+partition p0 values less than (2020) (
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+),
+partition p1 values less than (2021) (
+subpartition sp3 values less than (100,100),
+subpartition sp4 values less than (maxvalue, maxvalue)
+),
+partition p2 values less than (maxvalue) (
+subpartition sp5 values less than (maxvalue, maxvalue)
+)
+);
+show create table r_rc_ntp;
+Table,Create Table
+r_rc_ntp,CREATE TABLE `r_rc_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`c`))
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN (2020)
+ (SUBPARTITION sp1 VALUES LESS THAN (200,200) ENGINE = InnoDB,
+  SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN (2021)
+ (SUBPARTITION sp3 VALUES LESS THAN (100,100) ENGINE = InnoDB,
+  SUBPARTITION sp4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE)
+ (SUBPARTITION sp5 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+##======= rc-r =========
+## rc-r-tp
+drop table if exists rc_r_tp;
+create table if not exists rc_r_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range (year(c)) (
+subpartition sp0 values less than (2020),
+subpartition sp1 values less than (2021),
+subpartition sp2 values less than (maxvalue)
+)
+(
+partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_r_tp;
+Table,Create Table
+rc_r_tp,CREATE TABLE `rc_r_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d_a` USING BTREE (`c`, `d`, `a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`,`a`)
+SUBPARTITION BY RANGE(YEAR(`c`))
+(SUBPARTITION sp0 VALUES LESS THAN (2020),
+ SUBPARTITION sp1 VALUES LESS THAN (2021),
+ SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE))
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc',100),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg',100),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE,MAXVALUE))
+## rc-r-ntp
+drop table if exists rc_r_ntp;
+create table if not exists rc_r_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range (year(c))
+(
+partition p0 values less than ('2020-01-01','abc',100) (
+subpartition sp1 values less than (2021),
+subpartition sp2 values less than (maxvalue)
+),
+partition p1 values less than ('2022-01-01', 'efg',100) (
+subpartition sp3 values less than (2020),
+subpartition sp4 values less than (maxvalue)
+),
+partition p2 values less than (maxvalue, maxvalue, maxvalue) (
+subpartition sp5 values less than (maxvalue)
+)
+);
+show create table rc_r_ntp;
+Table,Create Table
+rc_r_ntp,CREATE TABLE `rc_r_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d_a` USING BTREE (`c`, `d`, `a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`,`a`)
+SUBPARTITION BY RANGE(YEAR(`c`))
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc',100)
+ (SUBPARTITION sp1 VALUES LESS THAN (2021) ENGINE = InnoDB,
+  SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg',100)
+ (SUBPARTITION sp3 VALUES LESS THAN (2020) ENGINE = InnoDB,
+  SUBPARTITION sp4 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE,MAXVALUE)
+ (SUBPARTITION sp5 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+##======= rc-rc =========
+## rc-rc-tp
+drop table if exists rc_rc_tp;
+create table if not exists rc_rc_tp (
+  a bigint unsigned not null,
+  b bigint unsigned not null,
+  c datetime NOT NULL,
+  d varchar(16) NOT NULL,
+  e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b) (
+  subpartition sp0 values less than (100,100),
+  subpartition sp1 values less than (200,200),
+  subpartition sp2 values less than (maxvalue, maxvalue)
+)
+( partition p0 values less than ('2020-01-01','abc',100),
+  partition p1 values less than ('2022-01-01', 'efg',100),
+  partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_rc_tp;
+Table,Create Table
+rc_rc_tp,CREATE TABLE `rc_rc_tp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d_a` USING BTREE (`c`, `d`, `a`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`,`a`)
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(SUBPARTITION sp0 VALUES LESS THAN (100,100),
+ SUBPARTITION sp1 VALUES LESS THAN (200,200),
+ SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc',100),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg',100),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE,MAXVALUE))
+## rc-rc-tp2 using subpartition template
+drop table if exists rc_rc_tp2;
+create table if not exists rc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b)
+subpartition template
+(
+subpartition sp0 values less than (100,100),
+subpartition sp1 values less than (200,200),
+subpartition sp2 values less than (maxvalue, maxvalue)
+)
+( partition p0 values less than ('2020-01-01','abc',100),
+partition p1 values less than ('2022-01-01', 'efg',100),
+partition p2 values less than (maxvalue, maxvalue, maxvalue)
+);
+show create table rc_rc_tp2;
+Table,Create Table
+rc_rc_tp2,CREATE TABLE `rc_rc_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d_a` USING BTREE (`c`, `d`, `a`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`,`a`)
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(SUBPARTITION sp0 VALUES LESS THAN (100,100),
+ SUBPARTITION sp1 VALUES LESS THAN (200,200),
+ SUBPARTITION sp2 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc',100),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg',100),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE,MAXVALUE))
+## rc-rc-ntp
+drop table if exists rc_rc_ntp;
+create table if not exists rc_rc_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d,a)
+subpartition by range columns (a,b)
+( partition p0 values less than ('2020-01-01','abc',100) (
+    subpartition sp0 values less than (100,100),
+    subpartition sp1 values less than (maxvalue, maxvalue)
+  ),
+  partition p1 values less than ('2022-01-01', 'efg',200) (
+    subpartition sp3 values less than (200,200),
+    subpartition sp4 values less than (maxvalue, maxvalue)
+  ),
+  partition p2 values less than (maxvalue, maxvalue, maxvalue) (
+    subpartition sp5 values less than (300,300),
+    subpartition sp6 values less than (maxvalue, maxvalue)
+  )
+);
+show create table rc_rc_ntp;
+Table,Create Table
+rc_rc_ntp,CREATE TABLE `rc_rc_ntp` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d_a` USING BTREE (`c`, `d`, `a`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c`,`d`,`a`)
+SUBPARTITION BY RANGE COLUMNS(`a`,`b`)
+(PARTITION p0 VALUES LESS THAN ('2020-01-01 00:00:00','abc',100)
+ (SUBPARTITION sp0 VALUES LESS THAN (100,100) ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES LESS THAN ('2022-01-01 00:00:00','efg',200)
+ (SUBPARTITION sp3 VALUES LESS THAN (200,200) ENGINE = InnoDB,
+  SUBPARTITION sp4 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p2 VALUES LESS THAN (MAXVALUE,MAXVALUE,MAXVALUE)
+ (SUBPARTITION sp5 VALUES LESS THAN (300,300) ENGINE = InnoDB,
+  SUBPARTITION sp6 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))

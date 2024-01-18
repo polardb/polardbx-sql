@@ -16,7 +16,7 @@
 
 package com.taobao.tddl.common.privilege;
 
-import com.taobao.tddl.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 
 import java.io.Serializable;
 

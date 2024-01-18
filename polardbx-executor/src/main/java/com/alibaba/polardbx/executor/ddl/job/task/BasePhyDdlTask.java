@@ -22,8 +22,8 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.PhysicalDdlException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -34,6 +34,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegat
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
@@ -50,9 +51,12 @@ import org.apache.calcite.sql.SqlDropTable;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+
+import static com.alibaba.polardbx.common.ddl.newengine.DdlState.isRollBackRunning;
 
 @Getter
 public abstract class BasePhyDdlTask extends BaseDdlTask {
@@ -86,6 +90,15 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
     public void rollbackImpl(ExecutionContext executionContext) {
         List<RelNode> rollbackPhysicalPlans = genRollbackPhysicalPlans(executionContext);
         executePhyDdl(rollbackPhysicalPlans, executionContext);
+    }
+
+    @Override
+    protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        DdlEngineAccessor ddlEngineAccessor = new DdlEngineAccessor();
+        ddlEngineAccessor.setConnection(metaDbConnection);
+
+        // todo: More accurate control of progress
+        ddlEngineAccessor.updateProgress(this.getJobId(), 0);
     }
 
     /**
@@ -124,34 +137,32 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         PhyDdlExecutionRecord phyDdlExecutionRecord = new PhyDdlExecutionRecord(jobId, taskId, inputs.size());
         executionContext.setPhyDdlExecutionRecord(phyDdlExecutionRecord);
         executionContext.setExtraDatas(new HashMap<>());
-        try {
 
-            DdlJobManagerUtils.reloadPhyTablesDone(phyDdlExecutionRecord);
+        DdlJobManagerUtils.reloadPhyTablesDone(phyDdlExecutionRecord);
 
-            List<Cursor> inputCursors = new ArrayList<>();
-            List<Throwable> exceptions = new ArrayList<>();
-            List<Throwable> closeExceptions = null;
-            FailPoint.injectRandomExceptionFromHint(executionContext);
-            FailPoint.injectRandomSuspendFromHint(executionContext);
+        List<Cursor> inputCursors = new ArrayList<>();
+        List<Throwable> exceptions = new ArrayList<>();
+        List<Throwable> closeExceptions = null;
+        FailPoint.injectRandomExceptionFromHint(executionContext);
+        FailPoint.injectRandomSuspendFromHint(executionContext);
 
-            executeConcurrently(inputs, inputCursors, exceptions, executionContext);
+        executeConcurrently(inputs, inputCursors, exceptions, executionContext);
 
-            for (Cursor affectRowCursor : inputCursors) {
-                Row row;
-                while ((row = affectRowCursor.next()) != null) {
-                    row.getInteger(0);
-                }
-                closeExceptions = affectRowCursor.close(exceptions);
+        for (Cursor affectRowCursor : inputCursors) {
+            Row row;
+            while ((row = affectRowCursor.next()) != null) {
+                row.getInteger(0);
             }
-
-            if (closeExceptions != null && !closeExceptions.isEmpty()) {
-                exceptions.addAll(closeExceptions);
-            }
-
-            verifyResult((PhyDdlTableOperation) inputs.get(0), exceptions, executionContext);
-        } finally {
-            DdlJobManagerUtils.clearPhyTablesDone(phyDdlExecutionRecord);
+            closeExceptions = affectRowCursor.close(exceptions);
         }
+
+        if (closeExceptions != null && !closeExceptions.isEmpty()) {
+            exceptions.addAll(closeExceptions);
+        }
+
+        verifyResult((PhyDdlTableOperation) inputs.get(0), exceptions, executionContext);
+
+        DdlJobManagerUtils.clearPhyTablesDone(phyDdlExecutionRecord);
     }
 
     protected void verifyResult(PhyDdlTableOperation ddl, List<Throwable> exceptions,
@@ -161,7 +172,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
 
         int inputCount = phyDdlExecutionRecord.getNumPhyObjectsTotal();
 
-        if (ddlContext.getState() == DdlState.ROLLBACK_RUNNING || !executionContext.needToRenamePhyTables()) {
+        if (isRollBackRunning(ddlContext.getState()) || !executionContext.needToRenamePhyTables()) {
             inputCount = 0;
         }
 
@@ -176,12 +187,13 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             // Errors/Warnings from physical DDLs.
             List<ExecutionContext.ErrorMessage> failedMsgs =
                 (List<ExecutionContext.ErrorMessage>) executionContext.getExtraDatas()
-                    .get(ExecutionContext.FailedMessage);
-            if (failedMsgs != null && !failedMsgs.isEmpty()) {
+                    .get(ExecutionContext.FAILED_MESSAGE);
+
+            if (GeneralUtil.isNotEmpty(failedMsgs)) {
                 int countUnknownTables = 0;
                 for (ExecutionContext.ErrorMessage errMsg : failedMsgs) {
                     if (errMsg != null) {
-                        if(shouldIgnore(errMsg, ignoredErrorCodeList)){
+                        if (shouldIgnore(errMsg, ignoredErrorCodeList)) {
                             continue;
                         }
                         causedMsg.append(DdlConstants.SEMICOLON).append(errMsg.getCode());
@@ -202,9 +214,9 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             }
 
             // Exceptions from executor/cursor.
-            if (exceptions != null) {
+            if (GeneralUtil.isNotEmpty(exceptions)) {
                 for (Throwable e : exceptions) {
-                    if(shouldIgnore(e, ignoredErrorCodeList)){
+                    if (shouldIgnore(e, ignoredErrorCodeList)) {
                         continue;
                     }
                     causedMsg.append(DdlConstants.SEMICOLON).append(e.getMessage());
@@ -217,8 +229,13 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
             }
 
             if (countError == 0) {
-                // No any error actually.
+                // There are not any errors.
                 return;
+            }
+
+            if (isRollBackRunning(ddlContext.getState())) {
+                inputCount = objectDoneCount;
+                objectDoneCount = inputCount - objectDoneCount;
             }
 
             // Put various errors together.
@@ -309,34 +326,35 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
         return QueryConcurrencyPolicy.INSTANCE_CONCURRENT;
     }
 
-    private List<String> getIgnoredErrorCodeList(ExecutionContext executionContext){
+    private List<String> getIgnoredErrorCodeList(ExecutionContext executionContext) {
         try {
-            String physicalDdlIgnoredErrorCodeList = executionContext.getParamManager().getString(ConnectionParams.PHYSICAL_DDL_IGNORED_ERROR_CODE);
-            if(StringUtils.isEmpty(physicalDdlIgnoredErrorCodeList)){
+            String physicalDdlIgnoredErrorCodeList =
+                executionContext.getParamManager().getString(ConnectionParams.PHYSICAL_DDL_IGNORED_ERROR_CODE);
+            if (StringUtils.isEmpty(physicalDdlIgnoredErrorCodeList)) {
                 return new ArrayList<>();
             }
             return Splitter.on(",").splitToList(physicalDdlIgnoredErrorCodeList);
-        }catch (Exception e){
+        } catch (Exception e) {
             return new ArrayList<>();
         }
     }
 
-    private boolean shouldIgnore(Throwable e, List<String> ignoredErrorCodeList){
-        if(e instanceof TddlNestableRuntimeException){
+    private boolean shouldIgnore(Throwable e, List<String> ignoredErrorCodeList) {
+        if (e instanceof TddlNestableRuntimeException) {
             String errorCode = String.valueOf(((TddlNestableRuntimeException) e).getErrorCode());
-            if(ignoredErrorCodeList.contains(errorCode)){
+            if (ignoredErrorCodeList.contains(errorCode)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean shouldIgnore(ExecutionContext.ErrorMessage errMsg, List<String> ignoredErrorCodeList){
-        if(errMsg == null){
+    private boolean shouldIgnore(ExecutionContext.ErrorMessage errMsg, List<String> ignoredErrorCodeList) {
+        if (errMsg == null) {
             return false;
         }
         String errorCode = String.valueOf(errMsg.getCode());
-        if(ignoredErrorCodeList.contains(errorCode)){
+        if (ignoredErrorCodeList.contains(errorCode)) {
             return true;
         }
 
@@ -346,5 +364,14 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
     @Override
     public String remark() {
         return "";
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        if (this.physicalPlanData != null) {
+            return this.physicalPlanData.explainInfo();
+        } else {
+            return new ArrayList<>();
+        }
     }
 }

@@ -16,8 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.config.table.collation;
 
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.junit.Assert;
@@ -103,6 +102,7 @@ public class WildCardTest {
         "%ACAGGTGCTGGAGAGGATGCGGAGAAATAGGAACA%",
         "%CAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC%"
     };
+
     private static final String[] UNMATCHED = {
         "%ATTGACCACACTCTACTATAGAGTATCACCAAAAC%",
         "%GATTGACCACACTCTACTATAGAGTATCACCAAAA%",
@@ -179,6 +179,7 @@ public class WildCardTest {
             Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
                 COLLATION_HANDLER.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
         }
+
         for (String unmatched : UNMATCHED) {
             Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
                 COLLATION_HANDLER.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));

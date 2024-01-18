@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLLiteralExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -26,32 +27,32 @@ import java.util.List;
 
 public class MySqlLoadDataInFileStatement extends MySqlStatementImpl {
 
-    private boolean             lowPriority               = false;
-    private boolean             concurrent                = false;
-    private boolean             local                     = false;
+    private boolean lowPriority = false;
+    private boolean concurrent = false;
+    private boolean local = false;
 
-    private SQLLiteralExpr      fileName;
+    private SQLLiteralExpr fileName;
 
-    private boolean             replicate                 = false;
-    private boolean             ignore                    = false;
+    private boolean replicate = false;
+    private boolean ignore = false;
 
-    private SQLName             tableName;
+    private SQLName tableName;
 
-    private String              charset;
+    private String charset;
 
-    private SQLLiteralExpr      columnsTerminatedBy;
-    private boolean             columnsEnclosedOptionally = false;
-    private SQLLiteralExpr      columnsEnclosedBy;
-    private SQLLiteralExpr      columnsEscaped;
+    private SQLLiteralExpr columnsTerminatedBy;
+    private boolean columnsEnclosedOptionally = false;
+    private SQLLiteralExpr columnsEnclosedBy;
+    private SQLLiteralExpr columnsEscaped;
 
-    private SQLLiteralExpr      linesStartingBy;
-    private SQLLiteralExpr      linesTerminatedBy;
+    private SQLLiteralExpr linesStartingBy;
+    private SQLLiteralExpr linesTerminatedBy;
 
-    private SQLExpr             ignoreLinesNumber;
+    private SQLExpr ignoreLinesNumber;
 
-    private List<SQLExpr>  setList                   = new ArrayList<SQLExpr>();
+    private List<SQLExpr> setList = new ArrayList<SQLExpr>();
 
-    private List<SQLExpr>  columns                   = new ArrayList<SQLExpr>();
+    private List<SQLExpr> columns = new ArrayList<SQLExpr>();
 
     public boolean isLowPriority() {
         return lowPriority;
@@ -222,18 +223,20 @@ public class MySqlLoadDataInFileStatement extends MySqlStatementImpl {
         return children;
     }
 
-    
     public List<SQLExpr> getColumns() {
         return columns;
     }
 
-    
     public void setColumns(List<SQLExpr> columns) {
         this.columns = columns;
     }
 
-    
     public void setSetList(List<SQLExpr> setList) {
         this.setList = setList;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

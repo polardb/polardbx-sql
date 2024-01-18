@@ -26,16 +26,16 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MySqlInsertStatement extends SQLInsertStatement {
-    private boolean             lowPriority        = false;
-    private boolean             delayed            = false;
-    private boolean             highPriority       = false;
-    private boolean             ignore             = false;
-    private boolean             rollbackOnFail     = false;
-    private boolean             fulltextDictionary     = false; // for adb
-    private boolean             overwrite     = false; // for adb
-    private boolean             ifNotExists   = false; //for adb
+    private boolean lowPriority = false;
+    private boolean delayed = false;
+    private boolean highPriority = false;
+    private boolean ignore = false;
+    private boolean rollbackOnFail = false;
+    private boolean fulltextDictionary = false; // for adb
+    private boolean overwrite = false; // for adb
+    private boolean ifNotExists = false; //for adb
 
-    protected List<SQLCommentHint>      hints;
+    protected List<SQLCommentHint> hints;
 
     private final List<SQLExpr> duplicateKeyUpdate = new ArrayList<SQLExpr>();
 

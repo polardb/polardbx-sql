@@ -1,0 +1,228 @@
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t1 (
+	a int,
+	b datetime,
+	c varchar(10)
+);
+CREATE TABLE t2 (
+	a int,
+	b datetime,
+	c varchar(10),
+	GLOBAL INDEX(b),
+	INDEX(b),
+	GLOBAL INDEX(c),
+	INDEX(c)
+);
+SHOW CREATE TABLE t2;
+Table,Create Table
+t2,CREATE TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	INDEX `b` (`b`),
+	INDEX `c` (`c`),
+	INDEX `c_2` (`c`),
+	LOCAL KEY `b_2` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t2;
+Table,Create Table
+t2,CREATE PARTITION TABLE `t2` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* b_$ */ `b` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c_$ */ `c` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c_2_$ */ `c_2` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `b_2` (`b`),
+	LOCAL KEY `_local_c_2` (`c`),
+	LOCAL KEY `_local_b` (`b`),
+	LOCAL KEY `_local_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE t1
+	ADD INDEX b1 (b);
+ALTER TABLE t1
+	ADD GLOBAL INDEX b2 (b);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	INDEX `b2` (`b`),
+	LOCAL KEY `b1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* b2_$ */ `b2` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `b1` (`b`),
+	LOCAL KEY `_local_b2` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+ALTER TABLE t1
+	ADD INDEX c1 (c);
+ALTER TABLE t1
+	ADD GLOBAL INDEX c2 (c);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	INDEX `b2` (`b`),
+	INDEX `c1` (`c`),
+	INDEX `c2` (`c`),
+	LOCAL KEY `b1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* b2_$ */ `b2` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c1_$ */ `c1` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c2_$ */ `c2` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `b1` (`b`),
+	LOCAL KEY `_local_b2` (`b`),
+	LOCAL KEY `_local_c1` (`c`),
+	LOCAL KEY `_local_c2` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+CREATE GLOBAL INDEX b3 ON t1 (b);
+CREATE GLOBAL INDEX c3 ON t1 (c);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	INDEX `b2` (`b`),
+	INDEX `b3` (`b`),
+	INDEX `c1` (`c`),
+	INDEX `c2` (`c`),
+	INDEX `c3` (`c`),
+	LOCAL KEY `b1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* b2_$ */ `b2` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* b3_$ */ `b3` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c1_$ */ `c1` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c2_$ */ `c2` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c3_$ */ `c3` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `b1` (`b`),
+	LOCAL KEY `_local_b2` (`b`),
+	LOCAL KEY `_local_c1` (`c`),
+	LOCAL KEY `_local_c2` (`c`),
+	LOCAL KEY `_local_b3` (`b`),
+	LOCAL KEY `_local_c3` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+CREATE GLOBAL INDEX b4 ON t1 (b);
+CREATE GLOBAL INDEX c4 ON t1 (c);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	INDEX `b2` (`b`),
+	INDEX `b3` (`b`),
+	INDEX `b4` (`b`),
+	INDEX `c1` (`c`),
+	INDEX `c2` (`c`),
+	INDEX `c3` (`c`),
+	INDEX `c4` (`c`),
+	LOCAL KEY `b1` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE t1;
+Table,Create Table
+t1,CREATE PARTITION TABLE `t1` (
+	`a` int(11) DEFAULT NULL,
+	`b` datetime DEFAULT NULL,
+	`c` varchar(10) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	GLOBAL INDEX /* b2_$ */ `b2` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* b3_$ */ `b3` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* b4_$ */ `b4` (`b`)
+		PARTITION BY KEY(`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c1_$ */ `c1` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c2_$ */ `c2` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c3_$ */ `c3` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	GLOBAL INDEX /* c4_$ */ `c4` (`c`)
+		PARTITION BY KEY(`c`,`_drds_implicit_id_`)
+		PARTITIONS 3,
+	LOCAL KEY `b1` (`b`),
+	LOCAL KEY `_local_b2` (`b`),
+	LOCAL KEY `_local_c1` (`c`),
+	LOCAL KEY `_local_c2` (`c`),
+	LOCAL KEY `_local_b3` (`b`),
+	LOCAL KEY `_local_c3` (`c`),
+	LOCAL KEY `_local_b4` (`b`),
+	LOCAL KEY `_local_c4` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS 3
+/* tablegroup = `tg` */

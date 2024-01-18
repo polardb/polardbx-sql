@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLWhoamiStatement extends SQLStatementImpl {
@@ -26,5 +27,10 @@ public class SQLWhoamiStatement extends SQLStatementImpl {
 
         }
         v.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

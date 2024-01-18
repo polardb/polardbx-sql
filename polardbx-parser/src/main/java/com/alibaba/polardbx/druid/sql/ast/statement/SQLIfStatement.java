@@ -20,6 +20,12 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -27,10 +33,10 @@ import java.util.List;
 
 public class SQLIfStatement extends SQLStatementImpl implements SQLReplaceable {
 
-    private SQLExpr            condition;
+    private SQLExpr condition;
     private List<SQLStatement> statements = new ArrayList<SQLStatement>();
-    private List<ElseIf>       elseIfList = new ArrayList<ElseIf>();
-    private Else               elseItem;
+    private List<ElseIf> elseIfList = new ArrayList<ElseIf>();
+    private Else elseItem;
 
     public SQLIfStatement clone() {
         SQLIfStatement x = new SQLIfStatement();
@@ -61,12 +67,12 @@ public class SQLIfStatement extends SQLStatementImpl implements SQLReplaceable {
 
             for (int i = 0; i < statements.size(); i++) {
                 statements.get(i)
-                        .accept(visitor);
+                    .accept(visitor);
             }
 
             for (int i = 0; i < elseIfList.size(); i++) {
                 elseIfList.get(i)
-                        .accept(visitor);
+                    .accept(visitor);
             }
 
             if (elseItem != null) {
@@ -124,7 +130,7 @@ public class SQLIfStatement extends SQLStatementImpl implements SQLReplaceable {
     }
 
     public static class ElseIf extends SQLObjectImpl implements SQLReplaceable {
-        private SQLExpr            condition;
+        private SQLExpr condition;
         private List<SQLStatement> statements = new ArrayList<SQLStatement>();
 
         @Override
@@ -210,5 +216,10 @@ public class SQLIfStatement extends SQLStatementImpl implements SQLReplaceable {
             }
             return x;
         }
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

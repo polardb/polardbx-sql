@@ -26,6 +26,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -58,6 +59,8 @@ public class PauseDDLTest extends DDLBaseNewDBTestCase {
     @Test
     public void testPauseDDL() throws InterruptedException {
 
+        LocalDate now = LocalDate.now();
+        LocalDate startWithDate = now.minusMonths(12L);
         for (int i = 0; i < TABLE_COUNT; i++) {
             String innodbTable = "table_" + i;
             String createSql = String.format("CREATE TABLE %s (\n" +
@@ -68,11 +71,11 @@ public class PauseDDLTest extends DDLBaseNewDBTestCase {
                 "PARTITION BY HASH(id)\n" +
                 "PARTITIONS 4\n" +
                 "LOCAL PARTITION BY RANGE (gmt_modified)\n" +
-                "STARTWITH '2021-01-01'\n" +
+                "STARTWITH '%s'\n" +
                 "INTERVAL 1 MONTH\n" +
                 "EXPIRE AFTER 3\n" +
                 "PRE ALLOCATE 3\n" +
-                "PIVOTDATE NOW();", innodbTable);
+                "PIVOTDATE NOW();", innodbTable, startWithDate.plusMonths(1L));
             JdbcUtil.executeSuccess(tddlConnection, createSql);
         }
 
@@ -137,7 +140,7 @@ public class PauseDDLTest extends DDLBaseNewDBTestCase {
         }
         assertWithMessage("at least one ddl should be paused").that(jobs.size()).isGreaterThan(0);
 
-        // continue all puased ddl
+        // continue all paused ddl
         for (long job : jobs) {
             threadPool.submit(() -> {
                 try (Connection connection = getPolardbxConnection();

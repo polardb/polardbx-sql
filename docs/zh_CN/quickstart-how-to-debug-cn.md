@@ -8,10 +8,10 @@
 
 ### 源码下载
 
-下载 [GalaxySQL](https://github.com/ApsaraDB/galaxysql) 代码，main分支
+下载 [PolarDB-X SQL](https://github.com/polardb/polardbx-sql) 代码，main 分支
 
 ``` shell
-git clone https://github.com/ApsaraDB/galaxysql
+git clone https://github.com/polardb/polardbx-sql
 ```
 
 ### 安装依赖
@@ -22,9 +22,9 @@ git clone https://github.com/ApsaraDB/galaxysql
 # 安装依赖 JDK 1.8 和 Maven 3
 
 # 进入代码目录 
-cd galaxysql/
+cd polardbx-sql/
 
-# 确保 polardbx-rpc 子模块 (GalaxyGlue) 已初始化
+# 确保 polardbx-rpc 子模块 (PolarDB-X Glue) 已初始化
 git submodule update --init
 
 # 编译打包
@@ -119,4 +119,4 @@ mysql -h127.1 -P8527 -upolardbx_root
 
 ![image-20220627221138507](../images/success_output.png)
 
-FYI: 系统运行日志在galaxysql同级目录的logs文件夹中。
+FYI: 系统运行日志在 polardbx-sql 同级目录的 logs 文件夹中。

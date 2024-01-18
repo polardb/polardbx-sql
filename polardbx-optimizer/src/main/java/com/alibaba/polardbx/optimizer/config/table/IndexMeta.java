@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
+import org.eclipse.jetty.util.StringUtil;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -301,6 +303,19 @@ public class IndexMeta implements Serializable, Cloneable {
 
             sb.append("\n");
         }
+    }
+
+    public boolean isCoverShardKey(List<String> shardKeys) {
+        if (shardKeys.size() > keyColumns.size()) {
+            return false;
+        }
+
+        for (int i = 0; i < shardKeys.size(); ++i) {
+            if (!StringUtils.equalsIgnoreCase(keyColumns.get(i).getName(), shardKeys.get(i))) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }

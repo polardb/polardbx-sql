@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.qatest.failpoint.newpartition.failpoint;
 
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.ddl.auto.dag.BaseDdlEngineTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;

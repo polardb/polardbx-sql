@@ -17,10 +17,13 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import org.apache.calcite.rel.type.RelDataType;
 
 import java.util.Arrays;
@@ -39,11 +42,39 @@ public class RangePartRouter extends PartitionRouter {
     protected Object[] sortedBoundObjArr;
     protected Comparator boundComparator;
     protected int partitionCount = 0;
+    protected String routerDigest;
 
     public RangePartRouter(Object[] sortedBoundObjArr, Comparator comparator) {
         this.sortedBoundObjArr = sortedBoundObjArr;
         this.partitionCount = sortedBoundObjArr.length;
         this.boundComparator = comparator;
+        initRouterDigest();
+    }
+
+    protected void initRouterDigest() {
+        StringBuilder sb = new StringBuilder("");
+
+        for (int i = 0; i < sortedBoundObjArr.length; i++) {
+            Object bndValObj = sortedBoundObjArr[i];
+            if (i > 0) {
+                sb.append(",\n");
+            }
+            sb.append(i + 1).append(":");
+            if (bndValObj instanceof SearchDatumInfo) {
+                SearchDatumInfo datumInfo = (SearchDatumInfo) bndValObj;
+                String oneBndVal = datumInfo.toString();
+                sb.append(oneBndVal);
+            } else if (bndValObj instanceof Long) {
+                Long datumInfo = (Long) bndValObj;
+                String oneBndVal = datumInfo.toString();
+                sb.append("(").append(oneBndVal).append(")");
+            } else {
+                /**
+                 * Should not come here
+                 */
+            }
+        }
+        this.routerDigest = sb.toString();
     }
 
     /**
@@ -349,5 +380,15 @@ public class RangePartRouter extends PartitionRouter {
         routerResult.partStartPosi = tarPartStart;
         routerResult.pasrEndPosi = tarPartEnd;
         return routerResult;
+    }
+
+    @Override
+    public int getPartitionCount() {
+        return this.partitionCount;
+    }
+
+    @Override
+    public String getDigest() {
+        return this.routerDigest;
     }
 }

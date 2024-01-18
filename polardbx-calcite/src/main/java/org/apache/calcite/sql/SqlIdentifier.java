@@ -27,6 +27,7 @@ import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.sql.validate.SqlQualified;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
 
@@ -161,6 +162,13 @@ public class SqlIdentifier extends SqlNode {
       SqlParserPos pos,
       List<SqlParserPos> componentPositions, SqlNode indexNode) {
     this(names, collation, pos, componentPositions, indexNode, null, null);
+  }
+
+  public SqlIdentifier(
+      String name,
+      SqlParserPos pos,
+      SqlNode indexNode) {
+    this(ImmutableList.of(name), null, pos, null, indexNode, null, null);
   }
 
   /**
@@ -364,15 +372,16 @@ public class SqlIdentifier extends SqlNode {
       int rightPrec) {
     final SqlWriter.Frame frame =
         writer.startList(SqlWriter.FrameTypeEnum.IDENTIFIER);
-    for (String name : names) {
+    for (int i = 0; i < names.size(); i++) {
       writer.sep(".");
-      if (name.equals("")) {
+      if (names.get(i).equals("")) {
         writer.print("*");
       } else {
-        writer.identifier(name);
+        writer.identifier(names.get(i));
         // Write partitions;
         SqlWriter.FrameTypeEnum frame1 = ((SqlPrettyWriter) writer).peekOptStack();
-        if (indexNode != null && frame1 == SqlWriter.FrameTypeEnum.FROM_LIST) {
+        // Parse index node only for the last name.
+        if (indexNode != null && frame1 == SqlWriter.FrameTypeEnum.FROM_LIST && i == names.size() - 1) {
           if (indexNode instanceof SqlNodeList) {
             SqlNodeList list = (SqlNodeList) indexNode;
             for (SqlNode node : list) {
@@ -410,11 +419,21 @@ public class SqlIdentifier extends SqlNode {
     validator.validateIdentifier(this, scope);
   }
 
-  public boolean equalsDeep(SqlNode node, Litmus litmus) {
+  public boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context) {
     if (!(node instanceof SqlIdentifier)) {
       return litmus.fail("{} != {}", this, node);
     }
     SqlIdentifier that = (SqlIdentifier) node;
+
+    if (context.isGenColSubstitute()) {
+      if (this.names.size() == 2 && this.getLastName().equals(that.getLastName()) && this.names.get(0)
+          .equals(context.getIdTableName())) {
+        return litmus.succeed();
+      } else {
+        return litmus.fail("{} != {}", this, node);
+      }
+    }
+
     if (this.names.size() != that.names.size()) {
       return litmus.fail("{} != {}", this, node);
     }

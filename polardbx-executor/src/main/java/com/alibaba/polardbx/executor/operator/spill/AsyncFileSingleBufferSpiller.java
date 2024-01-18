@@ -29,8 +29,6 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.io.Closer;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -39,6 +37,8 @@ import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.spill.LocalSpillMonitor;
+import com.google.common.io.Closer;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.sql.OutFileParams;
 
 import java.io.IOException;
@@ -69,7 +69,11 @@ public class AsyncFileSingleBufferSpiller implements SingleStreamSpiller {
         this.outFileParams = requireNonNull(outFileParams, "outFileParams is null");
         this.factory = requireNonNull(factory, "factory is null");
         if (id.getFilePath().toFile().exists()) {
-            throw new TddlRuntimeException(ErrorCode.ERR_FILE_ALREADY_EXIST, "File is already exist!");
+            if (outFileParams.getStatistics()) {
+                id.getFilePath().toFile().delete();
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_FILE_ALREADY_EXIST, "File is already exist!");
+            }
         }
         try {
             id.getFilePath().toFile().createNewFile();

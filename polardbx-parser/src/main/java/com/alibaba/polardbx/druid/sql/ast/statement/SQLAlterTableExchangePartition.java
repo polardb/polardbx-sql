@@ -24,9 +24,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLAlterTableExchangePartition extends SQLObjectImpl implements SQLAlterTableItem {
-    private List<SQLExpr>       partitions = new ArrayList<SQLExpr>();
-    private SQLExprTableSource  table;
-    private Boolean             validation;
+    private List<SQLExpr> partitions = new ArrayList<SQLExpr>();
+    private SQLExprTableSource table;
+    private Boolean validation;
 
     public SQLAlterTableExchangePartition() {
 

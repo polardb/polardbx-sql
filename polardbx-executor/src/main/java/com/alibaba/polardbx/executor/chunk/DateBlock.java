@@ -32,7 +32,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Date Block
- *
  */
 public class DateBlock extends AbstractCommonBlock {
     private static final long NULL_VALUE = 0L;
@@ -46,14 +45,14 @@ public class DateBlock extends AbstractCommonBlock {
     private final TimeZone timezone;
 
     private int[] selection;
+
     public DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data, DataType<? extends Date> dataType,
                      TimeZone timezone, int[] selection) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = Preconditions.checkNotNull(data);
         this.timezone = timezone;
         this.selection = selection;
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(data);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     DateBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] data, DataType<? extends Date> dataType,
@@ -61,8 +60,7 @@ public class DateBlock extends AbstractCommonBlock {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = Preconditions.checkNotNull(data);
         this.timezone = timezone;
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(data);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     private int realPositionOf(int position) {
@@ -203,5 +201,11 @@ public class DateBlock extends AbstractCommonBlock {
 
     public int[] getSelection() {
         return selection;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(packed);
+        elementUsedBytes = Byte.BYTES * positionCount + Long.BYTES * positionCount;
     }
 }

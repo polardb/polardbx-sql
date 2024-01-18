@@ -16,10 +16,24 @@
 
 package com.alibaba.polardbx.qatest.constant;
 
+import java.util.Arrays;
+import java.util.List;
+
 public class ConfigConstant {
 
     public static final String RESOURCE_PATH = ConfigConstant.class.getClassLoader().getResource(".").getPath();
     public static final String CONN_CONFIG = RESOURCE_PATH + "qatest.properties";
+
+    //error that can be ingore in polardbx test, always cause by DN load high
+    public static final List<String> IGNORE_ERROR_LIST = Arrays.asList(
+        "Deadlock found when trying to get lock",
+        "Communications link failure",
+        "please retry",
+        "Get metaDb lock timeout",
+        "Please try again",
+        "Prepare wait timeout",
+        "Failed to update the system table",
+        "Could not retrieve transation read-only status server");
 
     public static final String SKIP_INIT_MYSQL = "skipInitMysql";
     public static final String MYSQL_USER = "mysqlUserName";
@@ -44,6 +58,7 @@ public class ConfigConstant {
     public static final String META_ADDRESS = "metaDbAddr";
 
     public static final String URL_PATTERN = "jdbc:mysql://%s:%s?";
+    public static final String X_DRIVER_URL_PATTERN = "jdbc:polardbx://%s:%s/%s?";
     public static final String URL_PATTERN_WITH_DB = "jdbc:mysql://%s:%s/%s?";
 
     public static final String CDC_CHECK_DB_BLACKLIST = "cdcCheckDbBlackList";

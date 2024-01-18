@@ -21,6 +21,7 @@ import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rex.RexNode;
@@ -39,6 +40,12 @@ class EmptyConditionResult implements ConditionResult {
 
     @Override
     public ConditionResult simplify() {
+        return this;
+    }
+
+    @Override
+    public ConditionResult convertScalarFunction2RexCallParam(AtomicInteger maxParamIndex,
+                                                              ExecutionContext executionContext) {
         return this;
     }
 

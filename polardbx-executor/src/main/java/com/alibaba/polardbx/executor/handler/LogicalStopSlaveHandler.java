@@ -17,16 +17,20 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.cdc.CdcConstants;
+import com.alibaba.polardbx.common.cdc.ResultCode;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.PooledHttpHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.net.util.CdcTargetUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc;
-import com.alibaba.polardbx.rpc.cdc.RplCommandResponse;
-import com.alibaba.polardbx.rpc.cdc.StopSlaveRequest;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlStopSlave;
+import org.apache.http.entity.ContentType;
 
 /**
  * @author shicai.xsc 2021/3/5 14:32
@@ -44,12 +48,19 @@ public class LogicalStopSlaveHandler extends LogicalReplicationBaseHandler {
         LogicalDal dal = (LogicalDal) logicalPlan;
         SqlStopSlave sqlNode = (SqlStopSlave) dal.getNativeSqlNode();
 
-        StopSlaveRequest request = StopSlaveRequest.newBuilder()
-            .setRequest(JSON.toJSONString(sqlNode.getParams()))
-            .build();
-
-        final CdcServiceGrpc.CdcServiceBlockingStub blockingStub = CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub();
-        RplCommandResponse response = blockingStub.stopSlave(request);
-        return handleRplCommandResponse(response, blockingStub.getChannel());
+        String daemonEndpoint = CdcTargetUtil.getReplicaDaemonMasterTarget();
+        String res;
+        try {
+            res = PooledHttpHelper.doPost("http://" + daemonEndpoint + "/replica/stopSlave",
+                ContentType.APPLICATION_JSON,
+                JSON.toJSONString(sqlNode.getParams()), 10000);
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, e);
+        }
+        ResultCode<?> httpResult = JSON.parseObject(res, ResultCode.class);
+        if (httpResult.getCode() != CdcConstants.SUCCESS_CODE) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICATION_RESULT, httpResult.getMsg());
+        }
+        return new AffectRowCursor(0);
     }
 }

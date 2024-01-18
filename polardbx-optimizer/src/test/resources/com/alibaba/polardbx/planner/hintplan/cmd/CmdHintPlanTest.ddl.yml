@@ -30,3 +30,14 @@ test_table_c:
   `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`pk`)
   ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 BROADCAST
+
+test_table_d:
+  CREATE TABLE `test_table_single` (
+  `pk`                BIGINT(11)   NOT NULL,
+  `bigint_test`       BIGINT       DEFAULT NULL,
+  `varchar_test_p255` VARCHAR(255) DEFAULT NULL,
+  `datetime_test`     DATETIME     DEFAULT NULL,
+  `text_test`         TEXT         DEFAULT NULL,
+  `timestamp_test`    TIMESTAMP    NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`pk`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=UTF8

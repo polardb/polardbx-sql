@@ -20,6 +20,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -34,6 +35,9 @@ public class DrdsSplitPartition extends SQLObjectImpl implements SQLAlterTableIt
     private final List<SQLObject> partitions = new ArrayList<SQLObject>(4);
     private SQLExpr atValue;
     private SQLName splitPartitionName;
+    private SQLName newPartitionNamePrefix;
+    private SQLIntegerExpr newPartitionNum;
+    private boolean subPartitionsSplit;
 
     public List<SQLObject> getPartitions() {
         return partitions;
@@ -60,6 +64,30 @@ public class DrdsSplitPartition extends SQLObjectImpl implements SQLAlterTableIt
 
     public SQLName getSplitPartitionName() {
         return splitPartitionName;
+    }
+
+    public SQLName getNewPartitionNamePrefix() {
+        return newPartitionNamePrefix;
+    }
+
+    public void setNewPartitionNamePrefix(SQLName newPartitionNamePrefix) {
+        this.newPartitionNamePrefix = newPartitionNamePrefix;
+    }
+
+    public SQLIntegerExpr getNewPartitionNum() {
+        return newPartitionNum;
+    }
+
+    public void setNewPartitionNum(SQLIntegerExpr newPartitionNum) {
+        this.newPartitionNum = newPartitionNum;
+    }
+
+    public boolean isSubPartitionsSplit() {
+        return subPartitionsSplit;
+    }
+
+    public void setSubPartitionsSplit(boolean subPartitionsSplit) {
+        this.subPartitionsSplit = subPartitionsSplit;
     }
 
     @Override

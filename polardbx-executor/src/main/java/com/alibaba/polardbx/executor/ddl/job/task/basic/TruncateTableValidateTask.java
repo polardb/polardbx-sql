@@ -25,8 +25,6 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
-import java.sql.Connection;
-
 @Getter
 @TaskName(name = "TruncateTableValidateTask")
 public class TruncateTableValidateTask extends BaseValidateTask {
@@ -44,6 +42,7 @@ public class TruncateTableValidateTask extends BaseValidateTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
+        TableValidator.validateTableNotReferenceFk(schemaName, logicalTableName, executionContext);
         GsiValidator.validateAllowTruncateOnTable(schemaName, logicalTableName, executionContext);
         if (tableGroupConfig != null) {
             TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);

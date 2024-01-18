@@ -22,14 +22,16 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-public class SQLAlterTableTruncatePartition extends SQLObjectImpl implements SQLAlterTableItem , SQLAlterTableGroupItem{
+public class SQLAlterTableTruncatePartition extends SQLObjectImpl implements SQLAlterTableItem, SQLAlterTableGroupItem {
 
     private final List<SQLName> partitions = new ArrayList<SQLName>(4);
+
+    private boolean isSubPartition = false;
 
     public List<SQLName> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLName partition) {
         if (partition != null) {
             partition.setParent(this);
@@ -43,5 +45,13 @@ public class SQLAlterTableTruncatePartition extends SQLObjectImpl implements SQL
             acceptChild(visitor, partitions);
         }
         visitor.endVisit(this);
+    }
+
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
+    public void setSubPartition(boolean subPartition) {
+        isSubPartition = subPartition;
     }
 }

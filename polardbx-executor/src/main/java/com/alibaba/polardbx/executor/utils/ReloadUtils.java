@@ -25,11 +25,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.utils.VariableProxy;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableColumnStatistic;
 import com.alibaba.polardbx.optimizer.config.table.statistic.inf.SystemTableTableStatistic;
-import com.alibaba.polardbx.optimizer.planmanager.SystemTableBaselineInfo;
-import com.alibaba.polardbx.optimizer.planmanager.SystemTablePlanInfo;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 
 import javax.sql.DataSource;
@@ -78,6 +74,6 @@ public class ReloadUtils {
     }
 
     public enum ReloadType {
-        USERS, SCHEMA, DATASOURCES, FILESTORAGE, PROCEDURES, FUNCTIONS;
+        USERS, SCHEMA, DATASOURCES, FILESTORAGE, PROCEDURES, FUNCTIONS, JAVA_FUNCTIONS, STATISTICS;
     }
 }

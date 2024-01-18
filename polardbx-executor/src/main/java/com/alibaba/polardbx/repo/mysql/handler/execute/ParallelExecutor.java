@@ -216,7 +216,7 @@ public class ParallelExecutor {
     }
 
     public synchronized void failed(Throwable t) {
-        if (throwable != null) {
+        if (throwable == null) {
             throwable = t;
         }
         selectValues.clear();

@@ -21,10 +21,13 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLPrimaryKey;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.util.FnvHash;
@@ -190,6 +193,125 @@ public class SchemaRepositoryTest {
         Assert.assertEquals(Sets.newHashSet(), sets);
     }
 
+    //See aone issue, id : 46539884
+    @Test
+    public void testConstraintName() {
+        String sql1 = " create table `t_test` (\n"
+            + "        `id` bigint(20) unsigned not null auto_increment,\n"
+            + "        `a` bigint(20) not null comment '',\n"
+            + "        `b` bigint(20) not null comment '',\n"
+            + "        `c` tinyint(4) not null comment '',\n"
+            + "        `d` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `e` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `f` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `g` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `h` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `i` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `j` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `k` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `l` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `m` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `n` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `o` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `p` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `q` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `r` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `s` decimal(14, 4) not null default '0.0000' comment '',\n"
+            + "        `t` timestamp not null default current_timestamp,\n"
+            + "        `e` timestamp not null default current_timestamp on update current_timestamp,\n"
+            + "        primary key (`id`),\n"
+            + "        unique key `uk_x` (`a`, `b`, `c`),\n"
+            + "        constraint unique `uk_xx` (`a`, `b`, `c`)\n"
+            + ")";
+        String sql2 = "alter table t_test add constraint `uk_y` unique (e, f, g, h)";
+        String sql3 = "alter table t_test drop constraint uk_y";
+
+        String sql4 = "alter table t_test add constraint `uk_h` unique (e, f, g, h)";
+        String sql5 = "alter table t_test drop index uk_h";
+
+        String sql6 = "alter table t_test add unique key uk_o(o,p,q)";
+        String sql7 = "alter table t_test drop constraint uk_o";
+
+        String sql8 = "alter table t_test add constraint `uk_f` unique (e, f, g, h)";
+        String sql9 = "create index idx_z on t_test (g,h ,i ,j ,k ,l,m ,n)";
+        String sql10 = "drop index idx_z on t_test";
+
+        String sql11 = "alter table t_test drop primary key";
+        String sql12 = "alter table t_test add constraint primary key(id)";
+
+        repository.console(sql1);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+
+        repository.console(sql2);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_y"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+        repository.console(sql3);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+
+        repository.console(sql4);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_h"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+        repository.console(sql5);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+
+        repository.console(sql6);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_o"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+        repository.console(sql7);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+
+        repository.console(sql8);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+        repository.console(sql9);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f", "idx_z"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+        repository.console(sql10);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f"), findIndexes(DEFAULT_SCHEMA, "t_test"));
+
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f", "primary"),
+            findIndexes(DEFAULT_SCHEMA, "t_test", true));
+        repository.console(sql11);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f"),
+            findIndexes(DEFAULT_SCHEMA, "t_test", true));
+        repository.console(sql12);
+        Assert.assertEquals(Sets.newHashSet("uk_x", "uk_xx", "uk_f", "primary"),
+            findIndexes(DEFAULT_SCHEMA, "t_test", true));
+    }
+
+    @Test
+    public void testUniqueKeyInColumn() {
+        String sql1 = "CREATE TABLE IF NOT EXISTS `ZXe5GA6` (\n"
+            + "  `aiMzgbaKVCIQtle` INT(1) UNSIGNED NULL COMMENT 'treSay',\n"
+            + "  `V8R9mZFvUHxQ` MEDIUMINT UNSIGNED ZEROFILL COMMENT 'WenHosxfI3i',\n"
+            + "  `RFKRrCAF` TIMESTAMP UNIQUE,\n"
+            + "  `ctv` BIGINT(5) ZEROFILL NULL,\n"
+            + "  `Vd` TINYINT UNSIGNED ZEROFILL UNIQUE COMMENT 'lysAE',\n"
+            + "  `8` MEDIUMINT(4) ZEROFILL COMMENT 'Y',\n"
+            + "  `H4rJ5c8d0N1C8Q` BIGINT UNSIGNED ZEROFILL NOT NULL,\n"
+            + "  `iE69EIYRLOqXa3` DATE NOT NULL COMMENT 'VAHhex',\n"
+            + "  `OsBUdkS` MEDIUMINT ZEROFILL COMMENT 'zgV7ojRAJKgu4XI',\n"
+            + "  `LADuM` TIMESTAMP(0) COMMENT 'nkaLg0',\n"
+            + "  `kO38Dx6gYUPRtBn` MEDIUMINT UNSIGNED ZEROFILL UNIQUE,\n"
+            + "  KEY `Cb` USING HASH (`Vd`),\n"
+            + "  INDEX `auto_shard_key_ctv` USING BTREE(`CTV`),\n"
+            + "  INDEX `auto_shard_key_ie69eiyrloqxa3` USING BTREE(`IE69EIYRLOQXA3`),\n"
+            + "  _drds_implicit_id_ bigint AUTO_INCREMENT,\n"
+            + "  PRIMARY KEY (_drds_implicit_id_)\n"
+            + ")\n"
+            + "DBPARTITION BY RIGHT_SHIFT(`ctv`, 9)\n"
+            + "TBPARTITION BY YYYYMM(`iE69EIYRLOqXa3`) TBPARTITIONS 7";
+        String sql2 = "DROP INDEX `ko38dx6gyuprtbn` ON `ZXe5GA6`";
+        String sql3 = "alter table `ZXe5GA6` drop index RFKRrCAF";
+
+        repository.console(sql1, FEATURES);
+        Assert.assertEquals(Sets.newHashSet("kO38Dx6gYUPRtBn", "auto_shard_key_ie69eiyrloqxa3",
+            "RFKRrCAF", "Vd", "auto_shard_key_ctv", "Cb"), findIndexes(DEFAULT_SCHEMA, "ZXe5GA6"));
+
+        repository.console(sql2, FEATURES);
+        Assert.assertEquals(Sets.newHashSet("auto_shard_key_ie69eiyrloqxa3", "RFKRrCAF",
+            "Vd", "auto_shard_key_ctv", "Cb"), findIndexes(DEFAULT_SCHEMA, "ZXe5GA6"));
+
+        repository.console(sql3, FEATURES);
+        Assert.assertEquals(Sets.newHashSet("auto_shard_key_ie69eiyrloqxa3", "Vd", "auto_shard_key_ctv",
+            "Cb"), findIndexes(DEFAULT_SCHEMA, "ZXe5GA6"));
+    }
+
     @Test
     public void testRenameIndex() {
         repository.console("create table test_escaping_col_name (\n"
@@ -241,6 +363,54 @@ public class SchemaRepositoryTest {
         repository.console(ddl);
     }
 
+    @Test
+    public void testCreateViewClone() {
+        String sql =
+            " create or replace algorithm=undefined definer=`admin`@`%` sql security definer view `v`(`c1`) as select a.pk from select_base_two_one_db_one_tb a join select_base_three_multi_db_one_tb b on a.pk = b.p";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql, DbType.mysql, FEATURES);
+        StringBuffer sb = new StringBuffer();
+        stmtList.get(0).clone().output(sb);
+        System.out.println(sb);
+    }
+
+    @Test
+    public void testAlterView() {
+        String sql =
+            "alter algorithm=undefined definer=`admin`@`%` sql security definer view `v2_unrelated` as select 2 as r1";
+        List<SQLStatement> stmtList = SQLUtils.parseStatements(sql, DbType.mysql, FEATURES);
+        stmtList.get(0);
+    }
+
+    @Test
+    public void testDropPrimaryKey() {
+        String tableName = "t";
+        String createTable = " create table t(id bigint primary key , name varchar(20) UNIQUE, content text)";
+        repository.console(createTable);
+        SchemaObject table = repository.findTable(tableName);
+        SQLColumnDefinition idDefine = table.findColumn("id");
+        Assert.assertTrue(idDefine.isPrimaryKey());
+        String alterSql = "alter table t drop primary key";
+        repository.console(alterSql);
+        table = repository.findTable(tableName);
+        idDefine = table.findColumn("id");
+        Assert.assertFalse(idDefine.isPrimaryKey());
+    }
+
+    @Test
+    public void testDropPrimaryKey2() {
+        String tableName = "t";
+        String createTable = " create table t(id bigint , name varchar(20) UNIQUE, content text, primary key(id))";
+        repository.console(createTable);
+        SchemaObject table = repository.findTable(tableName);
+        SQLColumnDefinition idDefine = table.findColumn("id");
+        Assert.assertTrue(idDefine.isPrimaryKey());
+        String alterSql = "alter table t drop primary key";
+        repository.console(alterSql);
+        table = repository.findTable(tableName);
+        idDefine = table.findColumn("id");
+        Assert.assertFalse(idDefine.isPrimaryKey());
+    }
+
     private void testAlterTableInternal(String tableName1, String tableName2) {
         String sql1 = "create table if not exists `" + tableName1 + "` ("
             + " `col-minus` int, "
@@ -278,6 +448,10 @@ public class SchemaRepositoryTest {
     }
 
     public Set<String> findIndexes(String schema, String table) {
+        return findIndexes(schema, table, false);
+    }
+
+    public Set<String> findIndexes(String schema, String table, boolean includePrimary) {
         Set<String> result = new HashSet<>();
 
         Schema schemaRep = repository.findSchema(schema);
@@ -304,6 +478,21 @@ public class SchemaRepositoryTest {
                         result.add(SQLUtils.normalize(sqlConstraint.getName().getSimpleName()));
                     }
                 }
+                if (e instanceof SQLColumnDefinition) {
+                    SQLColumnDefinition columnDefinition = (SQLColumnDefinition) e;
+                    List<SQLColumnConstraint> constraints = columnDefinition.getConstraints();
+                    if (constraints != null) {
+                        for (SQLColumnConstraint constraint : constraints) {
+                            if (constraint instanceof SQLColumnUniqueKey) {
+                                result.add(SQLUtils.normalize(columnDefinition.getName().getSimpleName()));
+                            }
+                        }
+                    }
+                }
+                if (e instanceof SQLPrimaryKey && includePrimary) {
+                    result.add("primary");
+                }
+
             });
         }
 
@@ -398,5 +587,70 @@ public class SchemaRepositoryTest {
             + "\te int\n"
             + ")";
         Assert.assertEquals(newCreateTableSql, stmt1.toString());
+    }
+
+    @Test
+    public void testMaterializedView() {
+        SchemaRepository repository = new SchemaRepository(JdbcConstants.MYSQL);
+        repository.setDefaultSchema("t1");
+        String createTableSql = "create materialized view mview as select id from xxx";
+        repository.console(createTableSql);
+        // com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateMaterializedViewStatement
+        // com.alibaba.polardbx.druid.sql.ast.statement.SQLDropMaterializedViewStatement
+    }
+
+    @Test
+    public void testModifyColumnSequence() {
+        SchemaRepository memoryTableMeta = new SchemaRepository(JdbcConstants.MYSQL);
+        memoryTableMeta.console(
+            "create table `test_compat_yha2_7ajh_00002` (\n"
+                + "  a int,\n"
+                + "  b double,\n"
+                + "  c varchar(10),\n"
+                + "  d bigint,\n"
+                + "  _drds_implicit_id_ bigint auto_increment,\n"
+                + "  primary key (_drds_implicit_id_)\n"
+                + ")");
+        memoryTableMeta.console("alter table `test_compat_yha2_7ajh_00002`\n"
+            + "  modify column a int after b,\n"
+            + "  drop column b,\n"
+            + "  change column c b int,\n"
+            + "  add column c int");
+
+        String expectedDDL = "CREATE TABLE `test_compat_yha2_7ajh_00002` (\n"
+            + "\tb int,\n"
+            + "\ta int,\n"
+            + "\td bigint,\n"
+            + "\t_drds_implicit_id_ bigint AUTO_INCREMENT,\n"
+            + "\tPRIMARY KEY (_drds_implicit_id_),\n"
+            + "\tc int\n"
+            + ")";
+        SchemaObject tm1 = memoryTableMeta.findTable("test_compat_yha2_7ajh_00002");
+        Assert.assertEquals(expectedDDL, tm1.getStatement().toString());
+    }
+
+    @Test
+    public void testModifyColumnSequence2() {
+        SchemaRepository memoryTableMeta = new SchemaRepository(JdbcConstants.MYSQL);
+        memoryTableMeta.console(
+            "create table `t25` (\n"
+                + "  a int,\n"
+                + "  b double,\n"
+                + "  c varchar(10),\n"
+                + "  _drds_implicit_id_ bigint auto_increment,\n"
+                + "  d bigint,\n"
+                + "  primary key (_drds_implicit_id_)\n"
+                + ")");
+        String expectedDDL = "CREATE TABLE `t25` (\n"
+            + "\tc varchar(10),\n"
+            + "\tb double,\n"
+            + "\ta int,\n"
+            + "\t_drds_implicit_id_ bigint AUTO_INCREMENT,\n"
+            + "\td bigint,\n"
+            + "\tPRIMARY KEY (_drds_implicit_id_)\n"
+            + ")";
+        memoryTableMeta.console("alter table t25 modify column a int after c,modify column c varchar(10) first");
+        SchemaObject tm1 = memoryTableMeta.findTable("t25");
+        Assert.assertEquals(expectedDDL, tm1.getStatement().toString());
     }
 }

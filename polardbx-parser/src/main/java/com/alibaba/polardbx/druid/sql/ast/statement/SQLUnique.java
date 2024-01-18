@@ -30,14 +30,18 @@ public class SQLUnique extends SQLConstraintImpl implements SQLUniqueConstraint,
 
     protected final SQLIndexDefinition indexDefinition = new SQLIndexDefinition();
 
-    public SQLUnique(){
+    public SQLUnique() {
         indexDefinition.setParent(this);
     }
 
     // Override name and comment in constraint impl.
     @Override
     public SQLName getName() {
-        return indexDefinition.getName();
+        SQLName name = indexDefinition.getName();
+        if (name == null) {
+            name = indexDefinition.getSymbol();
+        }
+        return name;
     }
 
     @Override
@@ -70,7 +74,7 @@ public class SQLUnique extends SQLConstraintImpl implements SQLUniqueConstraint,
     public List<SQLSelectOrderByItem> getColumns() {
         return indexDefinition.getColumns();
     }
-    
+
     public void addColumn(SQLExpr column) {
         if (column == null) {
             return;
@@ -152,21 +156,24 @@ public class SQLUnique extends SQLConstraintImpl implements SQLUniqueConstraint,
         for (SQLSelectOrderByItem orderByItem : getColumns()) {
             SQLExpr expr = orderByItem.getExpr();
             if (expr instanceof SQLName
-                    && SQLUtils.nameEquals((SQLName) expr, columnName)) {
+                && SQLUtils.nameEquals((SQLName) expr, columnName)) {
                 orderByItem.setExpr(to.getName().clone());
                 return true;
             }
 
             if (expr instanceof SQLMethodInvokeExpr
-                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
+                && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
                 // More complex when with key length.
                 if (1 == ((SQLMethodInvokeExpr) expr).getArguments().size() &&
-                        ((SQLMethodInvokeExpr) expr).getArguments().get(0) instanceof SQLIntegerExpr) {
+                    ((SQLMethodInvokeExpr) expr).getArguments().get(0) instanceof SQLIntegerExpr) {
                     if (to.getDataType().hasKeyLength() &&
-                            1 == to.getDataType().getArguments().size() &&
-                            to.getDataType().getArguments().get(0) instanceof SQLIntegerExpr) {
-                        int newKeyLength = ((SQLIntegerExpr)to.getDataType().getArguments().get(0)).getNumber().intValue();
-                        int oldKeyLength = ((SQLIntegerExpr)((SQLMethodInvokeExpr) expr).getArguments().get(0)).getNumber().intValue();
+                        1 == to.getDataType().getArguments().size() &&
+                        to.getDataType().getArguments().get(0) instanceof SQLIntegerExpr) {
+                        int newKeyLength =
+                            ((SQLIntegerExpr) to.getDataType().getArguments().get(0)).getNumber().intValue();
+                        int oldKeyLength =
+                            ((SQLIntegerExpr) ((SQLMethodInvokeExpr) expr).getArguments().get(0)).getNumber()
+                                .intValue();
                         if (newKeyLength > oldKeyLength) {
                             // Change name and keep key length.
                             ((SQLMethodInvokeExpr) expr).setMethodName(to.getName().getSimpleName());
@@ -186,13 +193,13 @@ public class SQLUnique extends SQLConstraintImpl implements SQLUniqueConstraint,
         for (int i = getColumns().size() - 1; i >= 0; i--) {
             SQLExpr expr = getColumns().get(i).getExpr();
             if (expr instanceof SQLName
-                    && SQLUtils.nameEquals((SQLName) expr, columnName)) {
+                && SQLUtils.nameEquals((SQLName) expr, columnName)) {
                 getColumns().remove(i);
                 return true;
             }
 
             if (expr instanceof SQLMethodInvokeExpr
-                    && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
+                && SQLUtils.nameEquals(((SQLMethodInvokeExpr) expr).getMethodName(), columnName.getSimpleName())) {
                 getColumns().remove(i);
                 return true;
             }

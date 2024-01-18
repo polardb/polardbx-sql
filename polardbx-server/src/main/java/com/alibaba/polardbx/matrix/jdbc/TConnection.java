@@ -23,7 +23,6 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
@@ -37,6 +36,7 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -63,7 +63,6 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.utils.ExceptionUtils;
-import com.alibaba.polardbx.matrix.jdbc.utils.MergeHashMap;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.ccl.CclManager;
@@ -73,23 +72,25 @@ import com.alibaba.polardbx.optimizer.config.schema.PerformanceSchema;
 import com.alibaba.polardbx.optimizer.config.table.ScaleOutPlanUtil;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.alibaba.polardbx.optimizer.context.AsyncDDLContext;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.MultiDdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateIndex;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
@@ -102,21 +103,16 @@ import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.alibaba.polardbx.transaction.AutoCommitTransaction;
 import com.alibaba.polardbx.transaction.ITsoTransaction;
 import com.alibaba.polardbx.transaction.ReadOnlyTsoTransaction;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.util.trace.CalcitePlanOptimizerTrace;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.PrintWriter;
@@ -137,6 +133,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
+import static com.alibaba.polardbx.druid.sql.ast.SqlType.isDDL;
+import static com.alibaba.polardbx.druid.sql.ast.SqlType.isDML;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.DDL_STATEMENT;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MDL_REQUIRED_POLARDBX;
 import static com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties.MODIFY_TABLE;
@@ -152,26 +150,25 @@ import static org.apache.calcite.sql.SqlKind.UPDATE;
 public class TConnection implements ITConnection {
 
     protected final static Logger logger = LoggerFactory.getLogger(TConnection.class);
-    private PlanExecutor executor = null;
+    private static final String TRACE = "trace ";
     private final TDataSource dataSource;
-    private ExecutionContext executionContext = new ExecutionContext();                             // 记录上一次的执行上下文
     private final List<TStatement> openedStatements = new ArrayList<TStatement>(2);
+    private final ServerThreadPool executorService;
+    private final ReentrantLock lock = new ReentrantLock();
+    private PlanExecutor executor = null;
+    private ExecutionContext executionContext = new ExecutionContext();                             // 记录上一次的执行上下文
     private boolean isAutoCommit = true;                                               // jdbc规范，新连接为true
     private boolean readOnly = false;
     private volatile boolean closed;
     private int transactionIsolation = -1;
-    private final ServerThreadPool executorService;
-
     private ITransactionPolicy trxPolicy = null;
     // Only set by ServerConnection. For users, it's set by
     // "set batch_insert_policy='split'"
     // Null stands for not set by this connection, and the policy depends on
     // instance property.
     private BatchInsertPolicy batchInsertPolicy = null;
-
     private long lastExecutionBeginNano = -1;
     private long lastExecutionBeginUnixTime = -1;
-
     /**
      * 管理这个连接下用到的所有物理连接
      */
@@ -183,20 +180,16 @@ public class TConnection implements ITConnection {
     private String sqlMode = null;
     private List<Long> generatedKeys = Collections.synchronizedList(new ArrayList<Long>());
     private ITransaction trx;
-
     /**
      * 保存 select sql_calc_found_rows 返回的结果
      */
     private long foundRows = 0;
-
     /**
      * Store the result of ROW_COUNT()
      */
-    private long affectedRows = 0;
-
+    private long affectedRows = -1;
     private SQLTracer tracer;
     private int socketTimeout = -1;
-    private final ReentrantLock lock = new ReentrantLock();
     // 下推到下层的系统变量，全部小写
     private Map<String, Object> serverVariables = null;
     // 下推到下层的全局系统变量，全部小写
@@ -212,7 +205,6 @@ public class TConnection implements ITConnection {
     private String frontendConnectionInfo = null;
     private Boolean asyncDDLPureModeSession = null;
     private InternalTimeZone logicalTimeZone = null;
-
     /**
      * <pre>
      * For UPDATE statements, the affected-rows value by default is the number of rows actually changed.
@@ -223,41 +215,28 @@ public class TConnection implements ITConnection {
      * </pre>
      */
     private boolean clientFoundRows = true;
-
     /**
      * 和show processlist里显示的ID一致，用于生成mpp的QueryId
      */
     private long id;
-
     /**
      * 分布式锁是连接级别（会话级别）
      */
     private LockingFunctionHandle lockHandle;
     private String traceId;
-
     /**
      * 事务级别
      */
     private ShareReadViewPolicy shareReadView = ShareReadViewPolicy.DEFAULT;
-
     /**
      * whether the current statement is a DDL
      */
     private boolean ddlStatement;
-
     /**
      * the intra group parallelism ,
      * when it is not null means user manually set the variable by "SET GROUP_PARALLELISM=xxx"
      */
     private Long groupParallelism;
-
-    public void setDdlStatement(boolean ddlStatement) {
-        this.ddlStatement = ddlStatement;
-    }
-
-    public boolean isDdlStatement() {
-        return ddlStatement;
-    }
 
     public TConnection(TDataSource ds) {
         this.dataSource = ds;
@@ -266,8 +245,63 @@ public class TConnection implements ITConnection {
         this.logicalTimeZone = ds.getLogicalDbTimeZone();
     }
 
+    private static int findTraceIndex(ByteString sql) {
+        int i = 0;
+        for (; i < sql.length(); ++i) {
+            switch (sql.charAt(i)) {
+            case ' ':
+            case '\t':
+            case '\r':
+            case '\n':
+                continue;
+            }
+            break;
+        }
+
+        if (sql.regionMatches(true, i, TRACE, 0, TRACE.length())) {
+            return i + TRACE.length();
+        } else {
+            return -1;
+        }
+    }
+
+    private static void checkTransactionParams(IDistributedTransaction trx, ExecutionContext executionContext) {
+        // Check injected failure from hint (for test purpose)
+        String injectedFailure =
+            (String) executionContext.getExtraCmds().get(ConnectionProperties.FAILURE_INJECTION);
+        if (injectedFailure != null) {
+            trx.setFailureFlag(FailureInjectionFlag.parseString(injectedFailure));
+        }
+    }
+
+    public boolean isDdlStatement() {
+        return ddlStatement;
+    }
+
+    public void setDdlStatement(boolean ddlStatement) {
+        this.ddlStatement = ddlStatement;
+    }
+
     public boolean getShareReadView() {
         return shareReadView == ShareReadViewPolicy.ON;
+    }
+
+    public void setShareReadView(ShareReadViewPolicy shareReadView) {
+        if (this.shareReadView == shareReadView) {
+            return;
+        }
+        if (this.trx != null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                "Set share read view in the middle of transaction "
+                    + "is not allowed. Please do this operation right after transaction begins.");
+        }
+        if (shareReadView == ShareReadViewPolicy.ON) {
+            if (!dnSupportShareReadView()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Data node does not support share read view.");
+            }
+            ShareReadViewPolicy.checkTxIsolation(transactionIsolation);
+        }
+        this.shareReadView = shareReadView;
     }
 
     private ITransactionPolicy loadTrxPolicy(ExecutionContext executionContext) {
@@ -315,11 +349,16 @@ public class TConnection implements ITConnection {
     public ResultSet executeSQL(ByteString sql, Parameters params, TStatement stmt,
                                 ExecutionContext executionContext) throws SQLException {
         OptimizerContext.setContext(this.dataSource.getConfigHolder().getOptimizerContext());
-
+        // 处理 trace
         try {
             int trace = findTraceIndex(sql);
             if (trace > 0) {
                 sql = sql.slice(trace);
+                this.tracer = new SQLTracer();
+                executionContext.setEnableTrace(true);
+            } else if (executionContext.getLoadDataContext() != null && executionContext.getLoadDataContext()
+                .getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_LOAD_DATA_TRACE)) {
                 this.tracer = new SQLTracer();
                 executionContext.setEnableTrace(true);
             } else {
@@ -337,6 +376,11 @@ public class TConnection implements ITConnection {
 
             if (connectionVariables != null) {
                 extraCmd.putAll(connectionVariables);
+                if (executionContext.getHintCmds() != null) {
+                    for (Map.Entry<String, Object> entry : connectionVariables.entrySet()) {
+                        executionContext.getHintCmds().putIfAbsent(entry.getKey(), entry.getValue());
+                    }
+                }
             }
 
             buildExtraCommand(sql, extraCmd);
@@ -352,13 +396,6 @@ public class TConnection implements ITConnection {
             }
             if (extraServerVariables == null) {
                 extraServerVariables = new HashMap<String, Object>();
-            }
-
-            if (extraServerVariables.get(ConnectionProperties.ENABLE_STORAGE_TRIGGER) != null) {
-                extraCmd.put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME,
-                    extraServerVariables.get(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME));
-                extraCmd.put(ConnectionProperties.ENABLE_STORAGE_TRIGGER,
-                    extraServerVariables.get(ConnectionProperties.ENABLE_STORAGE_TRIGGER));
             }
 
             // 设置逻辑库默认时区
@@ -526,28 +563,6 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private static final String TRACE = "trace ";
-
-    private static int findTraceIndex(ByteString sql) {
-        int i = 0;
-        for (; i < sql.length(); ++i) {
-            switch (sql.charAt(i)) {
-            case ' ':
-            case '\t':
-            case '\r':
-            case '\n':
-                continue;
-            }
-            break;
-        }
-
-        if (sql.regionMatches(true, i, TRACE, 0, TRACE.length())) {
-            return i + TRACE.length();
-        } else {
-            return -1;
-        }
-    }
-
     /**
      * Separate execute(sql, ec) into two parts: plan and execute. If it's
      * writing into broadcast table and has no transaction, a new transaction
@@ -565,6 +580,8 @@ public class TConnection implements ITConnection {
         final Parameters originParams = executionContext.getParams().clone();
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
 
+        databaseReadOnlyCheck(plan);
+
         // [mysql behavior]
         // comment can be executed, sql example :  "-- I can execute"
         if (plan == null) {
@@ -580,6 +597,15 @@ public class TConnection implements ITConnection {
                     ((SqlCreateTable) ast).setOriginalSql(sql.toString());
                 } else if (ast instanceof SqlCreateIndex) {
                     ((SqlCreateIndex) ast).setOriginalSql(sql.toString());
+                    RelNode relNode = plan.getPlan();
+                    if (relNode != null && relNode instanceof LogicalCreateIndex) {
+                        if (((LogicalCreateIndex) relNode).relDdl != null) {
+                            SqlNode createIndex = ((LogicalCreateIndex) relNode).relDdl.sqlNode;
+                            if (createIndex != null) {
+                                ((SqlCreateIndex) createIndex).setOriginalSql(sql.toString());
+                            }
+                        }
+                    }
                 } else if (ast instanceof SqlAlterTable) {
                     ((SqlAlterTable) ast).setOriginalSql(sql.toString());
                 }
@@ -614,6 +640,10 @@ public class TConnection implements ITConnection {
         // of table with global secondary index
         if (trxPolicyModified != null) {
             trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
+            if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext) && executionContext.isTsoTransaction()) {
+                // If this plan can be optimized, rebuild plan.
+                plan = rebuildPlan(sql, executionContext, originParams, false);
+            }
         }
 
         final boolean enableMdl = executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_MDL);
@@ -624,10 +654,11 @@ public class TConnection implements ITConnection {
         // For test purpose
         final boolean testRebuild = executionContext.getParamManager().getBoolean(ConnectionParams.ALWAYS_REBUILD_PLAN);
 
+        long mdlWaitTime = 0;
         if (requireMdl && enableMdl) {
             if (!isClosed()) {
                 // Acquire meta data lock for each statement modifies table data
-                acquireTransactionalMdl(sql, plan, executionContext);
+                mdlWaitTime = acquireTransactionalMdl(sql, plan, executionContext);
             }
 
             if (isClosed()) {
@@ -637,21 +668,29 @@ public class TConnection implements ITConnection {
 
             // If any meta is modified during optimization, rebuild plan
             if (metaVersionChanged(plan, metaVersions, executionContext) || testRebuild) {
-                if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
-                    .isEmpty(originParams.getFirstParameter())) {
-                    // rebuild plan during executing preparedStmt should reset origin params
-                    // Resume empty parameters for insert
-                    executionContext.setParams(originParams);
-                }
-                plan = rebuildPlan(sql, executionContext);
+                plan = rebuildPlan(sql, executionContext, originParams, true);
 
                 // Update transaction policy for modify of broadcast table and
                 // of table with global secondary index
                 if (trxPolicyModified != null) {
                     trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
+                    if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext)
+                        && executionContext.isTsoTransaction()) {
+                        // If this plan can be optimized, rebuild plan.
+                        plan = rebuildPlan(sql, executionContext, originParams, false);
+                    }
                 }
             }
         }
+
+        // Trx object SHOULD NOT be changed from here.
+        trx.setMdlWaitTime(mdlWaitTime);
+        if (0 == trx.getStartTimeInMs()) {
+            trx.setStartTimeInMs(executionContext.getLogicalSqlStartTimeInMs());
+            trx.setStartTime(executionContext.getLogicalSqlStartTime());
+        }
+
+        trx.setSqlStartTime(executionContext.getLogicalSqlStartTime());
 
         if (trx instanceof IDistributedTransaction) {
             checkTransactionParams((IDistributedTransaction) trx, executionContext);
@@ -730,15 +769,6 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private static void checkTransactionParams(IDistributedTransaction trx, ExecutionContext executionContext) {
-        // Check injected failure from hint (for test purpose)
-        String injectedFailure =
-            (String) executionContext.getExtraCmds().get(ConnectionProperties.FAILURE_INJECTION);
-        if (injectedFailure != null) {
-            trx.setFailureFlag(FailureInjectionFlag.parseString(injectedFailure));
-        }
-    }
-
     private boolean metaVersionChanged(ExecutionPlan plan, long[] metaVersions,
                                        ExecutionContext executionContext) {
         if (executionContext.getSchemaManagers().values().stream().anyMatch(s -> s.isExpired())) {
@@ -748,14 +778,26 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext) {
-        SQLRecorderLogger.ddlLogger.warn(
-            MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
-                executionContext.getTraceId(),
-                sql,
-                GsiUtils.rowToString(executionContext.getParams())));
+    private ExecutionPlan rebuildPlan(ByteString sql, ExecutionContext executionContext,
+                                      Parameters originParams,
+                                      boolean causedByMetaChanged) {
+        if (executionContext.isExecutingPreparedStmt() || originParams.getBatchSize() <= 0 && GeneralUtil
+            .isEmpty(originParams.getFirstParameter())) {
+            // rebuild plan during executing preparedStmt should reset origin params
+            // Resume empty parameters for insert
+            executionContext.setParams(originParams.clone());
+        }
 
-        executionContext.refreshTableMeta();
+        if (causedByMetaChanged) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] Rebuild plan by meta data modified, SQL: {1} , Param: {2}",
+                    executionContext.getTraceId(),
+                    sql,
+                    GsiUtils.rowToString(executionContext.getParams())));
+
+            executionContext.refreshTableMeta();
+        }
+
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
         this.lastExecutionBeginNano = System.nanoTime();
         this.lastExecutionBeginUnixTime = unixTimeStamp();
@@ -887,6 +929,7 @@ public class TConnection implements ITConnection {
         boolean modifyShardingColumn = properties.get(ExecutionPlanProperties.MODIFY_SHARDING_COLUMN);
         boolean modifyScaleOutGroup = properties.get(ExecutionPlanProperties.MODIFY_SCALE_OUT_GROUP);
         boolean modifyCrossDb = properties.get(ExecutionPlanProperties.MODIFY_CROSS_DB);
+        boolean modifyForeignKey = properties.get(ExecutionPlanProperties.MODIFY_FOREIGN_KEY);
         boolean dmlWithTransaction = ec.getParamManager().getBoolean(ConnectionParams.COMPLEX_DML_WITH_TRX);
         boolean modifyReplicateTable = plan.getPlanProperties().get(ExecutionPlanProperties.REPLICATE_TABLE);
         if (currentModifyBroadcast && !modifyGsiTable) {
@@ -896,6 +939,9 @@ public class TConnection implements ITConnection {
         boolean modifyTable = properties.get(ExecutionPlanProperties.MODIFY_TABLE);
         boolean selectWithLock = properties.get(ExecutionPlanProperties.SELECT_WITH_LOCK);
         boolean isSelect = plan.getAst().getKind() == SqlKind.SELECT;
+
+        ExecutionStrategy executionStrategy = ExecutionStrategy.fromHint(ec);
+        boolean useLogicalExecution = executionStrategy == ExecutionStrategy.LOGICAL;
 
         final boolean currentReadOnly = ec.isReadOnly();
 
@@ -911,10 +957,11 @@ public class TConnection implements ITConnection {
         ec.setModifyShardingColumn(modifyShardingColumn);
         ec.setModifyScaleOutGroup(modifyScaleOutGroup);
         ec.setModifyCrossDb(modifyCrossDb);
+        ec.setModifyForeignKey(modifyForeignKey);
         executionContext.setModifyReplicateTable(modifyReplicateTable);
 
         final boolean enableMultiWrite = modifyBroadcastTable || modifyGsiTable || modifyScaleOutGroup
-            || modifyShardingColumn || modifyReplicateTable;
+            || modifyShardingColumn || modifyReplicateTable || useLogicalExecution || modifyForeignKey;
 
         if (!enableMultiWrite && !(modifyCrossDb && dmlWithTransaction) && !readOnlyUpdated) {
             return false;
@@ -955,17 +1002,20 @@ public class TConnection implements ITConnection {
 
     /**
      * acquire mdl for each table modified
+     *
+     * @return mdl wait nano time
      */
-    private void acquireTransactionalMdl(final ByteString sql, final ExecutionPlan plan, final ExecutionContext ec) {
+    private long acquireTransactionalMdl(final ByteString sql, final ExecutionPlan plan, final ExecutionContext ec) {
+        final long startTime = System.nanoTime();
         final MdlContext mdlContext = getMdlContext();
         if (null == mdlContext) {
             // For sql statement mdl can never be null
             // But for internal use like DbLock.init(), mdlContext always null
-            return;
+            return 0;
         }
 
         if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_MDL)) {
-            return;
+            return 0;
         }
 
         // disable mdl for no_transaction
@@ -974,7 +1024,7 @@ public class TConnection implements ITConnection {
         // 这样最终TConnection.commit内进行MDL的释放的时候，只能释放最后一个AutoCommitTransaction对应的MDL，从而导致MDL泄露
         // 因此直接关掉NO_TRANSACTION的MDL，目前该事务策略主要被datax使用
         if (this.trxPolicy == ITransactionPolicy.NO_TRANSACTION) {
-            return;
+            return 0;
         }
 
         final Long trxId = ec.getTransaction().getId();
@@ -990,7 +1040,7 @@ public class TConnection implements ITConnection {
                 if (InformationSchema.NAME.equalsIgnoreCase(schemaName) ||
                     PerformanceSchema.NAME.equalsIgnoreCase(schemaName) ||
                     MysqlSchema.NAME.equalsIgnoreCase(schemaName)) {
-                    return; // These schemas never change.
+                    return 0; // These schemas never change.
                 }
 
                 TableMeta meta = ec.getSchemaManager(schemaName).getTableWithNull(table.getValue());
@@ -1007,14 +1057,50 @@ public class TConnection implements ITConnection {
                             schemaName, meta.getSchemaDigest(trxId),
                             executionContext.getTraceId(), sql, frontendConnectionInfo));
                     }
+                    if (executionContext.getLoadDataContext() != null) {
+                        // only for ossLoadData, get writeLock first , then downgrade to readLock
+                        mdlContext.acquireLock(MdlRequest.getTransactionalOssLoadDataMdlRequest(trxId,
+                            schemaName, meta.getDigest(),
+                            executionContext.getTraceId(), sql, frontendConnectionInfo));
+                    }
                     mdlContext.acquireLock(MdlRequest.getTransactionalDmlMdlRequest(trxId,
                         schemaName, meta.getDigest(),
                         executionContext.getTraceId(), sql, frontendConnectionInfo));
+
                 }
             }
-            ;
+            return System.nanoTime() - startTime;
+        }
+        return 0;
+    }
+
+    //when database status is readOnly, we forbid all dml sql
+    private void databaseReadOnlyCheck(final ExecutionPlan plan) {
+        boolean isDML = isDML(executionContext.getSqlType());
+        boolean isDDL = isDDL(executionContext.getSqlType());
+        if (!isDML && !isDDL) {
+            return;
         }
 
+        if (ConfigDataMode.isSlaveMode()) {
+            if (isDML || isDDL) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX);
+            }
+        }
+        Set<Pair<String, String>> tables = plan.getTableSet();
+        if (tables != null) {
+            for (Pair<String, String> table : tables) {
+                String schemaName = table.getKey();
+                if (schemaName == null) {
+                    schemaName = executionContext.getSchemaName();
+                }
+                if (DbInfoManager.getInstance().ifDatabaseIsReadOnly(schemaName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                        String.format("dml error because database [%s] is read only now", schemaName));
+                }
+
+            }
+        }
     }
 
     private void refreshTableMeta() {
@@ -1084,9 +1170,11 @@ public class TConnection implements ITConnection {
         boolean testMode = false;
         Long phySqlId = 0L;
         boolean rescheduled = false;
-        DdlContext ddlContext = null;
         boolean isExecutingPreparedStmt = false;
         PreparedStmtCache preparedStmtCache = null;
+        DdlContext ddlContext = null;
+        boolean usingHint = false;
+        String partitionHint = null;
 
         if (this.executionContext != null) {
             privilegeContext = this.executionContext.getPrivilegeContext();
@@ -1097,9 +1185,11 @@ public class TConnection implements ITConnection {
             testMode = this.executionContext.isTestMode();
             phySqlId = this.executionContext.getPhySqlId();
             rescheduled = this.executionContext.isRescheduled();
-            ddlContext = this.executionContext.getDdlContext();
             isExecutingPreparedStmt = this.executionContext.isExecutingPreparedStmt();
             preparedStmtCache = this.executionContext.getPreparedStmtCache();
+            ddlContext = this.executionContext.getDdlContext();
+            usingHint = this.executionContext.isUseHint();
+            partitionHint = this.executionContext.getPartitionHint();
         }
         if (privilegeContext == null) {
             privilegeContext = new PrivilegeContext();
@@ -1146,6 +1236,8 @@ public class TConnection implements ITConnection {
         this.executionContext.setReturning(null);
         this.executionContext.setOptimizedWithReturning(false);
         this.executionContext.setClientFoundRows(isClientFoundRows());
+        this.executionContext.setUseHint(usingHint);
+        this.executionContext.setPartitionHint(partitionHint);
 
         this.executionContext.setIsExecutingPreparedStmt(isExecutingPreparedStmt);
         this.executionContext.setPreparedStmtCache(preparedStmtCache);
@@ -1162,7 +1254,14 @@ public class TConnection implements ITConnection {
             }
             executionContext.setEncoding(parentDdlContext.getEncoding());
         }
+
+        this.executionContext.setNeedAutoSavepoint(false);
         return this.executionContext;
+    }
+
+    public boolean getAutoCommit() throws SQLException {
+        checkClosed();
+        return isAutoCommit;
     }
 
     /*
@@ -1207,26 +1306,13 @@ public class TConnection implements ITConnection {
         }
     }
 
-    public boolean getAutoCommit() throws SQLException {
-        checkClosed();
-        return isAutoCommit;
-    }
-
     public void commit() throws SQLException {
         checkClosed();
 
         if (this.trx != null) {
             try {
                 // 事务结束,清理事务内容
-                if (executionContext.isCursorFetchMode() && trx instanceof AutoCommitTransaction) {
-                    // For cursor-fetch mode, row data will be fetched in later statements.
-                    // We achieve this by caching the result set.
-                    // So do not commit the trx or release the physical connections,
-                    // or otherwise the result set will be closed automatically.
-
-                } else {
-                    this.trx.commit();
-                }
+                this.trx.commit();
             } catch (Throwable e) {
                 // 增加打印事务异常日志
                 logger.error(e);
@@ -1241,13 +1327,9 @@ public class TConnection implements ITConnection {
                     }
                 }
 
-                if (executionContext.isCursorFetchMode() && trx instanceof AutoCommitTransaction) {
-                    // For cursor-fetch mode, do not close the trx.
-                } else {
-                    this.trx.close();
-                }
-
+                this.trx.close();
                 this.trx = null;
+                // TODO: what if we are in async commit, and we release share lock before all branches are committed.
                 refreshTableMeta();
                 releaseTransactionalMdl(executionContext);
             }
@@ -1333,6 +1415,7 @@ public class TConnection implements ITConnection {
                     refreshTableMeta();
                 }
             } finally {
+                this.trx = null;
                 closed = true;
                 if (executionContext != null) {
                     executionContext.clearAllMemoryPool();
@@ -1476,11 +1559,11 @@ public class TConnection implements ITConnection {
             return;
         }
 
-        Object lastFailedMessage = this.executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
+        Object lastFailedMessage = this.executionContext.getExtraDatas().get(ExecutionContext.FAILED_MESSAGE);
         this.executionContext = new ExecutionContext();
 
         if (lastFailedMessage != null) {
-            this.executionContext.getExtraDatas().put(ExecutionContext.LastFailedMessage, lastFailedMessage);
+            this.executionContext.getExtraDatas().put(ExecutionContext.LAST_FAILED_MESSAGE, lastFailedMessage);
         }
         ecNeedClear.clearContextAfterTrans();
     }
@@ -1690,12 +1773,8 @@ public class TConnection implements ITConnection {
         return trxPolicy;
     }
 
-    public ITransactionPolicy getTrxPolicyForLogging() {
-        return trxPolicy;
-    }
-
     @Override
-    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
+    public void setTrxPolicy(ITransactionPolicy trxPolicy, boolean check) {
         if (this.trxPolicy == trxPolicy) {
             return;
         }
@@ -1706,13 +1785,19 @@ public class TConnection implements ITConnection {
                     + "is not allowed. Please do this operation right after transaction begins.");
         }
 
-        if (dataSource.getConfigHolder().getExecutorContext().getStorageInfoManager().isReadOnly()
-            && trxPolicy != ITransactionPolicy.TSO) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
-                "Distributed transaction is not supported in read-only DRDS instances");
+        if (check) {
+            if (dataSource.getConfigHolder().getExecutorContext().getStorageInfoManager().isReadOnly()
+                && trxPolicy != ITransactionPolicy.TSO) {
+                throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
+                    "Distributed transaction is not supported in read-only DRDS instances");
+            }
         }
 
         this.trxPolicy = trxPolicy;
+    }
+
+    public ITransactionPolicy getTrxPolicyForLogging() {
+        return trxPolicy;
     }
 
     /**
@@ -1812,6 +1897,11 @@ public class TConnection implements ITConnection {
         this.connectionVariables = connectionVariables;
     }
 
+    @Override
+    public Map<String, Object> getConnectionVariables() {
+        return connectionVariables;
+    }
+
     public void setUserDefVariables(Map<String, Object> userDefVariables) {
         this.userDefVariables = userDefVariables;
     }
@@ -1821,14 +1911,24 @@ public class TConnection implements ITConnection {
     }
 
     public int getWarningCount() {
-        return executionContext.getExtraDatas().containsKey(ExecutionContext.FailedMessage)
-            && executionContext.getExtraDatas().get(ExecutionContext.FailedMessage) != null ?
-            ((List) executionContext.getExtraDatas()
-                .get(ExecutionContext.FailedMessage)).size() : 0;
+        int warningCount = 0;
+        if (executionContext.getExtraDatas().get(ExecutionContext.FAILED_MESSAGE) != null) {
+            warningCount += ((List) executionContext.getExtraDatas()
+                .get(ExecutionContext.FAILED_MESSAGE)).size();
+        }
+        if (executionContext.getExtraDatas().get(ExecutionContext.LAST_FAILED_MESSAGE) != null) {
+            warningCount += ((List) executionContext.getExtraDatas()
+                .get(ExecutionContext.LAST_FAILED_MESSAGE)).size();
+        }
+        if (executionContext.getExtraDatas().get(ExecutionContext.WARNING_MESSAGE) != null) {
+            warningCount += ((List) executionContext.getExtraDatas()
+                .get(ExecutionContext.WARNING_MESSAGE)).size();
+        }
+        return warningCount;
     }
 
     public String getWarningSimpleMessage() {
-        Object warns = executionContext.getExtraDatas().get(ExecutionContext.FailedMessage);
+        Object warns = executionContext.getExtraDatas().get(ExecutionContext.FAILED_MESSAGE);
         if (warns == null) {
             return "";
         }
@@ -1993,24 +2093,6 @@ public class TConnection implements ITConnection {
         return stmt;
     }
 
-    public void setShareReadView(ShareReadViewPolicy shareReadView) {
-        if (this.shareReadView == shareReadView) {
-            return;
-        }
-        if (this.trx != null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_TRANS,
-                "Set share read view in the middle of transaction "
-                    + "is not allowed. Please do this operation right after transaction begins.");
-        }
-        if (shareReadView == ShareReadViewPolicy.ON) {
-            if (!dnSupportShareReadView()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_TRANS, "Data node does not support share read view.");
-            }
-            ShareReadViewPolicy.checkTxIsolation(transactionIsolation);
-        }
-        this.shareReadView = shareReadView;
-    }
-
     public void setGroupParallelism(Long groupParallelism) {
         if (this.groupParallelism != null && this.groupParallelism.equals(groupParallelism)) {
             return;
@@ -2021,6 +2103,32 @@ public class TConnection implements ITConnection {
                     + "is not allowed. Please do this operation right after transaction begins.");
         }
         this.groupParallelism = groupParallelism;
+
+        /**
+         * Should clear plan cache of server here
+         */
+        try {
+            if (dataSource != null) {
+                /**
+                 * <pre>
+                 *     when groupParallelism is disable, some plan of dml will be change,
+                 *     such as
+                 *     (broacast_tbl: nation,
+                 *     partition_tbl: customer)
+                 *     sql: update nation, customer set n_name = 2, c_name = 2 where n_nationkey = c_nationkey;
+                 *     when groupParallelism=1 (disable), the update sql CAN be pushdown directly;
+                 *     when groupParallelism>1 (enable), the update sql CANNOT be pushdown because
+                 *            dml need fetch shard lock on broadcast table of nation join partition table of customer
+                 *            by using different group connections.
+                 *     so this is the reason of d clearing plan cache
+                 * </pre>
+                 */
+                PlanManager.getInstance().invalidateSchema(dataSource.getSchemaName());
+            }
+        } catch (Throwable ex) {
+            logger.warn("clear plancache error for set group parallelism", ex);
+        }
+
     }
 
     public boolean dnSupportShareReadView() {
@@ -2034,5 +2142,10 @@ public class TConnection implements ITConnection {
 
     public void setClientFoundRows(boolean clientFoundRows) {
         this.clientFoundRows = clientFoundRows;
+    }
+
+    @Override
+    public boolean isMppConnection() {
+        return false;
     }
 }

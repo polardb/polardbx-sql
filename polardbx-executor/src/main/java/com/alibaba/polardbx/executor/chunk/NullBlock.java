@@ -20,7 +20,6 @@ import org.openjdk.jol.info.ClassLayout;
 
 /**
  * A Block contains all Nulls
- *
  */
 public class NullBlock implements Block {
 
@@ -50,7 +49,7 @@ public class NullBlock implements Block {
     }
 
     @Override
-    public long getSizeInBytes() {
+    public long getElementUsedBytes() {
         return 4;
     }
 

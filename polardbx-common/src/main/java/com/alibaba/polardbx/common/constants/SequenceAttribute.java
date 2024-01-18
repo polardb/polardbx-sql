@@ -61,9 +61,10 @@ public class SequenceAttribute {
 
     public static final long GROUP_SEQ_UPDATE_INTERVAL = 60;
 
-    public static final String GROUP_SEQ_NODE = "NODE";
-    public static final String GROUP_SEQ_RANGE = "RANGE [ MIN, MAX ]";
     public static final String GROUP_SEQ_MIN_VALUE = "MIN VALUE";
+
+    public static final String SEQ_NODE = "NODE";
+    public static final String SEQ_RANGE = "RANGE [ MIN, MAX ]";
 
     public static final String NEW_SEQ_PREFIX = "pxc_seq_";
     public static final long NEW_SEQ_CACHE_SIZE = DEFAULT_INNER_STEP;

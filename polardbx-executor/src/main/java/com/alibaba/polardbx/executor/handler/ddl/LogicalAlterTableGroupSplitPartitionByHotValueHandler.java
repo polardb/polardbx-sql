@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupRenamePartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSplitPartitionByHotValueJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
@@ -44,7 +43,7 @@ public class LogicalAlterTableGroupSplitPartitionByHotValueHandler extends Logic
         alterTableGroupSplitPartitionByHotValue.preparedData(executionContext);
         AlterTableGroupSplitPartitionByHotValuePreparedData preparedData =
             alterTableGroupSplitPartitionByHotValue.getPreparedData();
-        CheckOSSArchiveUtil.checkWithoutOSS(preparedData);
+
         ExecutableDdlJob executableDdlJob = AlterTableGroupSplitPartitionByHotValueJobFactory
             .create(alterTableGroupSplitPartitionByHotValue.relDdl,
                 preparedData,
@@ -71,7 +70,7 @@ public class LogicalAlterTableGroupSplitPartitionByHotValueHandler extends Logic
                 .getSqlNode()),
             logicalDdlPlan.getSchemaName(),
             executionContext);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

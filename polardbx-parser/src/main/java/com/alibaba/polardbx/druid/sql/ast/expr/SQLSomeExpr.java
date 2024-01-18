@@ -30,11 +30,11 @@ public final class SQLSomeExpr extends SQLExprImpl {
 
     public SQLSelect subQuery;
 
-    public SQLSomeExpr(){
+    public SQLSomeExpr() {
 
     }
 
-    public SQLSomeExpr(SQLSelect select){
+    public SQLSomeExpr(SQLSelect select) {
         this.setSubQuery(select);
     }
 

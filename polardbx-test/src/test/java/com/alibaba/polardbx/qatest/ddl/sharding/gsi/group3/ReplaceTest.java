@@ -26,6 +26,7 @@ import org.junit.Test;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.util.Collections;
 import java.util.List;
 
@@ -39,6 +40,8 @@ import static org.hamcrest.Matchers.is;
 public class ReplaceTest extends DDLBaseNewDBTestCase {
     private static final String DISABLE_GET_DUP_USING_GSI = "DML_GET_DUP_USING_GSI=FALSE";
     private static final String FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE";
+    private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
+    private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
 
     private static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -1453,7 +1456,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             + "  `c7` text,\n"
             + "  `c8` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,\n"
             + "  PRIMARY KEY(`id`, `c1`, `c2`),\n"
-            + "  UNIQUE CLUSTERED GLOBAL INDEX " + gsiName
+            + "  UNIQUE CLUSTERED INDEX " + gsiName
             + "(`c1`, `c2`) COVERING(`c5`) DBPARTITION BY HASH(`c2`) TBPARTITION BY HASH(`c2`) TBPARTITIONS 3\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
         final String partitionDef = " dbpartition by hash(`c1`) tbpartition by hash(`c1`) tbpartitions 7";
@@ -2753,7 +2756,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             JdbcUtil.executeUpdateSuccess(conn, replace);
             List<List<String>> trace = getTrace(conn);
 
-            for (List<String> row: trace) {
+            for (List<String> row : trace) {
                 String phySql = row.get(row.size() - 4);
                 Assert.assertFalse(phySql.contains("REPLACE"));
             }
@@ -2794,7 +2797,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             List<List<String>> trace = getTrace(conn);
             boolean hasReplace = false;
 
-            for (List<String> row: trace) {
+            for (List<String> row : trace) {
                 String phySql = row.get(row.size() - 4);
                 hasReplace |= phySql.contains("REPLACE");
             }
@@ -3008,17 +3011,16 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
 
         String replace = "replace into " + tableName + " values (1,2,3),(2,2,3)";
-        JdbcUtil.executeUpdateSuccess(tddlConnection,"trace " +  buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + buildCmdExtra("DML_GET_DUP_USING_IN=TRUE") + replace);
         List<List<String>> trace = getTrace(tddlConnection);
-            String phySql = trace.get(0).get(trace.get(0).size() - 4);
-            Assert.assertFalse(phySql.contains("UNION"));
+        String phySql = trace.get(0).get(trace.get(0).size() - 4);
+        Assert.assertFalse(phySql.contains("UNION"));
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace " + replace);
         trace = getTrace(tddlConnection);
         phySql = trace.get(0).get(trace.get(0).size() - 4);
         Assert.assertTrue(phySql.contains("UNION"));
     }
-
 
     /**
      * 检查是否限制了物理 SQL 的 IN 数量
@@ -3049,45 +3051,57 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
 
         // no limit, no partition pruning on primary table
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=0, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         List<List<String>> trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
 
         // limit 1
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 12 * 2 + gsiTopology.size() * 3));
 
         // limit 3
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=3, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 4 * 2 + gsiTopology.size() * 3));
 
         // limit 5
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=5, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() * 5 + gsiTopology.size() * 3));
 
         // limit -1, same as no limit
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/" + insert);
+            "trace /*+TDDL:CMD_EXTRA(DML_GET_DUP_USING_IN=TRUE, DML_GET_DUP_IN_SIZE=-1, DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE)*/"
+                + insert);
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(primaryTopology.size() + gsiTopology.size() * 3));
     }
 
     @Test
     public void testLogicalReplaceUsingIn() throws SQLException {
-        String hint = "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
+        String hint =
+            "/*+TDDL:CMD_EXTRA(DML_EXECUTION_STRATEGY=LOGICAL,DML_USE_RETURNING=FALSE,DML_GET_DUP_USING_IN=TRUE)*/";
 
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", false, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", false, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", true, true, true, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", true, true, false, REPLACE_PARAMS);
-        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", true, true, false, REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", false, true, true,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", false, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", false, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl", " dbpartition by hash(id)", true, true, true,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_brd", " broadcast", true, true, false,
+            REPLACE_PARAMS);
+        testComplexDmlInternal(hint + "replace into", "replace_test_tbl_single", " single", true, true, false,
+            REPLACE_PARAMS);
     }
 
     @Test
@@ -3119,5 +3133,146 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
         final List<List<Object>> allResult = JdbcUtil.getAllResult(resultSet);
 
         Assert.assertThat(allResult.size(), Matchers.is(1));
+    }
+
+    @Test
+    public void testReplaceJson() {
+        final String tableName = "replace_json_tbl";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, hint + replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testReplaceJson1() {
+        final String tableName = "replace_json_tbl1";
+        final String indexName = tableName + "_gsi";
+        dropTableIfExists(tableName);
+
+        String create =
+            String.format(
+                "create table %s (a int primary key, b int, c json, global index %s(b) dbpartition by hash(b)) dbpartition by hash(a)",
+                tableName, indexName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String replace =
+            String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+        replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
+        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+
+        ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
+        System.out.println(allResult);
+        Assert.assertThat(allResult.size(), Matchers.is(1));
+        Assert.assertTrue(allResult.get(0).get(0).equals("1"));
+        Assert.assertTrue(allResult.get(0).get(1).equals("2"));
+        Assert.assertTrue(allResult.get(0).get(2).equals("{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}"));
+    }
+
+    @Test
+    public void testReplacePushdown() {
+        final String tableName1 = "replace_pushdown_tbl1";
+        final String tableName2 = "replace_pushdown_tbl2";
+        final String tableName3 = "replace_pushdown_tbl3";
+        dropTableIfExists(tableName1);
+        dropTableIfExists(tableName2);
+        dropTableIfExists(tableName3);
+
+        String create = String.format("create table %s(e int primary key) dbpartition by hash(e)", tableName1);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        create = String.format("CREATE TABLE %s (\n"
+            + "  a bigint(20) NOT NULL, \n"
+            + "  b bigint(20) NOT NULL, \n"
+            + "  c bigint(20) NOT NULL, \n"
+            + "  d int(11) NOT NULL, \n"
+            + "  PRIMARY KEY (`a`)\n"
+            + ") DBPARTITION BY hash(`d`)", tableName2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        create = String.format("CREATE TABLE %s (\n"
+            + "  b bigint(20) NOT NULL, \n"
+            + "  d int(11) NOT NULL, \n"
+            + "  PRIMARY KEY (`b`)\n"
+            + ") DBPARTITION BY hash(`d`);", tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, create);
+
+        String insert = String.format("insert into %s values (1,1,1,1)", tableName2);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        insert = String.format("insert into %s values (1,1)", tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
+
+        String replace = MessageFormat.format(
+            "REPLACE INTO {0}(e) SELECT 1 FROM {1} INNER JOIN {2} ON {1}.b = {2}.b AND {2}.d = 1 WHERE {1}.d = 1 AND {1}.c = 1;\n",
+            tableName1, tableName2, tableName3);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
+
+        String select = String.format("select * from %s", tableName1);
+        ResultSet rs = JdbcUtil.executeQuery(select, tddlConnection);
+        List<List<Object>> objects = JdbcUtil.getAllResult(rs);
+
+        Assert.assertEquals(1, objects.size());
+        Assert.assertEquals("1", objects.get(0).get(0).toString());
+    }
+
+    @Test
+    public void testReplaceWithUgsiAndJson() throws SQLException {
+        final String tableName = "test_tb_replace_with_json";
+        dropTableIfExists(tableName);
+
+        final String gsiName = tableName + "_gsi";
+        final String createTable = "CREATE TABLE IF NOT EXISTS `" + tableName + "` (\n"
+            + "  `pk` bigint(11) NOT NULL,\n"
+            + "  `c1` bigint(20) DEFAULT NULL,\n"
+            + "  `c2` bigint(20) DEFAULT NULL ,\n"
+            + "  `c3` bigint(20) DEFAULT NULL ,\n"
+            + "  `c4` json DEFAULT NULL ,\n"
+            + "  PRIMARY KEY (`pk`), \n"
+            + "  UNIQUE GLOBAL INDEX " + gsiName + "(`c1`) covering(`c2`) DBPARTITION BY HASH(`c1`), \n"
+            + "  UNIQUE INDEX l1 on g1(`c2`) "
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8";
+        final String partitionDef = " dbpartition by hash(`c3`)";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String sql = String.format("insert into %s values (1,1,1,1,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        sql = String.format("replace into %s values (1,2,3,4,'{\"a\":\"b\"}')", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        checkGsi(tddlConnection, gsiName);
+
+        final ResultSet resultSet = JdbcUtil.executeQuery("select * from " + tableName, tddlConnection);
+        final List<List<Object>> allResult = JdbcUtil.getAllResult(resultSet);
+
+        Assert.assertEquals("2", allResult.get(0).get(1).toString());
+        Assert.assertEquals("3", allResult.get(0).get(2).toString());
+        Assert.assertEquals("4", allResult.get(0).get(3).toString());
+        Assert.assertEquals("{\"a\": \"b\"}", allResult.get(0).get(4).toString());
     }
 }

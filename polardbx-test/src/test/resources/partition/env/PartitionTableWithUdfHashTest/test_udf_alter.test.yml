@@ -1,0 +1,93 @@
+## DISABLE_FAST_SQL_PARSER
+
+  ## error_msg: $# one partition column #$
+create table uh_tb(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1,c2)
+(
+  partition p1 values less than(1000),
+  partition pm values less than(maxvalue)
+);
+
+
+
+create table uh_p(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+(
+partition p1 values less than(1000),
+partition pm values less than(maxvalue)
+);
+show create table uh_p;
+
+create table uh_sp_tp(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+subpartition by udf_hash(c2)
+(
+subpartition sp1 values less than(1000),
+subpartition spm values less than(maxvalue)
+)
+(
+partition p1 values less than(1000),
+partition pm values less than(maxvalue)
+);
+show create table uh_sp_tp;
+
+create table uh_sp_ntp(
+c1 bigint not null,
+c2 bigint not null
+)
+partition by udf_hash(c1)
+subpartition by udf_hash(c2)
+(
+partition p1 values less than(1000) (
+subpartition p1sp1 values less than(1000),
+subpartition p1spm values less than(maxvalue)
+),
+partition pm values less than(maxvalue) (
+subpartition pmsp1 values less than(1000),
+subpartition pmspm values less than(maxvalue)
+)
+);
+show create table uh_sp_ntp;
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp merge partitions p1,pm to pm;
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp merge subpartitions p1sp1,p1spm to p1spm;
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp split partition p1 into (
+  partition p0 values less than(5000),
+  partition p1 values less than(1000)
+);
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp split subpartition p1sp1 into (
+  subpartition p1sp0 values less than(5000),
+  subpartition p1sp1 values less than(1000)
+);
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp drop partition p1;
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp drop subpartition p1sp1;
+
+  ## error_msg: $# Unsupported #$
+alter table uh_sp_ntp add partition (
+  partition p2 values less than(5000)
+);
+
+  ## error_msg: $# not support #$
+alter table uh_sp_ntp modify partition p1 add subpartition (
+  subpartition p1sp2 values less than(5000)
+);

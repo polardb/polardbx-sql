@@ -1,0 +1,13 @@
+CREATE TABLE t1 (
+	id bigint(20) NOT NULL AUTO_INCREMENT,
+	a int,
+	primary key(id)
+)
+PARTITION BY LIST (id) (
+	PARTITION p0 VALUES IN (1, 100000, 100001, 100002, 100003),
+	PARTITION p1 VALUES IN (100007, 100004, 100005, 100006)
+);
+
+insert into t1(id,a) values(null,1);
+
+select * from t1 where a=1;

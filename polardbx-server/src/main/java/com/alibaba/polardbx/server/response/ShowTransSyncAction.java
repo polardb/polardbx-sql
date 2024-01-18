@@ -70,10 +70,11 @@ public class ShowTransSyncAction implements ISyncAction {
                 final BaseTransaction tx = (BaseTransaction) transaction;
                 final String transId = Long.toHexString(tx.getId());
                 final String type = tx.getTransactionClass().toString();
-                final long duration = currentTimeMs - tx.getStartTime();
+                final long duration = currentTimeMs - tx.getStartTimeInMs();
                 final String state = transaction.getState().toString();
                 final long processId;
-                if (transaction.getExecutionContext().getConnection() == null) {
+                if (null == transaction.getExecutionContext()
+                    || transaction.getExecutionContext().getConnection() == null) {
                     processId = -1;
                 } else {
                     processId = transaction.getExecutionContext().getConnection().getId();

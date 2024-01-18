@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.List;
@@ -72,16 +73,16 @@ public class MySqlHintStatement extends MySqlStatementImpl {
         }
 
         if (c1 >= '0' && c1 <= '9'
-                && c2 >= '0' && c2 <= '9'
-                && c3 >= '0' && c3 <= '9'
-                && c4 >= '0' && c4 <= '9'
-                && c5 >= '0' && c5 <= '9'
-                && c6 == ' ') {
-            return    (c1 - '0') * 10000
-                    + (c2 - '0') * 1000
-                    + (c3 - '0') * 100
-                    + (c4 - '0') * 10
-                    + (c5 - '0');
+            && c2 >= '0' && c2 <= '9'
+            && c3 >= '0' && c3 <= '9'
+            && c4 >= '0' && c4 <= '9'
+            && c5 >= '0' && c5 <= '9'
+            && c6 == ' ') {
+            return (c1 - '0') * 10000
+                + (c2 - '0') * 1000
+                + (c3 - '0') * 100
+                + (c4 - '0') * 10
+                + (c5 - '0');
         }
 
         return -1;
@@ -118,11 +119,11 @@ public class MySqlHintStatement extends MySqlStatementImpl {
         if (c1 == ' ') {
             start = 2;
         } else if (c1 >= '0' && c1 <= '9'
-                && c2 >= '0' && c2 <= '9'
-                && c3 >= '0' && c3 <= '9'
-                && c4 >= '0' && c4 <= '9'
-                && c5 >= '0' && c5 <= '9'
-                && c6 == ' ') {
+            && c2 >= '0' && c2 <= '9'
+            && c3 >= '0' && c3 <= '9'
+            && c4 >= '0' && c4 <= '9'
+            && c5 >= '0' && c5 <= '9'
+            && c6 == ' ') {
             start = 7;
         } else {
             return null;
@@ -131,5 +132,10 @@ public class MySqlHintStatement extends MySqlStatementImpl {
         String hintSql = text.substring(start);
         hintStatements = SQLUtils.parseStatements(hintSql, dbType);
         return hintStatements;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

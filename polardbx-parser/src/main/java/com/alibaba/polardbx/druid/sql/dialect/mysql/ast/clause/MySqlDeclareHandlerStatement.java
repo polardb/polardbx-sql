@@ -16,62 +16,66 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
 import java.util.List;
+
 /**
- * 
  * @author zhujun [455910092@qq.com]
  */
-public class MySqlDeclareHandlerStatement extends MySqlStatementImpl{
-	
-	//DECLARE handler_type HANDLER FOR condition_value[,...] sp_statement
-	
-	//handler type
-	private MySqlHandlerType handleType; 
-	//sp statement
-	private SQLStatement spStatement;
-	
-	private List<ConditionValue> conditionValues;
-	
-	
-	public MySqlDeclareHandlerStatement() {
-		conditionValues = new ArrayList<ConditionValue>();
-	}
+public class MySqlDeclareHandlerStatement extends MySqlStatementImpl {
 
-	public List<ConditionValue> getConditionValues() {
-		return conditionValues;
-	}
+    //DECLARE handler_type HANDLER FOR condition_value[,...] sp_statement
 
-	public void setConditionValues(List<ConditionValue> conditionValues) {
-		this.conditionValues = conditionValues;
-	}
+    //handler type
+    private MySqlHandlerType handleType;
+    //sp statement
+    private SQLStatement spStatement;
 
-	public MySqlHandlerType getHandleType() {
-		return handleType;
-	}
+    private List<ConditionValue> conditionValues;
 
-	public void setHandleType(MySqlHandlerType handleType) {
-		this.handleType = handleType;
-	}
+    public MySqlDeclareHandlerStatement() {
+        conditionValues = new ArrayList<ConditionValue>();
+    }
 
-	public SQLStatement getSpStatement() {
-		return spStatement;
-	}
+    public List<ConditionValue> getConditionValues() {
+        return conditionValues;
+    }
 
-	public void setSpStatement(SQLStatement spStatement) {
-		this.spStatement = spStatement;
-	}
+    public void setConditionValues(List<ConditionValue> conditionValues) {
+        this.conditionValues = conditionValues;
+    }
 
-	@Override
-	public void accept0(MySqlASTVisitor visitor) {
-		if (visitor.visit(this)) {
-			acceptChild(visitor, spStatement);
-		}
-		visitor.endVisit(this);
-	}
+    public MySqlHandlerType getHandleType() {
+        return handleType;
+    }
 
+    public void setHandleType(MySqlHandlerType handleType) {
+        this.handleType = handleType;
+    }
+
+    public SQLStatement getSpStatement() {
+        return spStatement;
+    }
+
+    public void setSpStatement(SQLStatement spStatement) {
+        this.spStatement = spStatement;
+    }
+
+    @Override
+    public void accept0(MySqlASTVisitor visitor) {
+        if (visitor.visit(this)) {
+            acceptChild(visitor, spStatement);
+        }
+        visitor.endVisit(this);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }
 

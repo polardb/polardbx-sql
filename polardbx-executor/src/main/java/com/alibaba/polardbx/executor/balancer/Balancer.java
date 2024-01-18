@@ -25,10 +25,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.executor.balancer.action.ActionUtils;
 import com.alibaba.polardbx.executor.balancer.action.BalanceAction;
-import com.alibaba.polardbx.executor.balancer.policy.BalancePolicy;
-import com.alibaba.polardbx.executor.balancer.policy.PolicyDataBalance;
-import com.alibaba.polardbx.executor.balancer.policy.PolicyDrainNode;
-import com.alibaba.polardbx.executor.balancer.policy.PolicyMergePartition;
+import com.alibaba.polardbx.executor.balancer.policy.*;
 import com.alibaba.polardbx.executor.balancer.splitpartition.PolicySplitPartition;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
@@ -74,6 +71,8 @@ public class Balancer extends AbstractLifecycle {
             .put(SqlRebalance.POLICY_MERGE_PARTITION, new PolicyMergePartition())
             .put(SqlRebalance.POLICY_DRAIN_NODE, new PolicyDrainNode())
             .put(SqlRebalance.POLICY_DATA_BALANCE, new PolicyDataBalance())
+            .put(SqlRebalance.POLICY_PARTITION_BALANCE, new PolicyPartitionBalance())
+            .put(SqlRebalance.POLICY_AUTO_SPLIT_FOR_PARTITION_BALANCE, new PolicyAutoSplitForPartitionBalance())
             .build();
 
     // Options
@@ -182,6 +181,45 @@ public class Balancer extends AbstractLifecycle {
         return actions;
     }
 
+    public List<BalanceAction> rebalanceTenant(ExecutionContext ec, String storagePoolName, BalanceOptions options) {
+        DdlJobManager jobManager = new DdlJobManager();
+        String name = ActionUtils.genRebalanceClusterName();
+        boolean ok = jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name));
+        if (!ok) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+        }
+
+        List<BalancePolicy> policies = getBalancePolicy(options.policy);
+
+        /**
+         * Fast checker if the drain node can be deletable
+         */
+        if (options.drainNode != null) {
+            PolicyDrainNode.DrainNodeInfo drainNodeInfo = PolicyDrainNode.DrainNodeInfo.parse(options.drainNode);
+            drainNodeInfo.validate();
+        }
+
+        List<DbInfoRecord> dbInfoList = DbInfoManager.getInstance().getDbInfoList();
+        List<String> schemaList = dbInfoList.stream()
+            .filter(DbInfoRecord::isUserDb).map(x -> x.dbName).collect(Collectors.toList());
+
+        Map<String, BalanceStats> stats = schemaList.stream().map(schema ->
+            collectBalanceStatsOfDatabase(schema)
+        ).collect(Collectors.toMap(BalanceStats::getSchema, x -> x));
+
+        List<BalanceAction> actions = new ArrayList<>();
+
+        if (!jobManager.getResourceManager().checkResource(Sets.newHashSet(), Sets.newHashSet(name))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "already in rebalance");
+        }
+
+        for (BalancePolicy policy : policies) {
+            actions.addAll(policy.applyToMultiTenantDb(ec, stats, options, storagePoolName, schemaList));
+        }
+
+        return actions;
+    }
+
     /**
      * Rebalance Table: apply rebalance-policy on a specified table
      */
@@ -193,7 +231,7 @@ public class Balancer extends AbstractLifecycle {
         }
         BalanceStats stats = collectBalanceStatsOfTable(schema, tableName);
 
-        return rebalanceImpl(ec, options, stats, schema);
+        return rebalanceTableImpl(ec, options, stats, schema, tableName);
     }
 
     public List<BalanceAction> rebalanceTableGroup(ExecutionContext ec, String tableGroupName, BalanceOptions options) {
@@ -205,6 +243,12 @@ public class Balancer extends AbstractLifecycle {
         BalanceStats stats = collectBalanceStatsOfTableGroup(schema, tableGroupName);
 
         return rebalanceTableGroupImpl(ec, options, stats, schema, tableGroupName);
+    }
+
+    public List<BalanceAction> rebalanceTenantDb(ExecutionContext ec, String storagePoolName, BalanceOptions options) {
+        String schema = ec.getSchemaName();
+        BalanceStats stats = collectBalanceStatsOfDatabase(schema);
+        return rebalanceTanantDbImpl(ec, options, stats, storagePoolName, schema);
     }
 
     /**
@@ -244,6 +288,40 @@ public class Balancer extends AbstractLifecycle {
         return actions;
     }
 
+    private List<BalanceAction> rebalanceTanantDbImpl(ExecutionContext ec,
+                                                      BalanceOptions options,
+                                                      BalanceStats stats,
+                                                      String storagePoolName,
+                                                      String schema) {
+        List<BalancePolicy> policies = getBalancePolicy(options.policy);
+        if (policies.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "Policy not found");
+        }
+
+        List<BalanceAction> actions = new ArrayList<>();
+        for (BalancePolicy policy : policies) {
+            actions.addAll(policy.applyToTenantDb(ec, stats, options, storagePoolName, schema));
+        }
+        return actions;
+    }
+
+    private List<BalanceAction> rebalanceTableImpl(ExecutionContext ec,
+                                                   BalanceOptions options,
+                                                   BalanceStats stats,
+                                                   String schema,
+                                                   String tableName) {
+        List<BalancePolicy> policies = getBalancePolicy(options.policy);
+        if (policies.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REBALANCE, "Policy not found");
+        }
+
+        List<BalanceAction> actions = new ArrayList<>();
+        for (BalancePolicy policy : policies) {
+            actions.addAll(policy.applyToTable(ec, options, stats, schema, tableName));
+        }
+        return actions;
+    }
+
     private List<BalanceAction> rebalanceImpl(ExecutionContext ec,
                                               BalanceOptions options,
                                               BalanceStats stats,
@@ -279,7 +357,7 @@ public class Balancer extends AbstractLifecycle {
     }
 
     private BalancePolicy getDefaultPolicy() {
-        return new PolicyDataBalance();
+        return new PolicyPartitionBalance();
     }
 
     public static BalanceStats collectBalanceStatsOfTable(String schema, String tableName) {

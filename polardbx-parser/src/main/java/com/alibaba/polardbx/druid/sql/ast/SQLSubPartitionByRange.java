@@ -18,15 +18,7 @@ package com.alibaba.polardbx.druid.sql.ast;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
-import java.util.ArrayList;
-import java.util.List;
-
 public class SQLSubPartitionByRange extends SQLSubPartitionBy {
-    private List<SQLExpr> columns = new ArrayList<SQLExpr>();
-
-    public List<SQLExpr> getColumns() {
-        return columns;
-    }
 
     @Override
     protected void accept0(SQLASTVisitor v) {
@@ -52,7 +44,7 @@ public class SQLSubPartitionByRange extends SQLSubPartitionBy {
     public boolean isPartitionByColumn(long columnNameHashCode64) {
         for (SQLExpr column : columns) {
             if (column instanceof SQLIdentifierExpr
-                    && ((SQLIdentifierExpr) column).nameHashCode64() == columnNameHashCode64) {
+                && ((SQLIdentifierExpr) column).nameHashCode64() == columnNameHashCode64) {
                 return true;
             }
         }

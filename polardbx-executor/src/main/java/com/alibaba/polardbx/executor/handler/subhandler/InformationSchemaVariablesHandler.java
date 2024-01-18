@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.handler.subhandler;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -74,11 +75,12 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
         }
 
         ExecutionContext newExecutionContext = executionContext.copy();
-        newExecutionContext.setTestMode(false);
+        newExecutionContext.newStatement();
         ExecutionPlan executionPlan = Planner.getInstance().plan(sql, newExecutionContext);
         Cursor resultCursor = ExecutorHelper.execute(executionPlan.getPlan(), newExecutionContext);
-
-        if (isGlobal && resultCursor instanceof ArrayResultCursor) {
+        boolean showAllParams = executionContext.getParamManager().getBoolean(
+            ConnectionParams.SHOW_ALL_PARAMS);
+        if (showAllParams && resultCursor instanceof ArrayResultCursor) {
             // Add timer task parameters into result.
             // 1. Get all task variables from leader.
             final ISyncAction fetchTimerTaskInfoSyncAction;
@@ -91,9 +93,20 @@ public class InformationSchemaVariablesHandler extends BaseVirtualViewSubClassHa
             }
             final List<List<Map<String, Object>>> allTaskValues = SyncManagerHelper.sync(fetchTimerTaskInfoSyncAction);
 
+            if (allTaskValues == null) {
+                return resultCursor;
+            }
+
             // 2. Add them into result.
             for (List<Map<String, Object>> maps : allTaskValues) {
+                if (maps == null) {
+                    continue;
+                }
+
                 for (Map<String, Object> allValues : maps) {
+                    if (allValues == null) {
+                        continue;
+                    }
                     ((ArrayResultCursor) resultCursor).addRow(
                         new Object[] {allValues.get("VARIABLE_NAME").toString(), allValues.get("VALUE").toString()});
                 }

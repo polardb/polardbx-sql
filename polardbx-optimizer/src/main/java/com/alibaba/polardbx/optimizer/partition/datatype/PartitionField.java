@@ -91,7 +91,7 @@ public interface PartitionField extends Comparable<PartitionField> {
      * @param value the object value to store.
      * @param resultType the type of expression or parameterized value.
      * @param endpoints endpoints[0] = comparison kind, TRUE = > or >=, FALSE = < or <=.
-     * endpoints[1] = monotonicity of left & right endpoints, TRUE = open, FALSE = close.
+     * endpoints[1] = monotonicity of left & right endpoints, TRUE = false, FALSE = open.
      * @return type conversion status.
      */
     TypeConversionStatus store(Object value, DataType<?> resultType, boolean[] endpoints);

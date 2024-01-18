@@ -56,7 +56,6 @@ public class DrdsShowMoveDatabaseStatement extends MySqlStatementImpl implements
         this.where = where;
     }
 
-
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, where);

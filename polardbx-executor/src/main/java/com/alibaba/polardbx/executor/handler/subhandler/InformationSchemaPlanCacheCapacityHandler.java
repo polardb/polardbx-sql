@@ -48,7 +48,8 @@ public class InformationSchemaPlanCacheCapacityHandler extends BaseVirtualViewSu
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction());
+        List<List<Map<String, Object>>> results =
+            SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction(), SystemDbHelper.INFO_SCHEMA_DB_NAME);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

@@ -17,7 +17,9 @@
 package com.alibaba.polardbx.repo.mysql.checktable;
 
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.mysql.jdbc.Field;
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.mysql.jdbc.MysqlErrorNumbers;
 import com.alibaba.polardbx.atom.TAtomDataSource;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -26,6 +28,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.group.config.Weight;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
+import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -38,6 +41,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.gms.util.GroupInfoUtil.buildPhysicalDbNameFromGroupName;
 
 /**
  * @author arnkore 2017-06-19 17:47
@@ -70,31 +76,120 @@ public class CheckTableUtil {
         return targetAtom;
     }
 
+    public static Map<String, List<String>> getTableIndexColumns(String schemaName, String groupName,
+                                                                 List<String> tableNames, String indexName,
+                                                                 String phyDbName) {
+        TGroupDataSource tGroupDataSource =
+            (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                .getGroupExecutor(groupName).getDataSource();
+        List<Pair<String, String>> tableColumns = new ArrayList<>();
+        List<String> tableNameStrs =
+            tableNames.stream().map(o -> String.format("'%s'", o)).collect(Collectors.toList());
+        String tableNameStr = StringUtils.join(tableNameStrs, ",");
+
+        ResultSet rs = null;
+        Throwable ex = null;
+        String sql = String.format(
+            "select table_name, index_name, column_name from information_schema.statistics where table_name in (%s) and table_schema = '%s' and index_name = '%s'",
+            tableNameStr, phyDbName, indexName);
+        try (Connection conn = tGroupDataSource.getConnection()) {
+            rs = conn.createStatement().executeQuery(sql);
+            while (rs.next()) {
+                String columnName = rs.getString("COLUMN_NAME");
+                String tableName = rs.getString("TABLE_NAME");
+                tableColumns.add(Pair.of(tableName, columnName));
+            }
+        } catch (Exception e) {
+            // 打好相关的日志
+            if (e instanceof SQLException) {
+                if (((SQLException) e).getErrorCode() == MysqlErrorNumbers.ER_NO_SUCH_TABLE) {
+                    // mysql 报没有这个表，则表示直接将这个表置为null
+                }
+                ex = e;
+            } else {
+                // 注意打好日志
+                logger.error(e);
+                ex = e;
+            }
+        } finally {
+            if (ex != null && !ConfigDataMode.isFastMock()) {
+                throw GeneralUtil.nestedException(ex);
+            }
+        }
+
+        Map<String, List<String>> columns = tableColumns.stream()
+            .collect(Collectors.groupingBy(Pair::getKey, Collectors.mapping(Pair::getValue, Collectors.toList())));
+        return columns;
+    }
+
+    public static Map<String, List<String>> getTableForeignKeyColumns(String schemaName, String groupName,
+                                                                      List<String> tableNames, String constraintName,
+                                                                      String phyDbName, List<String> refTable) {
+        TGroupDataSource tGroupDataSource =
+            (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                .getGroupExecutor(groupName).getDataSource();
+        List<Pair<String, String>> tableColumns = new ArrayList<>();
+        List<String> tableNameStrs =
+            tableNames.stream().map(o -> String.format("'%s'", o)).collect(Collectors.toList());
+        String tableNameStr = StringUtils.join(tableNameStrs, ",");
+
+        ResultSet rs;
+        Throwable ex = null;
+        String sql = String.format(
+            "select table_name, referenced_table_name, constraint_name, column_name from information_schema.KEY_COLUMN_USAGE where table_name in (%s) and table_schema = '%s' and constraint_name = '%s'",
+            tableNameStr, phyDbName, constraintName);
+        try (Connection conn = tGroupDataSource.getConnection()) {
+            rs = conn.createStatement().executeQuery(sql);
+            while (rs.next()) {
+                String columnName = rs.getString("COLUMN_NAME");
+                String tableName = rs.getString("TABLE_NAME");
+                String refTableName = rs.getString("REFERENCED_TABLE_NAME");
+                tableColumns.add(Pair.of(tableName, columnName));
+                refTable.add(refTableName);
+            }
+        } catch (Exception e) {
+            // 打好相关的日志
+            if (e instanceof SQLException) {
+                if (((SQLException) e).getErrorCode() == MysqlErrorNumbers.ER_NO_SUCH_TABLE) {
+                    // mysql 报没有这个表，则表示直接将这个表置为null
+                }
+                ex = e;
+            } else {
+                // 注意打好日志
+                logger.error(e);
+                ex = e;
+            }
+        } finally {
+            if (ex != null && !ConfigDataMode.isFastMock()) {
+                throw GeneralUtil.nestedException(ex);
+            }
+        }
+
+        Map<String, List<String>> columns = tableColumns.stream()
+            .collect(Collectors.groupingBy(Pair::getKey, Collectors.mapping(Pair::getValue, Collectors.toList())));
+        return columns;
+    }
+
     public static TableDescription getTableDescription(MyRepository myRepository, String groupName, String tableName,
                                                        boolean isShadow, String schemaName) {
         TableDescription tableDescription = new TableDescription();
-        TGroupDataSource groupDs = (TGroupDataSource) myRepository.getDataSource(groupName);
-        TAtomDataSource masterAtom = findMasterAtomForGroup(groupDs);
+        TGroupDataSource tGroupDataSource =
+            (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                .getGroupExecutor(groupName).getDataSource();
 
         tableDescription.setGroupName(groupName);
         tableDescription.setTableName(tableName);
 
-        Connection conn = null;
-        ResultSet rs = null;
         Throwable ex = null;
-        try {
-            StringBuilder targetSql = new StringBuilder("describe ");
-            targetSql.append("`" + tableName + "`");
-            String sql = targetSql.toString();
-            if (isShadow) {
-                sql = "select * from information_schema.columns where table_name='" + tableName + "' and TABLE_SCHEMA='"
-                    + schemaName + "'";
-            }
-
-            conn = (Connection) masterAtom.getConnection();
-
-            rs = conn.createStatement().executeQuery(sql);
-
+        StringBuilder targetSql = new StringBuilder("describe ");
+        targetSql.append("`" + tableName + "`");
+        String sql = targetSql.toString();
+        if (isShadow) {
+            sql = "select * from information_schema.columns where table_name='" + tableName + "' and TABLE_SCHEMA='"
+                + schemaName + "'";
+        }
+        try (Connection conn = tGroupDataSource.getConnection();
+            ResultSet rs = conn.createStatement().executeQuery(sql)) {
             Map<String, FieldDescription> fieldDescMaps = new HashMap<String, FieldDescription>();
             Map<String, FieldDescription> physicalOrderFieldMaps = new LinkedHashMap<String, FieldDescription>();
             while (rs.next()) {
@@ -135,20 +230,6 @@ public class CheckTableUtil {
                 ex = e;
             }
         } finally {
-            try {
-                if (rs != null) {
-                    rs.close();
-                }
-
-                if (conn != null) {
-                    conn.close();
-                }
-
-            } catch (SQLException e) {
-                // 打好相关的日志
-                logger.error(e);
-            }
-
             if (ex != null && !ConfigDataMode.isFastMock()) {
                 throw GeneralUtil.nestedException(ex);
             }
@@ -158,56 +239,54 @@ public class CheckTableUtil {
     }
 
     public static List<LocalPartitionDescription> getLocalPartitionDescription(MyRepository myRepository,
-                                                                               String groupName,
-                                                                               String tableName) {
+                                                                               String schemaName,
+                                                                               String groupName, String tableName) {
         final List<LocalPartitionDescription> localPartitionMap = new ArrayList<>();
 
-        TGroupDataSource groupDs = (TGroupDataSource) myRepository.getDataSource(groupName);
-        TAtomDataSource masterAtom = findMasterAtomForGroup(groupDs);
-        final String physicalSchemaName = masterAtom.getDsConfHandle().getRunTimeConf().getDbName();
-
-        Connection conn = null;
-        ResultSet rs = null;
+        TGroupDataSource tGroupDataSource =
+            (TGroupDataSource) ExecutorContext.getContext(schemaName).getTopologyExecutor()
+                .getGroupExecutor(groupName).getDataSource();
+        String physicalDbName = buildPhysicalDbNameFromGroupName(groupName);
         Throwable ex = null;
-        try {
-            String sql = "select * from information_schema.partitions where table_name=? and TABLE_SCHEMA=?";
-            conn = masterAtom.getConnection();
+        String sql = "select * from information_schema.partitions where table_name=? and TABLE_SCHEMA=?";
+        try (Connection conn = tGroupDataSource.getConnection()) {
             PreparedStatement preparedStatement = conn.prepareStatement(sql);
             preparedStatement.setString(1, tableName);
-            preparedStatement.setString(2, physicalSchemaName);
+            preparedStatement.setString(2, physicalDbName);
 
-            rs = preparedStatement.executeQuery();
+            try (ResultSet rs = preparedStatement.executeQuery()) {
 
-            while (rs.next()) {
-                LocalPartitionDescription fd = new LocalPartitionDescription();
-                fd.setTableCatalog(rs.getString("TABLE_CATALOG"));
-                fd.setTableSchema(rs.getString("TABLE_SCHEMA"));
-                fd.setTableName(rs.getString("TABLE_NAME"));
-                fd.setPartitionName(rs.getString("PARTITION_NAME"));
-                fd.setSubpartitionName(rs.getString("SUBPARTITION_NAME"));
-                fd.setPartitionOrdinalPosition(rs.getLong("PARTITION_ORDINAL_POSITION"));
-                fd.setSubpartitionOrdinalPosition(rs.getLong("SUBPARTITION_ORDINAL_POSITION"));
-                fd.setPartitionMethod(rs.getString("PARTITION_METHOD"));
-                fd.setSubpartitionMethod(rs.getString("SUBPARTITION_METHOD"));
-                fd.setPartitionExpression(rs.getString("PARTITION_EXPRESSION"));
-                fd.setSubpartitionExpression(rs.getString("SUBPARTITION_EXPRESSION"));
-                fd.setPartitionDescription(rs.getString("PARTITION_DESCRIPTION"));
-                fd.setTableRows(rs.getLong("TABLE_ROWS"));
-                fd.setAvgRowLength(rs.getLong("AVG_ROW_LENGTH"));
-                fd.setDataLength(rs.getLong("DATA_LENGTH"));
-                fd.setMaxDataLength(rs.getLong("MAX_DATA_LENGTH"));
-                fd.setIndexLength(rs.getLong("INDEX_LENGTH"));
-                fd.setDataFree(rs.getLong("DATA_FREE"));
+                while (rs.next()) {
+                    LocalPartitionDescription fd = new LocalPartitionDescription();
+                    fd.setTableCatalog(rs.getString("TABLE_CATALOG"));
+                    fd.setTableSchema(rs.getString("TABLE_SCHEMA"));
+                    fd.setTableName(rs.getString("TABLE_NAME"));
+                    fd.setPartitionName(rs.getString("PARTITION_NAME"));
+                    fd.setSubpartitionName(rs.getString("SUBPARTITION_NAME"));
+                    fd.setPartitionOrdinalPosition(rs.getLong("PARTITION_ORDINAL_POSITION"));
+                    fd.setSubpartitionOrdinalPosition(rs.getLong("SUBPARTITION_ORDINAL_POSITION"));
+                    fd.setPartitionMethod(rs.getString("PARTITION_METHOD"));
+                    fd.setSubpartitionMethod(rs.getString("SUBPARTITION_METHOD"));
+                    fd.setPartitionExpression(rs.getString("PARTITION_EXPRESSION"));
+                    fd.setSubpartitionExpression(rs.getString("SUBPARTITION_EXPRESSION"));
+                    fd.setPartitionDescription(rs.getString("PARTITION_DESCRIPTION"));
+                    fd.setTableRows(rs.getLong("TABLE_ROWS"));
+                    fd.setAvgRowLength(rs.getLong("AVG_ROW_LENGTH"));
+                    fd.setDataLength(rs.getLong("DATA_LENGTH"));
+                    fd.setMaxDataLength(rs.getLong("MAX_DATA_LENGTH"));
+                    fd.setIndexLength(rs.getLong("INDEX_LENGTH"));
+                    fd.setDataFree(rs.getLong("DATA_FREE"));
 //                fd.setCreateTime(rs.getDate("CREATE_TIME"));
 //                fd.setUpdateTime(rs.getDate("UPDATE_TIME"));
 //                fd.setCheckTime(rs.getDate("CHECK_TIME"));
-                fd.setChecksum(rs.getLong("CHECKSUM"));
-                fd.setPartitionComment(rs.getString("PARTITION_COMMENT"));
-                fd.setNodegroup(rs.getString("NODEGROUP"));
-                fd.setTablespaceName(rs.getString("TABLESPACE_NAME"));
-                localPartitionMap.add(fd);
-            }
+                    fd.setChecksum(rs.getLong("CHECKSUM"));
+                    fd.setPartitionComment(rs.getString("PARTITION_COMMENT"));
+                    fd.setNodegroup(rs.getString("NODEGROUP"));
+                    fd.setTablespaceName(rs.getString("TABLESPACE_NAME"));
+                    localPartitionMap.add(fd);
+                }
 
+            }
         } catch (Exception e) {
             // 打好相关的日志
             if (e instanceof SQLException) {
@@ -221,17 +300,6 @@ public class CheckTableUtil {
                 ex = e;
             }
         } finally {
-            try {
-                if (rs != null) {
-                    rs.close();
-                }
-                if (conn != null) {
-                    conn.close();
-                }
-            } catch (SQLException e) {
-                // 打好相关的日志
-                logger.error(e);
-            }
             if (ex != null) {
                 throw GeneralUtil.nestedException(ex);
             }
@@ -264,7 +332,7 @@ public class CheckTableUtil {
         return tableCheckResult;
     }
 
-    public static TableCheckResult verifylogicalAndPhysicalMeta(TableDescription physicalTableDesc,
+    public static TableCheckResult verifyLogicalAndPhysicalMeta(TableDescription physicalTableDesc,
                                                                 List<FieldDescription> logicalMetaDescs) {
         TableCheckResult tableCheckResult = new TableCheckResult();
         tableCheckResult.setTableDesc(physicalTableDesc);
@@ -294,6 +362,7 @@ public class CheckTableUtil {
         return tableCheckResult;
     }
 
+    // Compare two TableDescription, return TableCheckResult.
     public static TableCheckResult verifyTableMeta(TableDescription referTableDesc, TableDescription targetTableDesc) {
         TableCheckResult tableCheckResult = new TableCheckResult();
         tableCheckResult.setTableDesc(targetTableDesc);

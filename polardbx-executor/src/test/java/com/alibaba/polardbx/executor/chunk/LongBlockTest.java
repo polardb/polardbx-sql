@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.optimizer.core.datatype.LongType;
+import org.junit.Assert;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -23,6 +25,11 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class LongBlockTest extends BaseBlockTest {
+    @Test
+    public void testSizeInBytes() {
+        LongBlock block = new LongBlock(new LongType(), 1024);
+        Assert.assertEquals(9216, block.getElementUsedBytes());
+    }
 
     @Test
     public void test() {

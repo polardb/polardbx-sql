@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.rel.RelNode;
@@ -75,15 +76,26 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
 
         int dbType = -1;
         String partitionMode = null;
+        DbInfoRecord dbInfoRec = null;
         try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
             metaDbConn.setAutoCommit(true);
             DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
             dbInfoAccessor.setConnection(metaDbConn);
             DbInfoRecord dbInfoRecord = dbInfoAccessor.getDbInfoByDbName(databaseName);
             dbType = dbInfoRecord.dbType;
+            dbInfoRec = dbInfoRecord;
             partitionMode = DbInfoManager.getPartitionModeByDbType(dbType);
         } catch (Throwable ex) {
             throw GeneralUtil.nestedException(ex);
+        }
+
+        String charset = dbInfoRec.charset;
+        String collation = dbInfoRec.collation;
+        if (charset != null && !charset.isEmpty()) {
+            builder.append(" CHARSET = `").append(charset.toLowerCase()).append("`");
+        }
+        if (collation != null && !collation.isEmpty()) {
+            builder.append(" COLLATE = `").append(collation.toLowerCase()).append("`");
         }
 
         StringBuilder optiionBuilder = new StringBuilder();
@@ -91,8 +103,14 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
             optiionBuilder.append("MODE = \'").append(partitionMode).append("\'");
         }
 
+        Boolean isDefaultSingle = dbInfoRec.isDefaultSingle();
+        boolean isAutoDb = dbInfoRec.dbType == DbInfoRecord.DB_TYPE_NEW_PART_DB;
+        if (isAutoDb && (isDefaultSingle != null && isDefaultSingle)) {
+            optiionBuilder.append(" DEFAULT_SINGLE = \'on\'");
+        }
+
         if (locality != null) {
-            LocalityDesc localityDesc = LocalityDesc.parse(locality.getLocality());
+            LocalityDesc localityDesc = LocalityInfoUtils.parse(locality.getLocality());
             if (!localityDesc.holdEmptyDnList()) {
                 optiionBuilder.append(" LOCALITY = \"").append(locality.getLocality()).append("\"");
             }
@@ -101,9 +119,9 @@ public class LogicalShowCreateDatabaseMyHandler extends HandlerCommon {
         String showCreateDbStr = "";
         String optionContentStr = optiionBuilder.toString();
         if (!StringUtils.isEmpty(optionContentStr)) {
-            showCreateDbStr = String.format("%s /* %s */", builder.toString(), optionContentStr);
+            showCreateDbStr = String.format("%s %s", builder.toString(), optionContentStr);
         }
-        // TODO: charset, collation
+
         result.addRow(new Object[] {databaseName, showCreateDbStr});
 
         return result;

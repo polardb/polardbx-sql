@@ -1,0 +1,154 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `t1` (
+`c1` int(11) NOT NULL,
+`c2` int(11) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 3;
+insert into t1 values (1,1), (1,null), (1,2), (2,2), (3,3), (4,4);
+analyze table t1;
+Table,Op,Msg_type,Msg_text
+hash_window_simp_176603490.t1,analyze,status,OK
+explain select c1, sum(c2) over (partition by c1) as sum1, count(distinct c2) over (partition by c1) as count1, avg(c2) over() as all1 from t1;
+Logical ExecutionPlan
+Project(c1="c1", $1="f3w0$o0", $2="f4w0$o1", $3="f5w1$o0")
+  HashWindow(c1="c1", c2="c2", f3w0$o0="f3w0$o0", f4w0$o1="f4w0$o1", f4w0$o0="window#0AVG($1)", Reference Windows="window#0=window(partition {} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING aggs [AVG($1)])")
+    HashWindow(c1="c1", c2="c2", f2w0$o0="window#0SUM($1)", f3w0$o1="window#0COUNT($1)", Reference Windows="window#0=window(partition {0} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING aggs [SUM($1), COUNT($1)])")
+      Gather(concurrent=true)
+        LogicalView(tables="t1[p1,p2,p3]", shardCount=3, sql="SELECT `c1`, `c2` FROM `t1` AS `t1`")
+select c1, sum(c2) over (partition by c1) as sum1, count(distinct c2) over (partition by c1) as count1, avg(c2) over() as all1 from t1 order by c1, sum1, count1;
+c1,sum1,count1,all1
+1,3,2,2.4000
+1,3,2,2.4000
+1,3,2,2.4000
+2,2,1,2.4000
+3,3,1,2.4000
+4,4,1,2.4000
+/*+TDDL: ENABLE_HASH_WINDOW=FALSE*/ select c1, sum(c2) over (partition by c1) as sum1 from t1 where c1 = 1 order by c1, sum1;
+c1,sum1
+1,3
+1,3
+1,3
+/*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ select c1, sum(c2) over (partition by c1) as sum1 from t1 where c1 = 1 order by c1, sum1;
+c1,sum1
+1,3
+1,3
+1,3
+CREATE TABLE `t2` (
+`c1` int(11) NOT NULL,
+`c2` int(11) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 3;
+insert into t2 values (1,1), (2,2), (2,4), (3,3), (4,4);
+analyze table t2;
+Table,Op,Msg_type,Msg_text
+hash_window_simp_176603490.t2,analyze,status,OK
+/*+TDDL: ENABLE_HASH_WINDOW=FALSE*/ select c1, c2 from t1 where (c1, c2) in (select c1, max(c2) over(partition by c1) from t2) ORDER BY c1,c2;
+c1,c2
+1,1
+3,3
+4,4
+/*+TDDL: ENABLE_SORT_WINDOW=FALSE*/ select c1, c2 from t1 where (c1, c2) in (select c1, max(c2) over(partition by c1) from t2) ORDER BY c1,c2;
+c1,c2
+1,1
+3,3
+4,4
+select t1.c1, t1.c2, t3.c1 from t1 join ( select c1, max(c2) over(partition by c1) as max_c2 from t2) t3 on t1.c1 = t3.max_c2 order by t1.c1, t1.c2, t3.c1;
+c1,c2,c1
+1,null,1
+1,1,1
+1,2,1
+3,3,3
+4,4,2
+4,4,2
+4,4,4
+explain /*+TDDL: WORKLOAD_TYPE=AP ENABLE_MPP=TRUE*/ select t1.c1, t1.c2, t3.c1 from t1 join ( select c1, max(c2) over(partition by c1) as max_c2 from t2) t3 on t1.c1 = t3.max_c2;
+Logical ExecutionPlan
+Project(c1="c10", c2="c20", c10="c1")
+  BKAJoin(condition="f3w0$o0 = c1", type="inner")
+    HashWindow(c1="c1", c2="c2", f2w0$o0="window#0MAX($1)", Reference Windows="window#0=window(partition {0} order by [] range between UNBOUNDED PRECEDING and UNBOUNDED FOLLOWING aggs [MAX($1)])")
+      Exchange(distribution=hash[0], collation=[])
+        LogicalView(tables="t2[p1,p2,p3]", shardCount=3, sql="SELECT `c1`, `c2` FROM `t2` AS `t2`")
+    LogicalView(tables="t1[p1,p2,p3]", shardCount=3, sql="SELECT `c1`, `c2` FROM `t1` AS `t1` WHERE (`c1` IN (...))")
+/*+TDDL: WORKLOAD_TYPE=AP ENABLE_MPP=TRUE*/ select t1.c1, t1.c2, t3.c1 from t1 join ( select c1, max(c2) over(partition by c1) as max_c2 from t2) t3 on t1.c1 = t3.max_c2 order by t1.c1, t1.c2, t3.c1;
+c1,c2,c1
+1,null,1
+1,1,1
+1,2,1
+3,3,3
+4,4,2
+4,4,2
+4,4,4
+create view v1 as select c1, sum(c2) over (partition by c1) as sum1 from t1;
+select * from v1 order by c1, sum1;
+c1,sum1
+1,3
+1,3
+1,3
+2,2
+3,3
+4,4
+/*+TDDL: WORKLOAD_TYPE=AP ENABLE_MPP=TRUE*/ select * from v1 join t2 on v1.sum1 + 1 = t2.c1 order by v1.c1, v1.sum1, t2.c1, t2.c2;
+c1,sum1,c1,c2
+1,3,4,4
+1,3,4,4
+1,3,4,4
+2,2,3,3
+3,3,4,4
+CREATE TABLE `t_gsi` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  `c3` int(11) DEFAULT NULL,
+  PRIMARY KEY(`c1`),
+  GLOBAL INDEX `g_t_gsi`(`c2`) COVERING (`c1`) PARTITION BY HASH(`c2`)
+  ) ENGINE = InnoDB partition by hash(`c1`);
+insert into t_gsi values (1,1,1), (2,1,2), (3,1,2), (4,4,4);
+select c1,c2,(sum(c1) over (partition by c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_gsi order by c1,c2;
+c1,c2,sum1,avg1
+1,1,6,1.0000
+2,1,6,2.0000
+3,1,6,3.0000
+4,4,4,4.0000
+select c1,c2,sum(c1) over w as sum1,avg(c1) over w as avg1 from t_gsi WINDOW w AS (partition by c2) order by c1,c2;
+c1,c2,sum1,avg1
+1,1,6,2.0000
+2,1,6,2.0000
+3,1,6,2.0000
+4,4,4,4.0000
+select c1,c2,c3,(sum(c1) over (partition by c2)) as sum1,(avg(c3) over (partition by c2)) as avg1 from t_gsi order by c1,c2;
+c1,c2,c3,sum1,avg1
+1,1,1,6,1.6667
+2,1,2,6,1.6667
+3,1,2,6,1.6667
+4,4,4,4,4.0000
+CREATE TABLE `t_simple` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  `c3` int(11) DEFAULT NULL
+  ) ENGINE = InnoDB SINGLE;
+insert into t_simple values (1,1,1), (1,1,2), (2,1,2), (3,1,2), (4,4,4);
+select c1,c2,(sum(c3) over (partition by c1,c2)) as sum1,(avg(c1) over (partition by c1)) as avg1 from t_simple order by c1,c2;
+c1,c2,sum1,avg1
+1,1,3,1.0000
+1,1,3,1.0000
+2,1,2,2.0000
+3,1,2,3.0000
+4,4,4,4.0000
+CREATE TABLE `t_broadcast` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  `c3` int(11) DEFAULT NULL
+  ) ENGINE = InnoDB BROADCAST;
+insert into t_broadcast values (1,1,1), (1,1,2), (2,1,2), (3,1,2), (3,3,3), (4,4,4), (4, null, 4);
+select c1,c2,(sum(c1) over (partition by c2)) as sum1, (avg(c3) over (partition by c1,c2)) as avg1, (count(distinct c2) over(partition by c1)) as count1 from t_broadcast order by c1,c2;
+c1,c2,sum1,avg1,count1
+1,1,7,1.5000,1
+1,1,7,1.5000,1
+2,1,7,2.0000,1
+3,1,7,2.0000,2
+3,3,3,3.0000,2
+4,null,4,4.0000,1
+4,4,4,4.0000,1

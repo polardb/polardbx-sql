@@ -3,7 +3,7 @@
       WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
 
   plan: |
-    phytableoperation(tables="optest_0001.[bmsql_customer, bmsql_warehouse]", sql="select `bmsql_customer`.`c_discount`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_credit`, `bmsql_warehouse`.`w_tax` from ? as `bmsql_customer` inner join ? as `bmsql_warehouse` on (`bmsql_warehouse`.`w_id` = `bmsql_customer`.`c_w_id`) where (((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1)) and (`bmsql_customer`.`c_id` = 1))")
+    phytableoperation(tables="optest_0001.[bmsql_customer, bmsql_warehouse]", sql="select `bmsql_customer`.`c_discount`, `bmsql_customer`.`c_last`, `bmsql_customer`.`c_credit`, `bmsql_warehouse`.`w_tax` from ? as `bmsql_customer` inner join ? as `bmsql_warehouse` on (`bmsql_warehouse`.`w_id` = `bmsql_customer`.`c_w_id`) where ((`bmsql_customer`.`c_w_id` = 1) and (`bmsql_customer`.`c_d_id` = 1) and (`bmsql_customer`.`c_id` = 1))")
 
 - sql: |
     SELECT d_tax, d_next_o_id     FROM bmsql_district     WHERE d_w_id = 1 AND d_id = 1     FOR UPDATE
@@ -63,15 +63,15 @@
 - sql: |
     SELECT c_id     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_last = 1     ORDER BY c_first
   plan: |
-    LogicalView(tables="optest_0001.bmsql_customer", sql="SELECT `c_id` FROM `bmsql_customer` AS `bmsql_customer` WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_last` = 1)) ORDER BY `c_first`")
+    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_id` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_last` = 1)) order by `c_first`")
 - sql: |
     SELECT c_first, c_middle, c_last, c_street_1, c_street_2,        c_city, c_state, c_zip, c_phone, c_since, c_credit,        c_credit_lim, c_discount, c_balance     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1     FOR UPDATE
   plan: |
-    LogicalView(tables="optest_0001.bmsql_customer", sql="SELECT `c_first`, `c_middle`, `c_last`, `c_street_1`, `c_street_2`, `c_city`, `c_state`, `c_zip`, `c_phone`, `c_since`, `c_credit`, `c_credit_lim`, `c_discount`, `c_balance` FROM `bmsql_customer` AS `bmsql_customer` WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1)) FOR UPDATE")
+    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_first`, `c_middle`, `c_last`, `c_street_1`, `c_street_2`, `c_city`, `c_state`, `c_zip`, `c_phone`, `c_since`, `c_credit`, `c_credit_lim`, `c_discount`, `c_balance` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1)) for update")
 - sql: |
     SELECT c_data     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_customer", sql="SELECT `c_data` FROM `bmsql_customer` AS `bmsql_customer` WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1))")
+    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_data` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
 - sql: |
     UPDATE bmsql_warehouse     SET w_ytd = w_ytd + 1     WHERE w_id = 1
   plan: |
@@ -83,31 +83,31 @@
 - sql: |
     UPDATE bmsql_customer     SET c_balance = c_balance - 1,         c_ytd_payment = c_ytd_payment + 1,         c_payment_cnt = c_payment_cnt + 1     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_customer", sql="UPDATE `bmsql_customer` AS `bmsql_customer` SET `c_balance` = (`c_balance` - 1) , `c_ytd_payment` = (`c_ytd_payment` + 1) , `c_payment_cnt` = (`c_payment_cnt` + 1) WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_customer", sql="update `bmsql_customer` as `bmsql_customer` set `c_balance` = (`c_balance` - 1) , `c_ytd_payment` = (`c_ytd_payment` + 1) , `c_payment_cnt` = (`c_payment_cnt` + 1) where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
 - sql: |
     UPDATE bmsql_customer     SET c_balance = c_balance - 1,         c_ytd_payment = c_ytd_payment + 1,         c_payment_cnt = c_payment_cnt + 1,         c_data = 1     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_customer", sql="UPDATE `bmsql_customer` AS `bmsql_customer` SET `c_balance` = (`c_balance` - 1) , `c_ytd_payment` = (`c_ytd_payment` + 1) , `c_payment_cnt` = (`c_payment_cnt` + 1) , `c_data` = 1 WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_customer", sql="update `bmsql_customer` as `bmsql_customer` set `c_balance` = (`c_balance` - 1) , `c_ytd_payment` = (`c_ytd_payment` + 1) , `c_payment_cnt` = (`c_payment_cnt` + 1) , `c_data` = 1 where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
 - sql: |
     SELECT c_id     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_last = 1     ORDER BY c_first
   plan: |
-    LogicalView(tables="optest_0001.bmsql_customer", sql="SELECT `c_id` FROM `bmsql_customer` AS `bmsql_customer` WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_last` = 1)) ORDER BY `c_first`")
+    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_id` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_last` = 1)) order by `c_first`")
 - sql: |
     SELECT c_first, c_middle, c_last, c_balance     FROM bmsql_customer     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_customer", sql="SELECT `c_first`, `c_middle`, `c_last`, `c_balance` FROM `bmsql_customer` AS `bmsql_customer` WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1))")
+    logicalview(tables="optest_0001.bmsql_customer", sql="select `c_first`, `c_middle`, `c_last`, `c_balance` from `bmsql_customer` as `bmsql_customer` where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")
 - sql: |
     SELECT o_id, o_entry_d, o_carrier_id     FROM bmsql_oorder     WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1       AND o_id = (          SELECT max(o_id)               FROM bmsql_oorder               WHERE o_w_id = 1 AND o_d_id = 1 AND o_c_id = 1          )
   plan: |
-    phytableoperation(tables="optest_0001.[bmsql_oorder, bmsql_oorder]", sql="select `bmsql_oorder`.`o_id`, `bmsql_oorder`.`o_entry_d`, `bmsql_oorder`.`o_carrier_id` from ? as `bmsql_oorder` where ((((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1)) and (`bmsql_oorder`.`o_c_id` = 1)) and (`bmsql_oorder`.`o_id` = (((select max(`bmsql_oorder`.`o_id`) as `max(o_id)` from ? as `bmsql_oorder` where (((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1)) and (`bmsql_oorder`.`o_c_id` = 1)))))))")
+    phytableoperation(tables="optest_0001.[bmsql_oorder, bmsql_oorder]", sql="select `bmsql_oorder`.`o_id`, `bmsql_oorder`.`o_entry_d`, `bmsql_oorder`.`o_carrier_id` from ? as `bmsql_oorder` where ((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1) and (`bmsql_oorder`.`o_c_id` = 1) and (`bmsql_oorder`.`o_id` = (((select max(`bmsql_oorder`.`o_id`) as `max(o_id)` from ? as `bmsql_oorder` where ((`bmsql_oorder`.`o_w_id` = 1) and (`bmsql_oorder`.`o_d_id` = 1) and (`bmsql_oorder`.`o_c_id` = 1)))))))")
 - sql: |
     SELECT ol_i_id, ol_supply_w_id, ol_quantity,        ol_amount, ol_delivery_d     FROM bmsql_order_line     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1     ORDER BY ol_w_id, ol_d_id, ol_o_id, ol_number
   plan: |
-    LogicalView(tables="optest_0001.bmsql_order_line", sql="SELECT `ol_i_id`, `ol_supply_w_id`, `ol_quantity`, `ol_amount`, `ol_delivery_d` FROM `bmsql_order_line` AS `bmsql_order_line` WHERE (((`ol_w_id` = 1) AND (`ol_d_id` = 1)) AND (`ol_o_id` = 1)) ORDER BY `ol_w_id`, `ol_d_id`, `ol_o_id`, `ol_number`")
+    logicalview(tables="optest_0001.bmsql_order_line", sql="select `ol_i_id`, `ol_supply_w_id`, `ol_quantity`, `ol_amount`, `ol_delivery_d` from `bmsql_order_line` as `bmsql_order_line` where ((`ol_w_id` = 1) and (`ol_d_id` = 1) and (`ol_o_id` = 1)) order by `ol_w_id`, `ol_d_id`, `ol_o_id`, `ol_number`")
 - sql: |
     SELECT count(*) AS low_stock FROM (    SELECT s_w_id, s_i_id, s_quantity         FROM bmsql_stock         WHERE s_w_id = 1 AND s_quantity < 1 AND s_i_id IN (            SELECT ol_i_id                 FROM bmsql_district                 JOIN bmsql_order_line ON ol_w_id = d_w_id                  AND ol_d_id = d_id                  AND ol_o_id >= d_next_o_id - 20                  AND ol_o_id < d_next_o_id                 WHERE d_w_id = 1 AND d_id = 1         )     ) AS L
   plan: |
-    phytableoperation(tables="optest_0001.[bmsql_stock, bmsql_district, bmsql_order_line]", sql="select count(*) as `low_stock` from (select `bmsql_stock`.`s_w_id`, `bmsql_stock`.`s_i_id`, `bmsql_stock`.`s_quantity` from ? as `bmsql_stock` where (((`bmsql_stock`.`s_w_id` = 1) and (`bmsql_stock`.`s_quantity` < 1)) and (`bmsql_stock`.`s_i_id` in (select `bmsql_order_line`.`ol_i_id` from ? as `bmsql_district` inner join ? as `bmsql_order_line` on ((((`bmsql_order_line`.`ol_w_id` = `bmsql_district`.`d_w_id`) and (`bmsql_order_line`.`ol_d_id` = `bmsql_district`.`d_id`)) and (`bmsql_order_line`.`ol_o_id` >= (`bmsql_district`.`d_next_o_id` - 20))) and (`bmsql_order_line`.`ol_o_id` < `bmsql_district`.`d_next_o_id`)) where ((`bmsql_district`.`d_w_id` = 1) and (`bmsql_district`.`d_id` = 1)))))) as `l`")
+    phytableoperation(tables="optest_0001.[bmsql_stock, bmsql_district, bmsql_order_line]", sql="select count(*) as `low_stock` from (select `bmsql_stock`.`s_w_id`, `bmsql_stock`.`s_i_id`, `bmsql_stock`.`s_quantity` from ? as `bmsql_stock` where ((`bmsql_stock`.`s_w_id` = 1) and (`bmsql_stock`.`s_quantity` < 1) and (`bmsql_stock`.`s_i_id` in (select `bmsql_order_line`.`ol_i_id` from ? as `bmsql_district` inner join ? as `bmsql_order_line` on ((`bmsql_order_line`.`ol_w_id` = `bmsql_district`.`d_w_id`) and (`bmsql_order_line`.`ol_d_id` = `bmsql_district`.`d_id`) and (`bmsql_order_line`.`ol_o_id` >= (`bmsql_district`.`d_next_o_id` - 20)) and (`bmsql_order_line`.`ol_o_id` < `bmsql_district`.`d_next_o_id`)) where ((`bmsql_district`.`d_w_id` = 1) and (`bmsql_district`.`d_id` = 1)))))) as `l`")
 - sql: |
     SELECT no_o_id     FROM bmsql_new_order     WHERE no_w_id = 1 AND no_d_id = 1     ORDER BY no_o_id ASC
   plan: |
@@ -115,24 +115,24 @@
 - sql: |
     DELETE FROM bmsql_new_order     WHERE no_w_id = 1 AND no_d_id = 1 AND no_o_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_new_order", sql="DELETE FROM `bmsql_new_order` WHERE (((`no_w_id` = 1) AND (`no_d_id` = 1)) AND (`no_o_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_new_order", sql="delete from `bmsql_new_order` where ((`no_w_id` = 1) and (`no_d_id` = 1) and (`no_o_id` = 1))")
 - sql: |
     SELECT o_c_id     FROM bmsql_oorder     WHERE o_w_id = 1 AND o_d_id = 1 AND o_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_oorder", sql="SELECT `o_c_id` FROM `bmsql_oorder` AS `bmsql_oorder` WHERE (((`o_w_id` = 1) AND (`o_d_id` = 1)) AND (`o_id` = 1))")
+    logicalview(tables="optest_0001.bmsql_oorder", sql="select `o_c_id` from `bmsql_oorder` as `bmsql_oorder` where ((`o_w_id` = 1) and (`o_d_id` = 1) and (`o_id` = 1))")
 - sql: |
     UPDATE bmsql_oorder     SET o_carrier_id = 1     WHERE o_w_id = 1 AND o_d_id = 1 AND o_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_oorder", sql="UPDATE `bmsql_oorder` AS `bmsql_oorder` SET `o_carrier_id` = 1 WHERE (((`o_w_id` = 1) AND (`o_d_id` = 1)) AND (`o_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_oorder", sql="update `bmsql_oorder` as `bmsql_oorder` set `o_carrier_id` = 1 where ((`o_w_id` = 1) and (`o_d_id` = 1) and (`o_id` = 1))")
 - sql: |
     SELECT sum(ol_amount) AS sum_ol_amount     FROM bmsql_order_line     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1
   plan: |
-    LogicalView(tables="optest_0001.bmsql_order_line", sql="SELECT SUM(`ol_amount`) AS `sum_ol_amount` FROM `bmsql_order_line` AS `bmsql_order_line` WHERE (((`ol_w_id` = 1) AND (`ol_d_id` = 1)) AND (`ol_o_id` = 1))")
+    logicalview(tables="optest_0001.bmsql_order_line", sql="select sum(`ol_amount`) as `sum_ol_amount` from `bmsql_order_line` as `bmsql_order_line` where ((`ol_w_id` = 1) and (`ol_d_id` = 1) and (`ol_o_id` = 1))")
 - sql: |
     UPDATE bmsql_order_line     SET ol_delivery_d = 1     WHERE ol_w_id = 1 AND ol_d_id = 1 AND ol_o_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_order_line", sql="UPDATE `bmsql_order_line` AS `bmsql_order_line` SET `ol_delivery_d` = 1 WHERE (((`ol_w_id` = 1) AND (`ol_d_id` = 1)) AND (`ol_o_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_order_line", sql="update `bmsql_order_line` as `bmsql_order_line` set `ol_delivery_d` = 1 where ((`ol_w_id` = 1) and (`ol_d_id` = 1) and (`ol_o_id` = 1))")
 - sql: |
     UPDATE bmsql_customer     SET c_balance = c_balance + 1,         c_delivery_cnt = c_delivery_cnt + 1     WHERE c_w_id = 1 AND c_d_id = 1 AND c_id = 1
   plan: |
-    LogicalModifyView(tables="optest_0001.bmsql_customer", sql="UPDATE `bmsql_customer` AS `bmsql_customer` SET `c_balance` = (`c_balance` + 1) , `c_delivery_cnt` = (`c_delivery_cnt` + 1) WHERE (((`c_w_id` = 1) AND (`c_d_id` = 1)) AND (`c_id` = 1))")
+    logicalmodifyview(tables="optest_0001.bmsql_customer", sql="update `bmsql_customer` as `bmsql_customer` set `c_balance` = (`c_balance` + 1) , `c_delivery_cnt` = (`c_delivery_cnt` + 1) where ((`c_w_id` = 1) and (`c_d_id` = 1) and (`c_id` = 1))")

@@ -22,7 +22,7 @@ public interface IMppReadOnlyTransaction extends ITransaction {
 
     void setTsoTimestamp(long tsoTimestamp);
 
-    void setLsnMap(Map<String, Long> lsnMap);
+    void setDnLsnMap(Map<String, Long> dnLsnMap);
 
     void enableOmitTso(boolean omitTso, boolean lizard1PC);
 }

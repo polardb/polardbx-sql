@@ -1,0 +1,135 @@
+storageList: [$dn1, $dn2]
+# move partition, split partition, merge partition, rename partition
+dbName: "test_locality_db3"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_locality_db3"
+      - "create database test_locality_db3 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db3;"
+      - "
+      create table t1(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality ='dn=$dn1, $dn2';
+      "
+      - "
+      create table c0(x int  AUTO_INCREMENT primary key, y int) partition by range(x)  (partition p1 values less than (1) locality ='dn=$dn1', partition p2 values less than (100) locality='dn=$dn1',partition p3 values less than (1000) locality='dn=$dn2', partition p4 values less than (MAXVALUE) locality='dn=$dn2') locality = 'dn=$dn2';
+      "
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db3;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - c0 table $dn2
+        - test_locality_db3 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1 $tg1 $dn1,$dn2
+        - c0 $tg2 $dn2
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg2.p1 $dn1
+        - $tg2.p2 $dn1
+        - $tg2.p3 $dn2
+        - $tg2.p4 $dn2
+      topologyCheck:
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p4 partition $dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+
+  # add partition, remove partition, rename partition
+  - prepareDDls:
+      - " alter tablegroup $tg1 move partitions p1,p2,p3 to '$dn2'; "
+      - " create table t2(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 8 locality ='dn=$dn1,$dn2'; "
+      - " alter tablegroup $tg2 split partition p4 into (partition p5 values less than (10000), partition p6 values less than(MAXVALUE)); " # expected p5, p6 locality $dn2
+      - " alter tablegroup $tg2 merge partitions p1,p2 to p7; " # expected p7 locality $dn1
+    rejectDDls:
+      - ddl: "alter tablegroup $tg2 move partitions p3 to '$dn1';"
+        message: "not compatebale with partition [$tg2].[p3] locality"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db3;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table $dn1,$dn2
+        - c0 table ""
+        - test_locality_db3 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn1,$dn2
+        - c0 $tg2 ""
+      partitionLocalityCheck:
+        - $tg2.p3 $dn2
+        - $tg2.p5 $dn2
+        - $tg2.p6 $dn2
+        - $tg2.p7 $dn1
+      topologyCheck:
+        - t1.p1 partition $dn2
+        - t1.p2 partition $dn2
+        - t1.p3 partition $dn2
+        - t2.p1 partition $dn2
+        - t2.p2 partition $dn2
+        - t2.p3 partition $dn2
+        - c0.p7 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p5 partition $dn2
+        - c0.p6 partition $dn2
+  - prepareDDls:
+      - " alter tablegroup $tg2 merge partitions p5,p6 to p4; " # expected p4 locality $dn2
+      - " alter tablegroup $tg2 merge partitions p7,p3 to p9; " # expected p9 locality ""
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db3;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table $dn1,$dn2
+        - c0 table $dn2
+        - test_locality_db3 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn1,$dn2
+        - c0 $tg2 $dn2
+      partitionLocalityCheck:
+        - $tg2.p4 $dn2
+        - $tg2.p9 ""
+      topologyCheck:
+  - prepareDDls:
+      - " alter tablegroup $tg2 rename partition p4 to p1;"
+      - " alter tablegroup $tg2 rename partition p9 to p2;"
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db3;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table $dn1,$dn2
+        - c0 table $dn2
+        - test_locality_db3 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn1,$dn2
+        - c0 $tg2 $dn2
+      partitionLocalityCheck:
+        - $tg2.p1 $dn2
+        - $tg2.p2 ""
+      topologyCheck:
+  - prepareDDls:
+      - " alter tablegroup $tg2 merge partitions p1,p2 to p3; " # expected p1 locality ""
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db3;"
+    checkActions:
+      localityValueCheck:
+        - t1 table $dn1,$dn2
+        - t2 table $dn1,$dn2
+        - c0 table $dn2
+        - test_locality_db3 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - t1,t2 $tg1 $dn1,$dn2
+        - c0 $tg2 $dn2
+      partitionLocalityCheck:
+        - $tg2.p3 ""
+      topologyCheck:
+cleanupDDls:
+  - "use polardbx;"
+  - "drop database if exists test_locality_db3;"

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
+import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.spec.AlterTableRollbacker;
@@ -48,6 +49,8 @@ import org.apache.commons.lang.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.common.properties.ConnectionParams.PHYSICAL_DDL_TASK_RETRY;
+
 @Getter
 @TaskName(name = "AlterTablePhyDdlTask")
 public class AlterTablePhyDdlTask extends BasePhyDdlTask {
@@ -58,12 +61,18 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     private String rollbackSql;
 
+    private String rollbackSqlTemplate;
+
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
     }
 
     public void setRollbackSql(String rollbackSql) {
         this.rollbackSql = rollbackSql;
+    }
+
+    public void setRollbackSqlTemplate(String rollbackSqlTemplate) {
+        this.rollbackSqlTemplate = rollbackSqlTemplate;
     }
 
     @JSONCreator
@@ -74,6 +83,10 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
+        if (!executionContext.getParamManager().getBoolean(PHYSICAL_DDL_TASK_RETRY)) {
+            onExceptionTryRollback();
+        }
+
         try {
             super.executeImpl(executionContext);
         } catch (PhysicalDdlException e) {
@@ -94,6 +107,10 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     @Override
     protected List<RelNode> genRollbackPhysicalPlans(ExecutionContext executionContext) {
+        if (StringUtils.isNotEmpty(rollbackSqlTemplate)) {
+            return genReversedPhysicalPlansFromTemplate(rollbackSqlTemplate, executionContext);
+        }
+
         if (StringUtils.isNotEmpty(rollbackSql)) {
             return genReversedPhysicalPlans(rollbackSql, executionContext);
         }
@@ -107,6 +124,13 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
             throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                 "The DDL job is not rollbackable because the DDL includes some operations that doesn't support rollback");
         }
+    }
+
+    protected List<RelNode> genReversedPhysicalPlansFromTemplate(String reversedSqlTemplate,
+                                                                 ExecutionContext executionContext) {
+        PhysicalPlanData newPhysicalPlanData = physicalPlanData.clone();
+        newPhysicalPlanData.setSqlTemplate(reversedSqlTemplate);
+        return DdlJobDataConverter.convertToPhysicalPlans(newPhysicalPlanData, executionContext);
     }
 
     protected List<RelNode> genReversedPhysicalPlans(String reversedSql, ExecutionContext executionContext) {
@@ -153,5 +177,4 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
         // ALTER TABLE XXX ADD COLUMN (ca INT, cb INT, cc INT)
         return AlterTableRollbacker.reverse(schemaName, logicalTableName, origAlterItem);
     }
-
 }

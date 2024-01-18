@@ -21,6 +21,7 @@ import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.CommonCaseRunner;
 import com.alibaba.polardbx.qatest.FileStoreIgnore;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConfigUtil;
@@ -31,6 +32,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
 
+import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.List;
@@ -48,7 +50,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectStringCo
  * @author zhuoxue
  * @since 5.0.1
  */
-@RunWith(CommonCaseRunner.class)
+
 public class SelectSubQueryTest extends AutoReadBaseTestCase {
 
     private static AtomicBoolean shardingAdvise = new AtomicBoolean(false);
@@ -661,6 +663,42 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
+    @Test
+    public void SubqueryNest1Test() throws SQLException {
+        String sql = "SELECT *\n"
+            + "FROM tbl1\n"
+            + "WHERE a>\n"
+            + "    SELECT date_format\n"
+            + "       (SELECT IFNULL(USE_TIME, curdate())\n"
+            + "        FROM tbl\n"
+            + "        WHERE tbl1.b=b,\n"
+            + "            '%Y-%m-%d %H:%i:%s')";
+        // build schema
+        tddlConnection.createStatement().execute("CREATE DATABASE IF NOT EXISTS DRDS_SUBQUERY_TEST_DB mode='drds'");
+        tddlConnection.createStatement().execute("USE DRDS_SUBQUERY_TEST_DB");
+        // build tbl
+        tddlConnection.createStatement().execute("CREATE TABLE if not exists `tbl1` (\n"
+            + "\t`a` int(11) NOT NULL,\n"
+            + "\t`b` int(11) DEFAULT NULL,\n"
+            + "\tPRIMARY KEY (`a`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4");
+        tddlConnection.createStatement().execute("CREATE TABLE if not exists `tbl` (\n"
+            + "\t`a` int(11) NOT NULL,\n"
+            + "\t`b` int(11) DEFAULT NULL,\n"
+            + "\t`USE_TIME` datetime DEFAULT NULL,\n"
+            + "\tPRIMARY KEY (`a`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`a`)");
+
+        // prepare data
+        tddlConnection.createStatement().execute("delete from tbl");
+        tddlConnection.createStatement().execute("delete from tbl1");
+        tddlConnection.createStatement().execute("insert into tbl values(3,2,null)");
+        tddlConnection.createStatement().execute("insert into tbl values(1,2,now())");
+        tddlConnection.createStatement().execute("insert into tbl1 values(1,3)");
+        tddlConnection.createStatement().execute("insert into tbl1 values(12,11)");
+        tddlConnection.createStatement().executeQuery(sql);
+    }
+
     /**
      * @since 5.2.7
      */
@@ -1087,7 +1125,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
     /**
      * subquery is uncorrelated;
      * outer table is not a split table(by condition).
-     *
+     * <p>
      * subquery can't be pushed to logicalview, so ignore the case
      */
     @Test
@@ -1125,6 +1163,16 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             "select * from " + baseOneTableName + " where pk = (select pk from " + baseTwoTableName
                 + " where pk < (select pk from " + baseThreeTableName
                 + " where pk<100 AND PK >98 limit 1) ORDER BY PK LIMIT 1)";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testCorrelateJoin() {
+        String sql =
+            "select count(b.integer_test), ( select min(integer_test) from "
+                + baseOneTableName + " a where a.pk = c.pk group by c.pk) as name from "
+                + baseTwoTableName + " b inner join " + baseThreeTableName
+                + " c on c.pk = b.pk group by c.integer_test";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 }

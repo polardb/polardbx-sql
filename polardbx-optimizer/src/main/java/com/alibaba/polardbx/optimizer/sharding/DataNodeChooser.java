@@ -68,8 +68,7 @@ public class DataNodeChooser {
                                              boolean forceAllowFullTableScan,
                                              ExecutionContext executionContext) {
 
-        Map<Integer, ParameterContext> param =
-            executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> param = executionContext.getParamMap();
         List<List<TargetDB>> result = new LinkedList<>();
         Map<String, Object> calcParams = new HashMap<>();
         calcParams.put(CalcParamsAttribute.CONN_TIME_ZONE, executionContext.getTimeZone());
@@ -165,8 +164,7 @@ public class DataNodeChooser {
 
     public static List<List<TargetDB>> shard(RelNode dne, boolean forceAllowFullTableScan,
                                              ExecutionContext executionContext) {
-        Map<Integer, ParameterContext> param =
-            executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        Map<Integer, ParameterContext> param = executionContext.getParamMap();
         Map<String, Object> extraCmd = executionContext.getExtraCmds();
         if (dne instanceof LogicalView) {
             LogicalView logicalView = (LogicalView) dne;

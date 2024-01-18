@@ -27,6 +27,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
+
 public class OrderByTest extends AutoReadBaseTestCase {
 
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();

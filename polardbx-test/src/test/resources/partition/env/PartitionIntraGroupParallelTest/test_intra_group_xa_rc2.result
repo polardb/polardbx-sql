@@ -1,0 +1,42 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `shipment_header` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '??????',
+`warehouseCode` varchar(50) NOT NULL COMMENT '??',
+`primaryWaybillCode` varchar(50) DEFAULT NULL COMMENT '?????',
+`secondWaybillCodes` varchar(200) DEFAULT NULL COMMENT '??????',
+PRIMARY KEY USING BTREE (`id`),
+CLUSTERED INDEX `c_gsi_idx1` (`id`) PARTITION BY KEY(`id`) PARTITIONS 32
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC COMMENT '??-????'
+PARTITION BY LIST COLUMNS(`warehouseCode`)
+SUBPARTITION BY KEY(`id`) SUBPARTITIONS 4
+(
+PARTITION p1 VALUES IN ('021DC1'),
+PARTITION p2 VALUES IN ('573DC'),
+PARTITION pd VALUES IN (DEFAULT)
+);
+set autocommit=true;
+set TRANSACTION_POLICY='TSO';
+set TX_ISOLATION='REPEATABLE-READ';
+set TRANSACTION_ISOLATION='REPEATABLE-READ';
+set ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW=true;
+trace SELECT *  FROM shipment_header  WHERE warehouseCode = '573DC'    AND (primaryWaybillCode ='21312'      OR secondWaybillCodes = '21312');
+id,warehouseCode,primaryWaybillCode,secondWaybillCodes
+select count(1) from information_schema.trace;
+count(1)
+4
+set TRANSACTION_POLICY='XA';
+set TX_ISOLATION='READ-COMMITTED';
+set TRANSACTION_ISOLATION='READ-COMMITTED';
+set ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW=true;
+trace SELECT *  FROM shipment_header  WHERE warehouseCode = '573DC'    AND (primaryWaybillCode ='21312'      OR secondWaybillCodes = '21312');
+id,warehouseCode,primaryWaybillCode,secondWaybillCodes
+select count(1) from information_schema.trace;
+count(1)
+4
+set ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW=false;
+trace SELECT *  FROM shipment_header  WHERE warehouseCode = '573DC'    AND (primaryWaybillCode ='21312'      OR secondWaybillCodes = '21312');
+id,warehouseCode,primaryWaybillCode,secondWaybillCodes
+select count(1) from information_schema.trace;
+count(1)
+2
+drop table shipment_header;

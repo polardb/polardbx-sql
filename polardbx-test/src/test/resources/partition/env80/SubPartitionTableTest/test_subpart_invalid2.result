@@ -1,0 +1,14 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $# is not allowed #$
+create table if not exists k_k_t (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a)
+subpartition by key (b)
+subpartitions 2
+partitions 2;
+is not allowed

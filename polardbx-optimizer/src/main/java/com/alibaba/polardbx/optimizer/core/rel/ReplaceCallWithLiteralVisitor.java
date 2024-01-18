@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -27,6 +24,8 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
@@ -38,7 +37,6 @@ import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexCallParam;
 import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
@@ -126,7 +124,15 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             logicalInsert.getGsiInsertWriters(),
             logicalInsert.getAutoIncParamIndex(),
             logicalInsert.getUnOptimizedLogicalDynamicValues(),
-            logicalInsert.getUnOptimizedDuplicateKeyUpdateList());
+            logicalInsert.getUnOptimizedDuplicateKeyUpdateList(),
+            logicalInsert.getEvalRowColMetas(),
+            logicalInsert.getGenColRexNodes(),
+            logicalInsert.getInputToEvalFieldsMapping(),
+            logicalInsert.getDefaultExprColMetas(),
+            logicalInsert.getDefaultExprColRexNodes(),
+            logicalInsert.getDefaultExprEvalFieldsMapping(),
+            logicalInsert.isPushablePrimaryKeyCheck(),
+            logicalInsert.isPushableForeignConstraintCheck());
         return newInsert;
     }
 
@@ -157,7 +163,8 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             logicalModify.getExtraTargetColumns(),
             logicalModify.getPrimaryModifyWriters(),
             logicalModify.getGsiModifyWriters(),
-            logicalModify.isWithoutPk());
+            logicalModify.isWithoutPk(),
+            logicalModify.isModifyForeignKey());
     }
 
     @Override
@@ -298,7 +305,7 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
         boolean updated = false;
         final List<RexNode> newProjects = new ArrayList<>(projects.size());
         for (RexNode rex : projects) {
-            if (rex instanceof RexCall) {
+            if (rex instanceof RexCall && !notReplaceWhenProject((RexCall) rex)) {
                 final RexNode newRex = rexVisitor.mayCompute(rex);
 
                 newProjects.add(newRex);
@@ -314,6 +321,12 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
             return visited;
         }
 
+    }
+
+    private boolean notReplaceWhenProject(RexCall call) {
+        String functionName = call.getOperator().getName();
+        return TddlOperatorTable.UUID.getName().equalsIgnoreCase(functionName)
+            || TddlOperatorTable.UUID_SHORT.getName().equalsIgnoreCase(functionName);
     }
 
     /**
@@ -492,6 +505,5 @@ public class ReplaceCallWithLiteralVisitor extends RelShuttleImpl {
     public void setReplaceRexCallParam(boolean replaceRexCallParam) {
         this.replaceRexCallParam = replaceRexCallParam;
     }
-
 
 }

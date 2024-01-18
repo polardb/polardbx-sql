@@ -138,7 +138,7 @@ public class MemorySequenceManager extends AbstractLifecycle implements ISequenc
     }
 
     @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
+    public boolean areAllSequencesSameType(String schemaName, Type[] seqTypes) {
         return false;
     }
 

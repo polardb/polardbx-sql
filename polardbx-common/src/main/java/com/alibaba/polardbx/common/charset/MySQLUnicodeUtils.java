@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.charset;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceOutput;

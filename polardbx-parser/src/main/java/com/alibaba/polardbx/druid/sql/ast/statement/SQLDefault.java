@@ -26,11 +26,11 @@ public class SQLDefault extends SQLConstraintImpl implements SQLTableElement, SQ
     private SQLExpr column;
     private boolean withValues = false;
 
-    public SQLDefault(){
+    public SQLDefault() {
 
     }
 
-    public SQLDefault(SQLExpr expr, SQLExpr column){
+    public SQLDefault(SQLExpr expr, SQLExpr column) {
         this.setExpr(expr);
         this.setColumn(column);
     }

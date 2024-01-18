@@ -22,24 +22,14 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.partition.TablePartitionAccessor;
-import com.alibaba.polardbx.gms.partition.TablePartitionConfig;
-import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
-import com.alibaba.polardbx.gms.partition.TablePartitionSpecConfig;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
-import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import lombok.Getter;
 
 import java.sql.Connection;
-import java.util.List;
 
 /**
  * Store locality of table into metadb
@@ -57,13 +47,13 @@ public class StoreTableLocalityTask extends BaseGmsTask {
      * Whether it's a drop
      */
     private final boolean drop;
+
     @JSONCreator
     public StoreTableLocalityTask(String schemaName, String logicalTableName, String locality, boolean drop) {
         super(schemaName, logicalTableName);
         this.locality = locality;
         this.drop = drop;
     }
-
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
@@ -72,10 +62,9 @@ public class StoreTableLocalityTask extends BaseGmsTask {
 
         TableMeta tableMeta = sm.getTable(getLogicalTableName());
 
-
-        if(!drop){
+        if (!drop) {
             lm.setLocalityOfTable(tableMeta.getId(), locality);
-        }else{
+        } else {
             lm.deleteLocalityOfTable(tableMeta.getId());
         }
         try {

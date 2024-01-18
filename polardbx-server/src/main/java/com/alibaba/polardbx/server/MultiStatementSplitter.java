@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.server;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlLexer;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.Token;
@@ -44,31 +46,36 @@ public class MultiStatementSplitter {
          */
         List<ByteString> statements = new ArrayList<>();
 
-        int startPos = 0;
-        boolean hasToken = false;
+        try {
+            int startPos = 0;
+            boolean hasToken = false;
 
-        do {
-            lexer.nextToken();
+            do {
+                lexer.nextToken();
 
-            if (lexer.token() == Token.PROCEDURE || lexer.token() == Token.TRIGGER || lexer.token() == Token.FUNCTION) {
-                List<ByteString> origin = new ArrayList<>();
-                origin.add(raw);
-                return origin;
-            }
-
-            if (lexer.token() == Token.SEMI) {
-                if (hasToken) {
-                    statements.add(raw.slice(startPos, lexer.pos()));
+                if (lexer.token() == Token.PROCEDURE || lexer.token() == Token.TRIGGER
+                    || lexer.token() == Token.FUNCTION) {
+                    List<ByteString> origin = new ArrayList<>();
+                    origin.add(raw);
+                    return origin;
                 }
-                startPos = lexer.pos();
-                hasToken = false;
-            } else if (lexer.token() != Token.EOF) {
-                hasToken = true;
-            }
-        } while (lexer.token() != Token.EOF);
 
-        if (hasToken) {
-            statements.add(raw.slice(startPos));
+                if (lexer.token() == Token.SEMI) {
+                    if (hasToken) {
+                        statements.add(raw.slice(startPos, lexer.pos()));
+                    }
+                    startPos = lexer.pos();
+                    hasToken = false;
+                } else if (lexer.token() != Token.EOF) {
+                    hasToken = true;
+                }
+            } while (lexer.token() != Token.EOF);
+
+            if (hasToken) {
+                statements.add(raw.slice(startPos));
+            }
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARSER, e, "failed to split sql");
         }
 
         return statements;

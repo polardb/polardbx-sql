@@ -17,17 +17,26 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigDecimal;
 
+import static com.alibaba.polardbx.executor.chunk.DecimalBlock.DecimalBlockState.*;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class DecimalBlockTest extends BaseBlockTest {
+
+    @Test
+    public void testSizeInBytes() {
+        DecimalBlock block = new DecimalBlock(new DecimalType(), 1024);
+        Assert.assertEquals(41984, block.getElementUsedBytes());
+    }
 
     @Test
     public void testNullValues() {
@@ -143,5 +152,100 @@ public class DecimalBlockTest extends BaseBlockTest {
                 assertTrue(deserializedBlock.isNull(i));
             }
         }
+    }
+
+    @Test
+    public void testIsSimple() {
+        // Simple if all decimal values are not negative and have the same small frac-pos and int-pos
+        DecimalBlockBuilder builder = new DecimalBlockBuilder(10, new DecimalType(65, 30));
+        builder.writeDecimal(from("1.22"));
+        builder.writeDecimal(from("111.353898989"));
+        builder.writeDecimal(from("1111.04"));
+        builder.writeDecimal(from("12345678.999999999"));
+        DecimalBlock block = (DecimalBlock) builder.build();
+
+        assertTrue(block.isSimple());
+
+        DecimalBlockBuilder builder1 = new DecimalBlockBuilder(10, new DecimalType(65, 30));
+        builder1.writeDecimal(from("1.22"));
+        builder1.writeDecimal(from("-111.353898989"));
+        builder1.writeDecimal(from("1111.04"));
+        builder1.writeDecimal(from("-12345678.999999999"));
+        DecimalBlock block1 = (DecimalBlock) builder1.build();
+
+        assertTrue(!block1.isSimple());
+
+        DecimalBlockBuilder builder2 = new DecimalBlockBuilder(10, new DecimalType(15, 2));
+        builder2.writeDecimal(from("1.22"));
+        builder2.writeDecimal(from("111.33"));
+        builder2.writeDecimal(from("1111.00000000000004"));
+        builder2.writeDecimal(from("12345678.9999999999"));
+        DecimalBlock block2 = (DecimalBlock) builder2.build();
+
+        assertTrue(!block2.isSimple());
+    }
+
+    @Test
+    public void testIsSimpleInShift() {
+        DecimalBlock.DecimalBlockState state;
+
+        state = DecimalBlock.DecimalBlockState.stateOf(from(4, 2).getDecimalStructure());
+        Assert.assertTrue(state == SIMPLE_MODE_1); // 40000000 * 10^-9
+
+        state = DecimalBlock.DecimalBlockState.stateOf(from("0.04").getDecimalStructure());
+        Assert.assertTrue(state == SIMPLE_MODE_2); // 0 + 40000000 * 10^-9
+
+        state = DecimalBlock.DecimalBlockState.stateOf(from(144, 2).getDecimalStructure());
+        Assert.assertTrue(state == SIMPLE_MODE_2); // 1 + 440000000 * 10^-9
+
+        state = DecimalBlock.DecimalBlockState.stateOf(from("1.44").getDecimalStructure());
+        Assert.assertTrue(state == SIMPLE_MODE_2); // 1 + 440000000 * 10^-9
+
+        DecimalBlockBuilder builder;
+        DecimalBlock block;
+
+        builder = new DecimalBlockBuilder(10, new DecimalType(65, 30));
+        // simple_mode_2
+        builder.writeDecimal(from(1122L, 3));
+        builder.writeDecimal(from(111353898989L, 9));
+
+        // simple_mode_1
+        builder.writeDecimal(from(4, 2));
+        builder.writeDecimal(from(16, 5));
+        block = (DecimalBlock) builder.build();
+
+        assertTrue(!block.isSimple());
+
+        builder = new DecimalBlockBuilder(10, new DecimalType(65, 30));
+        builder.writeDecimal(from(122L, 3));
+        builder.writeDecimal(from(111353898989L, 9));
+        builder.writeDecimal(from(4, 2));
+
+        // not_simple
+        builder.writeDecimal(from(-16, 5));
+        block = (DecimalBlock) builder.build();
+
+        assertTrue(!block.isSimple());
+
+        builder = new DecimalBlockBuilder(10, new DecimalType(15, 2));
+        builder.writeDecimal(from(122, 2));
+        builder.writeDecimal(from(11133, 2));
+
+        // not_simple
+        builder.writeDecimal(from(111100000000000004L, 14));
+        builder.writeDecimal(from(123456789999999999L, 10));
+        block = (DecimalBlock) builder.build();
+
+        assertTrue(!block.isSimple());
+    }
+
+    private Decimal from(String decStr) {
+        return Decimal.fromString(decStr);
+    }
+
+    private Decimal from(long unscaled, int scale) {
+        final com.alibaba.polardbx.rpc.result.chunk.Decimal decimal =
+            new com.alibaba.polardbx.rpc.result.chunk.Decimal(unscaled, scale);
+        return new Decimal(decimal.getUnscaled(), decimal.getScale());
     }
 }

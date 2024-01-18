@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
@@ -36,15 +37,15 @@ public class ConstExprEvalParams {
     protected boolean needGetTypeFromDynamicExpr;
     protected DataType exprReturnType;
     protected DataType partColType;
+    protected ColumnMeta partColMeta;
     protected PartFieldAccessType accessType;
 
     /**
      * Input and output params
      */
     protected boolean[] fldEndpoints;
-    
+
     public ConstExprEvalParams() {
     }
-    
-    
+
 }

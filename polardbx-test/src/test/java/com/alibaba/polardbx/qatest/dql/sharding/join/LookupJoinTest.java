@@ -44,6 +44,7 @@ import static com.alibaba.polardbx.qatest.util.PropertiesUtil.mysqlDBName1;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.polardbXShardingDBName1;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
+
 @NotThreadSafe
 public class LookupJoinTest extends ReadBaseTestCase {
 

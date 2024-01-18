@@ -68,6 +68,11 @@ public class LogicalCheckGsi extends BaseDdlOperation {
         return indexTableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
     }
 
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public CheckGsiPrepareData prepareData(ExecutionContext ec) {
         if (this.prepareData != null) {
             return this.prepareData;
@@ -118,6 +123,11 @@ public class LogicalCheckGsi extends BaseDdlOperation {
         } else {
             return new Pair<>(SqlSelect.LockMode.UNDEF, SqlSelect.LockMode.UNDEF);
         }
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
     }
 
     /**

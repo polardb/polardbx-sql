@@ -145,7 +145,7 @@
               mergesort(sort="id1 asc,id2 asc")
                 logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
               gather(concurrent=true)
-                logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+                logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where ((`pk` in(1, 2)) and (`pk` < 10) and (`pk` in (...)))")
 
 - sql: |
     select 
@@ -164,7 +164,7 @@
           mergesort(sort="id1 asc,id2 asc")
             logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
           gather(concurrent=true)
-            logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+            logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk`, `varchar_test`, `integer_test`, `char_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where ((`pk` in(1, 2)) and (`pk` < 10) and (`pk` in (...)))")
 
 - sql: |
     select 
@@ -179,7 +179,7 @@
             mergesort(sort="id1 asc,id2 asc")
               logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2`, `id3` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
             gather(concurrent=true)
-              logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+              logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where ((`pk` in(1, 2)) and (`pk` < 10) and (`pk` in (...)))")
 
 - sql: |
     select
@@ -193,7 +193,7 @@
             mergesort(sort="id1 asc,id2 asc")
               logicalview(tables="[0000-0003].testwin", shardcount=4, sql="select `id1`, `id2` from `testwin` as `testwin` where ((`id1` < 10) and (`id1` in(1, 2))) order by `id1`, `id2`")
             gather(concurrent=true)
-              logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where (((`pk` in(1, 2)) and (`pk` < 10)) and (`pk` in (...)))")
+              logicalview(tables="[0000-0002].select_base_one_multi_db_multi_tb_[00-09]", shardcount=10, sql="select `pk` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` where ((`pk` in(1, 2)) and (`pk` < 10) and (`pk` in (...)))")
 
 - sql: |
     select * from (
@@ -208,3 +208,46 @@
       sortwindow(integer_test="integer_test", tinyint_test="tinyint_test", f2w0$o0="window#0sum($1)", reference windows="window#0=window(partition {0} order by [1 asc-nulls-first] rows between $2 preceding and $2 following aggs [sum($1)])", constants="[1]")
         mergesort(sort="integer_test asc,tinyint_test asc")
           logicalview(tables="[0000-0003].select_base_one_multi_db_multi_tb_[00-15]", shardcount=16, sql="select `integer_test`, `tinyint_test` from `select_base_one_multi_db_multi_tb` as `select_base_one_multi_db_multi_tb` order by `integer_test`, `tinyint_test`")
+
+- sql: |
+    select *, rank() over(order by c1, c2) from tt order by c1;
+
+  plan: |
+    sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+      mergesort(sort="c1 asc,c2 asc")
+        logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1,c2;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+        mergesort(sort="c1 asc,c2 asc")
+          logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c2;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      memsort(sort="c2 asc")
+        sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+          mergesort(sort="c1 asc,c2 asc")
+            logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1 desc limit 10;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      topn(sort="c1 desc", offset=0, fetch=10)
+        sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+          mergesort(sort="c1 asc,c2 asc")
+            logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")
+- sql: |
+    select c2,c1 ,rank() over(order by c1, c2) from tt order by c1 asc limit 10;
+
+  plan: |
+    project(c2="c2", c1="c1", rank() over (order by c1, c2)="f2w0$o0")
+      limit(offset=0, fetch=10)
+        sortwindow(c1="c1", c2="c2", f2w0$o0="window#0rank($0, $1)", reference windows="window#0=window(partition {} order by [0 asc-nulls-first, 1 asc-nulls-first] rows between unbounded preceding and current row aggs [rank($0, $1)])")
+          mergesort(sort="c1 asc,c2 asc")
+            logicalview(tables="[0000-0003].tt", shardcount=4, sql="select `c1`, `c2` from `tt` as `tt` order by `c1`, `c2`")

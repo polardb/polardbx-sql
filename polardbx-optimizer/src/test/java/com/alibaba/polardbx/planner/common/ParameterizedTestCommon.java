@@ -72,6 +72,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         executionContext.setAppName(appName);
         SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(
             ByteString.from(testSql), currentParameter, executionContext, false);
+        setSysDefVariable(sqlParameterized.getParameters());
         Map<Integer, ParameterContext> param = OptimizerUtils.buildParam(sqlParameterized.getParameters());
         SqlNodeList astList = new FastsqlParser().parse(
             sqlParameterized.getSql(), sqlParameterized.getParameters(), executionContext);
@@ -92,6 +93,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         processParameter(sqlParameterized, executionContext);
         PlannerContext plannerContext = PlannerContext.fromExecutionContext(executionContext);
         plannerContext.setSchemaName(appName);
+        plannerContext.setAddForcePrimary(addForcePrimary);
 
         ExecutionPlan executionPlan = Planner.getInstance().getPlan(ast, plannerContext);
         executionPlan = PostPlanner.getInstance().optimize(executionPlan, executionContext);
@@ -127,5 +129,20 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
             Parameters parameters = executionContext.getParams();
             parameters.setParams(OptimizerUtils.buildParam(sqlParameterized.getParameters(), executionContext));
         }
+    }
+
+    private void setSysDefVariable(List<Object> params) {
+        for (int i = 0; i < params.size(); i++) {
+            Object param = params.get(i);
+            if (param instanceof DrdsParameterizeSqlVisitor.SysDefVariable) {
+                DrdsParameterizeSqlVisitor.SysDefVariable sysDefVariable =
+                    (DrdsParameterizeSqlVisitor.SysDefVariable) param;
+                String name = StringUtils.strip(sysDefVariable.getName().toLowerCase(), "`");
+                if ("last_insert_id".equals(name)) {
+                    params.set(i, 0L);
+                }
+            }
+        }
+
     }
 }

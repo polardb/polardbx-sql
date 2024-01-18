@@ -16,13 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RepartitionPrepareData;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
+import com.clearspring.analytics.util.Lists;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlIndexColumnName;
@@ -48,6 +49,7 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     private boolean single;
     private boolean broadcast;
+    private boolean visible = true;
 
     private TableRule indexTableRule;
     private SqlNode newSqlDdl;
@@ -66,6 +68,16 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
     private boolean needToGetTableGroupLock = false;
 
     private LocalityDesc locality = new LocalityDesc();
+
+    private List<String> oldPrimaryKeys;
+
+    /**
+     * Foreign key
+     */
+    private List<String> referencedTables;
+    private List<ForeignKeyData> addedForeignKeys;
+
+    private boolean repartition;
 
     /**************************************************************************/
 
@@ -261,6 +273,18 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         }
     }
 
+    public boolean isNewPartIndex() {
+        return indexPartitionInfo != null;
+    }
+
+    public List<List<String>> getAllLevelPartColumns() {
+        if (indexPartitionInfo != null) {
+            return indexPartitionInfo.getAllLevelFullPartCols();
+        } else {
+            return Lists.newArrayList();
+        }
+    }
+
     public List<String> getShardColumnsNotReorder() {
         if (indexPartitionInfo != null) {
             return indexPartitionInfo.getPartitionColumnsNotReorder();
@@ -299,5 +323,37 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setNeedToGetTableGroupLock(boolean needToGetTableGroupLock) {
         this.needToGetTableGroupLock = needToGetTableGroupLock;
+    }
+
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public void setVisible(boolean visible) {
+        this.visible = visible;
+    }
+
+    public List<String> getOldPrimaryKeys() {
+        return oldPrimaryKeys;
+    }
+
+    public void setOldPrimaryKeys(List<String> oldPrimaryKeys) {
+        this.oldPrimaryKeys = oldPrimaryKeys;
+    }
+
+    public List<ForeignKeyData> getAddedForeignKeys() {
+        return addedForeignKeys;
+    }
+
+    public void setAddedForeignKeys(List<ForeignKeyData> addedForeignKeys) {
+        this.addedForeignKeys = addedForeignKeys;
+    }
+
+    public boolean isRepartition() {
+        return repartition;
+    }
+
+    public void setRepartition(boolean repartition) {
+        this.repartition = repartition;
     }
 }

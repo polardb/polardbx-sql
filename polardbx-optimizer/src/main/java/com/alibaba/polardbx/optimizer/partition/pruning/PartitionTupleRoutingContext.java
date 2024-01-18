@@ -21,8 +21,12 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
+import com.alibaba.polardbx.optimizer.parse.util.Pair;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -38,6 +42,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * @author chenghui.lch
@@ -60,43 +65,103 @@ public class PartitionTupleRoutingContext {
     protected PartitionInfo partInfo;
 
     /**
-     * the targetRowColMetas of target values to be routing
+     * The column meta list of a target tuple
      */
-    private List<ColumnMeta> targetRowColMetas;
+    protected List<ColumnMeta> targetRowColMetas;
 
     /**
-     * the partition column metas, its order is important!
+     * The col metas of all-level partition （both partition and subpartiton）
      */
-    protected List<ColumnMeta> partColMetas;
+    protected FullPartColMetaInfo fullPartByColMeta;
 
-    /**
-     * the relRowDataType of partition columns based on the targetRowColMetas of target values
-     */
-    protected RelDataType partColRelRowType;
+    protected static class FullPartColMetaInfo {
+        /**
+         * the partition column metas of all-level-partition, its order is important!
+         */
+        protected List<ColumnMeta> fullPartColMetas;
 
-    /**
-     * the index of  each partition columns in the targetRowColMetas, its order is important!
-     * <p>
-     * its order must be the same as the partition columns definitions.
-     * <p>
-     * <pre>
-     *
-     *  For example:
-     *      target col metas : (b,c,d,a)
-     *      target values : (1,100,1000,10000)
-     *      partition columns:  (a,b)
-     *      column index of target col metas: (1,2,3,4)
-     *      column index of partition col metas: (4,1)
-     *      target values of partition col metas: (10000,1)
-     * </pre>
-     */
-    protected List<Integer> partColIndexMappings = new ArrayList<>();
+        /**
+         * The index mapping from full col meta to part col of partition definition
+         * Each entry of list is :
+         * key : 0: partition columns,  1: subpartitions columns
+         * val : the index of col in (sub)partition columns list of original partition definition
+         *
+         * <pre>
+         *      e.g
+         *          the full part cols: A,C,D,E
+         *          the part cols:      A,C,D
+         *          the subPartCols:    D,E,C
+         *          the mapping:   {0, 0}, {0,1}, {0,2}, {1,1}
+         *  </pre>
+         */
+        protected List<Pair<Integer, Integer>> fullColMetaToPartColMetaMapping = new ArrayList<>();
+
+        /**
+         * the relRowDataType of all-level-partition columns based on the targetRowColMetas of target values
+         */
+        protected RelDataType fullPartColRelRowType;
+
+        /**
+         * the index of each all-level-partition columns in the targetRowColMetas, its order is important!
+         * <p>
+         * its order must be the same as the partition columns definitions.
+         * <p>
+         * <pre>
+         *
+         *  For example:
+         *      target col metas : (b,c,d,a)
+         *      target values : (1,100,1000,10000)
+         *      partition columns:  (a,b)
+         *      column index of target col metas: (1,2,3,4)
+         *      column index of partition col metas: (4,1)
+         *      target values of partition col metas: (10000,1)
+         * </pre>
+         */
+        protected List<Integer> fullPartColIndexMappings = new ArrayList<>();
+
+        public FullPartColMetaInfo() {
+        }
+
+        public List<ColumnMeta> getFullPartColMetas() {
+            return fullPartColMetas;
+        }
+
+        public void setFullPartColMetas(List<ColumnMeta> fullPartColMetas) {
+            this.fullPartColMetas = fullPartColMetas;
+        }
+
+        public RelDataType getFullPartColRelRowType() {
+            return fullPartColRelRowType;
+        }
+
+        public void setFullPartColRelRowType(RelDataType fullPartColRelRowType) {
+            this.fullPartColRelRowType = fullPartColRelRowType;
+        }
+
+        public List<Integer> getFullPartColIndexMappings() {
+            return fullPartColIndexMappings;
+        }
+
+        public List<Pair<Integer, Integer>> getFullColMetaToPartColMetaMapping() {
+            return fullColMetaToPartColMetaMapping;
+        }
+
+        public void setFullColMetaToPartColMetaMapping(
+            List<Pair<Integer, Integer>> fullColMetaToPartColMetaMapping) {
+            this.fullColMetaToPartColMetaMapping = fullColMetaToPartColMetaMapping;
+        }
+
+        public void setFullPartColIndexMappings(List<Integer> fullPartColIndexMappings) {
+            this.fullPartColIndexMappings = fullPartColIndexMappings;
+        }
+    }
 
     protected PartitionTupleRoutingContext() {
     }
 
     public SqlCall createPartColDynamicParamAst() {
-        SqlNode[] rowOpArr = new SqlNode[this.partColMetas.size()];
+
+        SqlNode[] rowOpArr = new SqlNode[this.fullPartByColMeta.getFullPartColMetas().size()];
         SqlBasicCall rowAst = new SqlBasicCall(TddlOperatorTable.ROW, rowOpArr, SqlParserPos.ZERO);
         for (int i = 0; i < rowOpArr.length; i++) {
             rowOpArr[i] = new SqlDynamicParam(i, SqlParserPos.ZERO);
@@ -106,17 +171,27 @@ public class PartitionTupleRoutingContext {
         return new SqlBasicCall(TddlOperatorTable.VALUES, rowsAstOpArr, SqlParserPos.ZERO);
     }
 
-    public Parameters createPartColValueParameters(List<Object> targetRowValues) {
+    public Parameters createPartColValueParametersByPartTupleAndSubPartTuple(List<List<Object>> partColTupleVals) {
+        List<Object> targetRowValues = new ArrayList<>();
+        List<Pair<Integer, Integer>> fullColToPartColMapping =
+            this.fullPartByColMeta.getFullColMetaToPartColMetaMapping();
+        for (int i = 0; i < fullColToPartColMapping.size(); i++) {
+            Pair<Integer, Integer> mapInfo = fullColToPartColMapping.get(i);
+            Integer partLevelFlag = mapInfo.getKey();
+            Integer partColIdx = mapInfo.getValue();
+            targetRowValues.add(partColTupleVals.get(partLevelFlag).get(partColIdx));
+        }
         return createPartColValueParameters(targetRowValues, true);
     }
 
-    public Parameters createPartColValueParameters(List<Object> targetRowValues, boolean usePartColIndexMapping) {
+    public Parameters createPartColValueParameters(List<Object> targetRowValues,
+                                                   boolean usePartColIndexMapping) {
         Map<Integer, ParameterContext> tmpParams = new HashMap<>();
-        int partColCnt = partInfo.getPartitionBy().getPartitionColumnNameList().size();
-        for (int j = 0; j < partColCnt; j++) {
+        int fullPartColCnt = this.fullPartByColMeta.getFullPartColMetas().size();
+        for (int j = 0; j < fullPartColCnt; j++) {
             Object val = null;
             if (usePartColIndexMapping) {
-                Integer idxInTargetRowColMetas = partColIndexMappings.get(j);
+                Integer idxInTargetRowColMetas = this.fullPartByColMeta.getFullPartColIndexMappings().get(j);
                 val = targetRowValues.get(idxInTargetRowColMetas);
             } else {
                 val = targetRowValues.get(j);
@@ -128,15 +203,17 @@ public class PartitionTupleRoutingContext {
         return allParams;
     }
 
-    protected void computePartColIndexMappings(List<Integer> outputPartColIdxList,
+    protected void computePartColIndexMappings(List<ColumnMeta> fullPartColMetas,
+                                               List<ColumnMeta> targetTupleRowColMetas,
+                                               List<Integer> outputPartColIdxList,
                                                List<RelDataTypeField> outputPartColRelRowTypeList) {
-        for (ColumnMeta columnMeta : partColMetas) {
+        for (ColumnMeta columnMeta : fullPartColMetas) {
             String partColName = columnMeta.getName();
             if (partColName.contains(".")) {
                 partColName = partColName.split("\\.")[1]; // 避免转义
             }
 
-            List<ColumnMeta> targetColumnList = targetRowColMetas;
+            List<ColumnMeta> targetColumnList = targetTupleRowColMetas;
             int index = -1;
             for (int i = 0; i < targetColumnList.size(); i++) {
                 String colName = targetColumnList.get(i).getField().getOriginColumnName();
@@ -157,13 +234,51 @@ public class PartitionTupleRoutingContext {
         }
     }
 
+    protected FullPartColMetaInfo buildFullPartColMetaInfo(PartitionByDefinition partBy) {
+        if (partBy == null) {
+            return null;
+        }
+        FullPartColMetaInfo fullPartColMetaInfo = new FullPartColMetaInfo();
+
+        List<ColumnMeta> fullPartColMetas = partBy.getFullPartitionColumnMetas();
+        List<Integer> outputFullPartColIdxList = new ArrayList<>();
+        List<RelDataTypeField> outputFullPartColRelRowTypeList = new ArrayList<>();
+        computePartColIndexMappings(fullPartColMetas, targetRowColMetas, outputFullPartColIdxList,
+            outputFullPartColRelRowTypeList);
+        RelRecordType partColRelRowType = new RelRecordType(outputFullPartColRelRowTypeList);
+        fullPartColMetaInfo.setFullPartColMetas(fullPartColMetas);
+        fullPartColMetaInfo.setFullPartColRelRowType(partColRelRowType);
+        fullPartColMetaInfo.setFullPartColIndexMappings(outputFullPartColIdxList);
+
+        Map<String, Integer> partColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        Map<String, Integer> subPartColIdxMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        List<String> partCols = partBy.getPartitionColumnNameList();
+        for (int i = 0; i < partCols.size(); i++) {
+            partColIdxMap.put(partCols.get(i), i);
+        }
+        if (partBy.getSubPartitionBy() != null) {
+            List<String> subPartCols = partBy.getSubPartitionBy().getPartitionColumnNameList();
+            for (int i = 0; i < subPartCols.size(); i++) {
+                subPartColIdxMap.put(subPartCols.get(i), i);
+            }
+        }
+        List<Pair<Integer, Integer>> fullColIndexMapping = new ArrayList<>();
+        for (int i = 0; i < fullPartColMetas.size(); i++) {
+            ColumnMeta cm = fullPartColMetas.get(i);
+            String name = cm.getName();
+            if (partColIdxMap.containsKey(name)) {
+                fullColIndexMapping.add(new Pair<>(0, partColIdxMap.get(name)));
+            } else if (subPartColIdxMap.containsKey(name)) {
+                fullColIndexMapping.add(new Pair<>(1, subPartColIdxMap.get(name)));
+            }
+        }
+        fullPartColMetaInfo.setFullColMetaToPartColMetaMapping(fullColIndexMapping);
+        return fullPartColMetaInfo;
+
+    }
+
     protected void initTupleRoutingContext() {
-        this.partColMetas = partInfo.getPartitionBy().getPartitionFieldList();
-        List<Integer> partColIdxList = new ArrayList<>();
-        List<RelDataTypeField> outputPartColRelRowTypeList = new ArrayList<>();
-        computePartColIndexMappings(partColIdxList, outputPartColRelRowTypeList);
-        partColIndexMappings = partColIdxList;
-        partColRelRowType = new RelRecordType(outputPartColRelRowTypeList);
+        this.fullPartByColMeta = buildFullPartColMetaInfo(partInfo.getPartitionBy());
     }
 
     public static PartitionTupleRoutingContext buildPartitionTupleRoutingContext(String schemaName,
@@ -180,11 +295,11 @@ public class PartitionTupleRoutingContext {
     }
 
     public RelDataType getPartColRelRowType() {
-        return partColRelRowType;
+        return this.fullPartByColMeta.getFullPartColRelRowType();
     }
 
     public List<Integer> getPartColIndexMappings() {
-        return partColIndexMappings;
+        return this.fullPartByColMeta.getFullPartColIndexMappings();
     }
 
     public String getSchemaName() {

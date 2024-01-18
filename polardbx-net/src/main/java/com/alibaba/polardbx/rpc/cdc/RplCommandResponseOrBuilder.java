@@ -23,25 +23,21 @@ public interface RplCommandResponseOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.RplCommandResponse)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>int32 resultCode = 1;</code>
-     *
-     * @return The resultCode.
-     */
-    int getResultCode();
+  /**
+   * <code>int32 resultCode = 1;</code>
+   * @return The resultCode.
+   */
+  int getResultCode();
 
-    /**
-     * <code>string error = 2;</code>
-     *
-     * @return The error.
-     */
-    java.lang.String getError();
-
-    /**
-     * <code>string error = 2;</code>
-     *
-     * @return The bytes for error.
-     */
-    com.google.protobuf.ByteString
-    getErrorBytes();
+  /**
+   * <code>string error = 2;</code>
+   * @return The error.
+   */
+  java.lang.String getError();
+  /**
+   * <code>string error = 2;</code>
+   * @return The bytes for error.
+   */
+  com.google.protobuf.ByteString
+      getErrorBytes();
 }

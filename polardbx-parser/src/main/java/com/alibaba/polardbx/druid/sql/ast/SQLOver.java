@@ -39,29 +39,29 @@ import java.util.List;
 public class SQLOver extends SQLObjectImpl implements SQLReplaceable {
 
     protected final List<SQLExpr> partitionBy = new ArrayList<SQLExpr>();
-    protected SQLOrderBy          orderBy;
-    protected SQLOrderBy          distributeBy;
-    protected SQLOrderBy          sortBy;
+    protected SQLOrderBy orderBy;
+    protected SQLOrderBy distributeBy;
+    protected SQLOrderBy sortBy;
 
     // for db2
-    protected SQLName             of;
+    protected SQLName of;
 
-    protected WindowingType       windowingType;
+    protected WindowingType windowingType;
 
-    protected boolean             windowingPreceding;
-    protected boolean             windowingFollowing;
+    protected boolean windowingPreceding;
+    protected boolean windowingFollowing;
 
-    protected SQLExpr             windowingBetweenBegin;
-    protected WindowingBound      windowingBetweenBeginBound;
+    protected SQLExpr windowingBetweenBegin;
+    protected WindowingBound windowingBetweenBeginBound;
 
-    protected SQLExpr             windowingBetweenEnd;
-    protected WindowingBound      windowingBetweenEndBound;
+    protected SQLExpr windowingBetweenEnd;
+    protected WindowingBound windowingBetweenEndBound;
 
-    public SQLOver(){
+    public SQLOver() {
 
     }
 
-    public SQLOver(SQLOrderBy orderBy){
+    public SQLOver(SQLOrderBy orderBy) {
         this.setOrderBy(orderBy);
     }
 
@@ -201,22 +201,44 @@ public class SQLOver extends SQLObjectImpl implements SQLReplaceable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLOver sqlOver = (SQLOver) o;
 
-        if (windowingPreceding != sqlOver.windowingPreceding) return false;
-        if (windowingFollowing != sqlOver.windowingFollowing) return false;
-        if (!partitionBy.equals(sqlOver.partitionBy)) return false;
-        if (orderBy != null ? !orderBy.equals(sqlOver.orderBy) : sqlOver.orderBy != null) return false;
-        if (of != null ? !of.equals(sqlOver.of) : sqlOver.of != null) return false;
-        if (windowingType != sqlOver.windowingType) return false;
-        if (windowingBetweenBegin != null ? !windowingBetweenBegin.equals(sqlOver.windowingBetweenBegin) : sqlOver.windowingBetweenBegin != null)
+        if (windowingPreceding != sqlOver.windowingPreceding) {
             return false;
-        if (windowingBetweenBeginBound != sqlOver.windowingBetweenBeginBound) return false;
-        if (windowingBetweenEnd != null ? !windowingBetweenEnd.equals(sqlOver.windowingBetweenEnd) : sqlOver.windowingBetweenEnd != null)
+        }
+        if (windowingFollowing != sqlOver.windowingFollowing) {
             return false;
+        }
+        if (!partitionBy.equals(sqlOver.partitionBy)) {
+            return false;
+        }
+        if (orderBy != null ? !orderBy.equals(sqlOver.orderBy) : sqlOver.orderBy != null) {
+            return false;
+        }
+        if (of != null ? !of.equals(sqlOver.of) : sqlOver.of != null) {
+            return false;
+        }
+        if (windowingType != sqlOver.windowingType) {
+            return false;
+        }
+        if (windowingBetweenBegin != null ? !windowingBetweenBegin.equals(sqlOver.windowingBetweenBegin) :
+            sqlOver.windowingBetweenBegin != null) {
+            return false;
+        }
+        if (windowingBetweenBeginBound != sqlOver.windowingBetweenBeginBound) {
+            return false;
+        }
+        if (windowingBetweenEnd != null ? !windowingBetweenEnd.equals(sqlOver.windowingBetweenEnd) :
+            sqlOver.windowingBetweenEnd != null) {
+            return false;
+        }
         return windowingBetweenEndBound == sqlOver.windowingBetweenEndBound;
     }
 
@@ -298,12 +320,12 @@ public class SQLOver extends SQLObjectImpl implements SQLReplaceable {
 
         public final String name;
         public final String name_lower;
+
         private WindowingType(String name) {
             this.name = name;
             this.name_lower = name.toLowerCase();
         }
     }
-
 
     public static enum WindowingBound {
         UNBOUNDED_PRECEDING("UNBOUNDED PRECEDING"),
@@ -314,6 +336,7 @@ public class SQLOver extends SQLObjectImpl implements SQLReplaceable {
 
         public final String name;
         public final String name_lower;
+
         private WindowingBound(String name) {
             this.name = name;
             this.name_lower = name.toLowerCase();

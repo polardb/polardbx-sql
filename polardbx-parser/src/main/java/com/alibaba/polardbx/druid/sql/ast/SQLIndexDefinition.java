@@ -60,6 +60,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
     // for polardb-x partition manage
     protected SQLPartitionBy partitioning;
     private SQLName tableGroup;
+    private boolean visible = true;
 
     // For fulltext index when create table.
     private SQLName analyzerName;
@@ -91,6 +92,14 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
             }
         }
         this.symbol = symbol;
+    }
+
+    public boolean isVisible() {
+        return visible;
+    }
+
+    public void setVisible(boolean visible) {
+        this.visible = visible;
     }
 
     public boolean isGlobal() {
@@ -366,6 +375,7 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
         definition.hashMapType = hashMapType;
         definition.index = index;
         definition.key = key;
+        definition.visible = visible;
         if (name != null) {
             definition.name = name.clone();
             definition.name.setParent(parent);
@@ -527,5 +537,9 @@ public class SQLIndexDefinition extends SQLObjectImpl implements SQLIndex {
 
     public void setTableGroup(SQLName tableGroup) {
         this.tableGroup = tableGroup;
+    }
+
+    public boolean isUnique() {
+        return type != null && type.equalsIgnoreCase("UNIQUE");
     }
 }

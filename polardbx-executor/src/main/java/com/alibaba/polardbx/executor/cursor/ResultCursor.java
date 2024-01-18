@@ -68,8 +68,11 @@ public class ResultCursor extends AbstractCursor {
         }
     }
 
+    public CursorMeta getCursorMeta() {
+        return cursorMeta;
+    }
+
     public Cursor getCursor() {
         return cursor;
     }
-
 }

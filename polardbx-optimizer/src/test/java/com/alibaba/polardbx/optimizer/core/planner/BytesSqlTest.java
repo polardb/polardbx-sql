@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.jdbc.StreamBytesSql;
 import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
@@ -32,10 +33,12 @@ import com.google.common.collect.Lists;
 import junit.framework.TestCase;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.junit.Test;
 
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @author fangwu
@@ -59,6 +62,13 @@ public class BytesSqlTest extends TestCase {
         "select name from t4 where (name,pk,a) in (('a', 1, 'er'),('age', 324, 'a'), (34,3,34))"
     };
 
+    @Test
+    public void testHint() {
+        String sql = "/*DRDS xxx*/ select * from xx";
+        BytesSql b = BytesSql.getBytesSql(sql);
+        System.out.println(b.toString());
+    }
+
     public void testStreamBytesSQL() {
         // without limit
         String sql = "select * from t1 where id in (1,3,4,5,6)";
@@ -75,10 +85,15 @@ public class BytesSqlTest extends TestCase {
 
         expectSql =
             " ( select * from t1 where id in (1,3,4,5,6) )  UNION ALL  ( select * from t1 where id in (1,3,4,5,6) )  UNION ALL  ( select * from t1 where id in (1,3,4,5,6) )  LIMIT 10, 1002";
-
-        System.out.println(rs.display());
+        String check = rs.display();
         System.out.println(expectSql);
-        Assert.assertTrue(expectSql.equals(rs.display()));
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes()).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes((List<ParameterContext>) null)).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes(StandardCharsets.UTF_8)).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
 
         // with limit
         sql = "select * from t1 where id in (1,3,4,5,6) limit 100";
@@ -91,10 +106,51 @@ public class BytesSqlTest extends TestCase {
         Assert.assertTrue(expectSql.equals(rs.display()));
     }
 
+    public void testUnionBytesSQL() {
+        // without limit
+        String sql = "select * from t1 where id in (1,3,4,5,6)";
+        BytesSql bytesSql = BytesSql.getBytesSql(sql);
+        byte[] limit = "10, 1002".getBytes();
+        BytesSql rs = buildUnionBytesSql(bytesSql.getBytesArray(), bytesSql.isParameterLast(), 1, null, limit);
+        String expectSql = "select * from t1 where id in (1,3,4,5,6)";
+        System.out.println(rs.display());
+        System.out.println(expectSql);
+        Assert.assertTrue(expectSql.equals(rs.display()));
+
+        rs = buildUnionBytesSql(bytesSql.getBytesArray(), bytesSql.isParameterLast(), 3, null, limit);
+
+        expectSql =
+            " ( select * from t1 where id in (1,3,4,5,6) )  UNION ALL  ( select * from t1 where id in (1,3,4,5,6) )  UNION ALL  ( select * from t1 where id in (1,3,4,5,6) )  LIMIT 10, 1002";
+        String check = rs.display();
+        System.out.println(expectSql);
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes()).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes((List<ParameterContext>) null)).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
+        check = new String(rs.getBytes(StandardCharsets.UTF_8)).replaceAll("\n", " ");
+        Assert.assertTrue(expectSql.equals(check), check);
+
+        // with limit
+        sql = "select * from t1 where id in (1,3,4,5,6) limit 100";
+        bytesSql = BytesSql.getBytesSql(sql);
+        rs = buildUnionBytesSql(bytesSql.getBytesArray(), bytesSql.isParameterLast(), 1, null, limit);
+        expectSql = "select * from t1 where id in (1,3,4,5,6) limit 100";
+        System.out.println(rs.display());
+        System.out.println(expectSql);
+        Assert.assertTrue(expectSql.equals(rs.display()));
+    }
+
     private BytesSql buildStreamBytesSql(byte[][] bytesArray, boolean parameterLast, int unionSize,
                                          byte[] order, byte[] limit, byte[] streamLimit, boolean isContainSelect) {
 
         return new StreamBytesSql(bytesArray, parameterLast, unionSize, order, limit, streamLimit, isContainSelect);
+    }
+
+    private BytesSql buildUnionBytesSql(byte[][] bytesArray, boolean parameterLast, int unionSize,
+                                        byte[] order, byte[] limit) {
+
+        return new UnionBytesSql(bytesArray, parameterLast, unionSize, order, limit);
     }
 
     public void testMultiColumn() {
@@ -172,4 +228,100 @@ public class BytesSqlTest extends TestCase {
         }
     }
 
+    public void testGetBytesByParams() {
+        String testSql = "select * from t1 where id in (1,3,4,5,6) and name in ('bob', 'mary')";
+
+        SqlParameterized sqlParameterized = SqlParameterizeUtils.parameterize(testSql);
+        SqlNodeList astList = new FastsqlParser().parse(sqlParameterized.getSql());
+        SqlNode ast = astList.get(0);
+        BytesSql sqlTemplate = RelUtils.toNativeBytesSql(ast, DbType.MYSQL);
+
+        // test contains rawstring
+        List<ParameterContext> parameterContexts = Lists.newLinkedList();
+        parameterContexts.add(buildParameterWithRawString());
+        Assert.assertTrue(sqlTemplate.containRawString(parameterContexts));
+        parameterContexts = Lists.newArrayList(parameterContexts);
+        Assert.assertTrue(sqlTemplate.containRawString(parameterContexts));
+
+        // test get bytes
+        parameterContexts = Lists.newLinkedList();
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithoutRawString());
+        String rs = new String(sqlTemplate.getBytes(parameterContexts));
+        System.out.println(rs);
+        Assert.assertTrue("SELECT *\nFROM `t1`\nWHERE ((`id` IN (?,?,?)) AND (`name` IN (?)))".equals(rs));
+
+        parameterContexts.clear();
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithRawString());
+        rs = new String(sqlTemplate.getBytes(parameterContexts));
+        System.out.println(rs);
+        Assert.assertTrue("SELECT *\nFROM `t1`\nWHERE ((`id` IN (?,?,?)) AND (`name` IN (?,?,?)))".equals(rs));
+    }
+
+    public void testEmptyPrepareParams() {
+        // test get bytes
+        List<ParameterContext> parameterContexts = Lists.newLinkedList();
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithNullIndex());
+        parameterContexts.add(buildParameterWithoutRawString());
+        parameterContexts.add(buildParameterWithRawString());
+        List<ParameterContext> rsList = GeneralUtil.prepareParam(parameterContexts);
+        String rs = rsList.stream().map(p -> p.getArgs()[0]).collect(Collectors.toList()).toString();
+        System.out.println(rs);
+        Assert.assertTrue("[1, 2, 3, 4, 5, 6, 7, 8]".equals(rs));
+    }
+
+    public void testPrepareParams() {
+        // test get bytes
+        List<ParameterContext> parameterContexts = Lists.newLinkedList();
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithoutRawString());
+        List<ParameterContext> rsList = GeneralUtil.prepareParam(parameterContexts);
+        String rs = rsList.stream().map(p -> p.getArgs()[0]).collect(Collectors.toList()).toString();
+        System.out.println(rs);
+        Assert.assertTrue("[1, 2, 3, 4]".equals(rs));
+
+        parameterContexts.clear();
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithRawString());
+        parameterContexts.add(buildParameterWithoutRawString());
+        parameterContexts.add(buildParameterWithRawString());
+        rsList = GeneralUtil.prepareParam(parameterContexts);
+        rs = rsList.stream().map(p -> p.getArgs()[0]).collect(Collectors.toList()).toString();
+        System.out.println(rs);
+        Assert.assertTrue("[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]".equals(rs));
+
+        parameterContexts.clear();
+        parameterContexts.add(buildParameterWithoutRawString());
+        parameterContexts.add(buildParameterWithoutRawString());
+        parameterContexts.add(buildParameterWithoutRawString());
+        rsList = GeneralUtil.prepareParam(parameterContexts);
+        Assert.assertTrue(rsList == parameterContexts);
+    }
+
+    private ParameterContext buildParameterWithRawString() {
+        ParameterContext parameterContext = new ParameterContext();
+        parameterContext.setParameterMethod(ParameterMethod.setObject1);
+        List<Object> l = Lists.newArrayList();
+        l.add(1);
+        l.add(1);
+        l.add(2);
+        parameterContext.setArgs(new Object[] {1, new RawString(l)});
+        return parameterContext;
+    }
+
+    private ParameterContext buildParameterWithoutRawString() {
+        ParameterContext parameterContext = new ParameterContext();
+        parameterContext.setParameterMethod(ParameterMethod.setObject1);
+        parameterContext.setArgs(new Object[] {1, "test"});
+        return parameterContext;
+    }
+
+    private ParameterContext buildParameterWithNullIndex() {
+        ParameterContext parameterContext = new ParameterContext();
+        parameterContext.setParameterMethod(ParameterMethod.setObject1);
+        parameterContext.setArgs(new Object[] {null, "test"});
+        return parameterContext;
+    }
 }

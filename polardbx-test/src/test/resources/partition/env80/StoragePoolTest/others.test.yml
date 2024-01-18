@@ -1,0 +1,75 @@
+storageList: [$dn1, $dn2]
+dbName: "test_locality_db14"
+testCases:
+  - prepareDDls:
+      - "drop database if exists test_locality_db14"
+      - "create database test_locality_db14 mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db14;"
+      - "
+      create table p0(x int  AUTO_INCREMENT primary key, y int) partition by hash(x) partitions 4 locality = 'dn=polardbx-storage-0-master';
+      "
+      - "
+      alter table p0 ADD UNIQUE GLOBAL INDEX g_i_y_p0(y) COVERING (x) partition by hash(y);
+      "
+      - "
+      create table p1(x int  AUTO_INCREMENT primary key, y int, GLOBAL INDEX g_i_y_p1(y) COVERING(x) partition by hash(y) partitions 4) partition by hash(x) partitions 4 locality = 'dn=polardbx-storage-0-master';
+      "
+    cleanupDDls:
+      - "use polardbx;"
+      - "drop database if exists test_locality_db14;"
+    checkActions:
+      localityValueCheck:
+        - p0 table $dn1
+        - p1 table $dn1
+        - g_i_y_p0 table $dn1,$dn2
+        - test_locality_db14 database $dn1,$dn2
+      tableGroupMatchCheck:
+        - p0,p1 $tg1 ""
+        - c2 $tg2 ""
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+        - $tg1.p1 $dn1
+        - $tg1.p2 $dn1
+        - $tg1.p3 $dn2
+        - $tg1.p4 $dn2
+        - $tg1.p5 $dn2
+        - $tg1.p6 $dn2
+        - $tg1.p7 $dn2
+        - $tg1.p8 $dn2
+        - $tg2.p1 $dn1
+        - $tg2.p2 $dn1
+        - $tg2.p3 $dn2
+        - $tg2.p4 $dn2
+        - $tg2.p5 $dn2
+        - $tg2.p6 $dn2
+        - $tg2.p7 $dn2
+        - $tg2.p8 $dn2
+      topologyCheck:
+        - c0.p1 partition $dn1
+        - c0.p2 partition $dn1
+        - c0.p3 partition $dn2
+        - c0.p4 partition $dn2
+        - c0.p5 partition $dn2
+        - c0.p6 partition $dn2
+        - c0.p7 partition $dn2
+        - c0.p8 partition $dn2
+        - c1.p1 partition $dn1
+        - c1.p2 partition $dn1
+        - c1.p3 partition $dn2
+        - c1.p4 partition $dn2
+        - c1.p5 partition $dn2
+        - c1.p6 partition $dn2
+        - c1.p7 partition $dn2
+        - c1.p8 partition $dn2
+        - c2.p1 partition $dn1
+        - c2.p2 partition $dn1
+        - c2.p3 partition $dn1
+        - c2.p4 partition $dn1
+        - c2.p5 partition $dn2
+        - c2.p6 partition $dn2
+        - c2.p7 partition $dn2
+        - c2.p8 partition $dn2
+        #  auto generate by locality value check.
+        #  auto generate by partition locality check. with each table.
+

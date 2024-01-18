@@ -35,17 +35,14 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName DdlRefactorCompatibleTest
- * @description
- * @Author zzy
- * @Date 2019-07-26 09:50
  */
 public class DdlRefactorCompatibleTest extends TestCase {
 
     public void test_0() {
-        String sql = "alter table tb add index (a) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF";
+        String sql =
+            "alter table tb add index (a) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF";
         SQLStatementParser parser = new MySqlStatementParser(sql,
-                SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
+            SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
@@ -59,15 +56,19 @@ public class DdlRefactorCompatibleTest extends TestCase {
         Assert.assertEquals("DotProduct", addIndex.getDistanceMeasure());
         Assert.assertEquals("IVF", addIndex.getAlgorithm());
         Assert.assertEquals(3, addIndex.getOptions().size());
-        Assert.assertTrue(addIndex.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
-        Assert.assertTrue(addIndex.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
-        Assert.assertTrue(addIndex.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
+        Assert.assertTrue(addIndex.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
+        Assert.assertTrue(addIndex.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
+        Assert.assertTrue(addIndex.getOptions().contains(
+            new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
     }
 
     public void test_1() {
-        String sql = "create index ann idx on tb (a) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF LOCK DEAFULT";
+        String sql =
+            "create index idx on tb (a) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF LOCK DEAFULT";
         SQLStatementParser parser = new MySqlStatementParser(sql,
-                SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
+            SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
@@ -76,19 +77,24 @@ public class DdlRefactorCompatibleTest extends TestCase {
         SQLCreateIndexStatement statement = (SQLCreateIndexStatement) result;
 
         Assert.assertEquals(4, statement.getOptions().size());
-        Assert.assertTrue(statement.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
-        Assert.assertTrue(statement.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("LOCK"), new SQLIdentifierExpr("DEAFULT"))));
-        Assert.assertTrue(statement.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
-        Assert.assertTrue(statement.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
+        Assert.assertTrue(statement.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
+        Assert.assertTrue(statement.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("LOCK"), new SQLIdentifierExpr("DEAFULT"))));
+        Assert.assertTrue(statement.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
+        Assert.assertTrue(statement.getOptions().contains(
+            new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
     }
 
     public void test_2() {
         String sql = "create table tb (" +
-                "  x int," +
-                "  ANN INDEX feature_idx0 (face_feature) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF" +
-                ")";
+            "  x int," +
+            "  ANN INDEX feature_idx0 (face_feature) KEY_BLOCK_SIZE=32 using hash comment 'hehe' DistanceMeasure = DotProduct ALGORITHM = IVF"
+            +
+            ")";
         SQLStatementParser parser = new MySqlStatementParser(sql,
-                SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
+            SQLParserFeature.TDDLHint, SQLParserFeature.EnableCurrentUserExpr);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
@@ -104,9 +110,12 @@ public class DdlRefactorCompatibleTest extends TestCase {
         Assert.assertEquals(new SQLIntegerExpr(32), index.getOption("KEY_BLOCK_SIZE"));
 
         Assert.assertEquals(index.getOptions().size(), 3);
-        Assert.assertTrue(index.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
-        Assert.assertTrue(index.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
-        Assert.assertTrue(index.getOptions().contains(new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
+        Assert.assertTrue(index.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("ALGORITHM"), new SQLIdentifierExpr("IVF"))));
+        Assert.assertTrue(index.getOptions()
+            .contains(new SQLAssignItem(new SQLIdentifierExpr("KEY_BLOCK_SIZE"), new SQLIntegerExpr(32))));
+        Assert.assertTrue(index.getOptions().contains(
+            new SQLAssignItem(new SQLIdentifierExpr("DISTANCEMEASURE"), new SQLIdentifierExpr("DotProduct"))));
     }
 
 }

@@ -16,16 +16,22 @@
 
 package com.alibaba.polardbx.transaction.async;
 
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.transaction.TransactionLogger;
+import com.alibaba.polardbx.transaction.utils.ParamValidationUtils;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.TimerTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static com.alibaba.polardbx.common.constants.ServerVariables.MODIFIABLE_DEADLOCK_DETECTION_PARAM;
+
 /**
  * This timer task wrapper supports modifying task parameters dynamically.
+ *
  * @author wuzhe
  */
 public abstract class BaseTimerTaskWrapper {
@@ -56,13 +62,49 @@ public abstract class BaseTimerTaskWrapper {
      */
     private final AtomicBoolean needReset = new AtomicBoolean(false);
 
+    protected final Map<String, Object> properties;
+    protected final AsyncTaskQueue asyncTaskQueue;
+
+    public BaseTimerTaskWrapper(Map<String, Object> properties, AsyncTaskQueue asyncTaskQueue) {
+        this.properties = properties;
+        this.asyncTaskQueue = asyncTaskQueue;
+    }
+
     /**
      * Reset the current timer task with new parameters.
      */
-    abstract void resetTask();
+    public void resetTask() {
+        if (ConfigDataMode.isFastMock()) {
+            cancel();
+            return;
+        }
+
+        // 1. Get new parameters.
+        final Map<String, String> newParams = getNewParams();
+
+        // 2. Validate parameters.
+        validateParams(newParams);
+
+        // 3. If new parameters are identical to the current running ones, ignore the reset.
+        final Map<String, String> currentParam = getCurrentParam();
+        if (null != currentParam &&
+            ParamValidationUtils.isIdentical(newParams, currentParam, getParamsDef())) {
+            return;
+        }
+
+        // 4. Reset the timer task.
+        innerReset(newParams);
+    }
+
+    abstract Set<String> getParamsDef();
+
+    abstract void validateParams(Map<String, String> newParams);
+
+    abstract Map<String, String> getNewParams();
 
     /**
      * Create a new timer task.
+     *
      * @param newParam new parameters.
      * @return A newly created timer task.
      */
@@ -116,7 +158,7 @@ public abstract class BaseTimerTaskWrapper {
                     // If necessary, reset the timer task in this thread
                     // since it already holds the lock.
                     if (this.needReset.compareAndSet(true, false)) {
-                        TransactionLogger.info("Start a delay reset.");
+                        TransactionLogger.warn("Start a delay reset.");
                         resetTask();
                     }
                 } finally {
@@ -138,7 +180,7 @@ public abstract class BaseTimerTaskWrapper {
             // For the second case, try to wait some time until the reset is completed.
             if (this.lock.tryLock(5L, TimeUnit.SECONDS)) {
                 try {
-                    TransactionLogger.info("Start resetting timer task with param: " + newParams);
+                    TransactionLogger.warn("Start resetting timer task with param: " + newParams);
 
                     // 1. Cancel the current task.
                     this.cancel();
@@ -147,7 +189,7 @@ public abstract class BaseTimerTaskWrapper {
                     // 3. Then, set the timer task to a newly created timer task.
                     this.timerTask = createTask(newParams);
 
-                    TransactionLogger.info("Finish resetting timer task with param: " + newParams);
+                    TransactionLogger.warn("Finish resetting timer task with param: " + newParams);
 
                     // Reset the timer task successfully, return.
                     return;

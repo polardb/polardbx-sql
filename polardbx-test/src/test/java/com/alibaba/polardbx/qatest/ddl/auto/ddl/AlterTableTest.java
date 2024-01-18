@@ -21,8 +21,9 @@ import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -50,14 +51,59 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertThat;
 
+@NotThreadSafe
 @RunWith(Parameterized.class)
-public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
+public class AlterTableTest extends DDLBaseNewDBTestCase {
 
     final static Log log = LogFactory.getLog(AlterTableTest.class);
-    private String tableName = "";
     private static final String createOption = " if not exists ";
     private static final String ALLOW_ALTER_GSI_INDIRECTLY_HINT =
         "/*+TDDL:cmd_extra(ALLOW_ALTER_GSI_INDIRECTLY=true)*/";
+    private static final String[][] TEST_PARAMS = new String[][] {
+        new String[] {
+            "1",
+            "add dept int, add company int",
+            "(1111,'aaa',1112,1113)",
+            "(2221,'bbb',2222,2223),(3331,'ccc',3332,3333),(4441,'ddd',4442,4443)",
+            "(3331,'ccc',3332,3333)", "name='ccc++'",
+            "(company,dept,name,id)"},
+        new String[] {
+            "2",
+            "modify dept bigint after id, change company corp varchar(64) after dept",
+            "(1111,1112,'aaaa','aaab')",
+            "(2221,2222,'bbba','bbbb'),(3331,3332,'ccca','cccb'),(4441,4442,'ddda','dddb')",
+            "(3331,3332,'ccca','cccb')", "name='ccc++', corp='ccc++'",
+            "(name,corp,dept,id)"},
+        new String[] {
+            "3",
+            "change name nickname varchar(64) after id, add boss int first",
+            "(1111,1112,'aaaa',1113,'aaab')",
+            "(2221,2222,'bbba',2223,'bbbb'),(3331,3332,'ccca',3333,'cccb'),(4441,4442,'ddda',4443,'dddb')",
+            "(3331,3332,'ccca',3333,'cccb')", "nickname='ccc++'",
+            "(corp,dept,nickname,id,boss)"},
+        new String[] {
+            "4",
+            "add age int after nickname",
+            "(1111,1112,'aaaa',1113,1114,'aaab')",
+            "(2221,2222,'bbba',2223,2224,'bbbb'),(3331,3332,'ccca',3333,3334,'cccb'),(4441,4442,'ddda',4443,4444,'dddb')",
+            "(3331,3332,'ccca',3333,3334,'cccb')", "corp='ccc++', nickname='ccc++'",
+            "(corp,dept,age,nickname,id,boss)"},
+        new String[] {
+            "5",
+            "drop boss, add leader char(1) after age",
+            "(1111,'aaaa',1112,'Y',1113,'aaab')",
+            "(2221,'bbba',2222,'N',2223,'bbbb'),(3331,'ccca',3332,'Y',3333,'cccb'),(4441,'ddda',4442,'N',4443,'dddb')",
+            "(3331,'ccca',3332,'Y',3333,'cccb')", "nickname='ccc+++'",
+            "(corp,dept,leader,age,nickname,id)"},
+        new String[] {
+            "6",
+            "add address varchar(256), drop corp, add years int after leader",
+            "(1111,'aaaa',1112,'n',1113,1114,'aaab')",
+            "(2221,'bbba',2222,'y',2223,2224,'bbbb'),(3331,'ccca',3332,'Y',3333,3334,'cccb'),(4441,'ddda',4442,'N',4443,4444,'dddb')",
+            "(3331,'ccca',3332,'n',3333,3334,'cccb')", "address='ccc++'",
+            "(address,dept,years,leader,age,nickname,id)"}
+    };
+    private String tableName = "";
 
     public AlterTableTest(boolean crossSchema) {
         this.crossSchema = crossSchema;
@@ -68,6 +114,24 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         return Arrays.asList(new Object[][] {
             {false}
         });
+    }
+
+    private static String reverseValues(String valueString) {
+        List<String> values = new ArrayList<>();
+        String regex = "\\((.*?)\\)";
+        Pattern pattern = Pattern.compile(regex);
+        Matcher matcher = pattern.matcher(valueString);
+        while (matcher.find()) {
+            values.add(matcher.group());
+        }
+
+        List<String> reversedValues = new ArrayList<>();
+        for (String value : values) {
+            String[] splitValue = value.substring(1, value.length() - 1).split(",");
+            Collections.reverse(Arrays.asList(splitValue));
+            reversedValues.add("(" + String.join(",", splitValue) + ")");
+        }
+        return String.join(",", reversedValues);
     }
 
     @Before
@@ -151,7 +215,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column id int not null comment 'new comment'", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "not supported", "can't modify shard column");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(
             "/*TDDL:ENABLE_ALTER_SHARD_KEY=TRUE*/alter table %s modify column id int not null comment 'new comment'",
@@ -443,7 +507,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column a char", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
     }
@@ -458,7 +522,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format("alter table %s modify column id  varchar(100)", mytable);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
     }
@@ -750,7 +814,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            isMySQL80() ? "optimize error by Referenced identifier" :
+                "Not all physical DDLs have been executed successfully"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -815,7 +880,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         String sql = "create table %s(c1 int not null primary key, c2 int, c3 int) partition by hash(c1)";
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, tableName));
 
-        sql = "select * from %s where c1 > 10";
+        sql = "analyze table %s";
         JdbcUtil.executeSuccess(tddlConnection, String.format(sql, tableName));
         checkVirtualStatistics(simpleTableName, new String[] {"c1", "c2", "c3"});
 
@@ -837,7 +902,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAlterTableAddColumnWithKeys() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String mysqlSchema = TStringUtil.isBlank(mysqlDatabase2) ? mysqlDatabase1 : mysqlDatabase2;
@@ -1174,69 +1238,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection, String.format(sql, tableName), "Unknown column 'nodept'");
     }
 
-    private static String reverseValues(String valueString) {
-        List<String> values = new ArrayList<>();
-        String regex = "\\((.*?)\\)";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(valueString);
-        while (matcher.find()) {
-            values.add(matcher.group());
-        }
-
-        List<String> reversedValues = new ArrayList<>();
-        for (String value : values) {
-            String[] splitValue = value.substring(1, value.length() - 1).split(",");
-            Collections.reverse(Arrays.asList(splitValue));
-            reversedValues.add("(" + String.join(",", splitValue) + ")");
-        }
-        return String.join(",", reversedValues);
-    }
-
-    private static final String[][] TEST_PARAMS = new String[][] {
-        new String[] {
-            "1",
-            "add dept int, add company int",
-            "(1111,'aaa',1112,1113)",
-            "(2221,'bbb',2222,2223),(3331,'ccc',3332,3333),(4441,'ddd',4442,4443)",
-            "(3331,'ccc',3332,3333)", "name='ccc++'",
-            "(company,dept,name,id)"},
-        new String[] {
-            "2",
-            "modify dept bigint after id, change company corp varchar(64) after dept",
-            "(1111,1112,'aaaa','aaab')",
-            "(2221,2222,'bbba','bbbb'),(3331,3332,'ccca','cccb'),(4441,4442,'ddda','dddb')",
-            "(3331,3332,'ccca','cccb')", "name='ccc++', corp='ccc++'",
-            "(name,corp,dept,id)"},
-        new String[] {
-            "3",
-            "change name nickname varchar(64) after id, add boss int first",
-            "(1111,1112,'aaaa',1113,'aaab')",
-            "(2221,2222,'bbba',2223,'bbbb'),(3331,3332,'ccca',3333,'cccb'),(4441,4442,'ddda',4443,'dddb')",
-            "(3331,3332,'ccca',3333,'cccb')", "nickname='ccc++'",
-            "(corp,dept,nickname,id,boss)"},
-        new String[] {
-            "4",
-            "add age int after nickname",
-            "(1111,1112,'aaaa',1113,1114,'aaab')",
-            "(2221,2222,'bbba',2223,2224,'bbbb'),(3331,3332,'ccca',3333,3334,'cccb'),(4441,4442,'ddda',4443,4444,'dddb')",
-            "(3331,3332,'ccca',3333,3334,'cccb')", "corp='ccc++', nickname='ccc++'",
-            "(corp,dept,age,nickname,id,boss)"},
-        new String[] {
-            "5",
-            "drop boss, add leader char(1) after age",
-            "(1111,'aaaa',1112,'Y',1113,'aaab')",
-            "(2221,'bbba',2222,'N',2223,'bbbb'),(3331,'ccca',3332,'Y',3333,'cccb'),(4441,'ddda',4442,'N',4443,'dddb')",
-            "(3331,'ccca',3332,'Y',3333,'cccb')", "nickname='ccc+++'",
-            "(corp,dept,leader,age,nickname,id)"},
-        new String[] {
-            "6",
-            "add address varchar(256), drop corp, add years int after leader",
-            "(1111,'aaaa',1112,'n',1113,1114,'aaab')",
-            "(2221,'bbba',2222,'y',2223,2224,'bbbb'),(3331,'ccca',3332,'Y',3333,3334,'cccb'),(4441,'ddda',4442,'N',4443,4444,'dddb')",
-            "(3331,'ccca',3332,'n',3333,3334,'cccb')", "address='ccc++'",
-            "(address,dept,years,leader,age,nickname,id)"}
-    };
-
     @Test
     public void testSimpleInsertAfterInstantAddColumn() throws SQLException {
         setGlobalSupportInstantAddColumn(true);
@@ -1340,8 +1341,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<Integer, String> columnPositions = new HashMap<>();
         String sql = "select ordinal_position, column_name from information_schema.columns "
             + "where table_schema='%s' and table_name='%s' order by ordinal_position";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlConn = getMysqlConnection(phyDbName);
+            Statement stmt = mysqlConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 columnPositions.put(rs.getInt(1), rs.getString(2));
@@ -1377,7 +1378,6 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    @Ignore("fix by ???")
     public void testAlterTableAddIndex() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = randomTableName("test_add_index", 4);
@@ -1571,8 +1571,8 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         Map<String, Map<Integer, String>> indexColumnInfo = new HashMap<>();
         String sql = "select index_name,seq_in_index,column_name from information_schema.statistics "
             + "where table_schema='%s' and table_name='%s' order by index_name,seq_in_index";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
+        try (Connection mysqlConn = getMysqlDirectConnection(phyDbName);
+            Statement stmt = mysqlConn.createStatement();
             ResultSet rs = stmt.executeQuery(String.format(sql, phyDbName, phyTableName))) {
             while (rs.next()) {
                 String indexName = rs.getString(1);
@@ -1588,33 +1588,22 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
     private Pair<String, String> fetchPhyDbAndTableNames(String schemaName, String tableName)
         throws SQLException {
-        String dnWhereMetaDbResides, dnId, phyDbName, phyTableName;
-        dnWhereMetaDbResides = dnId = phyDbName = phyTableName = "N/A";
+        String phyDbName, phyTableName;
+        phyDbName = phyTableName = "N/A";
 
-        String sql = "select ip from storage_info where storage_inst_id like '%gms%' and ip not like '%cands%'";
-        try (Connection metaDbConn = getMetaConnection();
-            Statement stmt = metaDbConn.createStatement();
-            ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) {
-                dnWhereMetaDbResides = rs.getString(1);
-            }
-        }
-
-        sql = "show topology from " + tableName;
+        String sql = "show topology from " + tableName + " order by group_name limit 1";
         try (Connection cnConn = getPolardbxConnection();
             Statement stmt = cnConn.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                phyTableName = rs.getString(3);
-                phyDbName = rs.getString(5);
-                dnId = rs.getString(6);
-                if (TStringUtil.equalsIgnoreCase(dnId, dnWhereMetaDbResides)) {
-                    if (TStringUtil.contains(phyTableName, "00000") ||
-                        TStringUtil.contains(phyTableName, "00001")) {
-                        break;
-                    }
-                }
+                phyTableName = rs.getString("TABLE_NAME");
+                phyDbName = rs.getString("PHY_DB_NAME");
+                break;
             }
+        }
+
+        if (phyDbName.equals("N/A") || phyTableName.equals("N/A")) {
+            Assert.fail("Didn't find physical db and tb");
         }
 
         String message = "Physical DB and Table chosen:\n" + phyDbName + ", " + phyTableName;
@@ -2307,6 +2296,13 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
                 result = rs.getString(2);
             }
         }
+        if (isMySQL80() && null != result) {
+            result = result.replace("`pad` int DEFAULT NULL,", "`pad` int(11) DEFAULT NULL,");
+            result = result.replace("`id` int DEFAULT NULL,", "`id` int(11) DEFAULT NULL,");
+            result = result.replace("`pk` int NOT NULL AUTO_INCREMENT,", "`pk` int(11) NOT NULL AUTO_INCREMENT,");
+        }
+        System.out.println("result: \n" + result);
+        System.out.println("expected: \n" + expectedShow);
         Assert.assertTrue(compareShowCreateTable(result, expectedShow));
     }
 
@@ -2732,6 +2728,33 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testAlterTableDefaultCharset() {
+        String mytable = tableName;
+        dropTableIfExists(mytable);
+        String sql =
+            String.format("create table " + createOption + " %s(a int,b char) DEFAULT CHARSET = utf8mb4", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s DEFAULT CHARACTER SET utf8mb4 collate utf8mb4_bin", mytable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        try {
+            sql = String.format(
+                "select TABLE_COLLATION from information_schema.tables where table_schema = '%s' and table_name = '%s';",
+                tddlDatabase1, mytable);
+
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            org.junit.Assert.assertTrue(rs.next());
+            org.junit.Assert.assertEquals(rs.getString(1), "utf8mb4_bin");
+        } catch (Exception e) {
+            e.printStackTrace();
+            org.junit.Assert.fail(e.getMessage());
+        }
+
+        dropTableIfExists(mytable);
     }
 
     @Override

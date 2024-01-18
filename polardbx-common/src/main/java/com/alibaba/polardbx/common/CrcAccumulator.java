@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.common;
 
-import com.aliyun.oss.common.utils.CRC64;
+import java.util.zip.CRC32;
 
 public class CrcAccumulator {
     public final static byte SEPARATOR_TAG = (byte) 255;
     public final static byte NULL_TAG = (byte) 254;
 
-    private CRC64 crc = new CRC64();
+    private CRC32 crc = new CRC32();
     private int lastHash;
 
     public void appendNull() {
@@ -32,7 +32,7 @@ public class CrcAccumulator {
     }
 
     public void appendHash(int hash) {
-        crc.update(hash);
+        crc.update(new byte[] {(byte) (hash >>> 24), (byte) (hash >>> 16), (byte) (hash >>> 8), (byte) hash});
         crc.update(SEPARATOR_TAG);
         lastHash = hash;
     }

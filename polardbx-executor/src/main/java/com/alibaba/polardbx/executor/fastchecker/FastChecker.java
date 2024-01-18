@@ -16,42 +16,63 @@
 
 package com.alibaba.polardbx.executor.fastchecker;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ExecutorHelper;
+import com.alibaba.polardbx.executor.balancer.stats.StatsUtils;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
+import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
+import com.alibaba.polardbx.executor.gsi.utils.Transformer;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
-import com.alibaba.polardbx.executor.workqueue.PriorityFIFOTask;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
+import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
+import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.PhyOperationBuilderCommon;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperationFactory;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import org.apache.calcite.sql.OptimizerHint;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang3.StringUtils;
 
@@ -74,19 +95,22 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.RETRY_WAIT;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DEADLOCK;
+import static java.lang.Math.max;
 
 public class FastChecker extends PhyOperationBuilderCommon {
     private static final Logger logger = LoggerFactory.getLogger(FastChecker.class);
 
-    private final String schemaName;
+    private final String srcSchemaName;
+
+    private final String dstSchemaName;
     private final String srcLogicalTableName;
     private final String dstLogicalTableName;
     private final Map<String, String> sourceTargetGroup;
@@ -94,6 +118,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
     private Map<String, Set<String>> dstPhyDbAndTables;
     private final List<String> srcColumns;
     private final List<String> dstColumns;
+    private final List<String> srcPks;
+    private final List<String> dstPks;
 
     private final ITransactionManager tm;
 
@@ -101,9 +127,19 @@ public class FastChecker extends PhyOperationBuilderCommon {
     private final int lockTimeOut;
 
     private final PhyTableOperation planSelectHashCheckSrc;
+    private final PhyTableOperation planSelectHashCheckWithUpperBoundSrc;
+    private final PhyTableOperation planSelectHashCheckWithLowerBoundSrc;
+    private final PhyTableOperation planSelectHashCheckWithLowerUpperBoundSrc;
+
     private final PhyTableOperation planSelectHashCheckDst;
+    private final PhyTableOperation planSelectHashCheckWithUpperBoundDst;
+    private final PhyTableOperation planSelectHashCheckWithLowerBoundDst;
+    private final PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst;
     private final PhyTableOperation planIdleSelectSrc;
     private final PhyTableOperation planIdleSelectDst;
+
+    private final PhyTableOperation planSelectSampleSrc;
+    private final PhyTableOperation planSelectSampleDst;
 
     enum ParallelPolicy {
         /**
@@ -117,20 +153,29 @@ public class FastChecker extends PhyOperationBuilderCommon {
         PhyTableParallel
     }
 
-    ;
-
     /**
      * srcColumns and dstColumns must have the same order,
      * otherwise the check result may be wrong.
      */
-    public FastChecker(String schemaName, String srcLogicalTableName, String dstLogicalTableName,
-                       Map<String, String> sourceTargetGroup,
+
+    /**
+     * 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序！！！
+     */
+    public FastChecker(String srcSchemaName, String dstSchemaName, String srcLogicalTableName,
+                       String dstLogicalTableName, Map<String, String> sourceTargetGroup,
                        Map<String, Set<String>> srcPhyDbAndTables, Map<String, Set<String>> dstPhyDbAndTables,
-                       List<String> srcColumns, List<String> dstColumns, PhyTableOperation planSelectHashCheckSrc,
-                       PhyTableOperation planSelectHashCheckDst,
-                       PhyTableOperation planIdleSelectSrc, PhyTableOperation planIdleSelectDst,
-                       long parallelism, int lockTimeOut) {
-        this.schemaName = schemaName;
+                       List<String> srcColumns, List<String> dstColumns, List<String> srcPks, List<String> dstPks,
+                       long parallelism, int lockTimeOut, PhyTableOperation planSelectHashCheckSrc,
+                       PhyTableOperation planSelectHashCheckWithUpperBoundSrc,
+                       PhyTableOperation planSelectHashCheckWithLowerBoundSrc,
+                       PhyTableOperation planSelectHashCheckWithLowerUpperBoundSrc,
+                       PhyTableOperation planSelectHashCheckDst, PhyTableOperation planSelectHashCheckWithUpperBoundDst,
+                       PhyTableOperation planSelectHashCheckWithLowerBoundDst,
+                       PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst, PhyTableOperation planIdleSelectSrc,
+                       PhyTableOperation planIdleSelectDst, PhyTableOperation planSelectSampleSrc,
+                       PhyTableOperation planSelectSampleDst) {
+        this.srcSchemaName = srcSchemaName;
+        this.dstSchemaName = dstSchemaName;
         this.srcLogicalTableName = srcLogicalTableName;
         this.dstLogicalTableName = dstLogicalTableName;
         this.sourceTargetGroup = sourceTargetGroup;
@@ -138,13 +183,26 @@ public class FastChecker extends PhyOperationBuilderCommon {
         this.dstPhyDbAndTables = dstPhyDbAndTables;
         this.srcColumns = srcColumns;
         this.dstColumns = dstColumns;
+        this.srcPks = srcPks;
+        this.dstPks = dstPks;
+
         this.planSelectHashCheckSrc = planSelectHashCheckSrc;
+        this.planSelectHashCheckWithUpperBoundSrc = planSelectHashCheckWithUpperBoundSrc;
+        this.planSelectHashCheckWithLowerBoundSrc = planSelectHashCheckWithLowerBoundSrc;
+        this.planSelectHashCheckWithLowerUpperBoundSrc = planSelectHashCheckWithLowerUpperBoundSrc;
         this.planSelectHashCheckDst = planSelectHashCheckDst;
+        this.planSelectHashCheckWithUpperBoundDst = planSelectHashCheckWithUpperBoundDst;
+        this.planSelectHashCheckWithLowerBoundDst = planSelectHashCheckWithLowerBoundDst;
+        this.planSelectHashCheckWithLowerUpperBoundDst = planSelectHashCheckWithLowerUpperBoundDst;
+
         this.planIdleSelectSrc = planIdleSelectSrc;
         this.planIdleSelectDst = planIdleSelectDst;
+        this.planSelectSampleSrc = planSelectSampleSrc;
+        this.planSelectSampleDst = planSelectSampleDst;
+
         this.parallelism = parallelism;
         this.lockTimeOut = lockTimeOut;
-        this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
+        this.tm = ExecutorContext.getContext(srcSchemaName).getTransactionManager();
     }
 
     public static boolean isSupported(String schema) {
@@ -153,8 +211,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
 
     public static FastChecker create(String schemaName, String tableName, Map<String, String> sourceTargetGroup,
                                      Map<String, Set<String>> srcPhyDbAndTables,
-                                     Map<String, Set<String>> dstPhyDbAndTables,
-                                     long parallelism, ExecutionContext ec) {
+                                     Map<String, Set<String>> dstPhyDbAndTables, long parallelism,
+                                     ExecutionContext ec) {
         final SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         final TableMeta tableMeta = sm.getTable(tableName);
 
@@ -162,41 +220,309 @@ public class FastChecker extends PhyOperationBuilderCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, "Incorrect SCALEOUT relationship.");
         }
 
-        final List<String> allColumns = tableMeta.getAllColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
+        final List<String> allColumns =
+            tableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
         final List<String> allColumnsDst = new ArrayList<>(allColumns);
+        final List<String> srcPks = getorderedPrimaryKeys(tableMeta, ec);
+        final List<String> dstPks = new ArrayList<>(srcPks);
 
         if (parallelism <= 0) {
-            parallelism = Math.max(PriorityWorkQueue.getInstance().getCorePoolSize() / 2, 1);
+            parallelism = Math.max(FastCheckerThreadPool.getInstance().getCorePoolSize() / 2, 1);
         }
 
         final int lockTimeOut = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_LOCK_TIMEOUT);
 
         final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
 
-        return new FastChecker(schemaName, tableName, tableName, sourceTargetGroup, srcPhyDbAndTables,
-            dstPhyDbAndTables, allColumns, allColumnsDst,
-            builder.buildSelectHashCheckForChecker(tableMeta, allColumns),
-            builder.buildSelectHashCheckForChecker(tableMeta, allColumnsDst),
+        return new FastChecker(schemaName, schemaName, tableName, tableName, sourceTargetGroup, srcPhyDbAndTables,
+            dstPhyDbAndTables, allColumns, allColumnsDst, srcPks, dstPks, parallelism, lockTimeOut,
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, srcPks, false, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, srcPks, false, true),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, srcPks, true, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, srcPks, true, true),
+
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, dstPks, false, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, dstPks, false, true),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, dstPks, true, false),
+            builder.buildSelectHashCheckForChecker(tableMeta, allColumns, dstPks, true, true),
+
             builder.buildIdleSelectForChecker(tableMeta, allColumns),
             builder.buildIdleSelectForChecker(tableMeta, allColumnsDst),
-            parallelism, lockTimeOut);
+
+            builder.buildSqlSelectForSample(tableMeta, srcPks, srcPks, false, false),
+            builder.buildSqlSelectForSample(tableMeta, dstPks, dstPks, false, false));
     }
 
-    // use Long to store uint64_t hash result generated by DN, since java doesn't support unsigned type.
-    private Pair<Long, Boolean> hashcheckForSinglePhyTable(String phyDbName, String phyTable, ExecutionContext baseEc,
-                                                           boolean isSrcTableTask) {
-        long startTime = System.currentTimeMillis();
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format("[{0}] FastChecker start hash phy for {1}[{2}][{3}]",
-            baseEc.getTraceId(),
-            phyDbName,
-            phyTable,
-            isSrcTableTask ? "src" : "dst"));
+    private long getTableRowsCount(final String schema, final String dbIndex, final String phyTable) {
+        String dbIndexWithoutGroup = GroupInfoUtil.buildPhysicalDbNameFromGroupName(dbIndex);
+        List<List<Object>> phyDb = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, "select database();");
+        if (GeneralUtil.isEmpty(phyDb) || GeneralUtil.isEmpty(phyDb.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_ROWS,
+                String.format("group %s can not find physical db", dbIndex));
+        }
+
+        String phyDbName = String.valueOf(phyDb.get(0).get(0));
+        String rowsCountSQL = StatsUtils.genTableRowsCountSQL(phyDbName, phyTable);
+        List<List<Object>> result = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, rowsCountSQL);
+        if (GeneralUtil.isEmpty(result) || GeneralUtil.isEmpty(result.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_ROWS,
+                String.format("db %s can not find table %s", phyDbName, phyTable));
+        }
+
+        return Long.parseLong(String.valueOf(result.get(0).get(0)));
+    }
+
+    private long getTableAvgRowSize(final String schema, final String dbIndex, final String phyTable) {
+        String dbIndexWithoutGroup = GroupInfoUtil.buildPhysicalDbNameFromGroupName(dbIndex);
+        List<List<Object>> phyDb = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, "select database();");
+        if (GeneralUtil.isEmpty(phyDb) || GeneralUtil.isEmpty(phyDb.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_ROWS,
+                String.format("group %s can not find physical db", dbIndex));
+        }
+
+        String phyDbName = String.valueOf(phyDb.get(0).get(0));
+        String avgTableRowLengthSQL = StatsUtils.genAvgTableRowLengthSQL(phyDbName, phyTable);
+        List<List<Object>> result = StatsUtils.queryGroupByPhyDb(schema, dbIndexWithoutGroup, avgTableRowLengthSQL);
+        if (GeneralUtil.isEmpty(result) || GeneralUtil.isEmpty(result.get(0))) {
+            throw new TddlRuntimeException(ErrorCode.ERR_BACKFILL_GET_TABLE_ROWS,
+                String.format("db %s can not find table %s", phyDbName, phyTable));
+        }
+
+        return Long.parseLong(String.valueOf(result.get(0).get(0)));
+    }
+
+    private PhyTableOperation buildSamplePlanWithParam(String dbIndex, String phyTable, List<ParameterContext> params,
+                                                       float calSamplePercentage, boolean isSrcSchema) {
+        Map<Integer, ParameterContext> planParams = new HashMap<>();
+        // Physical table is 1st parameter
+        planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
+        PhyTableOperation phyTableOperation = isSrcSchema ? this.planSelectSampleSrc : this.planSelectSampleDst;
+        SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode().clone();
+        OptimizerHint optimizerHint = new OptimizerHint();
+        optimizerHint.addHint("+sample_percentage(" + calSamplePercentage + ")");
+        sqlSelect.setOptimizerHint(optimizerHint);
+
+        PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+        buildParams.setGroupName(dbIndex);
+        buildParams.setBytesSql(RelUtils.toNativeBytesSql(sqlSelect));
+        buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+        buildParams.setDynamicParams(planParams);
+        return PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(phyTableOperation, buildParams);
+    }
+
+    /**
+     * where 条件已经是DNF析取范式形式
+     * 因此相应的填充参数的方法为 将(pk1, pk2, pk3) < (?, ?, ?) 转换为DNF析取范式形式，再填充
+     */
+    private PhyTableOperation buildHashcheckPlanWithDnfParam(String dbIndex, String phyTable,
+                                                             List<ParameterContext> params,
+                                                             PhyTableOperation planTemplate,
+                                                             boolean withLowerBound,
+                                                             boolean withUpperBound) {
+        Map<Integer, ParameterContext> planParams = new HashMap<>();
+        // Physical table is 1st parameter
+        planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
+
+        PhyTableOpBuildParams dyParams = new PhyTableOpBuildParams();
+        dyParams.setGroupName(dbIndex);
+        dyParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
+
+        int beginParamIndex = 2;
+        // Parameters for where(DNF)
+        final int pkNumber = params.size() / ((withLowerBound ? 1 : 0) + (withUpperBound ? 1 : 0));
+        if (withLowerBound) {
+            for (int i = 0; i < pkNumber; ++i) {
+                for (int j = 0; j <= i; ++j) {
+                    planParams.put(beginParamIndex,
+                        new ParameterContext(params.get(j).getParameterMethod(),
+                            new Object[] {beginParamIndex, params.get(j).getArgs()[1]}));
+                    beginParamIndex++;
+                }
+            }
+        }
+        if (withUpperBound) {
+            final int base = withLowerBound ? pkNumber : 0;
+            for (int i = 0; i < pkNumber; ++i) {
+                for (int j = 0; j <= i; ++j) {
+                    planParams.put(beginParamIndex,
+                        new ParameterContext(params.get(base + j).getParameterMethod(),
+                            new Object[] {beginParamIndex, params.get(base + j).getArgs()[1]}));
+                    beginParamIndex++;
+                }
+            }
+        }
+
+        dyParams.setDynamicParams(planParams);
+
+        return PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(planTemplate, dyParams);
+    }
+
+    //for large table, we split table into batch
+    private List<Map<Integer, ParameterContext>> splitPhyTableIntoBatch(final ExecutionContext baseEc,
+                                                                        final String phyDbName, final String phyTable,
+                                                                        final long tableRowsCount,
+                                                                        final long batchSize,
+                                                                        final boolean isSrcSchema) {
+        boolean enableInnodbBtreeSampling = OptimizerContext.getContext(srcSchemaName).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
+
+        List<Map<Integer, ParameterContext>> batchBoundList = new ArrayList<>();
+
+        if (!enableInnodbBtreeSampling) {
+            return batchBoundList;
+        }
+
+        final long maxSampleSize = baseEc.getParamManager().getLong(ConnectionParams.FASTCHECKER_MAX_SAMPLE_SIZE);
+        final float maxSamplePercentage =
+            baseEc.getParamManager().getFloat(ConnectionParams.FASTCHECKER_MAX_SAMPLE_PERCENTAGE);
+
+        if (tableRowsCount <= batchSize) {
+            return batchBoundList;
+        }
+
+        final long batchNum = tableRowsCount / batchSize;
+
+        float calSamplePercentage = maxSampleSize * 1.0f / tableRowsCount * 100;
+        if (calSamplePercentage <= 0 || calSamplePercentage > maxSamplePercentage) {
+            calSamplePercentage = maxSamplePercentage;
+        }
+
+        PhyTableOperation plan =
+            buildSamplePlanWithParam(phyDbName, phyTable, new ArrayList<>(), calSamplePercentage, isSrcSchema);
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+            "[{0}] FastChecker {1}[{2}][{3}], begin to sample, phy table rows {4}, "
+                + "actual sample rate {5}%, phySqlInfo: {6}, param: {7}",
+            baseEc.getTraceId(), phyDbName, phyTable, isSrcSchema ? "src" : "dst",
+            tableRowsCount, calSamplePercentage, plan.getBytesSql(), plan.getParam()));
+
+        // execute query
+        final List<Map<Integer, ParameterContext>> sampleResult = GsiUtils.wrapWithSingleDbTrx(tm, baseEc, (ec) -> {
+            final Cursor cursor = ExecutorHelper.execute(plan, ec);
+            try {
+                return Transformer.convertUpperBoundWithDefault(cursor, (columnMeta, i) -> {
+                    // Generate default parameter context for upper bound of empty source table
+                    ParameterMethod defaultMethod = ParameterMethod.setString;
+                    Object defaultValue = "0";
+
+                    final DataType columnType = columnMeta.getDataType();
+                    if (DataTypeUtil.anyMatchSemantically(columnType, DataTypes.DateType, DataTypes.TimestampType,
+                        DataTypes.DatetimeType, DataTypes.TimeType, DataTypes.YearType)) {
+                        // For time data type, use number zero as upper bound
+                        defaultMethod = ParameterMethod.setLong;
+                        defaultValue = 0L;
+                    }
+
+                    return new ParameterContext(defaultMethod, new Object[] {i, defaultValue});
+                });
+            } finally {
+                cursor.close(new ArrayList<>());
+            }
+        });
+
+        long step = sampleResult.size() / batchNum;
+        if (step <= 0) {
+            return batchBoundList;
+        }
+        for (int i = 1; i < batchNum; i++) {
+            long boundIndex = i * step;
+            if (boundIndex < sampleResult.size()) {
+                batchBoundList.add(sampleResult.get((int) boundIndex));
+            }
+        }
+
+        return batchBoundList;
+    }
+
+    private Long getPhyTableDegistByBatch(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                          boolean isSrcTableTask, List<Map<Integer, ParameterContext>> batchBoundList,
+                                          final long tableRowsCount) {
+        if (batchBoundList.isEmpty()) {
+            return null;
+        }
+
+        List<Long> hashResults = new ArrayList<>();
+        List<PhyTableOperation> hashcheckPlans = new ArrayList<>();
+
+        Map<Integer, ParameterContext> firstBound = null, lastBound = null;
+        if (batchBoundList.size() == 1) {
+            firstBound = batchBoundList.get(0);
+            lastBound = batchBoundList.get(0);
+        } else {
+            firstBound = batchBoundList.get(0);
+            lastBound = batchBoundList.get(batchBoundList.size() - 1);
+        }
+
+        // build batch plans
+        PhyTableOperation operation =
+            isSrcTableTask ? this.planSelectHashCheckWithUpperBoundSrc : this.planSelectHashCheckWithUpperBoundDst;
+        List<ParameterContext> firstBoundPc = new ArrayList<>();
+        for (int i = 1; i <= firstBound.size(); i++) {
+            firstBoundPc.add(firstBound.get(i));
+        }
+        hashcheckPlans.add(buildHashcheckPlanWithDnfParam(phyDbName, phyTable, firstBoundPc, operation, false, true));
+
+        for (int i = 0; i < batchBoundList.size() - 1; i++) {
+            PhyTableOperation operationMidBound = isSrcTableTask ? this.planSelectHashCheckWithLowerUpperBoundSrc :
+                this.planSelectHashCheckWithLowerUpperBoundDst;
+            Map<Integer, ParameterContext> midBound = batchBoundList.get(i);
+            List<ParameterContext> midBoundPc = new ArrayList<>();
+            for (int j = 1; j <= midBound.size(); j++) {
+                midBoundPc.add(midBound.get(j));
+            }
+            midBound = batchBoundList.get(i + 1);
+            for (int j = 1; j <= midBound.size(); j++) {
+                midBoundPc.add(midBound.get(j));
+            }
+            hashcheckPlans.add(
+                buildHashcheckPlanWithDnfParam(phyDbName, phyTable, midBoundPc, operationMidBound, true, true));
+        }
+
+        PhyTableOperation operationLastBound =
+            isSrcTableTask ? this.planSelectHashCheckWithLowerBoundSrc : this.planSelectHashCheckWithLowerBoundDst;
+        List<ParameterContext> lastBoundPc = new ArrayList<>();
+        for (int i = 1; i <= lastBound.size(); i++) {
+            lastBoundPc.add(lastBound.get(i));
+        }
+        hashcheckPlans.add(
+            buildHashcheckPlanWithDnfParam(phyDbName, phyTable, lastBoundPc, operationLastBound, true, false));
+
+        //log batch sql
+        for (int i = 0; i < hashcheckPlans.size(); i++) {
+            SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                "[{0}] FastChecker {1}[{2}][{3}], batch {4}, phySqlInfo: {5}, param: {6}",
+                baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst", i,
+                hashcheckPlans.get(i).getBytesSql(), hashcheckPlans.get(i).getParam()));
+        }
+
+        //excute
+        for (int i = 0; i < hashcheckPlans.size(); i++) {
+            PhyTableOperation phyPlan = hashcheckPlans.get(i);
+            Long batchHashResult = executeHashcheckPlan(phyPlan, baseEc);
+            if (batchHashResult != null) {
+                hashResults.add(batchHashResult);
+            }
+            if (CrossEngineValidator.isJobInterrupted(baseEc) || Thread.currentThread().isInterrupted()) {
+                long jobId = baseEc.getDdlJobId();
+                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                    "The job '" + jobId + "' has been cancelled");
+            }
+        }
+
+        if (hashResults.isEmpty()) {
+            return null;
+        }
+
+        final HashCaculator caculator = new HashCaculator();
+        for (Long elem : hashResults) {
+            caculator.caculate(elem);
+        }
+        return caculator.getHashVal();
+    }
+
+    private Long getPhyTableDegistByFullScan(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                             boolean isSrcTableTask) {
         final Map<Integer, ParameterContext> params = new HashMap<>(1);
         params.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
-
 //        PhyTableOperation plan =
 //            new PhyTableOperation(isSrcTableTask ? this.planSelectHashCheckSrc : this.planSelectHashCheckDst);
 //        plan.setDbIndex(phyDbName);
@@ -211,84 +537,278 @@ public class FastChecker extends PhyOperationBuilderCommon {
         PhyTableOperation plan =
             PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
-        Long checkResult = GsiUtils.retryOnException(
-            () -> {
-                Cursor cursor = null;
-                Long result = null;
-                try {
-                    cursor = ExecutorHelper.executeByCursor(plan, baseEc, false);
-                    Row row;
-                    if (cursor != null && (row = cursor.next()) != null) {
-                        result = (Long) row.getObject(0);
-                    }
-                } finally {
-                    if (cursor != null) {
-                        cursor.close(new ArrayList<>());
-                    }
-                }
+        //log batch sql
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+            "[{0}] FastChecker {1}[{2}][{3}], full scan, phySqlInfo: {4}",
+            baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst", plan));
 
-                return result;
-            }, (e) -> {
-                if (e.getSQLState() != null && e.getSQLState().equals(SQLSTATE_DEADLOCK)
-                    && ER_LOCK_DEADLOCK == e.getErrorCode()) {
-                    return true;
-                }
-                return false;
-            }, (e, retryCount) -> {
-                if (retryCount < 3) {
-                    // Only sleep on no retry operation(dead lock).
-                    try {
-                        TimeUnit.MILLISECONDS.sleep(RETRY_WAIT[retryCount]);
-                    } catch (InterruptedException ex) {
-                        // Throw it out, because this may caused by user interrupt.
-                        throw GeneralUtil.nestedException(ex);
-                    }
-                } else {
-                    throw new TddlRuntimeException(ErrorCode.ERR_FAST_CHECKER,
-                        "FastChecker max retry times exceeded: " + e.getMessage());
-                }
-            }
-        );
-
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat
-            .format("[{0}] FastChecker finish phy hash for {1}[{2}][{3}], time use[{4}], table hash value[{5}]",
-                baseEc.getTraceId(),
-                phyDbName,
-                phyTable,
-                isSrcTableTask ? "src" : "dst",
-                (System.currentTimeMillis() - startTime) / 1000.0,
-                checkResult
-            ));
-
-        return Pair.of(checkResult, isSrcTableTask);
+        return executeHashcheckPlan(plan, baseEc);
     }
 
+    private Long executeHashcheckPlan(PhyTableOperation plan, ExecutionContext ec) {
+        return GsiUtils.retryOnException(() -> {
+            Cursor cursor = null;
+            Long result = null;
+            try {
+                cursor = ExecutorHelper.executeByCursor(plan, ec, false);
+                Row row;
+                if (cursor != null && (row = cursor.next()) != null) {
+                    result = (Long) row.getObject(0);
+                    while (cursor.next() != null) {
+                        //do nothing
+                    }
+                }
+            } finally {
+                if (cursor != null) {
+                    cursor.close(new ArrayList<>());
+                }
+            }
+
+            return result;
+        }, (e) -> {
+            if (e.getSQLState() != null && e.getSQLState().equals(SQLSTATE_DEADLOCK)
+                && ErrorCode.ER_LOCK_DEADLOCK.getCode() == e.getErrorCode()) {
+                return true;
+            }
+            return false;
+        }, (e, retryCount) -> {
+            if (retryCount < 3) {
+                // Only sleep on no retry operation(dead lock).
+                try {
+                    TimeUnit.MILLISECONDS.sleep(RETRY_WAIT[retryCount]);
+                } catch (InterruptedException ex) {
+                    // Throw it out, because this may caused by user interrupt.
+                    throw GeneralUtil.nestedException(ex);
+                }
+            } else {
+                throw new TddlRuntimeException(ErrorCode.ERR_FAST_CHECKER,
+                    "FastChecker max retry times exceeded: " + e.getMessage());
+            }
+        });
+    }
+
+    // use Long to store uint64_t hash result generated by DN, since java doesn't support unsigned type.
+    private Pair<Long, Boolean> hashcheckForSinglePhyTable(String phyDbName, String phyTable, ExecutionContext baseEc,
+                                                           boolean isSrcTableTask, long maxBatchRows) {
+
+        String schema = isSrcTableTask ? srcSchemaName : dstSchemaName;
+        long tableRowsCount = getTableRowsCount(schema, phyDbName, phyTable);
+
+        //get phy table's avgRowSize
+        long tableAvgRowLength = getTableAvgRowSize(schema, phyDbName, phyTable);
+        long fastcheckerMaxBatchFileSize =
+            baseEc.getParamManager().getLong(ConnectionParams.FASTCHECKER_BATCH_FILE_SIZE);
+
+        boolean needBatchCheck = false;
+        if (tableRowsCount * tableAvgRowLength > fastcheckerMaxBatchFileSize || tableRowsCount > maxBatchRows) {
+            needBatchCheck = true;
+        }
+
+        long startTime = System.currentTimeMillis();
+        /**
+         * if table size exceed batch size, we will calculate digest by batch.
+         * otherwise, we will straightly calculate the whole phy table's digest
+         * */
+
+        boolean failedToSplitBatch = false;
+        Long hashResult = null;
+
+        if (needBatchCheck) {
+            long finalBatchRows = maxBatchRows;
+            if (tableRowsCount * tableAvgRowLength > fastcheckerMaxBatchFileSize) {
+                tableAvgRowLength = max(1, tableAvgRowLength);
+                finalBatchRows = fastcheckerMaxBatchFileSize / tableAvgRowLength;
+            }
+            if (finalBatchRows > maxBatchRows) {
+                finalBatchRows = maxBatchRows;
+            }
+
+            List<Map<Integer, ParameterContext>> batchBoundList =
+                splitPhyTableIntoBatch(baseEc, phyDbName, phyTable, tableRowsCount, finalBatchRows, isSrcTableTask);
+            if (!batchBoundList.isEmpty()) {
+                SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                    "[{0}] FastChecker start hash phy for {1}[{2}][{3}], and phy table is divided into {4} batches",
+                    baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst",
+                    batchBoundList.size() + 1));
+
+                hashResult = getPhyTableDegistByBatch(phyDbName, phyTable, baseEc, isSrcTableTask, batchBoundList,
+                    tableRowsCount);
+            } else {
+                failedToSplitBatch = true;
+            }
+        }
+
+        if (!needBatchCheck || failedToSplitBatch) {
+            SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                "[{0}] FastChecker start hash phy for {1}[{2}][{3}], and phy table is hashed by full scan",
+                baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst"));
+
+            hashResult = getPhyTableDegistByFullScan(phyDbName, phyTable, baseEc, isSrcTableTask);
+
+        }
+
+        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+            "[{0}] FastChecker finish phy hash for {1}[{2}][{3}], time use[{4}], table hash value[{5}]",
+            baseEc.getTraceId(), phyDbName, phyTable, isSrcTableTask ? "src" : "dst",
+            (System.currentTimeMillis() - startTime) / 1000.0, hashResult == null ? "null" : hashResult));
+
+        return Pair.of(hashResult, isSrcTableTask);
+    }
+
+    public boolean checkWithChangeSet(ExecutionContext baseEc, boolean stopDoubleWrite, DdlTask task,
+                                      List<String> relatedTables) {
+        if (!stopDoubleWrite) {
+            return check(baseEc);
+        }
+
+        final int timeoutMaxRetryTimes =
+            baseEc.getParamManager().getInt(ConnectionParams.FASTCHECKER_BATCH_TIMEOUT_RETRY_TIMES);
+
+        ExecutionContext tsoEc = baseEc.copy();
+        tsoEc.setTxIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+
+        boolean tsoCheckResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.TSO, tsoEc, (ec) -> {
+            /**
+             * use idle query (select ... limit 1) for each phyDB so that DN can reserve TSO timestamp,
+             * to prevent "TSO snapshot too old" when checking process is time consuming.
+             * */
+            idleQueryForEachPhyDb(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec);
+
+            // stop double write
+            final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
+            final DdlTask currentTask = task;
+            DdlEngineAccessorDelegate delegate = new DdlEngineAccessorDelegate<Integer>() {
+                @Override
+                protected Integer invoke() {
+                    ComplexTaskMetaManager
+                        .updateSubTasksStatusByJobIdAndObjName(task.getJobId(),
+                            srcSchemaName,
+                            srcLogicalTableName,
+                            ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG,
+                            ComplexTaskMetaManager.ComplexTaskStatus.DOING_CHECKER,
+                            getConnection());
+                    try {
+                        for (String name : relatedTables) {
+                            TableInfoManager.updateTableVersionWithoutDataId(srcSchemaName, name, getConnection());
+                        }
+                    } catch (Exception e) {
+                        throw GeneralUtil.nestedException(e);
+                    }
+                    currentTask.setState(DdlTaskState.DIRTY);
+                    DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
+                    return engineTaskAccessor.updateTask(taskRecord);
+                }
+            };
+            delegate.execute();
+
+            LOGGER.info(
+                String.format(
+                    "Update table status[ schema:%s, table:%s, before state:%s, after state:%s]",
+                    srcSchemaName,
+                    srcLogicalTableName,
+                    ComplexTaskMetaManager.ComplexTaskStatus.WRITE_REORG.name(),
+                    ComplexTaskMetaManager.ComplexTaskStatus.DOING_CHECKER.name()));
+
+            try {
+                SyncManagerHelper.sync(
+                    new TablesMetaChangePreemptiveSyncAction(srcSchemaName, relatedTables, 1500L, 1500L,
+                        TimeUnit.SECONDS),
+                    true);
+            } catch (Throwable t) {
+                LOGGER.error(String.format(
+                    "error occurs while sync table meta, schemaName:%s, tableName:%s", srcSchemaName,
+                    srcLogicalTableName));
+                throw GeneralUtil.nestedException(t);
+            }
+
+            int retryCount = 0;
+            boolean timeoutHappened;
+            boolean checkRet = false;
+            long batchSize = ec.getParamManager().getLong(ConnectionParams.FASTCHECKER_BATCH_SIZE);
+            do {
+                timeoutHappened = false;
+                try {
+                    checkRet = parallelCheck(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec, this.parallelism,
+                        batchSize, ParallelPolicy.PhyGroupParallel);
+                } catch (TddlNestableRuntimeException e) {
+                    if (StringUtils.containsIgnoreCase(e.getMessage(), "fetch phy table digest timeout")) {
+                        timeoutHappened = true;
+                        batchSize = batchSize / 4;
+                        SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                            "[{0}] FastChecker calculate digest timeout with batch size [{1}], and begin to retry with new batch Size [{2}]",
+                            baseEc.getTraceId(), batchSize * 4, batchSize));
+                    } else {
+                        throw e;
+                    }
+                } finally {
+                    ++retryCount;
+                }
+
+            } while (timeoutHappened && retryCount <= timeoutMaxRetryTimes);
+
+            return checkRet;
+        });
+
+        if (!tsoCheckResult) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] FastChecker with TsoCheck failed", baseEc.getTraceId()));
+        }
+        return tsoCheckResult;
+    }
+
+    /**
+     * batch校验超时重试：
+     * 1. 当fastchecker以默认batchSize校验，出现timeout exception后，会调整batchSize到上次的1/4
+     * 如此重试timeoutRetryTimes次，当超过timeoutRetryTimes次后，fastchecker抛出timeout exception
+     * 2. 通常fastchecker的调用者在fastchecker外部也会自己搞重试机制（主要是为了处理其它异常），请注意当fastchecker抛出timeout exception后，
+     * 不要再在外部重试，以防止叠加起来重试的次数过多
+     */
     public boolean check(ExecutionContext baseEc) {
-        boolean tsoCheckResult = tsoCheck(baseEc);
-        if (tsoCheckResult == true) {
-            return true;
-        } else {
-            SQLRecorderLogger.ddlLogger
-                .warn(MessageFormat.format("[{0}] FastChecker with TsoCheck failed, begin XaCheck",
-                    baseEc.getTraceId()));
+        long batchSize = baseEc.getParamManager().getLong(ConnectionParams.FASTCHECKER_BATCH_SIZE);
+        final int timeoutMaxRetryTimes =
+            baseEc.getParamManager().getInt(ConnectionParams.FASTCHECKER_BATCH_TIMEOUT_RETRY_TIMES);
+        int retryCount = 0;
+        boolean timeoutHappened;
+        boolean tsoCheckResult = false;
+        do {
+            timeoutHappened = false;
+            try {
+                tsoCheckResult = tsoCheck(baseEc, batchSize);
+            } catch (TddlNestableRuntimeException e) {
+                if (StringUtils.containsIgnoreCase(e.getMessage(), "fetch phy table digest timeout")) {
+                    timeoutHappened = true;
+                    batchSize = batchSize / 4;
+                    SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                        "[{0}] FastChecker calculate digest timeout with batch size [{1}], and begin to retry with new batch Size [{2}]",
+                        baseEc.getTraceId(), batchSize * 4, batchSize));
+                } else {
+                    throw e;
+                }
+            } finally {
+                ++retryCount;
+            }
+        } while (timeoutHappened && retryCount <= timeoutMaxRetryTimes);
+
+        if (!tsoCheckResult) {
+            SQLRecorderLogger.ddlLogger.warn(
+                MessageFormat.format("[{0}] FastChecker with TsoCheck failed", baseEc.getTraceId()));
         }
         //boolean xaCheckResult = xaCheckForIsomorphicTable(baseEc);
         return tsoCheckResult;
     }
 
-    protected boolean tsoCheck(ExecutionContext baseEc) {
+    protected boolean tsoCheck(ExecutionContext baseEc, long batchSize) {
         ExecutionContext tsoEc = baseEc.copy();
         tsoEc.setTxIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-        boolean tsoCheckResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.TSO, tsoEc,
-            (ec) -> {
-                /**
-                 * use idle query (select ... limit 1) for each phyDB so that DN can reserve TSO timestamp,
-                 * to prevent "TSO snapshot too old" when checking process is time consuming.
-                 * */
-                idleQueryForEachPhyDb(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec);
-                return parallelCheck(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec, this.parallelism,
-                    ParallelPolicy.PhyGroupParallel);
-            });
+        boolean tsoCheckResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.TSO, tsoEc, (ec) -> {
+            /**
+             * use idle query (select ... limit 1) for each phyDB so that DN can reserve TSO timestamp,
+             * to prevent "TSO snapshot too old" when checking process is time consuming.
+             * */
+            idleQueryForEachPhyDb(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec);
+            return parallelCheck(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec, this.parallelism, batchSize,
+                ParallelPolicy.PhyGroupParallel);
+        });
 
         return tsoCheckResult;
     }
@@ -303,7 +823,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
      * step4. do check
      * step5. go to step1 to check another pair of table.
      */
-    protected boolean xaCheckForIsomorphicTable(ExecutionContext baseEc) {
+    protected boolean xaCheckForIsomorphicTable(ExecutionContext baseEc, long maxBatchSize) {
         // make sure that src and dst have same tableNum
         if (srcPhyDbAndTables.size() != dstPhyDbAndTables.size()) {
             return false;
@@ -326,21 +846,21 @@ public class FastChecker extends PhyOperationBuilderCommon {
                 Map<String, Set<String>> src = ImmutableMap.of(srcPhyDb, ImmutableSet.of(srcPhyTables.get(i)));
                 Map<String, Set<String>> dst = ImmutableMap.of(dstPhyDb, ImmutableSet.of(dstPhyTables.get(i)));
                 Map<String, Set<String>> needLockTables =
-                    ImmutableMap.of(srcPhyDb, ImmutableSet.of(srcPhyTables.get(i)),
-                        dstPhyDb, ImmutableSet.of(dstPhyTables.get(i)));
+                    ImmutableMap.of(srcPhyDb, ImmutableSet.of(srcPhyTables.get(i)), dstPhyDb,
+                        ImmutableSet.of(dstPhyTables.get(i)));
 
-                TablesLocker locker = new TablesLocker(this.schemaName, needLockTables);
+                TablesLocker locker = new TablesLocker(this.srcSchemaName, needLockTables);
                 try {
                     locker.lock(lockTimeOut);
-                    xaSingleResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc,
-                        (ec) -> {
-                            try {
-                                idleQueryForEachPhyDb(src, dst, ec);
-                            } finally {
-                                locker.unlock();
-                            }
-                            return parallelCheck(src, dst, ec, this.parallelism, ParallelPolicy.PhyTableParallel);
-                        });
+                    xaSingleResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc, (ec) -> {
+                        try {
+                            idleQueryForEachPhyDb(src, dst, ec);
+                        } finally {
+                            locker.unlock();
+                        }
+                        return parallelCheck(src, dst, ec, this.parallelism, maxBatchSize,
+                            ParallelPolicy.PhyTableParallel);
+                    });
                 } finally {
                     locker.unlock();
                 }
@@ -360,7 +880,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
      * step3. release lock.
      * step4. do check
      */
-    protected boolean xaCheckForHeterogeneousTable(ExecutionContext baseEc) {
+    protected boolean xaCheckForHeterogeneousTable(ExecutionContext baseEc, long maxBatchSize) {
         Map<String, Set<String>> needLockTables = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         this.srcPhyDbAndTables.forEach((phyDb, phyTables) -> {
             if (needLockTables.containsKey(phyDb)) {
@@ -381,20 +901,19 @@ public class FastChecker extends PhyOperationBuilderCommon {
         });
 
         boolean xaCheckResult = false;
-        TablesLocker locker = new TablesLocker(this.schemaName, needLockTables);
+        TablesLocker locker = new TablesLocker(this.srcSchemaName, needLockTables);
         locker.lock(lockTimeOut);
 
         try {
-            xaCheckResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc,
-                (ec) -> {
-                    try {
-                        idleQueryForEachPhyDb(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec);
-                    } finally {
-                        locker.unlock();
-                    }
-                    return parallelCheck(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec, this.parallelism,
-                        ParallelPolicy.PhyTableParallel);
-                });
+            xaCheckResult = GsiUtils.wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc, (ec) -> {
+                try {
+                    idleQueryForEachPhyDb(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec);
+                } finally {
+                    locker.unlock();
+                }
+                return parallelCheck(this.srcPhyDbAndTables, this.dstPhyDbAndTables, ec, this.parallelism, maxBatchSize,
+                    ParallelPolicy.PhyTableParallel);
+            });
         } finally {
             locker.unlock();
         }
@@ -403,8 +922,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
 
     private void idleQueryForEachPhyDb(Map<String, Set<String>> srcDbAndTb, Map<String, Set<String>> dstDbAndTb,
                                        ExecutionContext baseEc) {
-        Map<Pair<String, Boolean>, Set<String>> phyDbAndTableGather = new TreeMap<>(
-            new Comparator<Pair<String, Boolean>>() {
+        Map<Pair<String, Boolean>, Set<String>> phyDbAndTableGather =
+            new TreeMap<>(new Comparator<Pair<String, Boolean>>() {
                 @Override
                 public int compare(Pair<String, Boolean> o1, Pair<String, Boolean> o2) {
                     int ret = String.CASE_INSENSITIVE_ORDER.compare(o1.getKey(), o2.getKey());
@@ -445,40 +964,38 @@ public class FastChecker extends PhyOperationBuilderCommon {
             PhyTableOperation plan =
                 PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
-            GsiUtils.retryOnException(
-                () -> {
-                    Cursor cursor = null;
-                    try {
-                        cursor = ExecutorHelper.executeByCursor(plan, baseEc, false);
-                        while (cursor != null && cursor.next() != null) {
-                        }
-                    } finally {
-                        if (cursor != null) {
-                            cursor.close(new ArrayList<>());
-                        }
+            GsiUtils.retryOnException(() -> {
+                Cursor cursor = null;
+                try {
+                    cursor = ExecutorHelper.executeByCursor(plan, baseEc, false);
+                    while (cursor != null && cursor.next() != null) {
                     }
-                    return true;
-                }, (e) -> {
-                    if (e.getSQLState() != null && e.getSQLState().equals(SQLSTATE_DEADLOCK)
-                        && ER_LOCK_DEADLOCK == e.getErrorCode()) {
-                        return true;
-                    }
-                    return false;
-                }, (e, retryCount) -> {
-                    if (retryCount < 3) {
-                        //sleep when dead lock.
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(RETRY_WAIT[retryCount]);
-                        } catch (InterruptedException ex) {
-                            // Throw it out, because this may caused by user interrupt.
-                            throw GeneralUtil.nestedException(ex);
-                        }
-                    } else {
-                        throw new TddlRuntimeException(ErrorCode.ERR_FAST_CHECKER,
-                            "FastChecker(idle select) max retry times exceeded: " + e.getMessage());
+                } finally {
+                    if (cursor != null) {
+                        cursor.close(new ArrayList<>());
                     }
                 }
-            );
+                return true;
+            }, (e) -> {
+                if (e.getSQLState() != null && e.getSQLState().equals(SQLSTATE_DEADLOCK)
+                    && ErrorCode.ER_LOCK_DEADLOCK.getCode() == e.getErrorCode()) {
+                    return true;
+                }
+                return false;
+            }, (e, retryCount) -> {
+                if (retryCount < 3) {
+                    //sleep when dead lock.
+                    try {
+                        TimeUnit.MILLISECONDS.sleep(RETRY_WAIT[retryCount]);
+                    } catch (InterruptedException ex) {
+                        // Throw it out, because this may caused by user interrupt.
+                        throw GeneralUtil.nestedException(ex);
+                    }
+                } else {
+                    throw new TddlRuntimeException(ErrorCode.ERR_FAST_CHECKER,
+                        "FastChecker(idle select) max retry times exceeded: " + e.getMessage());
+                }
+            });
         }));
     }
 
@@ -488,7 +1005,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
      * if ParallelPolicy is PhyGroupParallel, we once select single phyTable task from each group.
      */
     private boolean parallelCheck(Map<String, Set<String>> srcDbAndTb, Map<String, Set<String>> dstDbAndTb,
-                                  ExecutionContext baseEc, long parallelism, ParallelPolicy policy) {
+                                  ExecutionContext baseEc, long parallelism, long maxBatchSize, ParallelPolicy policy) {
         // Force master first and following will copy this EC.
         baseEc.getExtraCmds().put(ConnectionProperties.MASTER, true);
 
@@ -506,84 +1023,78 @@ public class FastChecker extends PhyOperationBuilderCommon {
         if (policy == ParallelPolicy.PhyTableParallel) {
             final List<FutureTask<Pair<Long, Boolean>>> allFutureTasks =
                 new ArrayList<>(srcTableTaskCount + dstTableTaskCount);
-            final BlockingQueue<Object> blockingQueue = parallelism <= 0 ? null : new ArrayBlockingQueue<>(
-                (int) parallelism);
+            final BlockingQueue<Object> blockingQueue =
+                parallelism <= 0 ? null : new ArrayBlockingQueue<>((int) parallelism);
             //gather src tasks
-            srcDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(phyTable -> allFutureTasks.add(
-                new FutureTask<Pair<Long, Boolean>>(() -> {
+            srcDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(
+                phyTable -> allFutureTasks.add(new FutureTask<Pair<Long, Boolean>>(() -> {
                     try {
-                        return hashcheckForSinglePhyTable(phyDb, phyTable, baseEc, true);
+                        return hashcheckForSinglePhyTable(phyDb, phyTable, baseEc, true, maxBatchSize);
                     } finally {
                         // Poll in finally to prevent dead lock on putting blockingQueue.
                         if (blockingQueue != null) {
                             blockingQueue.poll(); // Parallelism control notify.
                         }
                     }
-                })
-            )));
+                }))));
 
-            dstDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(phyTable -> allFutureTasks.add(
-                new FutureTask<>(() -> {
+            dstDbAndTb.forEach(
+                (phyDb, phyTables) -> phyTables.forEach(phyTable -> allFutureTasks.add(new FutureTask<>(() -> {
                     try {
-                        return hashcheckForSinglePhyTable(phyDb, phyTable, baseEc, false);
+                        return hashcheckForSinglePhyTable(phyDb, phyTable, baseEc, false, maxBatchSize);
                     } finally {
                         // Poll in finally to prevent dead lock on putting blockingQueue.
                         if (blockingQueue != null) {
                             blockingQueue.poll(); // Parallelism control notify.
                         }
                     }
-                })
-            )));
+                }))));
 
             Collections.shuffle(allFutureTasks);
 
             runTasks(allFutureTasks, blockingQueue, result, parallelism);
 
         } else if (policy == ParallelPolicy.PhyGroupParallel) {
-            final BlockingQueue<Object> blockingQueue = parallelism <= 0 ? null : new ArrayBlockingQueue<>(
-                (int) parallelism);
             // tablesByGroup<phyDb, Set<Pair<phyTable, isSrc>>>
             final Map<String, Set<Pair<String, Boolean>>> tablesByGroup = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-            srcDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(
-                phyTable -> {
-                    if (tablesByGroup.containsKey(phyDb)) {
-                        tablesByGroup.get(phyDb).add(Pair.of(phyTable, true));
-                    } else {
-                        tablesByGroup.put(phyDb, new TreeSet<>(new Comparator<Pair<String, Boolean>>() {
-                            @Override
-                            public int compare(Pair<String, Boolean> o1, Pair<String, Boolean> o2) {
-                                int ret = String.CASE_INSENSITIVE_ORDER.compare(o1.getKey(), o2.getKey());
-                                if (ret == 0) {
-                                    ret = Boolean.compare(o1.getValue(), o2.getValue());
-                                }
-                                return ret;
+            srcDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(phyTable -> {
+                if (tablesByGroup.containsKey(phyDb)) {
+                    tablesByGroup.get(phyDb).add(Pair.of(phyTable, true));
+                } else {
+                    tablesByGroup.put(phyDb, new TreeSet<>(new Comparator<Pair<String, Boolean>>() {
+                        @Override
+                        public int compare(Pair<String, Boolean> o1, Pair<String, Boolean> o2) {
+                            int ret = String.CASE_INSENSITIVE_ORDER.compare(o1.getKey(), o2.getKey());
+                            if (ret == 0) {
+                                ret = Boolean.compare(o1.getValue(), o2.getValue());
                             }
-                        }));
-                        tablesByGroup.get(phyDb).add(Pair.of(phyTable, true));
-                    }
+                            return ret;
+                        }
+                    }));
+                    tablesByGroup.get(phyDb).add(Pair.of(phyTable, true));
                 }
-            ));
-            dstDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(
-                phyTable -> {
-                    if (tablesByGroup.containsKey(phyDb)) {
-                        tablesByGroup.get(phyDb).add(Pair.of(phyTable, false));
-                    } else {
-                        tablesByGroup.put(phyDb, new TreeSet<>(new Comparator<Pair<String, Boolean>>() {
-                            @Override
-                            public int compare(Pair<String, Boolean> o1, Pair<String, Boolean> o2) {
-                                int ret = String.CASE_INSENSITIVE_ORDER.compare(o1.getKey(), o2.getKey());
-                                if (ret == 0) {
-                                    ret = Boolean.compare(o1.getValue(), o2.getValue());
-                                }
-                                return ret;
+            }));
+            dstDbAndTb.forEach((phyDb, phyTables) -> phyTables.forEach(phyTable -> {
+                if (tablesByGroup.containsKey(phyDb)) {
+                    tablesByGroup.get(phyDb).add(Pair.of(phyTable, false));
+                } else {
+                    tablesByGroup.put(phyDb, new TreeSet<>(new Comparator<Pair<String, Boolean>>() {
+                        @Override
+                        public int compare(Pair<String, Boolean> o1, Pair<String, Boolean> o2) {
+                            int ret = String.CASE_INSENSITIVE_ORDER.compare(o1.getKey(), o2.getKey());
+                            if (ret == 0) {
+                                ret = Boolean.compare(o1.getValue(), o2.getValue());
                             }
-                        }));
-                        tablesByGroup.get(phyDb).add(Pair.of(phyTable, false));
-                    }
+                            return ret;
+                        }
+                    }));
+                    tablesByGroup.get(phyDb).add(Pair.of(phyTable, false));
                 }
-            ));
+            }));
 
             while (!tablesByGroup.isEmpty()) {
+                final BlockingQueue<Object> blockingQueue = parallelism <= 0 ? null : new ArrayBlockingQueue<>(
+                    (int) parallelism);
                 final List<FutureTask<Pair<Long, Boolean>>> futureTasks = new ArrayList<>();
                 List<String> finishPhyDb = new ArrayList<>();
                 tablesByGroup.forEach((phyDb, phyTables) -> {
@@ -594,7 +1105,7 @@ public class FastChecker extends PhyOperationBuilderCommon {
                         futureTasks.add(new FutureTask<>(() -> {
                             try {
                                 return hashcheckForSinglePhyTable(phyDb, phyTable.getKey(), baseEc,
-                                    phyTable.getValue());
+                                    phyTable.getValue(), maxBatchSize);
                             } finally {
                                 if (blockingQueue != null) {
                                     blockingQueue.poll();
@@ -612,18 +1123,16 @@ public class FastChecker extends PhyOperationBuilderCommon {
             }
         }
 
-        List<Long> srcResult = result.stream()
-            .filter(item -> item != null && item.getKey() != null && item.getValue())
-            .map(Pair::getKey)
-            .collect(Collectors.toList());
-        List<Long> dstResult = result.stream()
-            .filter(item -> item != null && item.getKey() != null && !item.getValue())
-            .map(Pair::getKey)
-            .collect(Collectors.toList());
+        List<Long> srcResult =
+            result.stream().filter(item -> item != null && item.getKey() != null && item.getValue()).map(Pair::getKey)
+                .collect(Collectors.toList());
+        List<Long> dstResult =
+            result.stream().filter(item -> item != null && item.getKey() != null && !item.getValue()).map(Pair::getKey)
+                .collect(Collectors.toList());
 
-        return srcTableTaskCount == result.stream().filter(Objects::nonNull).filter(Pair::getValue).count() &&
-            dstTableTaskCount == result.stream().filter(Objects::nonNull).filter(x -> !x.getValue()).count() &&
-            compare(srcResult, dstResult);
+        return srcTableTaskCount == result.stream().filter(Objects::nonNull).filter(Pair::getValue).count()
+            && dstTableTaskCount == result.stream().filter(Objects::nonNull).filter(x -> !x.getValue()).count()
+            && compare(srcResult, dstResult);
     }
 
     private boolean compare(List<Long> src, List<Long> dst) {
@@ -638,8 +1147,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
                           List<Pair<Long, Boolean>> result, long parallelism) {
         AtomicReference<Exception> excep = new AtomicReference<>(null);
         if (parallelism <= 0) {
-            futures.forEach(task -> PriorityWorkQueue.getInstance()
-                .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_CHECK_TASK));
+            futures.forEach(task -> FastCheckerThreadPool.getInstance()
+                .executeWithContext(task, PriorityFIFOTask.TaskPriority.HIGH_PRIORITY_TASK));
         } else {
             futures.forEach(task -> {
                 try {
@@ -648,8 +1157,8 @@ public class FastChecker extends PhyOperationBuilderCommon {
                     excep.set(e);
                 }
                 if (null == excep.get()) {
-                    PriorityWorkQueue.getInstance()
-                        .executeWithContext(task, PriorityFIFOTask.TaskPriority.GSI_CHECK_TASK);
+                    FastCheckerThreadPool.getInstance()
+                        .executeWithContext(task, PriorityFIFOTask.TaskPriority.HIGH_PRIORITY_TASK);
                 }
             });
         }
@@ -667,7 +1176,20 @@ public class FastChecker extends PhyOperationBuilderCommon {
         for (FutureTask<Pair<Long, Boolean>> future : futures) {
             try {
                 result.add(future.get());
-            } catch (Exception e) {
+            } catch (ExecutionException e) {
+                futures.forEach(f -> {
+                    try {
+                        f.cancel(true);
+                    } catch (Throwable ignore) {
+                    }
+                });
+                if (null == excep.get()) {
+                    excep.set(e);
+                }
+                if (e.getMessage().toLowerCase().contains("XResult stream fetch result timeout".toLowerCase())) {
+                    throw new TddlNestableRuntimeException("fastchecker fetch phy table digest timeout", e);
+                }
+            } catch (InterruptedException e) {
                 futures.forEach(f -> {
                     try {
                         f.cancel(true);
@@ -682,20 +1204,13 @@ public class FastChecker extends PhyOperationBuilderCommon {
     }
 
     public void reportCheckOk(ExecutionContext ec) {
-        final CheckerManager checkerManager = new CheckerManager(schemaName);
+        final CheckerManager checkerManager = new CheckerManager(srcSchemaName);
         final String finishDetails = "FastChecker check OK.";
         checkerManager.insertReports(ImmutableList.of(
-            new CheckerManager.CheckerReport(
-                -1, ec.getDdlJobId(),
-                schemaName, srcLogicalTableName, schemaName, dstLogicalTableName, "", "",
-                "SUMMARY",
+            new CheckerManager.CheckerReport(-1, ec.getDdlJobId(), srcSchemaName, srcLogicalTableName, dstSchemaName,
+                dstLogicalTableName, "", "", "SUMMARY",
                 new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Calendar.getInstance().getTime()),
-                CheckerManager.CheckerReportStatus.FINISH.getValue(),
-                "--",
-                finishDetails,
-                "Reporter.",
-                null)
-        ));
+                CheckerManager.CheckerReportStatus.FINISH.getValue(), "--", finishDetails, "Reporter.", null)));
     }
 
     class HashCaculator {
@@ -729,8 +1244,6 @@ public class FastChecker extends PhyOperationBuilderCommon {
             return hashVal;
         }
     }
-
-    ;
 
     /**
      * use TableLocker to lock phyTables.
@@ -876,5 +1389,20 @@ public class FastChecker extends PhyOperationBuilderCommon {
 
     public void setSrcPhyDbAndTables(Map<String, Set<String>> srcPhyDbAndTables) {
         this.srcPhyDbAndTables = srcPhyDbAndTables;
+    }
+
+    public static List<String> getorderedPrimaryKeys(TableMeta tableMeta, ExecutionContext ec) {
+        final SchemaManager sm = ec.getSchemaManager(tableMeta.getSchemaName());
+        List<String> primaryKeys = ImmutableList
+            .copyOf((tableMeta.isHasPrimaryKey() ? tableMeta.getPrimaryIndex().getKeyColumns() :
+                tableMeta.getGsiImplicitPrimaryKey())
+                .stream().map(ColumnMeta::getName).collect(Collectors.toList()));
+        if (GeneralUtil.isEmpty(primaryKeys) && tableMeta.isGsi()) {
+            String primaryTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
+            final TableMeta primaryTableMeta = sm.getTable(primaryTable);
+            primaryKeys = primaryTableMeta.getPrimaryIndex().getKeyColumns().stream().map(ColumnMeta::getName)
+                .collect(Collectors.toList());
+        }
+        return primaryKeys;
     }
 }

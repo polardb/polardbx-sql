@@ -1,0 +1,211 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+create database if not exists `testConvertDrdsDb` mode = drds;
+use testConvertDrdsDb;
+## full index test,
+create table `tb1` (
+`col1` int(11) DEFAULT NULL,
+`col2` varchar(20) DEFAULT NULL,
+`col3` varchar(20) DEFAULT NULL,
+`col4` varchar(20) DEFAULT NULL,
+`col5` varchar(20) DEFAULT NULL,
+`col6` varchar(20) DEFAULT NULL,
+`col7` varchar(20) DEFAULT NULL,
+`col8` varchar(20) DEFAULT NULL,
+`col9` varchar(20) DEFAULT NULL,
+`col10` varchar(20) DEFAULT NULL,
+`col11` varchar(20) DEFAULT NULL,
+UNIQUE KEY `tb1_k1` (`col1`),
+KEY `tb1_k2` (`col2`),
+UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY UNI_HASH(`col4`),
+CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY UNI_HASH(`col5`),
+UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`) DBPARTITION BY UNI_HASH(`col6`),
+GLOBAL INDEX `tb1_k8`(`col8`, `col9`) DBPARTITION BY UNI_HASH(`col9`)
+) dbpartition by UNI_HASH(`col10`) tbpartition by UNI_HASH(`col11`) tbpartitions 8;
+## with primary key, but primary is not sharding key
+create table `tb2` (
+`col1` int(11) not null auto_increment,
+`col2` int(11) not null,
+`col3` int(11) not null,
+primary key(`col1`)
+) dbpartition by uni_hash(`col2`) tbpartition by uni_hash(`col3`) tbpartitions 2;
+## with primary key, but pk is not sharding key, db sharding key is same with tb sharding key.
+create table `tb3` (
+`col1` int(11) not null auto_increment,
+`col2` int(11) not null,
+primary key(`col1`)
+) dbpartition by uni_hash(`col2`) tbpartition by uni_hash(`col2`) tbpartitions 2;
+## only dbpartition, pk is not sharding key
+create table `tb4` (
+`col1` int not null auto_increment,
+`col2` varchar(20),
+primary key(`col1`)
+) dbpartition by uni_hash(`col2`);
+## only tbpartition, pk is sharding key
+create table `tb5` (
+`col1` int not null,
+`col2` varchar(20),
+primary key(`col2`)
+) tbpartition by uni_hash(`col2`) tbpartitions 8;
+## gsi dbpartition and tbpartition
+create table `tb6` (
+`col0` int(11) not null auto_increment,
+`col1` int(11) default NULL,
+`col2` varchar(20),
+`col3` varchar(20),
+`col4` varchar(20),
+`col5` varchar(20),
+`col6` varchar(20)，
+`col7` varchar(20),
+`col8` varchar(20),
+`col9` varchar(20),
+primary key(`col0`),
+unique clustered index `tb6_k1`(`col1`) dbpartition by uni_hash(`col1`),
+clustered index `tb6_k2` (`col2`, `col3`) dbpartition by uni_hash(`col2`) tbpartition by uni_hash(`col3`) tbpartitions 4,
+clustered index `tb6_k3` (`col4`) dbpartition by uni_hash(`col4`),
+unique global index `tb6_k4` (`col5`) dbpartition by uni_hash(`col5`),
+unique global index  `tb6_k5` (`col6`, `col7`) covering (`col8`) dbpartition by uni_hash(`col6`) tbpartition by uni_hash(`col7`) tbpartitions 4,
+global index `tb6_k6` (`col8`) covering (`col9`) dbpartition by uni_hash(`col8`)
+) dbpartition by uni_hash(`col1`) tbpartition by uni_hash(`col2`) tbpartitions 4;
+## real run
+create database testConvertDbAuto like testConvertDrdsDb mode=auto;
+RESULT
+ALL SUCCESS
+create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
+RESULT
+ALL SUCCESS
+## real run
+create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
+RESULT
+ALL SUCCESS
+## dry run
+create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+TABLE,CREATE_TABLE_DRDS,CREATE_TABLE_AUTO
+tb1,CREATE TABLE `tb1` (
+	`col1` int(11) DEFAULT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	`col3` varchar(20) DEFAULT NULL,
+	`col4` varchar(20) DEFAULT NULL,
+	`col5` varchar(20) DEFAULT NULL,
+	`col6` varchar(20) DEFAULT NULL,
+	`col7` varchar(20) DEFAULT NULL,
+	`col8` varchar(20) DEFAULT NULL,
+	`col9` varchar(20) DEFAULT NULL,
+	`col10` varchar(20) DEFAULT NULL,
+	`col11` varchar(20) DEFAULT NULL,
+	UNIQUE KEY `tb1_k1` (`col1`),
+	KEY `tb1_k2` (`col2`),
+	KEY `auto_shard_key_col10` USING BTREE (`col10`),
+	KEY `auto_shard_key_col11` USING BTREE (`col11`),
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY UNI_HASH(`col4`),
+	CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY UNI_HASH(`col5`),
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) DBPARTITION BY UNI_HASH(`col6`),
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) DBPARTITION BY UNI_HASH(`col9`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by UNI_HASH(`col10`) tbpartition by UNI_HASH(`col11`) tbpartitions 8,CREATE TABLE `tb1` (
+	`col1` int(11) DEFAULT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	`col3` varchar(20) DEFAULT NULL,
+	`col4` varchar(20) DEFAULT NULL,
+	`col5` varchar(20) DEFAULT NULL,
+	`col6` varchar(20) DEFAULT NULL,
+	`col7` varchar(20) DEFAULT NULL,
+	`col8` varchar(20) DEFAULT NULL,
+	`col9` varchar(20) DEFAULT NULL,
+	`col10` varchar(20) DEFAULT NULL,
+	`col11` varchar(20) DEFAULT NULL,
+	UNIQUE KEY `tb1_k1` (`col1`),
+	KEY `tb1_k2` (`col2`),
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 128,
+	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 128,
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 128,
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 128
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col10`) PARTITIONS 128
+tb2,CREATE TABLE `tb2` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+	`col2` int(11) NOT NULL,
+	`col3` int(11) NOT NULL,
+	PRIMARY KEY (`col1`),
+	KEY `auto_shard_key_col2` USING BTREE (`col2`),
+	KEY `auto_shard_key_col3` USING BTREE (`col3`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by UNI_HASH(`col2`) tbpartition by UNI_HASH(`col3`) tbpartitions 2,CREATE TABLE `tb2` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT,
+	`col2` int(11) NOT NULL,
+	`col3` int(11) NOT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col2`, `col1`) PARTITIONS 32
+tb3,CREATE TABLE `tb3` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+	`col2` int(11) NOT NULL,
+	PRIMARY KEY (`col1`),
+	KEY `auto_shard_key_col2` USING BTREE (`col2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by UNI_HASH(`col2`) tbpartition by UNI_HASH(`col2`) tbpartitions 2,CREATE TABLE `tb3` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT,
+	`col2` int(11) NOT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col2`, `col1`) PARTITIONS 32
+tb4,CREATE TABLE `tb4` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`),
+	KEY `auto_shard_key_col2` USING BTREE (`col2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by UNI_HASH(`col2`),CREATE TABLE `tb4` (
+	`col1` int(11) NOT NULL AUTO_INCREMENT,
+	`col2` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col1`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col2`, `col1`) PARTITIONS 16
+tb5,CREATE TABLE `tb5` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) NOT NULL,
+	PRIMARY KEY (`col2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  tbpartition by UNI_HASH(`col2`) tbpartitions 8,CREATE TABLE `tb5` (
+	`col1` int(11) NOT NULL,
+	`col2` varchar(20) NOT NULL,
+	PRIMARY KEY (`col2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col2`) PARTITIONS 128
+tb6,CREATE TABLE `tb6` (
+	`col0` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+	`col1` int(11) DEFAULT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	`col3` varchar(20) DEFAULT NULL,
+	`col4` varchar(20) DEFAULT NULL,
+	`col5` varchar(20) DEFAULT NULL,
+	`col6` varchar(20) DEFAULT NULL,
+	`col7` varchar(20) DEFAULT NULL,
+	`col8` varchar(20) DEFAULT NULL,
+	`col9` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col0`),
+	UNIQUE CLUSTERED KEY `tb6_k1` (`col1`) DBPARTITION BY UNI_HASH(`col1`),
+	CLUSTERED INDEX `tb6_k2`(`col2`, `col3`) DBPARTITION BY UNI_HASH(`col2`) TBPARTITION BY UNI_HASH(`col3`) TBPARTITIONS 4,
+	CLUSTERED INDEX `tb6_k3`(`col4`) DBPARTITION BY UNI_HASH(`col4`),
+	UNIQUE GLOBAL KEY `tb6_k4` (`col5`) COVERING (`col0`, `col1`, `col2`) DBPARTITION BY UNI_HASH(`col5`),
+	UNIQUE GLOBAL KEY `tb6_k5` (`col6`, `col7`) COVERING (`col0`, `col1`, `col2`, `col8`) DBPARTITION BY UNI_HASH(`col6`) TBPARTITION BY UNI_HASH(`col7`) TBPARTITIONS 4,
+	GLOBAL INDEX `tb6_k6`(`col8`) COVERING (`col0`, `col1`, `col2`, `col9`) DBPARTITION BY UNI_HASH(`col8`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by UNI_HASH(`col1`) tbpartition by UNI_HASH(`col2`) tbpartitions 4,CREATE TABLE `tb6` (
+	`col0` int(11) NOT NULL AUTO_INCREMENT,
+	`col1` int(11) DEFAULT NULL,
+	`col2` varchar(20) DEFAULT NULL,
+	`col3` varchar(20) DEFAULT NULL,
+	`col4` varchar(20) DEFAULT NULL,
+	`col5` varchar(20) DEFAULT NULL,
+	`col6` varchar(20) DEFAULT NULL,
+	`col7` varchar(20) DEFAULT NULL,
+	`col8` varchar(20) DEFAULT NULL,
+	`col9` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`col0`),
+	UNIQUE CLUSTERED KEY `tb6_k1` (`col1`) PARTITION BY KEY (`col1`) PARTITIONS 64,
+	CLUSTERED INDEX `tb6_k2`(`col2`, `col3`) PARTITION BY KEY (`col2`) PARTITIONS 64,
+	CLUSTERED INDEX `tb6_k3`(`col4`) PARTITION BY KEY (`col4`) PARTITIONS 64,
+	UNIQUE GLOBAL KEY `tb6_k4` (`col5`) COVERING (`col0`, `col1`, `col2`) PARTITION BY KEY (`col5`) PARTITIONS 64,
+	UNIQUE GLOBAL KEY `tb6_k5` (`col6`, `col7`) COVERING (`col0`, `col1`, `col2`, `col8`) PARTITION BY KEY (`col6`) PARTITIONS 64,
+	GLOBAL INDEX `tb6_k6`(`col8`) COVERING (`col0`, `col1`, `col2`, `col9`) PARTITION BY KEY (`col8`) PARTITIONS 64
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY (`col1`, `col0`) PARTITIONS 64

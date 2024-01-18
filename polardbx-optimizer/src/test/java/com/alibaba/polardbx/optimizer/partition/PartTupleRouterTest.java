@@ -25,6 +25,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import com.alibaba.polardbx.optimizer.partition.util.PartTupleRouter;
@@ -65,14 +66,13 @@ public class PartTupleRouterTest extends BasePlannerTest {
 
         private String caseName;
         private String createTblDdl = " ";
-        private boolean useHashOrKey = true;
 
         /**
          * <pre>
          * each entry of the list rowValAndExceptRsInfo are defined as followed:
          *     key: rowVals of shard columns, a list
          *     val:
-         *          v1: exceptedTupleValeAfterCalcPartFunc: String[]
+         *          v1: exceptedTupleValeAfterCalcPartFunc: String[][]
          *          v2: exceptedPartName: String
          * </pre>
          */
@@ -84,7 +84,7 @@ public class PartTupleRouterTest extends BasePlannerTest {
                                         List<Pair<List<Object>, List<Object>>> rowValAndExceptRsInfo) {
             this.caseName = caseName;
             this.createTblDdl = ddl;
-            this.useHashOrKey = useHash;
+
             this.rowValAndExceptRsInfo = rowValAndExceptRsInfo;
         }
 
@@ -139,18 +139,22 @@ public class PartTupleRouterTest extends BasePlannerTest {
         for (int i = 0; i < rowValAndExceptRsInfo.size(); i++) {
             Pair<List<Object>, List<Object>> rowValAndRsItem = rowValAndExceptRsInfo.get(i);
             List<Object> rowVal = rowValAndRsItem.getKey();
-            String[] tarSearchDatumStr = (String[]) rowValAndRsItem.getValue().get(0);
+            String[][] tarSearchDatumStr = (String[][]) rowValAndRsItem.getValue().get(0);
 
             /**
              * Calc the hash code for the row value
              */
-            Long[] hashVal = tupleRouter.calcHashCode(rowVal);
+            List<Long[]> hashVals = tupleRouter.calcHashCode(Arrays.asList(rowVal));
 
-            for (int j = 0; j < hashVal.length; j++) {
-                String str1 = String.valueOf(hashVal[j]);
-                String str2 = tarSearchDatumStr[j];
-                Assert.assertTrue(str1.equals(str2));
+            for (int k = 0; k < hashVals.size(); k++) {
+                Long[] hashVal = hashVals.get(k);
+                for (int j = 0; j < hashVal.length; j++) {
+                    String str1 = String.valueOf(hashVal[j]);
+                    String str2 = tarSearchDatumStr[k][j];
+                    Assert.assertTrue(str1.equals(str2));
+                }
             }
+
         }
     }
 
@@ -164,17 +168,20 @@ public class PartTupleRouterTest extends BasePlannerTest {
         for (int i = 0; i < rowValAndExceptRsInfo.size(); i++) {
             Pair<List<Object>, List<Object>> rowValAndRsItem = rowValAndExceptRsInfo.get(i);
             List<Object> rowVal = rowValAndRsItem.getKey();
-            String[] tarSearchDatumStr = (String[]) rowValAndRsItem.getValue().get(0);
+            String[][] tarSearchDatumStr = (String[][]) rowValAndRsItem.getValue().get(0);
 
             /**
              * route tuple to partition for the row value
              */
-            SearchDatumInfo tarSearchDatum = tupleRouter.calcSearchDatum(rowVal);
-            for (int j = 0; j < tarSearchDatum.getDatumInfo().length; j++) {
-                String str1 = tarSearchDatumStr[j];
-                String str2 = tarSearchDatum.getDatumInfo()[j].getValue().stringValue()
-                    .toStringUtf8();
-                Assert.assertTrue(str1.equals(str2));
+            List<SearchDatumInfo> tarSearchDatums = tupleRouter.calcSearchDatum(Arrays.asList(rowVal));
+
+            for (int k = 0; k < tarSearchDatums.size(); k++) {
+                SearchDatumInfo tarSearchDatum = tarSearchDatums.get(k);
+                for (int j = 0; j < tarSearchDatum.getDatumInfo().length; j++) {
+                    String str1 = tarSearchDatumStr[k][j];
+                    String str2 = tarSearchDatum.getDatumInfo()[j].toString();
+                    Assert.assertTrue(str1.equals(str2));
+                }
             }
         }
     }
@@ -194,7 +201,7 @@ public class PartTupleRouterTest extends BasePlannerTest {
             /**
              * route tuple to partition for the row value
              */
-            PhysicalPartitionInfo phyInfo = tupleRouter.routeTuple(rowVal);
+            PhysicalPartitionInfo phyInfo = tupleRouter.routeTuple(Arrays.asList(rowVal));
             Assert.assertTrue(phyInfo.getPartName().equalsIgnoreCase(tarPart));
         }
     }
@@ -223,7 +230,9 @@ public class PartTupleRouterTest extends BasePlannerTest {
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2009-01-01 00:00:00"),
                     Arrays.asList(
-                        new String[] {"2009"},
+                        new String[][] {
+                            {"2009"}
+                        },
                         "p2"
                     )
                 )
@@ -238,14 +247,18 @@ public class PartTupleRouterTest extends BasePlannerTest {
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2009-01-01 00:00:00"),
                     Arrays.asList(
-                        new String[] {"749964047422459224"},
+                        new String[][] {
+                            {"749964047422459224"}
+                        },
                         "p3"
                     )
                 ),
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2000-01-01 00:00:00"),
                     Arrays.asList(
-                        new String[] {"4796388105427186539"},
+                        new String[][] {
+                            {"4796388105427186539"}
+                        },
                         "p4"
                     )
                 )
@@ -259,14 +272,18 @@ public class PartTupleRouterTest extends BasePlannerTest {
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2009-01-01 00:00:00", "10"),
                     Arrays.asList(
-                        new String[] {"749964047422459224", "8033048159982359313"},
+                        new String[][] {
+                            {"749964047422459224", "8033048159982359313"}
+                        },
                         "p3"
                     )
                 ),
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2000-01-01 00:00:00", "10"),
                     Arrays.asList(
-                        new String[] {"4796388105427186539", "8033048159982359313"},
+                        new String[][] {
+                            {"4796388105427186539", "8033048159982359313"}
+                        },
                         "p4"
                     )
                 )
@@ -281,16 +298,19 @@ public class PartTupleRouterTest extends BasePlannerTest {
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2009-01-01 00:00:00", "10"),
                     Arrays.asList(
-                        new String[] {"-2533267580759484321"},
+                        new String[][] {
+                            {"-2533267580759484321"}
+                        },
                         "p2"
                     )
                 ),
                 new Pair<List<Object>, List<Object>>(
                     Arrays.asList("2000-01-01 00:00:00", "10"),
                     Arrays.asList(
-                        new String[] {"-4861912150126808042"},
-                        "p1",
-                        ""
+                        new String[][] {
+                            {"-4861912150126808042"}
+                        },
+                        "p1"
                     )
                 )
             )

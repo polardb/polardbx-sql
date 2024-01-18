@@ -16,32 +16,26 @@
 
 package com.alibaba.polardbx.executor.ddl.job.meta;
 
-import com.alibaba.polardbx.atom.TAtomDataSource;
-import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
-import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.spi.IGroupExecutor;
-import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.sync.ClearOSSFileSystemSyncAction;
+import com.alibaba.polardbx.executor.sync.DeleteOssFileSyncAction;
 import com.alibaba.polardbx.executor.sync.InvalidateBufferPoolSyncAction;
-import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
 import com.alibaba.polardbx.executor.sync.RemoveColumnStatisticSyncAction;
 import com.alibaba.polardbx.executor.sync.RemoveTableStatisticSyncAction;
 import com.alibaba.polardbx.executor.sync.RenameStatisticSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager.PhyInfoSchemaContext;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.config.schema.DefaultDbSchema;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
 import java.util.List;
 
@@ -53,9 +47,9 @@ public class CommonMetaChanger {
 
     public static PhyInfoSchemaContext getPhyInfoSchemaContext(String schemaName, String logicalTableName,
                                                                String dbIndex, String phyTableName) {
-        TGroupDataSource dataSource = getPhyDataSource(schemaName, dbIndex);
+        TGroupDataSource dataSource = DdlHelper.getPhyDataSource(schemaName, dbIndex);
 
-        String phyTableSchema = getPhyTableSchema(dataSource);
+        String phyTableSchema = DdlHelper.getPhyTableSchema(dataSource);
         if (TStringUtil.isBlank(logicalTableName) || TStringUtil.isBlank(phyTableName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate", "invalid physical table name");
         }
@@ -68,32 +62,6 @@ public class CommonMetaChanger {
         phyInfoSchemaContext.phyTableName = phyTableName;
 
         return phyInfoSchemaContext;
-    }
-
-    public static TGroupDataSource getPhyDataSource(String schemaName, String dbIndex) {
-        IGroupExecutor groupExecutor = ExecutorContext.getContext(schemaName).getTopologyHandler().get(dbIndex);
-        if (groupExecutor == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate",
-                "Not found group executor for " + dbIndex);
-        }
-
-        TGroupDataSource dataSource = (TGroupDataSource) groupExecutor.getDataSource();
-        if (dataSource == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "validate", "invalid physical data source");
-        }
-
-        return dataSource;
-    }
-
-    private static String getPhyTableSchema(TGroupDataSource groupDataSource) {
-        if (groupDataSource != null && groupDataSource.getConfigManager() != null) {
-            TAtomDataSource atomDataSource = groupDataSource.getConfigManager().getDataSource(MasterSlave.MASTER_ONLY);
-            if (atomDataSource != null && atomDataSource.getDsConfHandle() != null) {
-                TAtomDsConfDO runTimeConf = atomDataSource.getDsConfHandle().getRunTimeConf();
-                return runTimeConf != null ? runTimeConf.getDbName() : null;
-            }
-        }
-        return null;
     }
 
     public static void sync(String dataId) {
@@ -139,25 +107,32 @@ public class CommonMetaChanger {
     }
 
     public static void finalOperationsOnSuccess(String schemaName, String logicalTableName) {
-        invalidatePlanCache(schemaName);
+        DdlUtils.invalidatePlan(schemaName, logicalTableName, false);
         removeTableStatistic(schemaName, logicalTableName);
     }
 
-    public static void finalOperationsOnRenameTableSuccess(String schemaName, String logicalTableName,
+    public static void dropTableFinalOperationsOnSuccess(String schemaName, String logicalTableName) {
+        DdlUtils.invalidatePlan(schemaName, logicalTableName, true);
+        removeTableStatistic(schemaName, logicalTableName);
+    }
+
+    public static void renameFinalOperationsOnSuccess(String schemaName, String logicalTableName,
                                                       String newLogicalTableName) {
-        invalidatePlanCache(schemaName);
-        renameTableStatistic(schemaName, logicalTableName, newLogicalTableName);
+        DdlUtils.invalidatePlan(schemaName, logicalTableName, true);
+        renameStatistic(schemaName, logicalTableName, newLogicalTableName);
+        invalidateBufferPool(schemaName, logicalTableName);
     }
 
-    public static void finalOperationsOnAlterTableSuccess(String schemaName, String logicalTableName,
-                                                                List<String> columnNames) {
-        invalidatePlanCache(schemaName);
-        removeColumnStatistic(schemaName, logicalTableName, columnNames);
+    public static void alterTableColumnFinalOperationsOnSuccess(String schemaName, String logicalTableName,
+                                                                List<String> columnList) {
+        DdlUtils.invalidatePlan(schemaName, logicalTableName, false);
+        invalidateAlterTableColumnStatistic(schemaName, logicalTableName, columnList);
+        invalidateBufferPool(schemaName, logicalTableName);
     }
 
-    public static void invalidatePlanCache(String schemaName) {
-        PlanManager.getInstance().cleanCache(schemaName);
-    }
+//    public static void invalidatePlanCache(String schemaName) {
+//        PlanManager.getInstance().invalidateCacheBySchema(schemaName);
+//    }
 
     private static void removeTableStatistic(String schemaName, String logicalTableName) {
         SyncManagerHelper.sync(new RemoveTableStatisticSyncAction(schemaName, logicalTableName), schemaName);
@@ -189,14 +164,8 @@ public class CommonMetaChanger {
     public static void clearOSSFileSystemCache() {
         SyncManagerHelper.sync(new ClearOSSFileSystemSyncAction(), DefaultDbSchema.NAME);
     }
-    private static void renameTableStatistic(String schemaName, String logicalTableName, String newLogicalTableName) {
-        SyncManagerHelper.sync(new RenameStatisticSyncAction(schemaName, logicalTableName, newLogicalTableName),
-            schemaName);
-    }
 
-    private static void removeColumnStatistic(String schemaName, String logicalTableName, List<String> columnNames) {
-        SyncManagerHelper.sync(new RemoveColumnStatisticSyncAction(schemaName, logicalTableName, columnNames),
-            schemaName);
+    public static void clearOSSFileSystemCache(List<String> paths, String schema) {
+        SyncManagerHelper.sync(new DeleteOssFileSyncAction(paths), schema);
     }
-
 }

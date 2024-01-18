@@ -34,7 +34,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Supplier;
 
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.CYCLE;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INNER_STEP;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_MAX_VALUE;
@@ -42,6 +44,8 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_ST
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_COUNT;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_UNIT_INDEX;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ_CACHE_SIZE;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NOCYCLE;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.STR_NA;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.TIME_BASED;
 import static com.alibaba.polardbx.gms.metadb.seq.SequenceAccessor.SEQ_TABLE;
@@ -129,13 +133,29 @@ public class SequencesAccessor extends AbstractAccessor {
         return count;
     }
 
-    public int insert(SequenceBaseRecord record, long newSeqCacheSize) {
+    public int insert(SequenceBaseRecord record, long newSeqCacheSize, Supplier<?> failPointInjector) {
         if (record instanceof SequenceRecord) {
             return sequenceAccessor.insert((SequenceRecord) record);
         } else if (record instanceof SequenceOptRecord) {
             SequenceOptRecord sequenceOptRecord = (SequenceOptRecord) record;
             if (sequenceOptRecord.isNewSeq()) {
-                sequenceOptNewAccessor.create(sequenceOptRecord, newSeqCacheSize);
+                try {
+                    sequenceOptNewAccessor.create(sequenceOptRecord, newSeqCacheSize);
+                    failPointInjector.get();
+                } catch (Exception e) {
+                    boolean ignoreForIdempotentRecovery = false;
+                    String seqName = sequenceOptNewAccessor.genNameForNewSequence(sequenceOptRecord);
+                    if (TStringUtil.containsIgnoreCase(e.getMessage(),
+                        String.format("Table '%s' already exists", seqName))) {
+                        long start = sequenceOptNewAccessor.show(sequenceOptRecord.schemaName, sequenceOptRecord.name);
+                        if (start == sequenceOptRecord.startWith) {
+                            ignoreForIdempotentRecovery = true;
+                        }
+                    }
+                    if (!ignoreForIdempotentRecovery) {
+                        throw e;
+                    }
+                }
             }
             try {
                 return sequenceOptAccessor.insert(sequenceOptRecord);
@@ -151,7 +171,7 @@ public class SequencesAccessor extends AbstractAccessor {
         }
     }
 
-    public int update(SequenceBaseRecord record) {
+    public int update(SequenceBaseRecord record, long newSeqCacheSize) {
         if (record instanceof SequenceRecord) {
             return sequenceAccessor.update((SequenceRecord) record);
         } else if (record instanceof SequenceOptRecord) {
@@ -165,12 +185,50 @@ public class SequencesAccessor extends AbstractAccessor {
                 int affectedRows = sequenceOptNewAccessor.update(sequenceOptRecord);
 
                 try {
-                    sequenceOptNewAccessor.change(sequenceOptRecord);
+                    boolean recreateUnderlyingSequence = false;
+
+                    long actualNextval = origRecord.value;
+
+                    try {
+                        actualNextval =
+                            sequenceOptNewAccessor.show(sequenceOptRecord.schemaName, sequenceOptRecord.name);
+                    } catch (Exception e) {
+                        if (e.getMessage().contains("has run out")) {
+                            recreateUnderlyingSequence = true;
+                        } else {
+                            throw e;
+                        }
+                    }
+
+                    if (!recreateUnderlyingSequence) {
+                        if (sequenceOptRecord.isOnlyStartWithChanged()) {
+                            if (sequenceOptRecord.startWith <= actualNextval) {
+                                recreateUnderlyingSequence = true;
+                            }
+                        } else {
+                            recreateUnderlyingSequence = true;
+                        }
+                    }
+
+                    if (recreateUnderlyingSequence) {
+                        // AliSQL Sequence doesn't support to change start value to a less value
+                        // (no error, just ignore) or change other options, so we have to drop the
+                        // old sequence and then create a new one with new start value and options.
+                        sequenceOptNewAccessor.drop(sequenceOptRecord);
+                        try {
+                            fillSequenceRecord(sequenceOptRecord, origRecord, actualNextval);
+                            sequenceOptNewAccessor.create(sequenceOptRecord, newSeqCacheSize);
+                        } catch (Exception e) {
+                            // Recover the original sequence since we failed to create a new one.
+                            sequenceOptNewAccessor.create(origRecord, newSeqCacheSize);
+                        }
+                    } else {
+                        sequenceOptNewAccessor.change(sequenceOptRecord);
+                    }
                 } catch (Exception e) {
-                    // Roll the start with back.
+                    // Rollback the sequence
                     if (origStartWith > 0L) {
-                        sequenceOptRecord.startWith = origStartWith;
-                        sequenceOptNewAccessor.update(sequenceOptRecord);
+                        sequenceOptNewAccessor.update(origRecord);
                     }
                     throw e;
                 }
@@ -184,7 +242,38 @@ public class SequencesAccessor extends AbstractAccessor {
         }
     }
 
-    public int change(Pair<SequenceBaseRecord, SequenceBaseRecord> recordPair, long newSeqCacheSize) {
+    private void fillSequenceRecord(SequenceOptRecord newRecord, SequenceOptRecord oldRecord, long actualNextval) {
+        if (newRecord.incrementBy <= 0) {
+            newRecord.incrementBy = oldRecord.incrementBy > 0 ? oldRecord.incrementBy : DEFAULT_INCREMENT_BY;
+        }
+
+        if (newRecord.maxValue <= 0 || newRecord.maxValue < newRecord.startWith) {
+            newRecord.maxValue =
+                oldRecord.maxValue > 0 && oldRecord.maxValue > newRecord.maxValue ? oldRecord.maxValue :
+                    DEFAULT_MAX_VALUE;
+        }
+
+        if (newRecord.startWith <= 0) {
+            newRecord.startWith = oldRecord.startWith > 0 ? oldRecord.startWith : DEFAULT_START_WITH;
+            if (actualNextval - oldRecord.incrementBy < newRecord.startWith) {
+                newRecord.value = newRecord.startWith;
+            } else {
+                newRecord.value = actualNextval - oldRecord.incrementBy + newRecord.incrementBy;
+                if (newRecord.value > newRecord.maxValue) {
+                    newRecord.value = newRecord.startWith;
+                }
+            }
+        } else {
+            newRecord.value = newRecord.startWith;
+        }
+
+        if (!newRecord.cycleReset || (newRecord.cycle != (NEW_SEQ | CYCLE) && newRecord.cycle != (NEW_SEQ | NOCYCLE))) {
+            newRecord.cycle = oldRecord.cycle;
+        }
+    }
+
+    public int change(Pair<SequenceBaseRecord, SequenceBaseRecord> recordPair, long newSeqCacheSize,
+                      Supplier<?> failPointInjector) {
         int count = 0;
 
         SequenceBaseRecord deletedRecord = recordPair.getKey();
@@ -194,7 +283,7 @@ public class SequencesAccessor extends AbstractAccessor {
             (insertedRecord instanceof SequenceOptRecord && ((SequenceOptRecord) insertedRecord).isNewSeq())) {
             // Change right now without transaction since New Sequence change is DDL.
             count += delete(deletedRecord);
-            count += insert(insertedRecord, newSeqCacheSize);
+            count += insert(insertedRecord, newSeqCacheSize, failPointInjector);
             return count;
         }
 
@@ -252,6 +341,10 @@ public class SequencesAccessor extends AbstractAccessor {
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_UNEXPECTED, "record", record.getClass().getName());
         }
+    }
+
+    public boolean checkIfExists(String schemaName, String name) {
+        return sequenceAccessor.checkIfExists(schemaName, name) || sequenceOptAccessor.checkIfExists(schemaName, name);
     }
 
     public int updateStatus(SequenceBaseRecord record, int newStatus) {
@@ -316,7 +409,8 @@ public class SequencesAccessor extends AbstractAccessor {
                     try {
                         nextvalShown = sequenceOptNewAccessor.show(record.schemaName, record.name);
                     } catch (Exception e) {
-                        if (e.getMessage().contains("doesn't exist")) {
+                        if (e.getMessage().contains("doesn't exist") ||
+                            e.getMessage().contains("has run out")) {
                             record.value = STR_NA;
                         } else {
                             throw e;
@@ -473,12 +567,12 @@ public class SequencesAccessor extends AbstractAccessor {
 
             switch (toType) {
             case NEW:
-                targetRecord.value = DEFAULT_START_WITH;
+                targetRecord.value = sourceRecord.value + NEW_SEQ_CACHE_SIZE;
                 targetRecord.incrementBy = DEFAULT_INCREMENT_BY;
-                targetRecord.startWith = sourceRecord.value + DEFAULT_INNER_STEP;
+                targetRecord.startWith = DEFAULT_START_WITH;
                 targetRecord.maxValue = DEFAULT_MAX_VALUE;
                 targetRecord.cycle = NEW_SEQ;
-                sequenceOptNewAccessor.create(targetRecord, DEFAULT_INNER_STEP);
+                sequenceOptNewAccessor.create(targetRecord, NEW_SEQ_CACHE_SIZE);
                 break;
             case TIME:
                 targetRecord.value = 0;
@@ -553,12 +647,12 @@ public class SequencesAccessor extends AbstractAccessor {
             case TIME:
                 switch (toType) {
                 case NEW:
-                    targetRecord.value = DEFAULT_START_WITH;
-                    targetRecord.startWith = timeBasedValue + DEFAULT_INCREMENT_BY;
+                    targetRecord.value = timeBasedValue + DEFAULT_INCREMENT_BY;
+                    targetRecord.startWith = DEFAULT_START_WITH;
                     targetRecord.incrementBy = DEFAULT_INCREMENT_BY;
                     targetRecord.maxValue = DEFAULT_MAX_VALUE;
-                    targetRecord.cycle = NEW_SEQ;
-                    sequenceOptNewAccessor.create(targetRecord, DEFAULT_INNER_STEP);
+                    targetRecord.cycle = NEW_SEQ | NOCYCLE;
+                    sequenceOptNewAccessor.create(targetRecord, NEW_SEQ_CACHE_SIZE);
                 }
                 break;
             }

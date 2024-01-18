@@ -38,45 +38,45 @@ import java.util.Optional;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 import static com.alibaba.polardbx.optimizer.view.InformationSchemaRebalanceBackFill.*;
 
-
-public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler{
-
+public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler {
 
     public DdlEngineShowRebalanceBackFillHandler(IRepository repo) {
         super(repo);
     }
+
     DdlPlanManager planManager = new DdlPlanManager();
 
     @Override
     protected Cursor doHandle(LogicalDal logicalPlan, ExecutionContext executionContext) {
         List<Map<String, Object>> result = DdlHelper.getServerConfigManager().executeQuerySql(
-                "SELECT " +
-                        "T1.DDL_JOB_ID, " +
-                        "SUM(T1.`CURRENT_SPEED(ROWS/SEC)`) AS `CURRENT_SPEED(ROWS/SEC)`," +
-                        "SUM(T1.FINISHED_ROWS) / (UNIX_TIMESTAMP(NOW())-T2.GMT_CREATED/1000) AS `AVERAGE_SPEED(ROWS/SEC)` ," +
-                        "SUM(T1.FINISHED_ROWS) AS FINISHED_ROWS, " +
-                        "T1.`APPROXIMATE_TOTAL_ROWS` " +
-                        "FROM " +
-                        "INFORMATION_SCHEMA.REBALANCE_BACKFILL T1 " +
-                        "JOIN METADB.DDL_ENGINE T2 " +
-                        "ON T1.DDL_JOB_ID=T2.JOB_ID",
-                DEFAULT_DB_NAME,
-                null
+            "SELECT " +
+                "T1.DDL_JOB_ID, " +
+                "SUM(T1.`CURRENT_SPEED(ROWS/SEC)`) AS `CURRENT_SPEED(ROWS/SEC)`," +
+                "SUM(T1.FINISHED_ROWS) / (UNIX_TIMESTAMP(NOW())-T2.GMT_CREATED/1000) AS `AVERAGE_SPEED(ROWS/SEC)` ," +
+                "SUM(T1.FINISHED_ROWS) AS FINISHED_ROWS, " +
+                "T1.`APPROXIMATE_TOTAL_ROWS` " +
+                "FROM " +
+                "INFORMATION_SCHEMA.REBALANCE_BACKFILL T1 " +
+                "JOIN METADB.DDL_ENGINE T2 " +
+                "ON T1.DDL_JOB_ID=T2.JOB_ID",
+            DEFAULT_DB_NAME,
+            null
         );
         ArrayResultCursor cursor = buildResultCursor();
-        if(CollectionUtils.isEmpty(result)){
+        if (CollectionUtils.isEmpty(result)) {
             return cursor;
         }
-        for(Map<String, Object> map: result){
-            if(map.get(DDL_JOB_ID)==null){
+        for (Map<String, Object> map : result) {
+            if (map.get(DDL_JOB_ID) == null) {
                 continue;
             }
             final long jobId = parseLong(map.get(DDL_JOB_ID));
             final Optional<DdlPlanRecord> ddlPlanRecordOptional = planManager.getDdlPlanByJobId(jobId);
             long previousFinishedRows = 0L;
-            if(ddlPlanRecordOptional.isPresent()){
-                CostEstimableDdlTask.CostInfo costInfo = TaskHelper.decodeCostInfo(ddlPlanRecordOptional.get().getExtras());
-                if(costInfo != null){
+            if (ddlPlanRecordOptional.isPresent()) {
+                CostEstimableDdlTask.CostInfo costInfo =
+                    TaskHelper.decodeCostInfo(ddlPlanRecordOptional.get().getExtras());
+                if (costInfo != null) {
                     previousFinishedRows += costInfo.rows;
                 }
             }
@@ -85,36 +85,35 @@ public class DdlEngineShowRebalanceBackFillHandler extends DdlEngineJobsHandler{
             long approximateTotalRows = parseLong(map.get(APPROXIMATE_TOTAL_ROWS));
 
             cursor.addRow(
-                    new Object[]{
-                            map.get(DDL_JOB_ID),
-                            map.get(CURRENT_SPEED),
-                            map.get(AVERAGE_SPEED),
-                            finishedRows + previousFinishedRows,
-                            approximateTotalRows + previousFinishedRows
-                    }
+                new Object[] {
+                    map.get(DDL_JOB_ID),
+                    map.get(CURRENT_SPEED),
+                    map.get(AVERAGE_SPEED),
+                    finishedRows + previousFinishedRows,
+                    approximateTotalRows + previousFinishedRows
+                }
             );
         }
         return cursor;
     }
 
-    private long parseLong(@NotNull Object val){
-        return Long.parseLong(String.valueOf(DataTypeUtil.toJavaObject(val)));
+    private long parseLong(@NotNull Object val) {
+        return Long.parseLong(String.valueOf(DataTypeUtil.toJavaObject(null, val)));
     }
 
-    private String parseString(@NotNull Object val){
-        return String.valueOf(DataTypeUtil.toJavaObject(val));
+    private String parseString(@NotNull Object val) {
+        return String.valueOf(DataTypeUtil.toJavaObject(null, val));
     }
 
     private ArrayResultCursor buildResultCursor() {
         ArrayResultCursor resultCursor = new ArrayResultCursor("REBALANCE_BACKFILL");
-        resultCursor.addColumn(DDL_JOB_ID,              DataTypes.StringType);
-        resultCursor.addColumn(CURRENT_SPEED,           DataTypes.StringType);
-        resultCursor.addColumn(AVERAGE_SPEED,           DataTypes.StringType);
-        resultCursor.addColumn(FINISHED_ROWS,           DataTypes.StringType);
-        resultCursor.addColumn(APPROXIMATE_TOTAL_ROWS,  DataTypes.StringType);
+        resultCursor.addColumn(DDL_JOB_ID, DataTypes.StringType);
+        resultCursor.addColumn(CURRENT_SPEED, DataTypes.StringType);
+        resultCursor.addColumn(AVERAGE_SPEED, DataTypes.StringType);
+        resultCursor.addColumn(FINISHED_ROWS, DataTypes.StringType);
+        resultCursor.addColumn(APPROXIMATE_TOTAL_ROWS, DataTypes.StringType);
         resultCursor.initMeta();
         return resultCursor;
     }
-
 
 }

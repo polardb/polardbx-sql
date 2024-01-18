@@ -23,9 +23,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SqlDataAccess;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.FunctionAccessor;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.pl.function.FunctionDefinitionRecord;
 import com.alibaba.polardbx.gms.metadb.pl.function.FunctionMetaRecord;
-import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureDefinitionRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
@@ -36,7 +36,7 @@ import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author yuehan.wcf
@@ -46,7 +46,7 @@ public class StoredFunctionManager {
 
     public static StoredFunctionManager INSTANCE = new StoredFunctionManager();
 
-    Map<String, Pair<SQLCreateFunctionStatement, Long>> functions = new HashMap<>();
+    Map<String, Pair<SQLCreateFunctionStatement, Long>> functions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     long totalSpace = MemorySetting.UNLIMITED_SIZE;
 
@@ -67,7 +67,7 @@ public class StoredFunctionManager {
         functions.put(functionName, PlConstants.FUNCTION_PLACE_HOLDER);
     }
 
-    public void unregister(String functionName) {
+    public synchronized void unregister(String functionName) {
         if (functions.containsKey(functionName)) {
             usedSpace -= functions.get(functionName).getValue();
         }
@@ -85,6 +85,10 @@ public class StoredFunctionManager {
         return statement;
     }
 
+    public synchronized boolean containsFunction(String functionName) {
+        return functions.containsKey(functionName);
+    }
+
     private synchronized SQLCreateFunctionStatement loadStoredFunction(String functionName) {
         try (Connection connection = MetaDbUtil.getConnection()) {
             FunctionAccessor accessor = new FunctionAccessor();
@@ -95,7 +99,8 @@ public class StoredFunctionManager {
                 SQLCreateFunctionStatement
                     createFunctionStatement =
                     (SQLCreateFunctionStatement) FastsqlUtils.parseSql(createFunction).get(0);
-                createFunctionStatement.setSqlDataAccess(records.get(0).canPush ? SqlDataAccess.NO_SQL: SqlDataAccess.CONTAINS_SQL);
+                createFunctionStatement.setSqlDataAccess(
+                    records.get(0).canPush ? SqlDataAccess.NO_SQL : SqlDataAccess.CONTAINS_SQL);
                 long functionSize = createFunction.getBytes().length;
                 checkCapacity(functionSize);
                 usedSpace += functionSize;
@@ -121,11 +126,14 @@ public class StoredFunctionManager {
     }
 
     private synchronized void initStoredFunctions() {
+        if (MetaDbDataSource.getInstance() == null) {
+            return;
+        }
         try (Connection connection = MetaDbUtil.getConnection()) {
             FunctionAccessor accessor = new FunctionAccessor();
             accessor.setConnection(connection);
             List<FunctionMetaRecord> records = accessor.loadFunctionMetas();
-            for (FunctionMetaRecord record: records) {
+            for (FunctionMetaRecord record : records) {
                 String functionName = record.name;
                 register(functionName);
             }
@@ -171,7 +179,7 @@ public class StoredFunctionManager {
 
     public synchronized Map<String, Long> getFunctions() {
         Map<String, Long> loadedFunctions = new HashMap<>();
-        for(Map.Entry<String, Pair<SQLCreateFunctionStatement, Long>> entry: functions.entrySet()) {
+        for (Map.Entry<String, Pair<SQLCreateFunctionStatement, Long>> entry : functions.entrySet()) {
             loadedFunctions.put(entry.getKey(), entry.getValue().getValue());
         }
         return loadedFunctions;

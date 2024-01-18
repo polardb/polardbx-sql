@@ -1,0 +1,19 @@
+## DISABLE_FAST_SQL_PARSER
+show table access limit 0;
+TABLE_SCHEMA,TABLE_NAME,TABLE_TYPE,ACCESS_COUNT
+desc information_schema.table_access;
+Field,Type,Null,Key,Default,Extra
+CLOSURE_KEY,varchar,YES,,NULL,
+TABLE_SCHEMA,varchar,YES,,NULL,
+TABLE_NAME,varchar,YES,,NULL,
+OTHER_SCHEMA,varchar,YES,,NULL,
+OTHER_TABLE,varchar,YES,,NULL,
+ACCESS_COUNT,bigint,YES,,NULL,
+TEMPLATE_COUNT,bigint,YES,,NULL,
+desc information_schema.table_join_closure;
+Field,Type,Null,Key,Default,Extra
+JOIN_CLOSURE_KEY,varchar,YES,,NULL,
+JOIN_CLOSURE_SET,varchar,YES,,NULL,
+JOIN_CLOSURE_SIZE,varchar,YES,,NULL,
+ACCESS_COUNT,bigint,YES,,NULL,
+TEMPLATE_COUNT,bigint,YES,,NULL,

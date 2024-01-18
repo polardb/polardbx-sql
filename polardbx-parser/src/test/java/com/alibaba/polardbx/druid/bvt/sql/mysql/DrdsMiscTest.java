@@ -35,7 +35,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("UPGRADE RULE VERSION TO 233", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("upgrade rule version to 233", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("upgrade rule version to 233",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testDowngradeRuleVersion() {
@@ -45,7 +46,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("DOWNGRADE RULE VERSION TO 233", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("downgrade rule version to 233", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("downgrade rule version to 233",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testInspectRuleVersion() {
@@ -55,7 +57,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("INSPECT RULE VERSION", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("inspect rule version", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("inspect rule version",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testInspectRuleVersionIgnoreManager() {
@@ -65,7 +68,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("INSPECT RULE VERSION IGNORE MANAGER", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("inspect rule version ignore manager", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("inspect rule version ignore manager",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testRefreshLocalRules() {
@@ -75,7 +79,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("REFRESH LOCAL RULES", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("refresh local rules", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("refresh local rules",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testClearSeqCache() {
@@ -85,7 +90,8 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("CLEAR SEQUENCE CACHE FOR test_seq", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("clear sequence cache for test_seq", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("clear sequence cache for test_seq",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
     }
 
@@ -96,17 +102,19 @@ public class DrdsMiscTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals("CLEAR SEQUENCE CACHE FOR ALL", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("clear sequence cache for all", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("clear sequence cache for all",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
-    public void testInspectGroupSeqRange() {
-        String sql = "inspect group sequence range for test_seq";
+    public void testInspectSeqRange() {
+        String sql = "inspect sequence range for test_seq";
         SQLStatementParser parser = new MySqlStatementParser(sql, SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
-        Assert.assertEquals("INSPECT GROUP SEQUENCE RANGE FOR test_seq", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("inspect group sequence range for test_seq", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("INSPECT SEQUENCE RANGE FOR test_seq", SQLUtils.toMySqlString(result));
+        Assert.assertEquals("inspect sequence range for test_seq",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testPurgeTrans() {
@@ -135,32 +143,44 @@ public class DrdsMiscTest extends MysqlTest {
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE (DB1, DB2) TO STORAGEINSTANCEID1", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database (db1, db2) to storageinstanceid1", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("MOVE DATABASE ('DB1', 'DB2') TO 'STORAGEINSTANCEID1'", SQLUtils.toMySqlString(result));
+        Assert.assertEquals("move database ('db1', 'db2') to 'storageinstanceid1'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
         sql = "move database (db1,db2) to storageInstanceId1";
         parser = new MySqlStatementParser(sql, SQLParserFeature.DrdsMisc);
         stmtList = parser.parseStatementList();
 
         result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE (DB1, DB2) TO STORAGEINSTANCEID1", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database (db1, db2) to storageinstanceid1", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("MOVE DATABASE ('DB1', 'DB2') TO 'STORAGEINSTANCEID1'", SQLUtils.toMySqlString(result));
+        Assert.assertEquals("move database ('db1', 'db2') to 'storageinstanceid1'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
-        sql = "move database (db1,db2) to storageInstanceId1,(db3,db4) to storageInstanceId2,(db5,db6) to storageInstanceId3";
+        sql =
+            "move database (db1, db2) to 'storageinstanceid1',(db3,db4) to storageInstanceId2,(db5,db6) to storageInstanceId3";
         parser = new MySqlStatementParser(sql, SQLParserFeature.DrdsMisc);
         stmtList = parser.parseStatementList();
 
         result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE (DB5, DB6) TO STORAGEINSTANCEID3, (DB1, DB2) TO STORAGEINSTANCEID1, (DB3, DB4) TO STORAGEINSTANCEID2", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database (db5, db6) to storageinstanceid3, (db1, db2) to storageinstanceid1, (db3, db4) to storageinstanceid2", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals(
+            "MOVE DATABASE ('DB5', 'DB6') TO 'STORAGEINSTANCEID3', ('DB1', 'DB2') TO 'STORAGEINSTANCEID1', ('DB3', 'DB4') TO 'STORAGEINSTANCEID2'",
+            SQLUtils.toMySqlString(result));
+        Assert.assertEquals(
+            "move database ('db5', 'db6') to 'storageinstanceid3', ('db1', 'db2') to 'storageinstanceid1', ('db3', 'db4') to 'storageinstanceid2'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
 
-        sql = "move database (db1,db2) to storageInstanceId1,(db3,db4) to storageInstanceId2,(db5,db6) to storageInstanceId1";
+        sql =
+            "move database (db1,db2) to storageInstanceId1,(db3,db4) to storageInstanceId2,(db5,db6) to storageInstanceId1";
         parser = new MySqlStatementParser(sql, SQLParserFeature.DrdsMisc);
         stmtList = parser.parseStatementList();
 
         result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE (DB1, DB2, DB5, DB6) TO STORAGEINSTANCEID1, (DB3, DB4) TO STORAGEINSTANCEID2", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database (db1, db2, db5, db6) to storageinstanceid1, (db3, db4) to storageinstanceid2", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals(
+            "MOVE DATABASE ('DB1', 'DB2', 'DB5', 'DB6') TO 'STORAGEINSTANCEID1', ('DB3', 'DB4') TO 'STORAGEINSTANCEID2'",
+            SQLUtils.toMySqlString(result));
+        Assert.assertEquals(
+            "move database ('db1', 'db2', 'db5', 'db6') to 'storageinstanceid1', ('db3', 'db4') to 'storageinstanceid2'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testMoveDatabaseWithHint() {
@@ -168,12 +188,15 @@ public class DrdsMiscTest extends MysqlTest {
         SQLStatementParser parser = new MySqlStatementParser(sql, SQLParserFeature.DrdsMisc, SQLParserFeature.TDDLHint);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
-        Assert.assertEquals(stmtList.size(),1);
-        Assert.assertEquals(stmtList.get(0).getHeadHintsDirect().size(),1);
-        Assert.assertEquals(stmtList.get(0).getHeadHintsDirect().get(0).getText().toUpperCase(),"TDDL:SWITCH_GROUP_ONLY=TRUE");
+        Assert.assertEquals(stmtList.size(), 1);
+        Assert.assertEquals(stmtList.get(0).getHeadHintsDirect().size(), 1);
+        Assert.assertEquals(stmtList.get(0).getHeadHintsDirect().get(0).getText().toUpperCase(),
+            "TDDL:SWITCH_GROUP_ONLY=TRUE");
         SQLStatement result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE (DB1, DB2) TO STORAGEINSTANCEID1", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database (db1, db2) to storageinstanceid1", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("MOVE DATABASE /*TDDL:SWITCH_GROUP_ONLY=TRUE*/ ('DB1', 'DB2') TO 'STORAGEINSTANCEID1'",
+            SQLUtils.toMySqlString(result));
+        Assert.assertEquals("move database /*TDDL:SWITCH_GROUP_ONLY=TRUE*/ ('db1', 'db2') to 'storageinstanceid1'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testShowMoveDatabase() {
@@ -192,8 +215,10 @@ public class DrdsMiscTest extends MysqlTest {
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
-        Assert.assertEquals("SHOW MOVE DATABASE WHERE a IS NOT NULL ORDER BY b LIMIT 1", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("show move database where a is not null order by b limit 1", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("SHOW MOVE DATABASE WHERE a IS NOT NULL ORDER BY b LIMIT 1",
+            SQLUtils.toMySqlString(result));
+        Assert.assertEquals("show move database where a is not null order by b limit 1",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 
     public void testCleanMoveDatabase() {
@@ -202,7 +227,8 @@ public class DrdsMiscTest extends MysqlTest {
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
-        Assert.assertEquals("MOVE DATABASE CLEAN DB1, DB2", SQLUtils.toMySqlString(result));
-        Assert.assertEquals("move database clean db1, db2", SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
+        Assert.assertEquals("MOVE DATABASE CLEAN 'DB1', 'DB2'", SQLUtils.toMySqlString(result));
+        Assert.assertEquals("move database clean 'db1', 'db2'",
+            SQLUtils.toMySqlString(result, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION));
     }
 }

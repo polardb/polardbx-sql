@@ -1,0 +1,82 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists test_drds;
+
+CREATE DATABASE IF NOT EXISTS test_drds
+DEFAULT CHARACTER SET = `utf8mb4`
+DEFAULT COLLATE = `utf8mb4_general_ci`
+mode='drds';
+
+use test_drds;
+
+CREATE TABLE single_tbl_jyc(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+);
+
+insert into single_tbl_jyc(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+
+select * from single_tbl_jyc order by id;
+
+create table single_t1_jyc as single_tbl_jyc;
+show create table single_t1_jyc;
+select * from single_t1_jyc order by id;
+
+
+CREATE TABLE multi_db_single_tbl_jyc(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+) dbpartition by hash(id);
+
+insert into multi_db_single_tbl_jyc(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+
+select * from multi_db_single_tbl_jyc order by id;
+
+create table multi_db_single_t1_jyc as multi_db_single_tbl_jyc;
+select * from multi_db_single_t1_jyc order by id;
+
+
+CREATE TABLE multi_db_multi_tbl_jyc(
+id bigint not null auto_increment,
+bid int,
+name varchar(30),
+primary key(id)
+) dbpartition by hash(id) tbpartition by hash(bid) tbpartitions 3;
+
+insert into multi_db_multi_tbl_jyc(id, bid, name) values (1, 2, 'Tom'), (3, 2, 'Mike'), (8, 7, 'John');
+create table multi_db_multi_t1_jyc as multi_db_multi_tbl_jyc;
+select * from multi_db_multi_t1_jyc order by id;
+
+create table t1_jyc(bid int, primary key(bid)) replace select * from multi_db_multi_tbl_jyc;
+select bid from t1_jyc order by bid;
+
+
+
+
+CREATE TABLE brd_tbl_jyc(
+id bigint not null auto_increment,
+name varchar(30),
+primary key(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 BROADCAST;
+insert into brd_tbl_jyc(id, name) values (1, 'Tom'), (3, 'Mike'), (8, 'John');
+show create table brd_tbl_jyc;
+select * from brd_tbl_jyc order by id;
+
+create table brd_t1_jyc as brd_tbl_jyc;
+show create table brd_t1_jyc;
+select * from brd_t1_jyc order by id;
+
+
+create table single_t2_jyc select * from single_tbl_jyc;
+show create table single_t2_jyc;
+
+create table t2_jyc(test_varchar varchar(255) character set utf8, test_2 varchar(255) character set utf8mb4);
+show create table t2_jyc;
+
+create table t3_jyc select * from t2_jyc;
+show create table t3_jyc;
+
+create table t4_jyc(test_2 varchar(8) character set utf8) select * from t2_jyc;
+show create table t4_jyc;
+

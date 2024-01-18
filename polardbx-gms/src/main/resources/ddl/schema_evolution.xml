@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="column_evolution">
+        <Create><![CDATA[
+                CREATE TABLE IF NOT EXISTS `column_evolution` (
+                  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                  `field_id` bigint(11) NOT NULL,
+                  `ts` bigint unsigned not null default '1',
+                  `column_record` text DEFAULT NULL,
+                  `gmt_created` timestamp not null default current_timestamp,
+                  `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+                  PRIMARY KEY (`id`),
+                  KEY (`field_id`,`ts`)
+                ) DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="column_mapping">
+        <Create><![CDATA[
+            create table if not exists `column_mapping` (
+              `field_id` bigint unsigned not null auto_increment,
+              `table_schema` varchar(64) not null,
+              `table_name` varchar(64) not null,
+              `column_name` varchar(64) not null,
+              `status` int(11) not null default '1' comment '0:ABSENT,1:PUBLIC',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              primary key (`field_id`),
+              unique key (`table_schema`, `table_name`, `column_name`)
+            ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

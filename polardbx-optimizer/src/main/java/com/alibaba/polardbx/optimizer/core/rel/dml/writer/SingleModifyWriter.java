@@ -53,7 +53,7 @@ public class SingleModifyWriter extends AbstractSingleWriter implements Distinct
      * Mapping for source value of SET in input row
      * Null if type is DELETE
      */
-    private final Mapping updateSetMapping;
+    private Mapping updateSetMapping;
     /**
      * Mapping for columns used to group input rows, normally identical to pkMapping
      * if pkMapping and skMapping are identical, then groupingMapping is also identical to them
@@ -91,7 +91,7 @@ public class SingleModifyWriter extends AbstractSingleWriter implements Distinct
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForSingleTable(schemaName, logicalTableName, distinctRows, pkIndexList);
+            .buildResultForSingleTable(schemaName, logicalTableName, distinctRows, pkIndexList, ec);
 
         final PhyTableModifyBuilder builder = new PhyTableModifyBuilder();
         switch (getOperation()) {
@@ -102,6 +102,14 @@ public class SingleModifyWriter extends AbstractSingleWriter implements Distinct
         default:
             throw new AssertionError("Cannot handle operation " + getOperation().name());
         }
+    }
+
+    public Mapping getUpdateSetMapping() {
+        return updateSetMapping;
+    }
+
+    public void setUpdateSetMapping(Mapping updateSetMapping) {
+        this.updateSetMapping = updateSetMapping;
     }
 
     @Override

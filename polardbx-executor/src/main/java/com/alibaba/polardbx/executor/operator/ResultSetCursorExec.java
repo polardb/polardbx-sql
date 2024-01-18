@@ -129,7 +129,8 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    public static void buildOneRow(ResultSet rs, DataType[] dataTypes, BlockBuilder[] blockBuilders, ExecutionContext context)
+    public static void buildOneRow(ResultSet rs, DataType[] dataTypes, BlockBuilder[] blockBuilders,
+                                   ExecutionContext context)
         throws SQLException {
         if (rs.isWrapperFor(XResultSet.class)) {
             XResult xResult = rs.unwrap(XResultSet.class).getXResult();
@@ -141,7 +142,8 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    public static void buildOneRow(Row row, DataType[] dataTypes, BlockBuilder[] blockBuilders, ExecutionContext context) throws SQLException {
+    public static void buildOneRow(Row row, DataType[] dataTypes, BlockBuilder[] blockBuilders,
+                                   ExecutionContext context) throws SQLException {
         if (row instanceof ResultSetRow) {
             buildOneRow(((ResultSetRow) row).getResultSet(), dataTypes, blockBuilders, context);
         } else {
@@ -151,7 +153,8 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    private static void buildOneCell(ResultSet rs, int i, DataType type, BlockBuilder builder, ExecutionContext context) throws SQLException {
+    private static void buildOneCell(ResultSet rs, int i, DataType type, BlockBuilder builder, ExecutionContext context)
+        throws SQLException {
         final Class clazz = type.getDataClass();
         if (clazz == Integer.class) {
             if (DataTypeUtil.equalsSemantically(type,
@@ -312,11 +315,11 @@ public class ResultSetCursorExec extends AbstractExecutor {
         }
     }
 
-    private static long bytesToLong(byte[] bytes) {
+    public static long bytesToLong(byte[] bytes) {
         assert bytes.length <= 8;
         long val = 0;
         for (int i = 0; i < bytes.length; i++) {
-            val |= (bytes[i] & 0xFF) << (i * 8);
+            val |= ((long) (bytes[i] & 0xFF)) << ((bytes.length - i - 1) * 8);
         }
         return val;
     }

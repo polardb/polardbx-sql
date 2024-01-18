@@ -42,7 +42,11 @@ public class ProcedureResultHandler implements QueryResultHandler {
 
     PlContext plContext;
 
-    protected int affectRows = 0;
+    protected long affectRows = 0;
+
+    protected long lastAffectRows = 0;
+
+    protected long lastFoundRows = 0;
 
     /**
      * Execute select statement in order to get its result, rather than write back to client
@@ -72,16 +76,21 @@ public class ProcedureResultHandler implements QueryResultHandler {
 
     @Override
     public void sendUpdateResult(long affRows) {
+        lastFoundRows = 0;
+        lastAffectRows = affRows;
         affectRows += affRows;
     }
 
     @Override
-    public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+    public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+        throws Exception {
         if (!selectForDeeperUse) {
+            lastAffectRows = 0;
             proxy =
                 ResultSetUtil.resultSetToPacket(resultSet, serverConnection.getCharset(), serverConnection,
-                    new AtomicLong(0),
-                    proxy);
+                    outAffectedRows,
+                    proxy, sqlSelectLimit);
+            lastFoundRows = outAffectedRows.get();
         } else {
             cursor = PLUtils.buildCacheCursor(((TResultSet) resultSet).getResultCursor(), plContext);
         }
@@ -124,6 +133,10 @@ public class ProcedureResultHandler implements QueryResultHandler {
 
     public Throwable getException() {
         return exception;
+    }
+
+    public void clearException() {
+        exception = null;
     }
 
     public PlCacheCursor getCurosr() {

@@ -25,9 +25,11 @@ import com.alibaba.polardbx.executor.pl.RuntimeFunction;
 import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.FunctionReturnedException;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.Arrays;
 import java.util.List;
@@ -64,7 +66,15 @@ public class Dummy extends AbstractScalarFunction {
         SQLCreateFunctionStatement createFunctionStatement =
             StoredFunctionManager.getInstance().search(functionName.toLowerCase());
         if (createFunctionStatement == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, String.format("function %s not found", functionName));
+            if (!functionName.toLowerCase().startsWith("mysql.")) {
+                String udfNameInternal = "mysql." + functionName.toLowerCase();
+                createFunctionStatement =
+                    StoredFunctionManager.getInstance().search(udfNameInternal);
+            }
+            if (createFunctionStatement == null) {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                    "function " + functionName);
+            }
         }
         return createFunctionStatement;
     }
@@ -101,7 +111,13 @@ public class Dummy extends AbstractScalarFunction {
         } finally {
             function.close();
         }
-        return getReturnType().convertFrom(result);
+        try {
+            return getReturnType() != DataTypes.UndecidedType ? getReturnType().convertFrom(result) : result;
+        } catch (Exception ex) {
+            // ignore
+            logger.error("udf: convert result type failed: ", ex);
+        }
+        return result;
     }
 
 }

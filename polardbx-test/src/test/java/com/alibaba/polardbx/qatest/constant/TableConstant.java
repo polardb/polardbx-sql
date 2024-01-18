@@ -374,6 +374,13 @@ public class TableConstant {
         C_TIMESTAMP_3,
         C_TIMESTAMP_6);
 
+    public static Set<String> timeType = ImmutableSet.of(
+        C_TIME,
+        C_TIME_1,
+        C_TIME_3,
+        C_TIME_6
+    );
+
     public static Set<String> longDataType = ImmutableSet.of(
         C_BLOB_TINY,
         C_BLOB,
@@ -383,6 +390,18 @@ public class TableConstant {
         C_TEXT,
         C_TEXT_MEDIUM,
         C_TEXT_LONG);
+
+    public static Set<String> floatType = ImmutableSet.of(
+        C_FLOAT,
+        C_FLOAT_PR,
+        C_FLOAT_UN,
+        C_DOUBLE,
+        C_DOUBLE_PR,
+        C_DOUBLE_UN);
+
+    public static Set<String> decimalType = ImmutableSet.of(
+        C_DECIMAL,
+        C_DECIMAL_PR);
 
     public static List<String> PK_COLUMNS = ImmutableList.of(C_ID,
         C_BIT_1,

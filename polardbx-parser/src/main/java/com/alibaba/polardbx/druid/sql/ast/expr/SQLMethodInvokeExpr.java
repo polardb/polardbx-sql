@@ -34,38 +34,38 @@ import java.util.Map;
 
 public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, Serializable {
 
-    private static final long     serialVersionUID = 1L;
+    private static final long serialVersionUID = 1L;
 
-    protected String              methodName;
-    protected long                methodNameHashCode64;
-    protected SQLExpr             owner;
-    protected final List<SQLExpr> arguments       = new ArrayList<SQLExpr>();
-    private SQLExpr               from;
-    private SQLExpr               using;
-    private SQLExpr               _for;
-    private String                trimOption;
+    protected String methodName;
+    protected long methodNameHashCode64;
+    protected SQLExpr owner;
+    protected final List<SQLExpr> arguments = new ArrayList<SQLExpr>();
+    private SQLExpr from;
+    private SQLExpr using;
+    private SQLExpr _for;
+    private String trimOption;
     protected transient SQLDataType resolvedReturnDataType;
 
-    public SQLMethodInvokeExpr(){
+    public SQLMethodInvokeExpr() {
 
     }
 
-    public SQLMethodInvokeExpr(String methodName){
+    public SQLMethodInvokeExpr(String methodName) {
         this.methodName = methodName;
     }
 
-    public SQLMethodInvokeExpr(String methodName, long methodNameHashCode64){
+    public SQLMethodInvokeExpr(String methodName, long methodNameHashCode64) {
         this.methodName = methodName;
         this.methodNameHashCode64 = methodNameHashCode64;
     }
 
-    public SQLMethodInvokeExpr(String methodName, SQLExpr owner){
+    public SQLMethodInvokeExpr(String methodName, SQLExpr owner) {
 
         this.methodName = methodName;
         setOwner(owner);
     }
 
-    public SQLMethodInvokeExpr(String methodName, SQLExpr owner, SQLExpr... params){
+    public SQLMethodInvokeExpr(String methodName, SQLExpr owner, SQLExpr... params) {
         this.methodName = methodName;
         setOwner(owner);
         for (SQLExpr param : params) {
@@ -83,7 +83,7 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
 
     public long methodNameHashCode64() {
         if (methodNameHashCode64 == 0
-                && methodName != null) {
+            && methodName != null) {
             methodNameHashCode64 = FnvHash.hashCode64(methodName);
         }
         return methodNameHashCode64;
@@ -100,6 +100,7 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
 
     /**
      * instead of getArguments
+     *
      * @deprecated
      */
     public List<SQLExpr> getParameters() {
@@ -119,6 +120,7 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
 
     /**
      * deprecated, instead of addArgument
+     *
      * @deprecated
      */
     public void addParameter(SQLExpr param) {
@@ -156,8 +158,6 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
         }
         this.from = x;
     }
-
-
 
     public void output(Appendable buf) {
         try {
@@ -223,16 +223,24 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLMethodInvokeExpr that = (SQLMethodInvokeExpr) o;
 
         if (methodNameHashCode64() != that.methodNameHashCode64()) {
             return false;
         }
-        if (owner != null ? !owner.equals(that.owner) : that.owner != null) return false;
-        if (!arguments.equals(that.arguments)) return false;
+        if (owner != null ? !owner.equals(that.owner) : that.owner != null) {
+            return false;
+        }
+        if (!arguments.equals(that.arguments)) {
+            return false;
+        }
         return from != null ? from.equals(that.from) : that.from == null;
 
     }
@@ -348,20 +356,20 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
 
         long nameHash = this.methodNameHashCode64();
         if (nameHash == FnvHash.Constants.TO_DATE
-                || nameHash == FnvHash.Constants.ADD_MONTHS
-                ) {
+            || nameHash == FnvHash.Constants.ADD_MONTHS
+        ) {
             return resolvedReturnDataType = SQLDateExpr.DATA_TYPE;
         }
         if (nameHash == FnvHash.Constants.DATE_PARSE) {
             return resolvedReturnDataType = SQLTimestampExpr.DATA_TYPE;
         }
         if (nameHash == FnvHash.Constants.CURRENT_TIME
-                || nameHash == FnvHash.Constants.CURTIME ) {
+            || nameHash == FnvHash.Constants.CURTIME) {
             return resolvedReturnDataType = SQLTimeExpr.DATA_TYPE;
         }
 
         if (nameHash == FnvHash.Constants.BIT_COUNT
-                || nameHash == FnvHash.Constants.ROW_NUMBER) {
+            || nameHash == FnvHash.Constants.ROW_NUMBER) {
             return resolvedReturnDataType = new SQLDataTypeImpl("BIGINT");
         }
 
@@ -379,9 +387,9 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
                     return dataType;
                 }
             } else if (nameHash == FnvHash.Constants.NVL
-                    || nameHash == FnvHash.Constants.IFNULL
-                    || nameHash == FnvHash.Constants.ISNULL
-                    || nameHash == FnvHash.Constants.COALESCE) {
+                || nameHash == FnvHash.Constants.IFNULL
+                || nameHash == FnvHash.Constants.ISNULL
+                || nameHash == FnvHash.Constants.COALESCE) {
                 SQLDataType dataType = param0.computeDataType();
                 if (dataType != null) {
                     return dataType;
@@ -404,19 +412,19 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
         }
 
         if (nameHash == FnvHash.Constants.CONCAT
-                || nameHash == FnvHash.Constants.SUBSTR
-                || nameHash == FnvHash.Constants.SUBSTRING) {
+            || nameHash == FnvHash.Constants.SUBSTR
+            || nameHash == FnvHash.Constants.SUBSTRING) {
             return resolvedReturnDataType = SQLCharExpr.DATA_TYPE;
         }
 
         if (nameHash == FnvHash.Constants.YEAR
-                || nameHash == FnvHash.Constants.MONTH
-                || nameHash == FnvHash.Constants.DAY
-                || nameHash == FnvHash.Constants.HOUR
-                || nameHash == FnvHash.Constants.MINUTE
-                || nameHash == FnvHash.Constants.SECOND
-                || nameHash == FnvHash.Constants.PERIOD_ADD
-                || nameHash == FnvHash.Constants.PERIOD_DIFF
+            || nameHash == FnvHash.Constants.MONTH
+            || nameHash == FnvHash.Constants.DAY
+            || nameHash == FnvHash.Constants.HOUR
+            || nameHash == FnvHash.Constants.MINUTE
+            || nameHash == FnvHash.Constants.SECOND
+            || nameHash == FnvHash.Constants.PERIOD_ADD
+            || nameHash == FnvHash.Constants.PERIOD_DIFF
         ) {
             return resolvedReturnDataType = new SQLDataTypeImpl("INT");
         }
@@ -426,22 +434,21 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
         }
 
         if (nameHash == FnvHash.Constants.JSON_EXTRACT_SCALAR
-                || nameHash == FnvHash.Constants.FORMAT_DATETIME
-                || nameHash == FnvHash.Constants.DATE_FORMAT
+            || nameHash == FnvHash.Constants.FORMAT_DATETIME
+            || nameHash == FnvHash.Constants.DATE_FORMAT
         ) {
             return resolvedReturnDataType = SQLCharExpr.DATA_TYPE;
         }
 
         if (nameHash == FnvHash.Constants.DATE_ADD
-                || nameHash == FnvHash.Constants.DATE_SUB
-                || nameHash == FnvHash.Constants.DATE
-                || nameHash == FnvHash.Constants.STR_TO_DATE
-                || nameHash == FnvHash.Constants.CURRENT_DATE)
-        {
+            || nameHash == FnvHash.Constants.DATE_SUB
+            || nameHash == FnvHash.Constants.DATE
+            || nameHash == FnvHash.Constants.STR_TO_DATE
+            || nameHash == FnvHash.Constants.CURRENT_DATE) {
             return resolvedReturnDataType = SQLDateExpr.DATA_TYPE;
         }
 
-        if (nameHash == FnvHash.Constants.UNIX_TIMESTAMP ) {
+        if (nameHash == FnvHash.Constants.UNIX_TIMESTAMP) {
             return resolvedReturnDataType = SQLIntegerExpr.DATA_TYPE;
         }
 
@@ -450,11 +457,10 @@ public class SQLMethodInvokeExpr extends SQLExprImpl implements SQLReplaceable, 
         }
 
         if (nameHash == FnvHash.Constants.SYSDATE
-                || nameHash == FnvHash.Constants.CURRENT_TIMESTAMP
-                || nameHash == FnvHash.Constants.SYSTIMESTAMP) {
+            || nameHash == FnvHash.Constants.CURRENT_TIMESTAMP
+            || nameHash == FnvHash.Constants.SYSTIMESTAMP) {
             return resolvedReturnDataType = SQLTimestampExpr.DATA_TYPE;
         }
-
 
         return null;
     }

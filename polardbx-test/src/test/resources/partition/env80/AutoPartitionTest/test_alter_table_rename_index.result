@@ -1,0 +1,192 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+	a int NOT NULL,
+	b int NOT NULL,
+	c int NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY idx_b (b),
+	KEY idx_c (c)
+);
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `idx_b` (`b`),
+	INDEX `idx_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_c_$ */ `idx_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	LOCAL KEY `_local_idx_b` (`b`),
+	LOCAL KEY `_local_idx_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+INSERT INTO tbl
+VALUES (1, 2, 3),
+	(101, 3, 4),
+	(102, 4, 5),
+	(201, 5, 6),
+	(202, 6, 7);
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+ALTER TABLE tbl
+	RENAME INDEX idx_c TO gsi_c;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `gsi_c` (`c`),
+	INDEX `idx_b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* gsi_c_$ */ `gsi_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* idx_b_$ */ `idx_b` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS #@#,
+	LOCAL KEY `_local_idx_b` (`b`),
+	LOCAL KEY `_local_gsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE gsi_c;
+Table,Create Table
+gsi_c_$,CREATE TABLE `gsi_c_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c`,`a`)
+PARTITIONS #@#
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+ALTER TABLE tbl
+	RENAME INDEX idx_b TO global_secondary_index_b;
+SHOW CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `global_secondary_index_b` (`b`),
+	INDEX `gsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl;
+Table,Create Table
+tbl,CREATE PARTITION TABLE `tbl` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* global_secondary_index_b_$ */ `global_secondary_index_b` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* gsi_c_$ */ `gsi_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	LOCAL KEY `_local_global_secondary_index_b` (`b`),
+	LOCAL KEY `_local_gsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SHOW CREATE TABLE global_secondary_index_b;
+Table,Create Table
+global_secondary_index_b_$,CREATE TABLE `global_secondary_index_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`b`,`a`)
+PARTITIONS #@#
+SELECT *
+FROM tbl
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7
+RENAME TABLE tbl TO tbl2;
+SHOW CREATE TABLE tbl2;
+Table,Create Table
+tbl2,CREATE TABLE `tbl2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `global_secondary_index_b` (`b`),
+	INDEX `gsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW FULL CREATE TABLE tbl2;
+Table,Create Table
+tbl2,CREATE PARTITION TABLE `tbl2` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	GLOBAL INDEX /* global_secondary_index_b_$ */ `global_secondary_index_b` (`b`)
+		PARTITION BY KEY(`b`,`a`)
+		PARTITIONS #@#,
+	GLOBAL INDEX /* gsi_c_$ */ `gsi_c` (`c`)
+		PARTITION BY KEY(`c`,`a`)
+		PARTITIONS #@#,
+	LOCAL KEY `_local_global_secondary_index_b` (`b`),
+	LOCAL KEY `_local_gsi_c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+SELECT *
+FROM tbl2
+ORDER BY a;
+a,b,c
+1,2,3
+101,3,4
+102,4,5
+201,5,6
+202,6,7

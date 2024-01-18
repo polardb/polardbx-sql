@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
-import com.alibaba.polardbx.common.charset.CollationHandlers;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CollationHandlers;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
@@ -26,7 +26,7 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.rpc.result.XResult;
 import com.google.common.primitives.UnsignedLongs;
@@ -41,7 +41,6 @@ import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.sql.ResultSet;
 import java.sql.Types;
-import java.util.Arrays;
 
 /**
  * MySQL tiny int data type (8bit)

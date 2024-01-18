@@ -1,0 +1,200 @@
+schemaName: "rebalance_test_d6"
+dnNum: 4
+singleBalanceCaseBeans:
+  - createTableActions:
+      - tableName: "t1"
+        createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+                                 `c1` bigint NOT NULL,
+                                 `c2` date NOT NULL,
+                                 `c3` double NOT NULL
+         )
+             PARTITION BY HASH (c1, c2)
+         PARTITIONS 32;"
+        keyDistribution: "hotspot"
+        distributionParameter: ["1"]
+        rowNum: 100000
+      - tableName: "t2"
+        createTableStmt: "CREATE TABLE IF NOT EXISTS `t2` (
+                      `c1` bigint(20) NOT NULL,
+                      `c2` date NOT NULL,
+                      `c3` double NOT NULL
+)
+    PARTITION BY RANGE (`c1`)
+(PARTITION `p1` VALUES LESS THAN (100000) ENGINE = InnoDB,
+ PARTITION `p2` VALUES LESS THAN (200000) ENGINE = InnoDB,
+ PARTITION `p3` VALUES LESS THAN (300000) ENGINE = InnoDB,
+ PARTITION `p4` VALUES LESS THAN (400000) ENGINE = InnoDB,
+ PARTITION `p5` VALUES LESS THAN (500000) ENGINE = InnoDB,
+ PARTITION `p6` VALUES LESS THAN (600000) ENGINE = InnoDB,
+ PARTITION `p7` VALUES LESS THAN (700000) ENGINE = InnoDB,
+ PARTITION `p8` VALUES LESS THAN (800000) ENGINE = InnoDB,
+ PARTITION `p9` VALUES LESS THAN (900000) ENGINE = InnoDB,
+ PARTITION `p10` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+        keyDistribution: "hotspot"
+        distributionParameter: [ "1" ]
+        rowNum: 100000
+      - tableName: "t3"
+        createTableStmt: "CREATE TABLE IF NOT EXISTS `t3` (
+                      `c1` date NOT NULL,
+                      `c2` double NOT NULL,
+                      `c3` double NOT NULL
+)
+    PARTITION BY RANGE (YEAR(`c1`))
+(PARTITION `p1` VALUES LESS THAN (2012) ENGINE = InnoDB,
+ PARTITION `p2` VALUES LESS THAN (2013) ENGINE = InnoDB,
+ PARTITION `p3` VALUES LESS THAN (2014) ENGINE = InnoDB,
+ PARTITION `p4` VALUES LESS THAN (2015) ENGINE = InnoDB,
+ PARTITION `p5` VALUES LESS THAN (2016) ENGINE = InnoDB,
+ PARTITION `p6` VALUES LESS THAN (2017) ENGINE = InnoDB,
+ PARTITION `p7` VALUES LESS THAN (2018) ENGINE = InnoDB,
+ PARTITION `p8` VALUES LESS THAN (2019) ENGINE = InnoDB,
+ PARTITION `p9` VALUES LESS THAN (2020) ENGINE = InnoDB,
+ PARTITION `p10` VALUES LESS THAN (2021) ENGINE = InnoDB,
+ PARTITION `p11` VALUES LESS THAN (2022) ENGINE = InnoDB,
+ PARTITION `p12` VALUES LESS THAN (2023) ENGINE = InnoDB,
+ PARTITION `p13` VALUES LESS THAN (2024) ENGINE = InnoDB,
+ PARTITION `p14` VALUES LESS THAN (2025) ENGINE = InnoDB,
+ PARTITION `p15` VALUES LESS THAN (2026) ENGINE = InnoDB,
+ PARTITION `p16` VALUES LESS THAN (2027) ENGINE = InnoDB,
+ PARTITION `p17` VALUES LESS THAN (2028) ENGINE = InnoDB,
+ PARTITION `p18` VALUES LESS THAN (2029) ENGINE = InnoDB,
+ PARTITION `p19` VALUES LESS THAN (2030) ENGINE = InnoDB,
+ PARTITION `p20` VALUES LESS THAN (2031) ENGINE = InnoDB,
+ PARTITION `p21` VALUES LESS THAN (2032) ENGINE = InnoDB,
+ PARTITION `p22` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+        keyDistribution: "hotspot"
+        distributionParameter: [ "1" ]
+        rowNum: 100000
+      - tableName: "t4"
+        createTableStmt: "CREATE TABLE IF NOT EXISTS `t4` (
+                       `c1` date NOT NULL,
+                       `c2` double NOT NULL,
+                       `c3` double NOT NULL
+)
+    PARTITION BY RANGE COLUMNS(`c1`)
+(PARTITION `p1` VALUES LESS THAN ('2012-01-01') ENGINE = InnoDB,
+  PARTITION `p2` VALUES LESS THAN ('2013-01-01') ENGINE = InnoDB,
+  PARTITION `p3` VALUES LESS THAN ('2014-01-01') ENGINE = InnoDB,
+  PARTITION `p4` VALUES LESS THAN ('2015-01-01') ENGINE = InnoDB,
+  PARTITION `p5` VALUES LESS THAN ('2016-01-01') ENGINE = InnoDB,
+  PARTITION `p6` VALUES LESS THAN ('2017-01-01') ENGINE = InnoDB,
+  PARTITION `p7` VALUES LESS THAN ('2018-01-01') ENGINE = InnoDB,
+  PARTITION `p8` VALUES LESS THAN ('2019-01-01') ENGINE = InnoDB,
+  PARTITION `p9` VALUES LESS THAN ('2020-01-01') ENGINE = InnoDB,
+  PARTITION `p10` VALUES LESS THAN ('2021-01-01') ENGINE = InnoDB,
+  PARTITION `p11` VALUES LESS THAN ('2022-01-01') ENGINE = InnoDB,
+  PARTITION `p12` VALUES LESS THAN ('2023-01-01') ENGINE = InnoDB,
+  PARTITION `p13` VALUES LESS THAN ('2024-01-01') ENGINE = InnoDB,
+  PARTITION `p14` VALUES LESS THAN ('2025-01-01') ENGINE = InnoDB,
+  PARTITION `p15` VALUES LESS THAN ('2026-01-01') ENGINE = InnoDB,
+  PARTITION `p16` VALUES LESS THAN ('2027-01-01') ENGINE = InnoDB,
+  PARTITION `p17` VALUES LESS THAN ('2028-01-01') ENGINE = InnoDB,
+  PARTITION `p18` VALUES LESS THAN ('2029-01-01') ENGINE = InnoDB,
+  PARTITION `p19` VALUES LESS THAN ('2030-01-01') ENGINE = InnoDB,
+  PARTITION `p20` VALUES LESS THAN ('2031-01-01') ENGINE = InnoDB,
+  PARTITION `p21` VALUES LESS THAN ('2032-01-01') ENGINE = InnoDB,
+  PARTITION `p22` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);"
+        keyDistribution: "hotspot"
+        distributionParameter: [ "1" ]
+        rowNum: 100000
+    manipulateActions:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "rebalance table t1 policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns: [ 2 ]
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance table t1 policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "rebalance table t2 policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+        exception: "[t2]: p1 auto split failed!"
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance table t2 policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "rebalance table t3 policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns: [ 2 ]
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance table t3 policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "rebalance table t4 policy = 'auto_split_for_partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns: [2]
+      - conditionStmt: "show ddl"
+        expectedConditionResult: []
+        manipulateStmt: "rebalance table t4 policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+    dataDistributionCheckActions:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t1"
+        objectType: "table"
+        expectedMu: 0.2
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t2"
+        objectType: "table"
+        expectedMu: 0.6
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t3"
+        objectType: "table"
+        expectedMu: 0.2
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t4"
+        objectType: "table"
+        expectedMu: 0.2
+  - createTableActions: []
+    manipulateActions:
+      - conditionStmt:
+        expectedConditionResult: [ "0" ]
+        manipulateStmt: "alter table t2 partition by key(c1, c2) partitions 32"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [ ]
+        manipulateStmt: "rebalance table t2 policy = 'auto_split_for_partition_balance' solve_level = 'hot_split'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [ ]
+        manipulateStmt: "rebalance table t2 policy = 'partition_balance'"
+        expectedManipulateResult:
+        expectedManipulateColumns:
+    dataDistributionCheckActions:
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t1"
+        objectType: "table"
+        expectedMu: 0.2
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t2"
+        objectType: "table"
+        expectedMu: 0.2
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t3"
+        objectType: "table"
+        expectedMu: 0.2
+      - conditionStmt: "show ddl"
+        expectedConditionResult: [  ]
+        objectName: "t4"
+        objectType: "table"
+        expectedMu: 0.2

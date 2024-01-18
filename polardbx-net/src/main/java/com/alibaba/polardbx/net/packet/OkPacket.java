@@ -26,36 +26,49 @@ import com.alibaba.polardbx.net.util.MySQLMessage;
  * <pre>
  * Bytes                       Name
  * -----                       ----
- * 1                           field_count, always = 0
+ * 1                           OK: 0x00; EOF: 0xFE
  * 1-9 (Length Coded Binary)   affected_rows
  * 1-9 (Length Coded Binary)   insert_id
  * 2                           server_status
  * 2                           warning_count
  * n   (until end of packet)   message fix:(Length Coded String)
  *
- * @see http://forge.mysql.com/wiki/MySQL_Internals_ClientServer_Protocol#OK_Packet
+ * @see https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_basic_ok_packet.html
  * </pre>
  *
  * @author xianmao.hexm 2010-7-16 上午10:33:50
  */
 public class OkPacket extends MySQLPacket {
 
-    public static final byte FIELD_COUNT = 0x00;
+    public static final byte OK_HEADER = 0x00;
+    public static final byte EOF_HEADER = (byte) 0xFE;
     public static final byte[] OK = new byte[] {7, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0};
     public static final byte[] OK_WITH_MORE = new byte[] {7, 0, 0, 1, 0, 0, 0, 10, 0, 0, 0};
 
-    public byte fieldCount = FIELD_COUNT;
+    public byte header;
     public long affectedRows;
     public long insertId;
     public int serverStatus;
     public int warningCount;
     public byte[] message;
 
+    public OkPacket() {
+        this(false);
+    }
+
+    public OkPacket(boolean isEof) {
+        if (isEof) {
+            this.header = EOF_HEADER;
+        } else {
+            this.header = OK_HEADER;
+        }
+    }
+
     public void read(BinaryPacket bin) {
         packetLength = bin.packetLength;
         packetId = bin.packetId;
         MySQLMessage mm = new MySQLMessage(bin.data);
-        fieldCount = mm.read();
+        header = mm.read();
         affectedRows = mm.readLength();
         insertId = mm.readLength();
         serverStatus = mm.readUB2();
@@ -69,7 +82,7 @@ public class OkPacket extends MySQLPacket {
         MySQLMessage mm = new MySQLMessage(data);
         packetLength = mm.readUB3();
         packetId = mm.read();
-        fieldCount = mm.read();
+        header = mm.read();
         affectedRows = mm.readLength();
         insertId = mm.readLength();
         serverStatus = mm.readUB2();
@@ -85,7 +98,7 @@ public class OkPacket extends MySQLPacket {
         proxy.writeUB3(getPacketLength());
         proxy.write(packetId);
 
-        proxy.write(fieldCount);
+        proxy.write(header);
         proxy.writeLength(affectedRows);
         proxy.writeLength(insertId);
         proxy.writeUB2(serverStatus);

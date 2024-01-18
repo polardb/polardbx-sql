@@ -59,10 +59,10 @@ public class UpdateNodeStatusTask extends BaseDdlTask {
 
     @JSONCreator
     public UpdateNodeStatusTask(String schema,
-                                  List<String> dataNodeList,
-                                  List<String> cnIpPortList,
-                                  int beforeStatus,
-                                  int nodeStatus,
+                                List<String> dataNodeList,
+                                List<String> cnIpPortList,
+                                int beforeStatus,
+                                int nodeStatus,
                                 boolean ignoreRollback) {
         super(schema);
         this.dnInstIdList = dataNodeList;
@@ -103,7 +103,7 @@ public class UpdateNodeStatusTask extends BaseDdlTask {
 
                     // TODO(moyi) update op version?
                     // update server status
-                    serverInfoAccessor.updateServerStatusByIpPort( ipAndPort.getKey(), ipAndPort.getValue(), status);
+                    serverInfoAccessor.updateServerStatusByIpPort(ipAndPort.getKey(), ipAndPort.getValue(), status);
                 }
             }
 

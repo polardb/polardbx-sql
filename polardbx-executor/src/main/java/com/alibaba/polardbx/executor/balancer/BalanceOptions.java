@@ -48,6 +48,30 @@ public class BalanceOptions {
     public boolean manually = false;
 
     /**
+     * Whether generate subjob unit by rows.
+     */
+    public Long maxTaskUnitRows = 1000_000_0L;
+
+    /**
+     * Whether generate subjob unit by sizes. (MB)
+     */
+    public Long maxTaskUnitSize = 1024L;
+
+    /**
+     * Whether shuffle data distribution randomly;
+     */
+    public int shuffleDataDistribution = 0;
+
+    /**
+     * Whether benchmark mode
+     */
+    public int benchmarkCPU = 0;
+
+    public String drainStoragePool = "";
+
+    public String solveLevel = "";
+
+    /**
      * Max actions to perform in a job
      */
     public int maxActions;
@@ -112,6 +136,24 @@ public class BalanceOptions {
         if (sqlNode.getMaxPartitionSize() != 0) {
             res.maxPartitionSize = sqlNode.getMaxPartitionSize();
         }
+        if (sqlNode.getMaxTaskUnitRows() != 0) {
+            res.maxTaskUnitRows = (long) sqlNode.getMaxTaskUnitRows();
+        }
+        if (sqlNode.getMaxTaskUnitSize() != 0) {
+            res.maxTaskUnitSize = (long) sqlNode.getMaxTaskUnitSize();
+        }
+        if (sqlNode.getShuffleDataDist() != 0) {
+            res.shuffleDataDistribution = sqlNode.getShuffleDataDist();
+        }
+        if (sqlNode.getBenchmarkCPU() != 0) {
+            res.benchmarkCPU = sqlNode.getBenchmarkCPU();
+        }
+        if (!TStringUtil.isBlank(sqlNode.getDrainStoragePool())) {
+            res.drainStoragePool = sqlNode.getDrainStoragePool();
+        }
+        if (!sqlNode.getSolveLevel().isEmpty()) {
+            res.solveLevel = sqlNode.getSolveLevel();
+        }
         if (sqlNode.getMaxActions() != 0) {
             res.maxActions = sqlNode.getMaxActions();
         }
@@ -133,6 +175,11 @@ public class BalanceOptions {
 
     public static void setMaxPartitionSize(long value) {
         DEFAULT_MAX_PARTITION_SIZE = value;
+    }
+
+    public BalanceOptions withDrainStoragePool(String drainStoragePool) {
+        this.drainStoragePool = drainStoragePool;
+        return this;
     }
 
     public boolean isDrainNode() {
@@ -179,6 +226,7 @@ public class BalanceOptions {
             ", policy='" + policy + '\'' +
             ", maxPartitionSize=" + maxPartitionSize +
             ", drainNode='" + drainNode + '\'' +
+            ", drainStoragePool='" + drainStoragePool + '\'' +
             ", debug=" + debug +
             ", async=" + async +
             ", diskInfo='" + diskInfo + '\'' +

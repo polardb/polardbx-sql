@@ -261,4 +261,7 @@ public class Comparative implements Comparable, Cloneable {
     public int getSkIndex() {
         return skIndex;
     }
+
+    public void childrenAccept(ComparativeVisitor visitor) {
+    }
 }

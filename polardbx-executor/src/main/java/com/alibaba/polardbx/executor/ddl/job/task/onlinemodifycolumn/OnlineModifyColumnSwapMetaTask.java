@@ -32,6 +32,8 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.executor.ddl.job.meta.GsiMetaChanger.updateIndexColumnMeta;
+
 @Getter
 @TaskName(name = "OnlineModifyColumnSwapMetaTask")
 public class OnlineModifyColumnSwapMetaTask extends BaseGmsTask {
@@ -87,49 +89,11 @@ public class OnlineModifyColumnSwapMetaTask extends BaseGmsTask {
             dbIndex, phyTableName, newColumnName, oldColumnName, afterColumnName, localIndexes, uniqueIndexMap,
             coveringGsi, gsiDbIndex, gsiPhyTableName);
 
-        // Drop column for index table
+        // rename column for index table
         String addedColumn = changeColumn ? newColumnName : oldColumnName;
-        for (String gsiName: coveringGsi) {
-            ExecutorContext
-                .getContext(executionContext.getSchemaName())
-                .getGsiManager()
-                .getGsiMetaManager()
-                .removeColumnMeta(metaDbConnection, schemaName, logicalTableName, gsiName, oldColumnName);
-        }
-
-        // Add column for index table
-        for (String gsiName: coveringGsi) {
-            final GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean =
-                ExecutorContext
-                    .getContext(schemaName)
-                    .getGsiManager()
-                    .getGsiMetaManager()
-                    .getIndexMeta(schemaName, logicalTableName, gsiName, IndexStatus.ALL);
-
-            int seqInIndex = 0;
-            for (GsiMetaManager.GsiIndexColumnMetaBean columnMetaBean: gsiIndexMetaBean.indexColumns) {
-                if (columnMetaBean.columnName.equalsIgnoreCase(oldColumnName)) {
-                    seqInIndex = (int)columnMetaBean.seqInIndex;
-                }
-            }
-            for (GsiMetaManager.GsiIndexColumnMetaBean columnMetaBean: gsiIndexMetaBean.coveringColumns) {
-                if (columnMetaBean.columnName.equalsIgnoreCase(oldColumnName)) {
-                    seqInIndex = (int)columnMetaBean.seqInIndex;
-                }
-            }
-
-            final List<GsiMetaManager.IndexRecord> indexRecords =
-                GsiUtils.buildIndexMetaByAddColumns(
-                    ImmutableList.of(addedColumn),
-                    schemaName,
-                    logicalTableName,
-                    gsiName,
-                    nullable,
-                    seqInIndex,
-                    IndexStatus.PUBLIC
-                );
-
-            GsiMetaChanger.addIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, indexRecords);
+        for (String gsiName : coveringGsi) {
+            updateIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, gsiName, oldColumnName,
+                addedColumn, GsiUtils.toNullableString(nullable));
         }
 
         updateSupportedCommands(true, false, metaDbConnection);

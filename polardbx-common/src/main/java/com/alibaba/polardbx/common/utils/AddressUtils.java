@@ -20,11 +20,13 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.google.common.base.Splitter;
 import lombok.Data;
+import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
+import java.net.SocketException;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -88,6 +90,10 @@ public class AddressUtils {
             return false;
         }
         String name = address.getHostAddress();
+        return isIpValid(name);
+    }
+
+    private static boolean isIpValid(String name) {
         return (name != null && !EMPTY_IP.equals(name) && !LOCALHOST_IP.equals(name) && IP_PATTERN.matcher(name)
             .matches());
     }
@@ -148,6 +154,7 @@ public class AddressUtils {
     }
 
     public static InetAddress localAddress = null;
+    public final static String POD_IP = "POD_IP";
 
     public static InetAddress getHostAddress() {
         if (localAddress != null) {
@@ -155,6 +162,22 @@ public class AddressUtils {
         }
 
         try {
+            String podIp = System.getenv(POD_IP);
+            if (!StringUtils.isBlank(podIp)) {
+                podIp = podIp.trim();
+                if (!isIpValid(podIp)) {
+                    logger.error("pod ip not empty but not valid, pod ip is: " + podIp);
+                } else {
+                    localAddress = getMatchedAddress(podIp);
+                    if (localAddress != null) {
+                        logger.info("get matched address from pod ip: " + podIp);
+                        return localAddress;
+                    } else {
+                        // local address should not null
+                        logger.error("Failed to matched pod ip to address.");
+                    }
+                }
+            }
             localAddress = InetAddress.getLocalHost();
             if (isValidHostAddress(localAddress)) {
                 return localAddress;
@@ -164,7 +187,7 @@ public class AddressUtils {
                 + e.getMessage());
         }
         try {
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            Enumeration<NetworkInterface> interfaces = getNetInterface();
             if (interfaces != null) {
                 while (interfaces.hasMoreElements()) {
                     try {
@@ -193,5 +216,54 @@ public class AddressUtils {
         }
         logger.error("Could not get local host ip address, will use 127.0.0.1 instead.");
         return localAddress;
+    }
+
+    public static InetAddress getMatchedAddress(String podIp) {
+        InetAddress matchedHost = null;
+        try {
+            matchedHost = tryMatchFromLocalHost(podIp);
+            if (matchedHost != null) {
+                return matchedHost;
+            }
+
+            matchedHost = tryMatchFromAllNet(podIp, getNetInterface());
+        } catch (Throwable e) {
+            logger.error("Failed to matched pod ip to address. cause: " + e.getMessage());
+        }
+        return matchedHost;
+    }
+
+    public static InetAddress tryMatchFromLocalHost(String podIp) {
+        try {
+            InetAddress localHost = InetAddress.getLocalHost();
+            if (isValidHostAddress(localHost) && podIp.equalsIgnoreCase(localHost.getHostAddress())) {
+                return localHost;
+            }
+        } catch (Throwable e) {
+            // just ignore this
+        }
+        return null;
+    }
+
+    public static InetAddress tryMatchFromAllNet(String podIp, Enumeration<NetworkInterface> interfaces) {
+        if (interfaces != null) {
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface network = interfaces.nextElement();
+                Enumeration<InetAddress> addresses = network.getInetAddresses();
+                if (addresses != null) {
+                    while (addresses.hasMoreElements()) {
+                        InetAddress address = addresses.nextElement();
+                        if (isValidHostAddress(address) && podIp.equalsIgnoreCase(address.getHostAddress())) {
+                            return address;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public static Enumeration<NetworkInterface> getNetInterface() throws SocketException {
+        return NetworkInterface.getNetworkInterfaces();
     }
 }

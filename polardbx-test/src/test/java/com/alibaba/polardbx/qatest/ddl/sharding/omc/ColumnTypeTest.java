@@ -83,6 +83,10 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
         new String[] {"gbk", "gbk_chinese_ci"},
         new String[] {"gbk", "gbk_bin"},
 
+        new String[] {"gb18030", "gb18030_chinese_ci"},
+        new String[] {"gb18030", "gb18030_bin"},
+        new String[] {"gb18030", "gb18030_unicode_520_ci"},
+
         new String[] {"utf8", "utf8_general_ci"},
         new String[] {"utf8", "utf8_bin"},
         new String[] {"utf8", "utf8_unicode_ci"},
@@ -107,7 +111,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC ";
     private static final String OMC_FORCE_TYPE_CONVERSION = "OMC_FORCE_TYPE_CONVERSION=TRUE";
-    private static final String DISABLE_OMC_CHECKER = "OMC_CHECK_AFTER_BACK_FILL=FALSE";
+    private static final String DISABLE_OMC_CHECKER = "COL_CHECK_AFTER_BACK_FILL=FALSE";
     private static final String SELECT_COLUMN_TYPE = "select COLUMN_DEFAULT, IS_NULLABLE, DATA_TYPE, "
         + "CHARACTER_MAXIMUM_LENGTH, CHARACTER_OCTET_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, DATETIME_PRECISION, "
         + "CHARACTER_SET_NAME, COLLATION_NAME, COLUMN_TYPE "
@@ -131,7 +135,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
                 String.format("alter table %s modify column b varchar(20) character set %s collate %s", tableName,
                     CHARSET_PARAMS[i][0], CHARSET_PARAMS[i][1]);
             System.out.println(CHARSET_PARAMS[i][0] + " " + CHARSET_PARAMS[i][1]);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }
@@ -157,7 +161,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
 
             System.out.println(columnType);
             String alterSql = String.format("alter table %s modify column b %s", tableName, columnType);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, hint + alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, hint + alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }

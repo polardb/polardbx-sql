@@ -51,7 +51,6 @@ public class HandleResolver {
         handleResolvers.put("$scan", new MaterializedHandleResolver(JdbcSplit.class));
         handleResolvers.put("$remote", new MaterializedHandleResolver(RemoteSplit.class));
         handleResolvers.put("$ossScan", new MaterializedHandleResolver(OssSplit.class));
-
     }
 
     public String getId(ConnectorSplit split) {

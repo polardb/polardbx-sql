@@ -22,10 +22,9 @@ public class SQLAlterTableAddSupplemental extends SQLObjectImpl implements SQLAl
 
     private SQLTableElement element;
 
-    public SQLAlterTableAddSupplemental(){
+    public SQLAlterTableAddSupplemental() {
 
     }
-
 
     @Override
     protected void accept0(SQLASTVisitor visitor) {

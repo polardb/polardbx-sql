@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ public class SQLRefreshMaterializedViewStatement extends SQLStatementImpl {
     }
 
     public SQLRefreshMaterializedViewStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override
@@ -62,6 +63,11 @@ public class SQLRefreshMaterializedViewStatement extends SQLStatementImpl {
             children.add(name);
         }
         return children;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 
 }

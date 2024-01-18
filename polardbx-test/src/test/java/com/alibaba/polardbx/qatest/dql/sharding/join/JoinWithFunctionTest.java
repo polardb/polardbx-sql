@@ -32,6 +32,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * 带function的join测试
  */
 
+
 public class JoinWithFunctionTest extends ReadBaseTestCase {
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();
 

@@ -65,24 +65,7 @@ public class PacketOutputProxyFactory {
         }
     }
 
-    public IPacketOutputProxy createProxy(boolean isCompressProto, OutputStream out) {
-        if (isCompressProto) {
-            return new CompressPacketStreamOutputProxy(out);
-        } else {
-            return new RawPacketStreamOutputProxy(out);
-        }
-    }
-
-    public IPacketOutputProxy createProxy(boolean isCompressProto, OutputStream out, long compressThreshold) {
-        if (isCompressProto) {
-            return new CompressPacketStreamOutputProxy(out, compressThreshold);
-        } else {
-            return new RawPacketStreamOutputProxy(out);
-        }
-    }
-
     public IPacketOutputProxy createProxy(OutputStream out) {
-        /* Manager channel总是用非压缩协议 */
-        return createProxy(false, out);
+        return new RawPacketStreamOutputProxy(out);
     }
 }

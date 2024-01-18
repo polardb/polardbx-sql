@@ -20,7 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
-import com.alibaba.polardbx.executor.workqueue.PriorityWorkQueue;
+import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
@@ -77,7 +77,7 @@ public class Reporter {
             SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
                 "[{0}] Backfill job: {1} total: {2} time: {3}s speed: {4}row/s with {5} task(s) PWQ total {6} thread(s).",
                 ec.getTraceId(), backfillBean.jobId, backfillCount.get(), time, speed, taskCount,
-                PriorityWorkQueue.getInstance().getPoolSize()));
+                BackFillThreadPool.getInstance().getPoolSize()));
         }
         backfillManager.updateLogicalBackfillObject(backfillBean, status);
     }

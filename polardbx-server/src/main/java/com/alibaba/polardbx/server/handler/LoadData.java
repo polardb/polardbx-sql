@@ -44,7 +44,10 @@ public class LoadData implements Serializable {
 
     private List<ColumnMeta> columnMetas;
 
-    private boolean existAutoFillColumn = false;
+    /**
+     * -1 means no need to auto fill auto increment column
+     */
+    private int autoFillColumnIndex = -1;
 
     private boolean swapColumns;
 
@@ -193,12 +196,12 @@ public class LoadData implements Serializable {
         this.columnMetas = columnMetas;
     }
 
-    public boolean isExistAutoFillColumn() {
-        return existAutoFillColumn;
+    public int getAutoFillColumnIndex() {
+        return autoFillColumnIndex;
     }
 
-    public void setExistAutoFillColumn(boolean existAutoFillColumn) {
-        this.existAutoFillColumn = existAutoFillColumn;
+    public void setAutoFillColumnIndex(int autoFillColumnIndex) {
+        this.autoFillColumnIndex = autoFillColumnIndex;
     }
 
     public boolean isSwapColumns() {

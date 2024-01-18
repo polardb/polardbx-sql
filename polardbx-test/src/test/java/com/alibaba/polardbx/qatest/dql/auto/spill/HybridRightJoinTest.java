@@ -28,6 +28,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectConutAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAssert;
 
+
 public class HybridRightJoinTest extends AutoReadBaseTestCase {
 
     protected ColumnDataGenerator columnDataGenerator = new ColumnDataGenerator();

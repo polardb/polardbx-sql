@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.qatest.dql.auto.function;
 
 import com.alibaba.polardbx.qatest.AutoCrudBasedLockTestCase;
-import com.alibaba.polardbx.qatest.CommonCaseRunner;
-import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConfigUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -29,7 +27,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.sql.Connection;
@@ -44,7 +41,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.qatest.util.PropertiesUtil.isMySQL80;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertContentLengthSame;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.assertShardCount;

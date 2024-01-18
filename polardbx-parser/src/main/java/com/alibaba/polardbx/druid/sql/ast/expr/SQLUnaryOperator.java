@@ -30,7 +30,7 @@ public enum SQLUnaryOperator {
 
     public final String name;
 
-    SQLUnaryOperator(String name){
+    SQLUnaryOperator(String name) {
         this.name = name;
     }
 }

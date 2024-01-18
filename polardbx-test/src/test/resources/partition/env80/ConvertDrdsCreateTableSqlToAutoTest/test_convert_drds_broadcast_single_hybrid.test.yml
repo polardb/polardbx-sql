@@ -1,0 +1,90 @@
+## DISABLE_FAST_SQL_PARSER
+## clear database
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;
+
+create database if not exists `testConvertDrdsDb` mode=drds;
+use testConvertDrdsDb;
+  
+## full index table
+create table `tb1` (
+`col1` int DEFAULT NULL,
+`col2` int DEFAULT NULL,
+`col3` int DEFAULT NULL,
+`col4` int DEFAULT NULL,
+`col5` int DEFAULT NULL,
+`col6` int DEFAULT NULL,
+`col7` int DEFAULT NULL,
+`col8` int DEFAULT NULL,
+`col9` int DEFAULT NULL,
+`col10` int DEFAULT NULL,
+`col11` int DEFAULT NULL,
+UNIQUE KEY `tb1_k1` (`col1`),
+KEY `tb1_k2` (`col2`),
+UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) DBPARTITION BY hash(`col4`),
+CLUSTERED INDEX `tb1_k5`(`col5`) DBPARTITION BY HASH(`col5`),
+UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`) DBPARTITION BY hash(`col6`),
+GLOBAL INDEX `tb1_k8`(`col8`, `col9`) DBPARTITION BY hash(`col9`)
+) dbpartition by hash(`col10`) tbpartition by hash(`col11`) tbpartitions 16;
+
+# single table
+create table `tb2` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+);
+  
+# single table explicit
+create table `tb3` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+) single;
+
+# broadcast table
+create table `tb4` (
+`col1` int,
+`col2` varchar(20),
+primary key(col1)
+) broadcast;
+
+# prepare data
+insert into tb1 values
+(1,1,1,1,1,1,1,1,1,1,1),
+(2,2,2,2,2,2,2,2,2,2,2),
+(3,3,3,3,3,3,3,3,3,3,3),
+(4,4,4,4,4,4,4,4,4,4,4),
+(5,5,5,5,5,5,5,5,5,5,5),
+(6,6,6,6,6,6,6,6,6,6,6),
+(7,7,7,7,7,7,7,7,7,7,7),
+(8,8,8,8,8,8,8,8,8,8,8),
+(9,9,9,9,9,9,9,9,9,9,9);
+insert into tb2 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+insert into tb3 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+insert into tb4 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
+  
+## real run
+create database testConvertDbAuto like testConvertDrdsDb mode=auto;
+create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
+use testConvertDbAuto;
+select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
+  
+## real run
+create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
+use testConvertDbAuto2;
+select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
+select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
+  
+## dry run
+create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+
+
+
+

@@ -17,16 +17,13 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName DrdsGenericDDLJob
- * @description
- * @Author chensr
- * @Date 2021-01-06
  */
 public abstract class DrdsGenericDDLJob extends MySqlStatementImpl implements SQLStatement {
 
@@ -47,5 +44,10 @@ public abstract class DrdsGenericDDLJob extends MySqlStatementImpl implements SQ
 
     public void addJobId(long id) {
         jobIds.add(id);
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.GENERIC_DDL;
     }
 }

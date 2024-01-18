@@ -84,7 +84,8 @@ public class InsertSelectGsiTest extends GsiDMLTest {
     @Before
     public void initData() throws Exception {
         super.initData();
-        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) || hint.contains(HINT_STRESS_FLAG) ? hint + "insert " : "insert " + hint) + "into "
+        String sql = (HINT_STRESS_FLAG.equalsIgnoreCase(hint) || hint.contains(HINT_STRESS_FLAG) ? hint + "insert " :
+            "insert " + hint) + "into "
             + baseTwoTableName
             + " (pk,integer_test,bigint_test,varchar_test,datetime_test,year_test,char_test)"
             + " values (?,?,?,?,?,?,?)";

@@ -22,7 +22,7 @@ public class SQLSubPartitionByHash extends SQLSubPartitionBy {
     protected SQLExpr expr;
 
     // for aliyun ads
-    private boolean   key;
+    private boolean key;
 
     public SQLExpr getExpr() {
         return expr;
@@ -38,8 +38,9 @@ public class SQLSubPartitionByHash extends SQLSubPartitionBy {
     @Override
     protected void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {
-            acceptChild(visitor, expr);
+            acceptChild(visitor, columns);
             acceptChild(visitor, subPartitionsCount);
+            acceptChild(visitor, getSubPartitionTemplate());
         }
         visitor.endVisit(this);
     }
@@ -52,17 +53,27 @@ public class SQLSubPartitionByHash extends SQLSubPartitionBy {
         this.key = key;
     }
 
-    public SQLSubPartitionByHash clone() {
-        SQLSubPartitionByHash x = new SQLSubPartitionByHash();
+    public void cloneTo(SQLSubPartitionByHash x) {
+        super.cloneTo(x);
         if (expr != null) {
             x.setExpr(expr.clone());
         }
         x.key = key;
+        for (SQLExpr column : columns) {
+            SQLExpr c2 = column.clone();
+            c2.setParent(x);
+            x.columns.add(c2);
+        }
+    }
+
+    public SQLSubPartitionByHash clone() {
+        SQLSubPartitionByHash x = new SQLSubPartitionByHash();
+        cloneTo(x);
         return x;
     }
 
     public boolean isPartitionByColumn(long columnNameHashCode64) {
         return expr instanceof SQLName
-                && ((SQLName) expr).nameHashCode64() == columnNameHashCode64;
+            && ((SQLName) expr).nameHashCode64() == columnNameHashCode64;
     }
 }

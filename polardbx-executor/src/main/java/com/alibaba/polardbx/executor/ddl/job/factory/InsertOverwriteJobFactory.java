@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.TruncateTableWithGsiJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
@@ -114,7 +115,8 @@ public class InsertOverwriteJobFactory extends TruncateTableWithGsiJobFactory {
         result.appendJob2(dropTmpTableJob);
 
         result.setExceptionActionForAllSuccessor(validateTableVersionTask, DdlExceptionAction.ROLLBACK);
-        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask, DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask,
+            DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
         result.setExceptionActionForAllSuccessor(recoverThenPauseTask, DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
 
         result.setInsertTask(insertTask);
@@ -127,8 +129,7 @@ public class InsertOverwriteJobFactory extends TruncateTableWithGsiJobFactory {
     private ExecutableDdlJob generateCutOverJob() {
         ExecutableDdlJob cutOverJob = new ExecutableDdlJob();
         CdcTruncateTableWithGsiMarkTask cdcTask =
-            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName,
-                String.format("truncate table %s", surroundWithBacktick(logicalTableName)));
+            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName);
         TruncateCutOverTask cutOverTask =
             new TruncateCutOverTask(schemaName, logicalTableName, tmpIndexTableMap, tmpPrimaryTableName);
         TruncateSyncTask syncTask =

@@ -16,11 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
@@ -29,7 +31,7 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -43,6 +45,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 public class LogicalCreateIndex extends LogicalTableOperation {
 
@@ -111,6 +114,21 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         return OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName).isAutoPartition();
     }
 
+    public String getIndexName() {
+        return indexName;
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        CheckOSSArchiveUtil.checkTTLSource(schemaName, tableName);
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     private CreateGlobalIndexPreparedData prepareGsiData() {
         final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
         final TableMeta primaryTableMeta = optimizerContext.getLatestSchemaManager().getTable(tableName);
@@ -165,6 +183,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         preparedData.setPrimaryTableRule(primaryTableRule);
         preparedData.setSqlCreateIndex(sqlCreateIndex);
         preparedData.setTableVersion(primaryTableMeta.getVersion());
+        preparedData.setVisible(sqlCreateIndex.isVisible());
         if (isNewPartDb) {
             JoinGroupInfoRecord record = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, null);
             if (record != null) {
@@ -204,7 +223,28 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         preparedData.setTableVersion(tableMeta.getVersion());
         createLocalIndexPreparedDataList.add(preparedData);
 
+        prepareStandaloneLocalIndexDataForFileStorage();
+
         prepareIndexOnClusteredTable(false);
+    }
+
+    private void prepareStandaloneLocalIndexDataForFileStorage() {
+        // file storage table local index.
+        Optional<Pair<String, String>> archive = CheckOSSArchiveUtil.getArchive(schemaName, tableName);
+        if (archive.isPresent()) {
+            String fileStoreSchema = archive.get().getKey();
+            String fileStoreTable = archive.get().getValue();
+            SchemaManager fileStoreSM = OptimizerContext.getContext(fileStoreSchema).getLatestSchemaManager();
+            TableMeta fileStoreTableMeta = fileStoreSM.getTable(fileStoreTable);
+            if (!fileStoreTableMeta.getIndexes().stream()
+                .anyMatch(x -> x.getPhysicalIndexName().equalsIgnoreCase(indexName))) {
+                CreateLocalIndexPreparedData fileStorePreparedData =
+                    prepareCreateLocalIndexData(fileStoreTable, indexName, false, false);
+                fileStorePreparedData.setSchemaName(fileStoreSchema);
+                fileStorePreparedData.setTableVersion(fileStoreTableMeta.getVersion());
+                createLocalIndexPreparedDataList.add(fileStorePreparedData);
+            }
+        }
     }
 
     private void prepareIndexOnClusteredTable(boolean onGsi) {

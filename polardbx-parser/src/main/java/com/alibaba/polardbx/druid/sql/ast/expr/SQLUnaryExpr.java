@@ -29,14 +29,14 @@ import java.util.List;
 public class SQLUnaryExpr extends SQLExprImpl implements Serializable, SQLReplaceable {
 
     private static final long serialVersionUID = 1L;
-    private SQLExpr           expr;
-    private SQLUnaryOperator  operator;
+    private SQLExpr expr;
+    private SQLUnaryOperator operator;
 
-    public SQLUnaryExpr(){
+    public SQLUnaryExpr() {
 
     }
 
-    public SQLUnaryExpr(SQLUnaryOperator operator, SQLExpr expr){
+    public SQLUnaryExpr(SQLUnaryOperator operator, SQLExpr expr) {
         this.operator = operator;
         this.setExpr(expr);
     }
@@ -129,13 +129,13 @@ public class SQLUnaryExpr extends SQLExprImpl implements Serializable, SQLReplac
 
     public SQLDataType computeDataType() {
         switch (operator) {
-            case Plus:
-            case Negative:
-            case Compl:
-            case Not:
-                return expr.computeDataType();
-            default:
-                return null;
+        case Plus:
+        case Negative:
+        case Compl:
+        case Not:
+            return expr.computeDataType();
+        default:
+            return null;
         }
     }
 }

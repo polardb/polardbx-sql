@@ -1,0 +1,37 @@
+## DISABLE_FAST_SQL_PARSER
+
+use polardbx;
+drop database if exists `myds_db`;
+CREATE DATABASE if NOT EXISTS `myds_db` CHARSET = `utf8mb4` COLLATE = `utf8mb4_general_ci` MODE = 'auto' DEFAULT_SINGLE = 'on';
+
+CREATE TABLE `myds_db`.`t1` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show create table `myds_db`.`t1`;
+
+CREATE TABLE `myds_db`.`t2` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show create table `myds_db`.`t2`;
+
+CREATE TABLE `myds_db`.`t3` (
+`id` int(11) NOT NULL AUTO_INCREMENT,
+`k` int(11) NOT NULL DEFAULT '0',
+`c` char(120) NOT NULL DEFAULT '',
+`pad` char(60) NOT NULL DEFAULT '',
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show create table `myds_db`.`t3`;
+
+select count(distinct rw_dn) dn_cnt from information_schema.partitions_meta
+  where table_schema='myds_db' and table_name in ('t1', 't2', 't3') order by table_name ;
+
+drop database if exists myds_db;

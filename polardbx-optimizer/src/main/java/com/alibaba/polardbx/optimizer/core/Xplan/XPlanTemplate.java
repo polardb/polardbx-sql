@@ -102,10 +102,10 @@ public class XPlanTemplate implements IXPlan {
             }
             break;
             case TableName:
-                builder.addParameters(XUtil.genUtf8StringScalar(phyTableNames.get(info.getId())));
+                builder.addParameters(XUtil.genIdentifierScalarStringCompatible(phyTableNames.get(info.getId())));
                 break;
             case SchemaName:
-                builder.addParameters(XUtil.genUtf8StringScalar(dbIndex));
+                builder.addParameters(XUtil.genIdentifierScalarStringCompatible(dbIndex));
                 break;
             }
         }

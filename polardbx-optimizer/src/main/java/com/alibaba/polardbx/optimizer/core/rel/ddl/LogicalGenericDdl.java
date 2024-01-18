@@ -28,4 +28,13 @@ public class LogicalGenericDdl extends BaseDdlOperation {
         return new LogicalGenericDdl(genericDdl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

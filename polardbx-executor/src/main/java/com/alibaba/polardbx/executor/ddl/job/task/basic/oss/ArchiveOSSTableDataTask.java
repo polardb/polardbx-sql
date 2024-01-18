@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillExecutor;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillTimer;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillWriterTask;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.FileStorageBackFillAccessor;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
@@ -34,6 +35,8 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.FileStorageAccessorDelegate;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
+import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
+import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetaAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
@@ -58,6 +61,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Getter
 @TaskName(name = "ArchiveOSSTableDataTask")
@@ -141,6 +145,8 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                 }
             }
         }
+        CommonMetaChanger.clearOSSFileSystemCache(
+            files.stream().map(FilesRecord::getLocalPath).collect(Collectors.toList()), schemaName);
 
         // delete column meta and bf files
         for (ColumnMetasRecord record : columnMetas) {
@@ -162,6 +168,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
 
             ExecutionContext sourceDbContext = executionContext.copy();
             sourceDbContext.setSchemaName(sourceLogicalSchema);
+            sourceDbContext.setBackfillId(getTaskId());
 
             TableMeta sourceTableMeta =
                 executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);
@@ -169,8 +176,10 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                 throw new AssertionError("Table must have primary key");
             }
 
+            TableMeta targetTableMeta =
+                executionContext.getSchemaManager(targetLogicalSchema).getTable(targetLogicalTable);
             // build orc schema
-            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta);
+            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(targetTableMeta);
 
             // data config
             Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);
@@ -182,11 +191,15 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
                 targetLogicalSchema,
                 targetLogicalTable,
                 sourceTableMeta,
+                targetTableMeta,
                 orcSchema,
                 conf,
                 supportPause);
+            if (GeneralUtil.isEmpty(tasks)) {
+                return;
+            }
 
-            Map<String, Set<String>> sourcePhyTables = sourceTableMeta.getLatestTopology();
+            Map<String, Set<String>> sourcePhyTables = OSSTaskUtils.genSourcePhyTables(tasks);
             final int parallelism =
                 executionContext.getParamManager().getInt(ConnectionParams.OSS_BACKFILL_PARALLELISM);
             final long indexStride =
@@ -225,6 +238,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
         String targetLogicalSchema,
         String targetLogicalTable,
         TableMeta sourceTableMeta,
+        TableMeta targetTableMeta,
         PolarDBXOrcSchema orcSchema,
         Configuration conf,
         Boolean supportPause) {
@@ -240,52 +254,53 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
         PartitionInfo sourceTablePartitionInfo =
             OSSTaskUtils.getSourcePartitionInfo(executionContext, sourceLogicalSchema, sourceLogicalTable);
 
-        Map<String, List<PhysicalPartitionInfo>> targetPartitionTopology =
-            OptimizerContext.getContext(targetLogicalSchema).getLatestSchemaManager().getTable(targetLogicalTable)
-                .getPartitionInfo().getPhysicalPartitionTopology(ImmutableList.of());
-
         // traverse each physical partition (phy table)
-        for (Map.Entry<String, List<PhysicalPartitionInfo>> entry : targetPartitionTopology.entrySet()) {
-            for (PhysicalPartitionInfo physicalPartitionInfo : entry.getValue()) {
+        for (PhysicalPartitionInfo physicalPartitionInfo :
+            getFlattenedPartitionInfo(targetLogicalSchema, targetLogicalTable)) {
 
-                String targetPhySchema = physicalPartitionInfo.getGroupKey();
-                String targetPhyTable = physicalPartitionInfo.getPhyTable();
+            String targetPhySchema = physicalPartitionInfo.getGroupKey();
+            String targetPhyTable = physicalPartitionInfo.getPhyTable();
 
-                String partName = physicalPartitionInfo.getPartName();
-                Pair<String, String> sourcePhySchemaAndTable = Optional
-                    .ofNullable(singleTopology)
-                    .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
-                String sourcePhySchema = sourcePhySchemaAndTable.getKey();
-                String sourcePhyTable = sourcePhySchemaAndTable.getValue();
+            String partName = physicalPartitionInfo.getPartName();
+            Pair<String, String> sourcePhySchemaAndTable = Optional
+                .ofNullable(singleTopology)
+                .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
+            String sourcePhySchema = sourcePhySchemaAndTable.getKey();
+            String sourcePhyTable = sourcePhySchemaAndTable.getValue();
 
-                // for each physical table, add orc write task.
-                OSSBackFillWriterTask task = new OSSBackFillWriterTask(
-                    // for target table
-                    targetLogicalSchema,
-                    targetLogicalTable,
-                    targetPhySchema,
-                    targetPhyTable,
+            // for each physical table, add orc write task.
+            OSSBackFillWriterTask task = new OSSBackFillWriterTask(
+                // for target table
+                targetLogicalSchema,
+                targetLogicalTable,
+                targetPhySchema,
+                targetPhyTable,
 
-                    // for source table
-                    sourcePhySchema,
-                    sourcePhyTable,
-                    sourceTableMeta,
-                    targetTableEngine,
-                    getTaskId(),
+                // for source table
+                sourcePhySchema,
+                sourcePhyTable,
+                sourceTableMeta,
+                targetTableEngine,
+                getTaskId(),
 
-                    // for orc file
-                    conf,
-                    physicalPartitionName,
-                    orcSchema,
-                    maxRowsPerFile,
-                    removeTmpFiles,
-                    executionContext,
-                    supportPause
-                );
-                tasks.put(sourcePhySchemaAndTable, task);
-            }
+                // for orc file
+                conf,
+                physicalPartitionName,
+                orcSchema,
+                targetTableMeta,
+                maxRowsPerFile,
+                removeTmpFiles,
+                executionContext,
+                supportPause
+            );
+            tasks.put(sourcePhySchemaAndTable, task);
+
         }
         return tasks;
+    }
+
+    protected List<PhysicalPartitionInfo> getFlattenedPartitionInfo(String schema, String table) {
+        return OSSTaskUtils.getFlattenedPartitionInfo(schema, table);
     }
 
     @Override

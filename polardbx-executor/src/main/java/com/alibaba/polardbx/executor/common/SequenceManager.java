@@ -27,7 +27,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.sequence.Sequence;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
-import com.alibaba.polardbx.sequence.impl.SimpleSequence;
+import com.alibaba.polardbx.sequence.impl.FunctionalSequence;
 
 import java.util.Map;
 
@@ -163,10 +163,10 @@ public class SequenceManager extends AbstractSequenceManager {
     @Override
     public Integer getIncrement(String schemaName, String seqName) {
         Sequence seq = getSequence(schemaName, seqName);
-        if (seq instanceof SimpleSequence) {
-            return ((SimpleSequence) seq).getIncrementBy();
+        if (seq instanceof FunctionalSequence) {
+            return ((FunctionalSequence) seq).getIncrementBy();
         } else {
-            // For non-simple sequence, the increment is always 1.
+            // For non-functional sequence, the increment is always 1.
             return SequenceAttribute.DEFAULT_INCREMENT_BY;
         }
     }
@@ -250,9 +250,9 @@ public class SequenceManager extends AbstractSequenceManager {
     }
 
     @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
+    public boolean areAllSequencesSameType(String schemaName, Type[] seqTypes) {
         checkSubManager();
-        return subManager.areAllSequencesSameType(schemaName, seqType);
+        return subManager.areAllSequencesSameType(schemaName, seqTypes);
     }
 
     private void checkSubManager() {

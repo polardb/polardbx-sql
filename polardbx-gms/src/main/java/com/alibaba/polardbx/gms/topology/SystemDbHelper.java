@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 
 import javax.sql.DataSource;
@@ -34,22 +35,32 @@ public class SystemDbHelper {
     // Properties for Default Db
     public static final String DEFAULT_DB_NAME = "polardbx";
     public static final String DEFAULT_META_DB_NAME = "METADB";
-    public static final String DEFAULT_DB_CHARSET = "utf8";
+    public static final String DEFAULT_DB_CHARSET = "utf8mb4";
+    public static final String DEFAULT_DB_COLLATION = "utf8mb4_general_ci";
     public static final String DEFAULT_DB_APP_NAME = "polardbx_app";
     public static final String DEFAULT_DB_PHY_NAME = "polardbx";
     public static final String DEFAULT_DB_GROUP_NAME = "POLARDBX_SINGLE_GROUP";
+    public static final String DEFAULT_DB_DEFAULT_RULE_XML =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE beans PUBLIC \"-//SPRING//DTD BEAN//EN\" \"http://www.springframework.org/dtd/spring-beans.dtd\"><beans><bean id=\"vtabroot\" class=\"com.taobao.tddl.interact.rule.VirtualTableRoot\" init-method=\"init\"><property name=\"dbType\" value=\"MYSQL\" /><property name=\"defaultDbIndex\" value=\""
+            + DEFAULT_DB_GROUP_NAME + "\" /><property name=\"tableRules\"><map></map></property></bean></beans>";
+
 
     // Properties for InfoSchema Db
     public static final String INFO_SCHEMA_DB_NAME = "information_schema";
-    public static final String INFO_SCHEMA_DB_CHARSET = "utf8";
+    public static final String INFO_SCHEMA_DB_CHARSET = "utf8mb4";
+    public static final String INFO_SCHEMA_DB_COLLATION = "utf8mb4_general_ci";
     public static final String INFO_SCHEMA_DB_APP_NAME = "polardbx_info_schema_app";
     public static final String INFO_SCHEMA_DB_PHY_NAME = "polardbx_info_schema";
     public static final String INFO_SCHEMA_DB_GROUP_NAME = "INFORMATION_SCHEMA_SINGLE_GROUP";
+    public static final String INFO_SCHEMA_DB_DEFAULT_RULE_XML =
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE beans PUBLIC \"-//SPRING//DTD BEAN//EN\" \"http://www.springframework.org/dtd/spring-beans.dtd\"><beans><bean id=\"vtabroot\" class=\"com.taobao.tddl.interact.rule.VirtualTableRoot\" init-method=\"init\"><property name=\"dbType\" value=\"MYSQL\" /><property name=\"defaultDbIndex\" value=\""
+            + DEFAULT_DB_GROUP_NAME + "\" /><property name=\"tableRules\"><map></map></property></bean></beans>";
+
 
     // Properties for Cdc Db
     public static final String CDC_DB_NAME = "__cdc__";
-    public static final String CDC_DB_CHARSET = "utf8";
-
+    public static final String CDC_DB_CHARSET = "utf8mb4";
+    public static final String CDC_DB_COLLATION = "utf8mb4_general_ci";
     private final static String[] buildInDb = {INFO_SCHEMA_DB_NAME, CDC_DB_NAME, DEFAULT_DB_NAME, DEFAULT_META_DB_NAME};
     private final static String[] buildInDbExcludeCdc = {INFO_SCHEMA_DB_NAME, DEFAULT_DB_NAME};
 
@@ -58,7 +69,8 @@ public class SystemDbHelper {
         String phyDbName = DEFAULT_DB_PHY_NAME;
         String groupName = DEFAULT_DB_GROUP_NAME;
         String charset = DEFAULT_DB_CHARSET;
-        DbTopologyManager.createInternalSystemDbIfNeed(metaDbDs, dbName, phyDbName, groupName, charset,
+        String collation = DEFAULT_DB_COLLATION;
+        DbTopologyManager.createInternalSystemDbIfNeed(metaDbDs, dbName, phyDbName, groupName, charset, collation,
             DbInfoRecord.DB_TYPE_DEFAULT_DB);
     }
 
@@ -67,7 +79,8 @@ public class SystemDbHelper {
         String phyDbName = INFO_SCHEMA_DB_PHY_NAME;
         String groupName = INFO_SCHEMA_DB_GROUP_NAME;
         String charset = INFO_SCHEMA_DB_CHARSET;
-        DbTopologyManager.createInternalSystemDbIfNeed(metaDbDs, dbName, phyDbName, groupName, charset,
+        String collation = INFO_SCHEMA_DB_COLLATION;
+        DbTopologyManager.createInternalSystemDbIfNeed(metaDbDs, dbName, phyDbName, groupName, charset, collation,
             DbInfoRecord.DB_TYPE_SYSTEM_DB);
     }
 
@@ -86,7 +99,8 @@ public class SystemDbHelper {
             DbInfoRecord dbInfo = dbInfoAccessor.getDbInfoByDbName(SystemDbHelper.CDC_DB_NAME);
             if (!(dbInfo != null && dbInfo.dbStatus == DbInfoRecord.DB_STATUS_RUNNING)) {
                 CreateDbInfo createDbInfo = DbTopologyManager
-                    .initCreateDbInfo(SystemDbHelper.CDC_DB_NAME, SystemDbHelper.CDC_DB_CHARSET, "", "",
+                    .initCreateDbInfo(SystemDbHelper.CDC_DB_NAME, SystemDbHelper.CDC_DB_CHARSET,
+                        SystemDbHelper.CDC_DB_COLLATION, new LocalityDesc(),
                         null, DbInfoRecord.DB_TYPE_CDC_DB, true, -1, 1);
                 createDbInfo.dbType = DbInfoRecord.DB_TYPE_CDC_DB;
                 DbTopologyManager.createLogicalDb(createDbInfo);

@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.constant.GsiConstant;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -75,6 +76,9 @@ public class GsiBackfillTypeTest extends DDLBaseNewDBTestCase {
 
     @Before
     public void before() throws SQLException {
+        // JDBC handles zero-date differently in prepared statement and statement, so ignore this case in cursor fetch
+        org.junit.Assume.assumeTrue(!PropertiesUtil.useCursorFetch());
+
         supportXA = JdbcUtil.supportXA(tddlConnection);
 
         dropTableWithGsi(PRIMARY_TABLE_NAME,

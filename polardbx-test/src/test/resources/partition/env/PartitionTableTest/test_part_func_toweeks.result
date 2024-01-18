@@ -1,0 +1,163 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+CREATE TABLE `w1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_WEEKS(`d`))
+PARTITIONS 16;
+show create table w1;
+Table,Create Table
+w1,CREATE TABLE `w1` (
+	`d` date DEFAULT NULL,
+	KEY `auto_shard_key_d` USING BTREE (`d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(TO_WEEKS(`d`))
+PARTITIONS 16
+## prepare data
+insert into w1 values('0000-01-01'),('0000-01-02'),('0000-01-08'),('0000-01-17');
+## check point select
+select * from w1 where d = '0000-01-01';
+d
+0001-01-01
+select * from w1 where d = '0000-01-02';
+d
+0001-01-02
+select * from w1 where d = '0000-01-08';
+d
+0001-01-08
+select * from w1 where d = '0000-01-17';
+d
+0001-01-17
+## explain
+explain select * from w1 where d = '0000-01-01';
+Logical ExecutionPlan
+LogicalView(tables="w1[p9]", sql="SELECT `d` FROM `w1` AS `w1` WHERE (`d` = ?)")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 164ca609
+explain select * from w1 where d = '0000-01-02';
+Logical ExecutionPlan
+LogicalView(tables="w1[p9]", sql="SELECT `d` FROM `w1` AS `w1` WHERE (`d` = ?)")
+explain select * from w1 where d = '0000-01-08';
+Logical ExecutionPlan
+LogicalView(tables="w1[p1]", sql="SELECT `d` FROM `w1` AS `w1` WHERE (`d` = ?)")
+explain select * from w1 where d = '0000-01-17';
+Logical ExecutionPlan
+LogicalView(tables="w1[p6]", sql="SELECT `d` FROM `w1` AS `w1` WHERE (`d` = ?)")
+## range select
+select * from w1 where (d > '0000-01-01' and d < '0000-01-08') or d between '0000-01-02' and '0000-01-08' order by d;
+d
+0001-01-02
+0001-01-08
+## full scan
+select * from w1 where d > '0000-01-01' order by d;
+d
+0001-01-02
+0001-01-08
+0001-01-17
+explain select * from w1 where d > '0000-01-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="w1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `w1` AS `w1` WHERE (`d` > ?) ORDER BY `d`")
+select * from w1 where d > '0000-01-01' and d < '0200-01-01' order by d;
+d
+0001-01-02
+0001-01-08
+0001-01-17
+explain select * from w1 where d > '0000-01-01' and d < '0200-01-01' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="w1[p1,p2,p3,...p16]", shardCount=16, sql="SELECT `d` FROM `w1` AS `w1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## enumeration
+select * from w1 where d > '0000-01-01' and d < '0000-01-17' order by d;
+d
+0001-01-02
+0001-01-08
+explain select * from w1 where d > '0000-01-01' and d < '0000-01-17' order by d;
+Logical ExecutionPlan
+MergeSort(sort="d ASC")
+  LogicalView(tables="w1[p1,p6,p9]", shardCount=3, sql="SELECT `d` FROM `w1` AS `w1` WHERE ((`d` > ?) AND (`d` < ?)) ORDER BY `d`")
+## test range
+CREATE TABLE `w2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_WEEKS(`dt`))
+(PARTITION p0 VALUES LESS THAN(2),
+PARTITION p1 VALUES LESS THAN(3),
+PARTITION p2 VALUES LESS THAN(4),
+PARTITION pd VALUES LESS THAN(MAXVALUE));
+show create table w2;
+Table,Create Table
+w2,CREATE TABLE `w2` (
+	`dt` datetime DEFAULT NULL,
+	KEY `auto_shard_key_dt` USING BTREE (`dt`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(TO_WEEKS(`dt`))
+(PARTITION p0 VALUES LESS THAN (2) ENGINE = InnoDB,
+ PARTITION p1 VALUES LESS THAN (3) ENGINE = InnoDB,
+ PARTITION p2 VALUES LESS THAN (4) ENGINE = InnoDB,
+ PARTITION pd VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)
+## prepare data
+insert into w2 values('0000-01-01 00:00:00'),('0000-01-08 00:00:00'),('0000-01-17 00:00:00'),('0000-01-24 00:00:00');
+## range select
+select * from w2 where dt > '0000-01-07 00:00:00' order by dt;
+dt
+0001-01-08 00:00:00.0
+0001-01-17 00:00:00.0
+0001-01-24 00:00:00.0
+select * from w2 where dt > '0000-01-17 00:00:00' order by dt;
+dt
+0001-01-24 00:00:00.0
+select * from w2 where dt <= '0000-01-01 00:00:00' order by dt;
+dt
+0001-01-01 00:00:00.0
+## test list
+CREATE TABLE `w3` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(TO_WEEKS(`dt`))
+(PARTITION p0 VALUES IN(1,2),
+PARTITION p1 VALUES IN(3,4),
+PARTITION pd VALUES IN(default));
+## prepare data
+insert into w3 values('0000-01-01 00:00:00'),('0000-01-08 00:00:00'),('0000-01-17 00:00:00'),('0000-01-24 00:00:00');
+## range select
+select * from w3 where dt > '0000-01-07 00:00:00' order by dt;
+dt
+0001-01-08 00:00:00.0
+0001-01-17 00:00:00.0
+0001-01-24 00:00:00.0
+select * from w3 where dt > '0000-01-17 00:00:00' order by dt;
+dt
+0001-01-24 00:00:00.0
+select * from w3 where dt <= '0000-01-01 00:00:00' order by dt;
+dt
+0001-01-01 00:00:00.0
+## test span years
+create table `w4`(
+`dt` date
+)ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+partition by hash(to_weeks(`dt`)) partitions 128;
+## prepare data
+insert into w4 values('2021-12-31'),('2022-01-01'),('2022-12-31');
+## range select
+select * from w4 where dt > '2021-12-31' order by dt;
+dt
+2022-01-01
+2022-12-31
+select * from w4 where dt >= '2021-12-30' and dt < '2023-01-01' order by dt;
+dt
+2021-12-31
+2022-01-01
+2022-12-31
+## partition enumeration
+explain select * from w4 where dt > '2021-12-31' order by dt;
+Logical ExecutionPlan
+MergeSort(sort="dt ASC")
+  LogicalView(tables="w4[p1,p2,p3,...p128]", shardCount=128, sql="SELECT `dt` FROM `w4` AS `w4` WHERE (`dt` > ?) ORDER BY `dt`")
+HitCache:false
+Source:PLAN_CACHE
+TemplateId: 23a70a5e
+explain select * from w4 where dt >= '2021-12-30' and dt < '2022-01-01' order by dt;
+Logical ExecutionPlan
+PhyTableOperation(tables="w4[p53]", sql="SELECT `w4`.`dt` FROM ? AS `w4` WHERE ((`w4`.`dt` >= ?) AND (`w4`.`dt` < ?)) ORDER BY `dt`", params="2022-01-01,2021-12-30")

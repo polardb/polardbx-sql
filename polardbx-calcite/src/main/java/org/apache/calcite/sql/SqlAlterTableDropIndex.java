@@ -87,4 +87,7 @@ public class SqlAlterTableDropIndex extends SqlAlterSpecification {
     public SqlIdentifier getOriginTableName() {
         return originTableName;
     }
+
+    @Override
+    public boolean supportFileStorage() { return true;}
 }

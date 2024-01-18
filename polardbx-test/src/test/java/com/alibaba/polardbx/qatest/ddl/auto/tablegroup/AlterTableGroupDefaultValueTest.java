@@ -27,7 +27,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 @NotThreadSafe
-public class AlterTableGroupDefaultValueTest extends AlterTableGroupBaseTest {
+public class AlterTableGroupDefaultValueTest extends AlterTableGroupTestBase {
     final static String logicalTableName = "dv1";
     static boolean firstIn = true;
     final static String logicalDatabase = "AlterTableGroupDefaultValueTest";

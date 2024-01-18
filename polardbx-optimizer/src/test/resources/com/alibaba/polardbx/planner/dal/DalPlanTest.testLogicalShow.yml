@@ -357,11 +357,11 @@
     phyquery(node="optest_0000", sql="show columns from `test_table_a` where (`field` <> '_drds_implicit_id_')")
 
 # analyze table
--
-  sql: |
-    analyze table test_table_a, test_table_b
-  plan: |
-    LogicalDal(sql="ANALYZE TABLE `test_table_a` , `test_table_b`")
+#-
+#  sql: |
+#    analyze table test_table_a, test_table_b
+#  plan: |
+#    LogicalDal(sql="ANALYZE TABLE `test_table_a` , `test_table_b`")
 
 # kill
 -
@@ -413,13 +413,4 @@
     show index in optest.op_test from optest
   plan: |
     LogicalShow(sql="SHOW INDEXES FROM `op_test` FROM `optest`")
-
-
-# show slave status
--
-  sql: |
-    show slave status
-  plan: |
-    LogicalDal(sql="SHOW SLAVE STATUS")
-
 

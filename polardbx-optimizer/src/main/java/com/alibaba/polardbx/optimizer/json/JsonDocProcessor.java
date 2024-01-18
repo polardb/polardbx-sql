@@ -22,11 +22,13 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.json.JsonExtraFunction;
 import com.alibaba.polardbx.optimizer.json.exception.JsonExecutionException;
+import com.alibaba.polardbx.optimizer.json.exception.JsonPathNotFoundException;
 import com.alibaba.polardbx.optimizer.json.exception.UnsupportedJsonSyntaxException;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,39 +39,61 @@ import java.util.regex.Pattern;
  */
 public class JsonDocProcessor {
 
+    public static Object extract(String jsonDoc, JsonPathExprStatement jsonPathExpr) {
+        return extract(jsonDoc, jsonPathExpr, false);
+    }
+
+    public static Object extract(Object jsonDoc, JsonPathExprStatement jsonPathExpr) {
+        return extract(jsonDoc, jsonPathExpr, false);
+    }
+
     /**
      * 取出jsonDoc中由指定路径表达式代表的子JSON或者对应值
      */
-    public static Object extract(String jsonDoc, JsonPathExprStatement jsonPathExpr) {
+    public static Object extract(String jsonDoc, JsonPathExprStatement jsonPathExpr,
+                                 boolean notFoundException) {
         Object obj = JsonUtil.parse(jsonDoc);
-        return extract(obj, jsonPathExpr);
+        return extract(obj, jsonPathExpr, notFoundException);
     }
 
     /**
      * 取出json对象或者数组中由指定路径表达式代表的子JSON或者对应值
      */
-    public static Object extract(Object jsonOrVal, JsonPathExprStatement jsonPathExpr) {
-        return extract(jsonOrVal, jsonPathExpr.getPathLegs());
+    public static Object extract(Object jsonOrVal, JsonPathExprStatement jsonPathExpr,
+                                 boolean notFoundException) {
+        return extract(jsonOrVal, jsonPathExpr.getPathLegs(), notFoundException);
     }
 
     /**
      * 取出json对象或者数组中由指定路径表达式(pathLegList)代表的子JSON或者对应值
      */
-    private static Object extract(Object jsonOrVal, List<AbstractPathLeg> pathLegList) {
+    private static Object extract(Object jsonOrVal, List<AbstractPathLeg> pathLegList,
+                                  boolean notFoundException) {
         Object resultObj = jsonOrVal;
         if (pathLegList != null && !pathLegList.isEmpty()) {
             for (AbstractPathLeg pathLeg : pathLegList) {
-                resultObj = extract(resultObj, pathLeg);
+                resultObj = extract(resultObj, pathLeg, notFoundException);
             }
         }
 
         return resultObj;
     }
 
+    private static Object extract(Object jsonOrVal, AbstractPathLeg pathLeg) {
+        return extract(jsonOrVal, pathLeg, false);
+    }
+
     /**
      * 取出json对象或者数组中由指定pathLeg代表的子JSON或者对应值
+     *
+     * @param notFoundException 路径不存在值时抛出异常
      */
-    private static Object extract(Object jsonOrVal, AbstractPathLeg pathLeg) {
+    private static Object extract(Object jsonOrVal, AbstractPathLeg pathLeg,
+                                  boolean notFoundException)
+        throws JsonExecutionException {
+        if (jsonOrVal == null && notFoundException) {
+            throw new JsonPathNotFoundException(Objects.toString(pathLeg));
+        }
         if (pathLeg instanceof Member) {
             if (!(jsonOrVal instanceof JSONObject)) {
                 return null;
@@ -82,6 +106,9 @@ public class JsonDocProcessor {
                 values.addAll(jsonObject.values());
                 return values;
             } else {
+                if (notFoundException && !jsonObject.containsKey(member.getKeyName())) {
+                    throw new JsonPathNotFoundException(Objects.toString(pathLeg));
+                }
                 try {
                     return jsonObject.getJSONObject(member.getKeyName());
                 } catch (Exception e) {
@@ -99,7 +126,11 @@ public class JsonDocProcessor {
                 return jsonOrVal;
             } else {
                 if (jsonArr.size() <= arrayLoc.getArrayIndex()) {
-                    return null;
+                    if (notFoundException) {
+                        throw new JsonPathNotFoundException(Objects.toString(pathLeg));
+                    } else {
+                        return null;
+                    }
                 }
                 return jsonArr.get(arrayLoc.getArrayIndex());
             }

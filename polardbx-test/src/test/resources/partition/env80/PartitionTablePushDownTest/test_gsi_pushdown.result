@@ -1,0 +1,22 @@
+## DISABLE_FAST_SQL_PARSER
+create table if not exists tbl (a int not null, b int, c int )
+partition by range columns (c)
+( partition p0 values less than (10),
+partition p1 values less than (20),
+partition p2 values less than (30),
+partition pm values less than (maxvalue)
+);
+create global index g_b on tbl(b,a,c)
+partition by range columns (b,a,c)
+( partition p0 values less than (1000,100,maxvalue),
+partition p1 values less than (2000,200,maxvalue),
+partition p2 values less than (3000,300,maxvalue),
+partition pm values less than (maxvalue,maxvalue,maxvalue)
+);
+explain select * from tbl where b=1500;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  IndexScan(tables="g_b_$6ba9[p1]", sql="SELECT `a`, `b`, `c` FROM `g_b_$6ba9` AS `g_b_$6ba9` WHERE (`b` = ?)")
+explain select * from tbl where b=1500 and a=150;
+Logical ExecutionPlan
+IndexScan(tables="g_b_$6ba9[p1]", sql="SELECT `a`, `b`, `c` FROM `g_b_$6ba9` AS `g_b_$6ba9` WHERE ((`b` = ?) AND (`a` = ?))")

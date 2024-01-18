@@ -1,0 +1,55 @@
+DROP TABLE IF EXISTS tbl;
+CREATE TABLE IF NOT EXISTS tbl (
+a int NOT NULL,
+b int NOT NULL,
+c int NOT NULL,
+d int NOT NULL,
+PRIMARY KEY (`a`),
+index `gidx` (a, b),
+unique index `ugidx` (c, d)
+);
+
+insert into tbl values (101, 101, 101, 101),
+(102, 102, 102, 102),
+(103, 103, 103, 103),
+(201, 201, 201, 201),
+(202, 202, 202, 202),
+(203, 203, 203, 203);
+
+select * from tbl order by a;
+
+show create table tbl;
+
+show full create table tbl;
+
+show create table gidx;
+
+show create table ugidx;
+
+alter table tbl partitions 4;
+
+show create table tbl;
+
+show full create table tbl;
+
+show create table gidx;
+
+show create table ugidx;
+
+alter table tbl add global index tbl_index(a,b,c);
+
+show create table tbl;
+
+show full create table tbl;
+
+select * from tbl order by a;
+
+alter table tbl partition by key(c,d) partitions 5;
+
+alter table tbl add global index tbl_index2(a,b,c) partition by key(a);
+
+show create table tbl;
+
+show full create table tbl;
+
+show create table tbl_index2;

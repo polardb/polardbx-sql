@@ -33,6 +33,7 @@ import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.index.HumanReadableRule;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.Rule;
@@ -183,10 +184,35 @@ public class LogicalShowRuleHandler extends HandlerCommon {
             String dbPartPolicy = "";
             String dbPartCnt = "";
 
-            String tbPartKey = isPartitionTbl ? String.join(",", partInfo.getPartitionColumns()).toLowerCase() : "";
-            String tbPartPolicy =
-                isPartitionTbl ? partInfo.getPartitionBy().getStrategy().getStrategyExplainName() : "";
-            String tbPartCnt = String.valueOf(partInfo.getPartitionBy().getPartitions().size());
+            Integer allLevelCnt = partInfo.getAllPartLevelCount();
+            List<List<String>> allLevelPartColsInfo = partInfo.getAllLevelFullPartCols();
+            String allLevelPartColsStr = "";
+            for (int j = 0; j < allLevelCnt; j++) {
+                if (!allLevelPartColsStr.isEmpty()) {
+                    allLevelPartColsStr += ";";
+                }
+                allLevelPartColsStr += String.join(",", allLevelPartColsInfo.get(j));
+            }
+            String tbPartKey = isPartitionTbl ? allLevelPartColsStr : "";
+
+            List<PartitionStrategy> allLevelPartStrategies = partInfo.getAllLevelPartitionStrategies();
+            String allLevelPartStrategiesStr = "";
+            for (int j = 0; j < allLevelPartStrategies.size(); j++) {
+                if (!allLevelPartStrategiesStr.isEmpty()) {
+                    allLevelPartStrategiesStr += ";";
+                }
+                allLevelPartStrategiesStr += allLevelPartStrategies.get(j).getStrategyExplainName();
+            }
+            String tbPartPolicy = isPartitionTbl ? allLevelPartStrategiesStr : "";
+
+            List<Integer> allLevelPartCnt = partInfo.getAllLevelPartitionCount();
+            String tbPartCntStr = "";
+            for (int j = 0; j < allLevelPartCnt.size(); j++) {
+                if (!tbPartCntStr.isEmpty()) {
+                    tbPartCntStr += ";";
+                }
+                tbPartCntStr += String.valueOf(allLevelPartCnt.get(j));
+            }
 
             Boolean allowFullScan = true;
             String dbNamePatten = GroupInfoUtil.buildGroupNamePattern(dbName, true);
@@ -201,7 +227,7 @@ public class LogicalShowRuleHandler extends HandlerCommon {
                 result.addRow(new Object[] {
                     id, tblName, isBroadcast,
                     dbPartKey, dbPartPolicy, dbPartCnt,
-                    tbPartKey, tbPartPolicy, tbPartCnt});
+                    tbPartKey, tbPartPolicy, tbPartCntStr});
             } else {
                 result.addRow(new Object[] {
                     id, tblName, isBroadcast, joinGrp,

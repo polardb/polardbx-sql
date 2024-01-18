@@ -27,6 +27,7 @@ import org.apache.calcite.sql.validate.SqlMoniker;
 import org.apache.calcite.sql.validate.SqlMonotonicity;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Util;
 
@@ -280,11 +281,11 @@ public abstract class SqlNode implements Cloneable {
    * (2 + 3), because the '+' operator is left-associative</li>
    * </ul>
    */
-  public abstract boolean equalsDeep(SqlNode node, Litmus litmus);
+  public abstract boolean equalsDeep(SqlNode node, Litmus litmus, EqualsContext context);
 
   @Deprecated // to be removed before 2.0
   public final boolean equalsDeep(SqlNode node, boolean fail) {
-    return equalsDeep(node, fail ? Litmus.THROW : Litmus.IGNORE);
+    return equalsDeep(node, fail ? Litmus.THROW : Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT);
   }
 
   /**
@@ -299,13 +300,14 @@ public abstract class SqlNode implements Cloneable {
   public static boolean equalDeep(
       SqlNode node1,
       SqlNode node2,
-      Litmus litmus) {
+      Litmus litmus,
+      EqualsContext context) {
     if (node1 == null) {
       return node2 == null;
     } else if (node2 == null) {
       return false;
     } else {
-      return node1.equalsDeep(node2, litmus);
+      return node1.equalsDeep(node2, litmus, context);
     }
   }
 
@@ -325,12 +327,12 @@ public abstract class SqlNode implements Cloneable {
 
   /** Returns whether two lists of operands are equal. */
   public static boolean equalDeep(List<SqlNode> operands0,
-      List<SqlNode> operands1, Litmus litmus) {
+      List<SqlNode> operands1, Litmus litmus, EqualsContext context) {
     if (operands0.size() != operands1.size()) {
       return litmus.fail(null);
     }
     for (int i = 0; i < operands0.size(); i++) {
-      if (!SqlNode.equalDeep(operands0.get(i), operands1.get(i), litmus)) {
+      if (!SqlNode.equalDeep(operands0.get(i), operands1.get(i), litmus, context)) {
         return litmus.fail(null);
       }
     }

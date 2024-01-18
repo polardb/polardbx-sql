@@ -17,14 +17,11 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName DrdsInspectDDLJobCache
- * @description
- * @Author zzy
- * @Date 2019-07-22 10:06
  */
 public class DrdsInspectDDLJobCache extends MySqlStatementImpl implements SQLStatement {
 
@@ -33,4 +30,8 @@ public class DrdsInspectDDLJobCache extends MySqlStatementImpl implements SQLSta
         visitor.endVisit(this);
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

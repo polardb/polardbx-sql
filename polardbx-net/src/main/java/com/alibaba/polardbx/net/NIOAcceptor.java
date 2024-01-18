@@ -36,7 +36,6 @@ import java.util.Set;
  */
 public final class NIOAcceptor extends Thread {
 
-    private static final Logger statusLogger = LoggerFactory.getLogger("TDDL_STATUS");
     private static final Logger logger = LoggerFactory.getLogger(NIOAcceptor.class);
     private final int port;
     private Selector selector;
@@ -158,7 +157,7 @@ public final class NIOAcceptor extends Thread {
             this.serverChannel.close();
             this.selector.close();
 
-            statusLogger.info(this.getName() + " offline success " + this.getPort());
+            logger.info(this.getName() + " offline success " + this.getPort());
         } catch (IOException e) {
             logger.error("offline error", e);
         }
@@ -175,7 +174,7 @@ public final class NIOAcceptor extends Thread {
             this.serverChannel.socket().bind(new InetSocketAddress(port));
             this.serverChannel.configureBlocking(false);
             this.serverChannel.register(selector, SelectionKey.OP_ACCEPT);
-            statusLogger.info(this.getName() + " is started and listening on " + this.getPort());
+            logger.info(this.getName() + " is started and listening on " + this.getPort());
         } catch (IOException e) {
             logger.error(this.getName() + " online error", e);
             throw GeneralUtil.nestedException(e);

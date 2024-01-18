@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelect;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
@@ -25,10 +26,8 @@ import java.util.List;
 
 /**
  * @version 1.0
- * @ClassName DrdsBaselineStatement
- * @description
- * @Author zzy
- * @Date 2019/9/5 10:48
+ * DrdsBaselineStatement
+ * zzy 2019/9/5 10:48
  */
 public class DrdsBaselineStatement extends MySqlStatementImpl implements SQLStatement {
 
@@ -36,6 +35,8 @@ public class DrdsBaselineStatement extends MySqlStatementImpl implements SQLStat
     private List<Long> baselineIds = new ArrayList<Long>();
 
     private SQLSelect select;
+
+    private SQLStatement subStatement;
 
     public void accept0(MySqlASTVisitor visitor) {
         visitor.visit(this);
@@ -66,4 +67,16 @@ public class DrdsBaselineStatement extends MySqlStatementImpl implements SQLStat
         this.select = select;
     }
 
+    public SQLStatement getSubStatement() {
+        return subStatement;
+    }
+
+    public void setSubStatement(SQLStatement subStatement) {
+        this.subStatement = subStatement;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

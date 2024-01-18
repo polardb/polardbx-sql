@@ -28,12 +28,16 @@ import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.common.utils.time.parser.NumericTimeParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
+import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.datatype.type.BasicTypeBuilders;
 import com.alibaba.polardbx.optimizer.core.expression.ISelectable;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.expression.bean.LobVal;
@@ -47,11 +51,11 @@ import org.apache.calcite.avatica.util.ByteString;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.sql.SqlCollation;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
-import org.jetbrains.annotations.NotNull;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -351,6 +355,19 @@ public class DataTypeUtil {
             || DataTypeUtil.equalsSemantically(DataTypes.YearType, type));
     }
 
+    /**
+     * MySql time type is different from DateType,for it's lacking year type
+     */
+    public static boolean isMysqlTimeType(DataType type) {
+        return type != null
+            && DataTypeUtil
+            .anyMatchSemantically(type,
+                DataTypes.DateType,
+                DataTypes.TimeType,
+                DataTypes.DatetimeType,
+                DataTypes.TimestampType);
+    }
+
     public static boolean isFractionalTimeType(DataType type) {
         return type != null
             && DataTypeUtil
@@ -490,16 +507,61 @@ public class DataTypeUtil {
         }
     }
 
+    private static boolean isBinaryColumnType(ColumnMeta cm) {
+        try {
+            if (cm != null && "BINARY".equalsIgnoreCase(cm.getField().getRelType().getCharset().name())) {
+                return true;
+            }
+        } catch (Throwable e) {
+            // Ignore
+        }
+        return false;
+    }
+
     /**
      * Convert inner type to JDBC types
      */
-    public static Object toJavaObject(Object value) {
+    public static Object toJavaObject(ColumnMeta cm, Object value) {
         if (value instanceof Decimal) {
             value = ((Decimal) value).toBigDecimal();
         } else if (value instanceof Slice) {
-            value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+            if (isBinaryColumnType(cm)) {
+                value = ((Slice) value).getBytes();
+            } else {
+                value = ((Slice) value).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
+            }
         } else if (value instanceof UInt64) {
             value = ((UInt64) value).toBigInteger();
+        } else if (value instanceof ZeroDate || value instanceof ZeroTime || value instanceof ZeroTimestamp) {
+            /**
+             * For date like "0000-00-00" partition result is different for ZeroDate and String.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             * </p>
+             * For ZeroDate/ZeroTime/ZeroTimestamp object,
+             * jdbc will convert object to string "1970-01-01 08:00:00" in {@link com.mysql.jdbc.PreparedStatement#setObject(int, java.lang.Object)}.
+             * This will make where-condition return false because "1970-01-01 08:00:00" is not equal to "0000-00-00 00:00:00", and then cause update fail.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             */
+            value = value.toString();
+        } else if (value instanceof OriginalDate || value instanceof OriginalTimestamp) {
+            /**
+             * For zero month or day date like "0000-00-00" partition result is different for ZeroDate and String.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             * </p>
+             * For OriginalDate/OriginalTime/OriginalTimestamp object,
+             * jdbc will convert object to string "0002-11-30 00:00:00" in {@link com.mysql.jdbc.PreparedStatement#setObject(int, java.lang.Object)}.
+             * This will make where-condition return false because "0002-11-30 00:00:00" is not equal to "0000-00-00 00:00:00", and then cause update fail.
+             * INSERT and SELECT use String data type, so UPDATE/DELETE here should keep same.
+             */
+            MysqlDateTime mysqlDateTime = ((OriginalTemporalValue) value).getMysqlDateTime();
+            long month = mysqlDateTime.getMonth();
+            long day = mysqlDateTime.getDay();
+            if (month == 0 || day == 0) {
+                value = value.toString();
+            }
+        } else if (value instanceof EnumValue) {
+            // EnumValue can not be used in setObject
+            value = ((EnumValue) value).getValue();
         }
         return value;
     }
@@ -854,5 +916,50 @@ public class DataTypeUtil {
         } else {
             return SqlTypeName.CHAR;
         }
+    }
+
+    // TODO : check collation and other situation
+    public static RelDataType createBasicSqlType(RelDataTypeSystem typeSystem, SQLDataType dataType) {
+        return BasicTypeBuilders.getTypeBuilder(dataType.getName()).createBasicSqlType(typeSystem, dataType);
+    }
+
+    /**
+     * BIGINT (8 Bytes): -9223372036854775808 ~ 9223372036854775807
+     * BIGINT UNSIGNED (8 Bytes): 0~18446744073709551615
+     */
+    private static BigInteger MAX_UNSIGNED_LONG = new BigInteger("18446744073709551615");
+    private static BigInteger MIN_UNSIGNED_LONG = new BigInteger("0");
+
+    public static boolean checkUnderBigintUnsigned(BigInteger bigint) {
+        int rs1 = MAX_UNSIGNED_LONG.compareTo(bigint);
+        int rs2 = MIN_UNSIGNED_LONG.compareTo(bigint);
+        return rs1 >= 0 && rs2 <= 0;
+    }
+
+    private static BigInteger MAX_SIGNED_LONG = new BigInteger("9223372036854775807");
+    private static BigInteger MIN_SIGNED_LONG = new BigInteger("-9223372036854775808");
+
+    public static boolean checkUnderBigintSigned(BigInteger bigint) {
+        int rs1 = MAX_SIGNED_LONG.compareTo(bigint);
+        int rs2 = MIN_SIGNED_LONG.compareTo(bigint);
+        return rs1 >= 0 && rs2 <= 0;
+    }
+
+    public static boolean fixDynamicParamObjectIfNeed(Object v, DataType dataTypeInput,
+                                                      Object[] newV, DataType[] dataTypeOutput) {
+        Class clazz = v.getClass();
+        if (dataTypeInput == DataTypes.ULongType) {
+            if (clazz == BigInteger.class) {
+                BigInteger bigIntVal = (BigInteger) v;
+                if (!DataTypeUtil.checkUnderBigintUnsigned(bigIntVal) && !DataTypeUtil.checkUnderBigintSigned(
+                    bigIntVal)) {
+                    String varStr = v.toString();
+                    newV[0] = varStr;
+                    dataTypeOutput[0] = DataTypes.StringType;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }

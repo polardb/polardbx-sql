@@ -16,12 +16,13 @@
 
 package com.alibaba.polardbx.gms.privilege.authorize;
 
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.privilege.Permission;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarDbPriv;
 import com.alibaba.polardbx.gms.privilege.PolarTbPriv;
 
-import java.util.Optional;
+import java.util.Map;
 
 /**
  * This rule implements default permission check strategy. This is usually the last rule in a rule chain.
@@ -59,6 +60,16 @@ public class GeneralRule extends AbstractRule {
             PolarDbPriv dbPriv = accountInfo.getDbPriv(permission.getDatabase());
             if (dbPriv != null && dbPriv.hasPrivilege(permission.getPrivilege())) {
                 return true;
+            }
+            if (permission.isAnyTable()) {
+                // search by treemap prefix
+                Map<String, PolarTbPriv> dbPrefixTailMap = accountInfo.getTbPrivMap().tailMap(permission.getDatabase());
+                for (PolarTbPriv tbPriv : dbPrefixTailMap.values()) {
+                    if (StringUtils.equalsIgnoreCase(tbPriv.getDbName(), permission.getDatabase())
+                        && tbPriv.hasPrivilege(permission.getPrivilege())) {
+                        return true;
+                    }
+                }
             }
         }
 

@@ -767,7 +767,7 @@ public interface SqlValidator {
 
   void validateWith(SqlWith with, SqlValidatorScope scope);
 
-  void validateWithItem(SqlWithItem withItem);
+  void validateWithItem(SqlWithItem withItem, boolean isRecursive);
 
   void validateSequenceValue(SqlValidatorScope scope, SqlIdentifier id);
 

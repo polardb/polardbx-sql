@@ -22,7 +22,6 @@ import com.alibaba.polardbx.qatest.BaseSequenceTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -33,12 +32,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-
 public class NewSequenceCnTest extends BaseSequenceTestCase {
 
-    private static final String CREATE_SEQ = "create %s sequence %s";
+    private static final String CREATE_SEQ = "create %s sequence %s ";
     private static final String CREATE_SEQ_START_WITH = CREATE_SEQ + " start with %s";
-    private static final String ALTER_SEQ = "alter sequence %s start with %s";
+    private static final String CREATE_SEQ_FULL = CREATE_SEQ_START_WITH + " increment by %s maxvalue %s %s";
+
+    private static final String ALTER_SEQ = "alter sequence %s ";
+    private static final String ALTER_SEQ_START_WITH = ALTER_SEQ + " start with %s";
+
     private static final String RENAME_SEQ = "rename sequence %s to %s";
     private static final String DROP_SEQ = "drop sequence %s";
 
@@ -140,43 +142,23 @@ public class NewSequenceCnTest extends BaseSequenceTestCase {
 
         alterSequence(100);
 
-        if (TStringUtil.equals(seqType, "NEW")) {
-            checkShowNextval(203);
-            checkNextval(203);
-            checkCurrval(203);
+        checkShowNextval(100);
+        checkNextval(100);
+        checkCurrval(100);
 
-            checkShowNextval(204);
-            checkNextval(204);
-            checkCurrval(204);
-        } else {
-            checkShowNextval(100);
-            checkNextval(100);
-            checkCurrval(100);
-
-            checkShowNextval(101);
-            checkNextval(101);
-            checkCurrval(101);
-        }
+        checkShowNextval(101);
+        checkNextval(101);
+        checkCurrval(101);
 
         alterSequence(50);
 
-        if (TStringUtil.equals(seqType, "NEW")) {
-            checkShowNextval(205);
-            checkNextval(205);
-            checkCurrval(205);
+        checkShowNextval(50);
+        checkNextval(50);
+        checkCurrval(50);
 
-            checkShowNextval(206);
-            checkNextval(206);
-            checkCurrval(206);
-        } else {
-            checkShowNextval(50);
-            checkNextval(50);
-            checkCurrval(50);
-
-            checkShowNextval(51);
-            checkNextval(51);
-            checkCurrval(51);
-        }
+        checkShowNextval(51);
+        checkNextval(51);
+        checkCurrval(51);
 
         dropSequence();
     }
@@ -195,9 +177,11 @@ public class NewSequenceCnTest extends BaseSequenceTestCase {
         checkNextval(9223372036854775807L);
         checkCurrval(9223372036854775807L);
 
-        checkNextvalRunOut();
-
-        dropSequence();
+        try {
+            checkNextvalRunOut();
+        } finally {
+            dropSequence();
+        }
 
         createSequence(9223372036854775807L);
 
@@ -205,9 +189,80 @@ public class NewSequenceCnTest extends BaseSequenceTestCase {
         checkNextval(9223372036854775807L);
         checkCurrval(9223372036854775807L);
 
-        checkNextvalRunOut();
+        try {
+            checkNextvalRunOut();
+        } finally {
+            dropSequence();
+        }
+    }
 
+    @Test
+    public void testAlterSequence() throws Exception {
         dropSequence();
+
+        try {
+            createSequence(100, 2, 110, true);
+
+            for (int i = 0; i < 50; i++) {
+                checkNextval(100 + (i % 6) * 2);
+            }
+
+            alterSequence("nocycle");
+
+            for (int i = 0; i < 4; i++) {
+                checkNextval(104 + (i % 6) * 2);
+            }
+
+            checkNextvalRunOut();
+
+            alterSequence("cycle");
+
+            for (int i = 0; i < 48; i++) {
+                checkNextval(100 + (i % 6) * 2);
+            }
+
+            alterSequence("increment by 3");
+
+            for (int i = 0; i < 46; i++) {
+                checkNextval(100 + (i % 4) * 3);
+            }
+
+            alterSequence("maxvalue 120");
+
+            for (int i = 0; i < 5; i++) {
+                checkNextval(106 + (i % 7) * 3);
+            }
+
+            for (int i = 0; i < 48; i++) {
+                checkNextval(100 + (i % 7) * 3);
+            }
+
+            alterSequence("start with 110");
+
+            for (int i = 0; i < 47; i++) {
+                checkNextval(110 + (i % 4) * 3);
+            }
+
+            alterSequence("increment by 1");
+
+            for (int i = 0; i < 4; i++) {
+                checkNextval(117 + (i % 11) * 1);
+            }
+
+            for (int i = 0; i < 110; i++) {
+                checkNextval(110 + (i % 11) * 1);
+            }
+
+            alterSequence("maxvalue 1000000000");
+
+            alterSequence("start with 10000");
+
+            for (int i = 0; i < 1000; i++) {
+                checkNextval(10000 + i);
+            }
+        } finally {
+            dropSequence();
+        }
     }
 
     private void testSequence(long startWith1, long startWith2)
@@ -266,8 +321,20 @@ public class NewSequenceCnTest extends BaseSequenceTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
+    private void createSequence(long startWith, long incrementBy, long maxValue, boolean isCycle) {
+        String type = TStringUtil.equalsIgnoreCase(seqType, "NEW") ? "" : seqType;
+        String sql = String.format(CREATE_SEQ_FULL, type, seqName, startWith, incrementBy, maxValue,
+            isCycle ? "cycle" : "nocycle");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
     private void alterSequence(long startWith) {
-        String sql = String.format(ALTER_SEQ, seqName, startWith);
+        String sql = String.format(ALTER_SEQ_START_WITH, seqName, startWith);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    private void alterSequence(String clause) {
+        String sql = String.format(ALTER_SEQ, seqName) + clause;
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 

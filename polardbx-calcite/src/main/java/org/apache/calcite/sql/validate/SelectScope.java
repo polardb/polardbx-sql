@@ -24,6 +24,7 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlWindow;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 
@@ -168,7 +169,7 @@ public class SelectScope extends ListScope {
         monotonicity = monotonicity.reverse();
         order0 = ((SqlCall) order0).operand(0);
       }
-      if (expr.equalsDeep(order0, Litmus.IGNORE)) {
+      if (expr.equalsDeep(order0, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
         return monotonicity;
       }
     }

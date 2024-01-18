@@ -45,7 +45,6 @@ import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
 import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.plan.RelOptCost;
-import org.apache.commons.lang3.StringUtils;
 
 import java.text.DecimalFormat;
 import java.util.concurrent.locks.LockSupport;
@@ -182,10 +181,9 @@ public class ShowProcesslistSyncAction implements ISyncAction {
             info = addProcedureInfo(sc.getId(), info);
         }
 
-        String dumpState = sc.getDumpState();
-        if (StringUtils.isNotEmpty(dumpState)) {
+        if (sc.getProxy() != null) {
             command = "Binlog Dump";
-            info = dumpState;
+            info = "Sending to client";
         }
 
         long time = (System.nanoTime() - sc.getLastActiveTime()) / 1000000000;
@@ -203,7 +201,7 @@ public class ShowProcesslistSyncAction implements ISyncAction {
         if (info != null) {
             workloadType = WorkloadType.TP;
             route = ConfigDataMode.isSlaveMode() ? "RO" : "RW";
-            worker = ServiceProvider.getInstance().getServer().getLocalNode().getHostPort();
+            worker = ServiceProvider.getInstance().getServer().getLocalNode().getHostMppPort();
         }
 
         if (tConn != null && isStmtExecuting) {

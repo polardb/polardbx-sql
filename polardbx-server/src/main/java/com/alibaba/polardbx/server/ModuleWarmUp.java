@@ -53,13 +53,13 @@ public class ModuleWarmUp {
         StatisticDataSource sds = new StatisticDataTableSource(systemTableTableStatistic, systemTableColumnStatistic,
             systemTableNDVSketchStatistic, ndvSketch);
         StatisticManager.sds = sds;
-        Module.STATISTIC.register(StatisticManager.getInstance());
+        Module.STATISTICS.register(StatisticManager.getInstance());
 
         PlanManager.baselineSyncController = new BaselineSyncController();
         Module.SPM.register(PlanManager.getInstance());
 
         if (!ConfigDataMode.isFastMock()) {
-            Module.SCHEDULE_JOB.register(ScheduledJobsManager.getINSTANCE());
+            Module.SCHEDULE_JOB.register(ScheduledJobsManager.getInstance());
         }
         Module.MODULE_LOG.register(ModuleLogInfo.getInstance());
     }

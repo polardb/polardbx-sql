@@ -1,0 +1,53 @@
+## DISABLE_FAST_SQL_PARSER
+drop database if exists drds_db;
+drop database if exists drds_db2;
+drop database if exists auto_db;
+drop database if exists auto_db2;
+create database if not exists drds_db mode='drds';
+create database if not exists auto_db mode='auto';
+create database if not exists drds_db2 partition_mode='sharding';
+create database if not exists auto_db2 partition_mode='partitioning';
+show create database drds_db;
+show create database drds_db2;
+show create database auto_db;
+show create database auto_db2;
+drop database if exists drds_db;
+drop database if exists drds_db2;
+drop database if exists auto_db;
+drop database if exists auto_db2;
+
+## in current test env, default is auto_partition=0
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+drop table single_tb;
+
+set @auto_partition=true;
+CREATE TABLE IF NOT EXISTS `auto_part_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from auto_part_tb;
+drop table auto_part_tb;
+
+set @auto_partition=0;
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+drop table single_tb;
+
+set @auto_partition=1;
+CREATE TABLE IF NOT EXISTS `auto_part_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from auto_part_tb;
+drop table auto_part_tb;
+
+set @auto_partition=false;
+CREATE TABLE IF NOT EXISTS `single_tb` (
+`a` bigint(20) UNSIGNED NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+show rule from single_tb;
+drop table single_tb;
+

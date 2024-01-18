@@ -16,17 +16,9 @@
 
 package com.alibaba.polardbx.sequence.impl;
 
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
-import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.logger.LoggerInit;
-import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.sequence.SequenceDao;
-import com.alibaba.polardbx.sequence.SequenceRange;
 import com.alibaba.polardbx.sequence.exception.SequenceException;
 
 import java.sql.Connection;
@@ -36,10 +28,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.CYCLE;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_INCREMENT_BY;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_MAX_VALUE;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_RETRY_TIMES;
-import static com.alibaba.polardbx.common.constants.SequenceAttribute.DEFAULT_START_WITH;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NOCYCLE;
 import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SEQUENCE_OPT;
 
@@ -49,30 +37,14 @@ import static com.alibaba.polardbx.gms.metadb.GmsSystemTables.SEQUENCE_OPT;
  * @author chensr 2016/04/12 11:15:46
  * @since 5.0.0
  */
-public class SimpleSequenceDao extends AbstractLifecycle implements SequenceDao {
+public class SimpleSequenceDao extends FunctionalSequenceDao {
 
     private static final Logger logger = LoggerFactory.getLogger(SimpleSequenceDao.class);
-
-    protected static final String VALIDATE_SIMPLE_SEQ =
-        "SELECT increment_by, start_with, max_value, cycle FROM " + SEQUENCE_OPT
-            + " WHERE name = ? AND schema_name = ?";
-
-    protected static final String INSERT_SIMPLE_SEQ = "INSERT INTO " + SEQUENCE_OPT
-        + "(schema_name, name, value, increment_by, start_with, max_value, cycle) VALUES(?, ?, ?, ?, ?, ?, ?)";
 
     protected static final String UPDATE_SIMPLE_SEQ_VALUE = "UPDATE " + SEQUENCE_OPT
         + " SET value = ? + increment_by WHERE name = ? AND value <= ? AND schema_name = ?";
 
-    protected int retryTimes = DEFAULT_RETRY_TIMES;
-
-    protected String schemaName;
-
     public SimpleSequenceDao() {
-    }
-
-    @Override
-    public void doInit() {
-        outputInitResult();
     }
 
     public long nextValue(String seqName, int size) {
@@ -145,66 +117,6 @@ public class SimpleSequenceDao extends AbstractLifecycle implements SequenceDao 
         }
     }
 
-    public void validate(SimpleSequence sequence) {
-        final String seqName = sequence.getName();
-        try (Connection metaDbConn = MetaDbUtil.getConnection();
-            PreparedStatement stmt = metaDbConn.prepareStatement(VALIDATE_SIMPLE_SEQ)) {
-
-            stmt.setString(1, seqName);
-            stmt.setString(2, schemaName);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    sequence.setIncrementBy(rs.getInt(1));
-                    sequence.setStartWith(rs.getLong(2));
-                    sequence.setMaxValue(rs.getLong(3));
-                    sequence.setCycle(rs.getInt(4) & CYCLE);
-                } else if (seqName.toUpperCase().startsWith(SequenceAttribute.AUTO_SEQ_PREFIX)) {
-                    // Try to insert new one if AUTO_SEQ_xxx.
-                    insertNewEntry(metaDbConn, sequence);
-                } else {
-                    throw new SequenceException(
-                        "Sequence '" + seqName + "' doesn't exist. Please double check and try again.");
-                }
-            }
-        } catch (SQLException e) {
-            logger.error("Failed to validate sequence '" + seqName + "'.", e);
-            String errMsg = e.getMessage();
-            if (errMsg != null && errMsg.contains("doesn't exist")) {
-                throw new TddlRuntimeException(ErrorCode.ERR_MISS_SEQUENCE_TABLE_ON_DEFAULT_DB);
-            } else if (errMsg != null && errMsg.contains("Unknown column")) {
-                throw new TddlRuntimeException(ErrorCode.ERR_SEQUENCE_TABLE_META);
-            }
-            throw new TddlRuntimeException(ErrorCode.ERR_OTHER_WHEN_BUILD_SEQUENCE, e, errMsg);
-        }
-    }
-
-    private void insertNewEntry(Connection metaDbConn, SimpleSequence sequence) {
-        final String seqName = sequence.getName();
-        try (PreparedStatement stmt = metaDbConn.prepareStatement(INSERT_SIMPLE_SEQ)) {
-
-            stmt.setString(1, schemaName);
-            stmt.setString(2, seqName);
-            stmt.setLong(3, DEFAULT_START_WITH);
-            stmt.setInt(4, DEFAULT_INCREMENT_BY);
-            stmt.setLong(5, DEFAULT_START_WITH);
-            stmt.setLong(6, DEFAULT_MAX_VALUE);
-            stmt.setInt(7, NOCYCLE);
-
-            int insertCount = stmt.executeUpdate();
-
-            if (insertCount == 0) {
-                String errMsg = "Sequence '" + seqName + "' wasn't inserted.";
-                logger.error(errMsg);
-                throw new SequenceException(errMsg);
-            }
-        } catch (SQLException e) {
-            String errMsg = "Failed to insert sequence '" + seqName + "'.";
-            logger.error(errMsg, e);
-            throw new SequenceException(e, errMsg);
-        }
-    }
-
     protected String getNextValueSql(int size) {
         final String incrementValue = "increment_by * (" + size + " - 1)";
         StringBuilder sb = new StringBuilder();
@@ -223,39 +135,6 @@ public class SimpleSequenceDao extends AbstractLifecycle implements SequenceDao 
         sb.append(" LAST_INSERT_ID(value + ").append(incrementValue).append(") + increment_by)");
         sb.append(" WHERE name = ? AND schema_name = ?");
         return sb.toString();
-    }
-
-    @Override
-    public int getRetryTimes() {
-        return retryTimes;
-    }
-
-    public void setRetryTimes(int retryTimes) {
-        this.retryTimes = retryTimes;
-    }
-
-    @Override
-    public int getStep() {
-        return DEFAULT_INCREMENT_BY;
-    }
-
-    @Override
-    public SequenceRange nextRange(String name) {
-        throw new NotSupportException();
-    }
-
-    public String getSchemaName() {
-        return schemaName;
-    }
-
-    public void setSchemaName(String schemaName) {
-        this.schemaName = schemaName;
-    }
-
-    protected void outputInitResult() {
-        String message = String.format("SimpleSequenceDao has been initialized: retryTimes - %s", retryTimes);
-        logger.info(message);
-        LoggerInit.TDDL_SEQUENCE_LOG.info(message);
     }
 
 }

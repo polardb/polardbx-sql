@@ -18,12 +18,15 @@ package com.alibaba.polardbx.executor.mpp;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mpp.execution.SessionRepresentation;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.executor.utils.GroupingFetchLSN;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.IMppTsoTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -32,6 +35,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.AUTO_COMMIT_SINGLE_SHARD;
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
@@ -45,10 +49,10 @@ public final class Session {
     private final boolean preferLocal;
     private boolean localResultIsSync = false;
     private HashMap<String, String> groups = new HashMap<>();
-    private long tsoTime = -1;
+    private long tsoTime = -1L;
     private boolean omitTso;
     private boolean lizard1PC;
-    private HashMap<String, Long> lsns = new HashMap<>();
+    private ConcurrentHashMap<String, Long> dnLsns = new ConcurrentHashMap<>();
     private boolean cacheOutput;
     private boolean ignoreSplitInfo = false;
 
@@ -120,7 +124,10 @@ public final class Session {
         if (ExecutorContext.getContext(
             getSchema()).getStorageInfoManager().supportTso() &&
             clientContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ) &&
-            !getSchema().equalsIgnoreCase("MetaDB")) {
+            !getSchema().equalsIgnoreCase(SystemDbHelper.DEFAULT_META_DB_NAME) &&
+            (ExecUtils.existMppOnlyInstanceNode() || clientContext.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_MASTER_MPP))
+        ) {
             ITransaction iTransaction = clientContext.getTransaction();
             if (iTransaction.getTransactionClass().isA(TSO_TRANSACTION)) {
                 if (iTransaction.getTransactionClass() == AUTO_COMMIT_SINGLE_SHARD) {
@@ -130,11 +137,14 @@ public final class Session {
                     this.omitTso = storageInfoManager.supportCtsTransaction() || this.lizard1PC;
                 }
                 if (!omitTso) {
-                    this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp();
+                    this.tsoTime = ((IMppTsoTransaction) clientContext.getTransaction()).nextTimestamp(t -> {
+                    });
                 }
 
                 for (Map.Entry<String, String> group : groups.entrySet()) {
-                    ExecUtils.getLsn(group, lsns);
+                    GroupingFetchLSN.getInstance()
+                        .fetchLSN(ExecutorContext.getContext(group.getValue()).getTopologyExecutor().getTopology(),
+                            group.getKey(), dnLsns, this.tsoTime);
                 }
             }
         }
@@ -188,6 +198,14 @@ public final class Session {
                 ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
         }
 
+        //暂时只增加polardbx_server_id参数, 避免长度增加过长
+        Map<String, Object> extraServerVariables = new HashMap<>();
+        if (null != clientContext.getExtraServerVariables()
+            && clientContext.getExtraServerVariables().containsKey("polardbx_server_id")) {
+            extraServerVariables.put("polardbx_server_id",
+                clientContext.getExtraServerVariables().get("polardbx_server_id"));
+        }
+
         return new SessionRepresentation(
             clientContext.getTraceId(),
             getCatalog(),
@@ -207,14 +225,16 @@ public final class Session {
             clientContext.getParams(),
             clientContext.getCacheRelNodeIds(),
             clientContext.getRecordRowCnt(),
+            clientContext.getDistinctKeyCnt(),
             clientContext.isTestMode(),
             clientContext.getConnection().getLastInsertId(),
             clientContext.getTimeZone(),
             tsoTime,
-            lsns,
+            dnLsns,
             omitTso,
             lizard1PC,
-            clientContext.getWorkloadType());
+            clientContext.getWorkloadType(),
+            extraServerVariables);
     }
 
     @Override

@@ -16,8 +16,10 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreateTableWithGsiBuilder;
+import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableJobFactory;
@@ -69,6 +71,7 @@ import java.util.Objects;
 import java.util.Set;
 
 public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
+
     protected final String schemaName;
     protected final String logicalTableName;
     protected final String tmpPrimaryTableName;
@@ -130,7 +133,8 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         result.appendJob2(dropTmpTableJob);
 
         result.setExceptionActionForAllSuccessor(validateTableVersionTask, DdlExceptionAction.ROLLBACK);
-        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask, DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
+        result.setExceptionActionForAllSuccessor(recoverThenRollbackTask,
+            DdlExceptionAction.TRY_RECOVERY_THEN_ROLLBACK);
         result.setExceptionActionForAllSuccessor(recoverThenPauseTask, DdlExceptionAction.TRY_RECOVERY_THEN_PAUSE);
 
         return result;
@@ -177,7 +181,7 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
     private ExecutableDdlJob generateCutOverJob() {
         ExecutableDdlJob cutOverJob = new ExecutableDdlJob();
         CdcTruncateTableWithGsiMarkTask cdcTask =
-            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName, "");
+            new CdcTruncateTableWithGsiMarkTask(schemaName, logicalTableName, tmpPrimaryTableName);
         TruncateCutOverTask cutOverTask =
             new TruncateCutOverTask(schemaName, logicalTableName, tmpIndexTableMap, tmpPrimaryTableName);
         TruncateSyncTask syncTask =
@@ -213,8 +217,12 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
         boolean hasTimestampColumnDefault =
             createTablePreparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
-        Map<String, String> binaryColumnDefaultValues =
-            createTablePreparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
+        List<ForeignKeyData> addedForeignKeys =
+            createTablePreparedData.getPrimaryTablePreparedData().getAddedForeignKeys();
+        Map<String, String> specialDefaultValues =
+            createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValues();
+        Map<String, Long> specialDefaultValueFlags =
+            createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
             .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
 
@@ -222,7 +230,9 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         ExecutableDdlJob4CreateTable createTableJob = (ExecutableDdlJob4CreateTable) new CreateTableJobFactory(
             false,
             hasTimestampColumnDefault,
-            binaryColumnDefaultValues,
+            specialDefaultValues,
+            specialDefaultValueFlags,
+            addedForeignKeys,
             physicalPlanData,
             executionContext).create();
 
@@ -297,16 +307,20 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
         boolean isAutoPartition = createTablePreparedData.getPrimaryTablePreparedData().isAutoPartition();
         boolean hasTimestampColumnDefault =
             createTablePreparedData.getPrimaryTablePreparedData().isTimestampColumnDefault();
-        Map<String, String> binaryColumnDefaultValues =
-            createTablePreparedData.getPrimaryTablePreparedData().getBinaryColumnDefaultValues();
+        List<ForeignKeyData> addedForeignKeys =
+            createTablePreparedData.getPrimaryTablePreparedData().getAddedForeignKeys();
+        Map<String, String> specialDefaultValues =
+            createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValues();
+        Map<String, Long> specialDefaultValueFlags =
+            createTablePreparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags();
         PhysicalPlanData physicalPlanData = DdlJobDataConverter
             .convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans, false, isAutoPartition);
 
         // Create Primary Table
         ExecutableDdlJob4CreatePartitionTable createTableJob = (ExecutableDdlJob4CreatePartitionTable)
-            new CreatePartitionTableJobFactory(isAutoPartition, hasTimestampColumnDefault, binaryColumnDefaultValues,
-                physicalPlanData, executionContext, createTablePreparedData.getPrimaryTablePreparedData(),
-                null).create();
+            new CreatePartitionTableJobFactory(isAutoPartition, hasTimestampColumnDefault, specialDefaultValues,
+                specialDefaultValueFlags, addedForeignKeys, physicalPlanData, executionContext,
+                createTablePreparedData.getPrimaryTablePreparedData(), null).create();
 
         result.addSequentialTasks(Lists.newArrayList(
             createTableJob.getCreatePartitionTableValidateTask(),
@@ -376,7 +390,8 @@ public class TruncateTableWithGsiJobFactory extends DdlJobFactory {
 
         for (String tmpIndexTableName : tmpIndexTableMap.values()) {
             DropGsiJobFactory jobFactory =
-                new DropGsiJobFactory(schemaName, tmpPrimaryTableName, tmpIndexTableName, executionContext);
+                new DropGsiJobFactory(schemaName, tmpPrimaryTableName, tmpIndexTableName, null,
+                    executionContext);
             jobFactory.setSkipSchemaChange(true);
             ExecutableDdlJob4DropGsi dropGsiJob = (ExecutableDdlJob4DropGsi) jobFactory.create(false);
 

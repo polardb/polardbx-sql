@@ -72,7 +72,7 @@ public class SerializedChunk {
 
     public int getRetainedSizeInBytes() {
         if (page != null) {
-            return INSTANCE_SIZE + (int) page.estimateSize() + PAGE_COMPRESSION_SIZE;
+            return INSTANCE_SIZE + (int) page.getElementUsedBytes() + PAGE_COMPRESSION_SIZE;
         }
         return INSTANCE_SIZE + slice.getRetainedSize() + PAGE_COMPRESSION_SIZE;
     }

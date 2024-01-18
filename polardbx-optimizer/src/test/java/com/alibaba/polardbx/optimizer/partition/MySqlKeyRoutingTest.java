@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.google.common.primitives.UnsignedLongs;
 import com.alibaba.polardbx.common.charset.CharsetName;
-import com.alibaba.polardbx.common.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import io.airlift.slice.Slices;
 import org.junit.Test;
 

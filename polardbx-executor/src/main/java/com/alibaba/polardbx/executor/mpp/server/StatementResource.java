@@ -470,7 +470,7 @@ public class StatementResource {
                 }
 
                 Chunk chunk = serde.deserialize(serializedPage);
-                bytes += chunk.getSizeInBytes();
+                bytes += chunk.getElementUsedBytes();
                 pages.add(chunk);
                 // only wait on first call
                 maxWait = afterFristWait;

@@ -152,7 +152,7 @@ public class SqlQueryLocalExecution extends QueryExecution {
 
             if (getSession().isCacheOutput()) {
                 String memoryName = "OutputBuffer@" + System.identityHashCode(this);
-                long estimateRowSize = MemoryEstimator.estimateRowSize(physicalPlan.getRowType());
+                long estimateRowSize = MemoryEstimator.estimateRowSize(physicalPlan.getRowType(), null);
                 long bufferSize =
                     context.getParamManager().getLong(ConnectionParams.SPILL_OUTPUT_MAX_BUFFER_SIZE);
                 long totalEstimate = Math.max(context.getParamManager().getLong(INSERT_SELECT_LIMIT),

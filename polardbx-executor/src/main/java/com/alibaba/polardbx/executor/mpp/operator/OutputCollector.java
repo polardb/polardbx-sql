@@ -37,7 +37,7 @@ public abstract class OutputCollector implements ConsumerExecutor {
 
     public void output(Chunk page) {
         if (page != null) {
-            outputDataSizeUpdater.getAndAdd(this, page.getSizeInBytes());
+            outputDataSizeUpdater.getAndAdd(this, page.getElementUsedBytes());
             outputPositionsUpdater.getAndAdd(this, page.getPositionCount());
         }
         doOutput(page);

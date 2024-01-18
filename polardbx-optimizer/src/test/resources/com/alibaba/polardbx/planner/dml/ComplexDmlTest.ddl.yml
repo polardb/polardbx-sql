@@ -16,6 +16,15 @@ test_hash_ta:
   KEY `auto_shard_key_ID` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
 
+test_hash_tc:
+  CREATE TABLE `test_hash_tc` (
+  `id` int(11) NOT NULL,
+  `key` int(11) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
 test_single:
   CREATE TABLE `test_single` (
   `id` int(11) NOT NULL,
@@ -251,9 +260,225 @@ t4:
   GLOBAL UNIQUE INDEX t4_i_b(c2) COVERING(c5) DBPARTITION BY HASH(c2) TBPARTITION BY HASH(c2) TBPARTITIONS 2
   ) ENGINE=InnoDB DEFAULT CHARSET=UTF8 DBPARTITION BY HASH(c1) TBPARTITION BY HASH(c1) TBPARTITIONS 7
 
+gx_brand_votelist:
+  CREATE TABLE `gx_brand_votelist` (
+  `itemid` int(20) UNSIGNED NOT NULL AUTO_INCREMENT BY GROUP,
+  `brandid` int(20) UNSIGNED NOT NULL DEFAULT '0'                                                     ,
+  `groupid` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                     ,
+  `num` int(3) UNSIGNED NOT NULL DEFAULT '0'                                                          ,
+  `name` varchar(100) NOT NULL DEFAULT ''                                                             ,
+  `introduce` text NOT NULL                                                                           ,
+  `video` varchar(255) CHARACTER SET utf8 NOT NULL DEFAULT ''                                         ,
+  `votes` int(20) UNSIGNED NOT NULL DEFAULT '0'                                                       ,
+  `status` int(2) UNSIGNED NOT NULL DEFAULT '3'                                                       ,
+  `zvote` int(20) UNSIGNED NOT NULL DEFAULT '0'                                                       ,
+  `zvote1` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                      ,
+  `kouvote` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                     ,
+  `truevote` int(20) UNSIGNED NOT NULL DEFAULT '0'                                                    ,
+  `yzm` tinyint(3) UNSIGNED NOT NULL DEFAULT '4'                                                      ,
+  `shuatime` decimal(3, 1) UNSIGNED NOT NULL DEFAULT '99.0'                                           ,
+  `shuanum` tinyint(4) UNSIGNED NOT NULL DEFAULT '1'                                                  ,
+  `addtime` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                     ,
+  `userid` int(10) UNSIGNED NOT NULL DEFAULT '0'                                                      ,
+  `usertype` tinyint(2) UNSIGNED NOT NULL DEFAULT '0'                                                 ,
+  `is_ht` tinyint(1) NOT NULL DEFAULT '0'                                                             ,
+  `is_apply` tinyint(1) NOT NULL DEFAULT '0'                                                          ,
+  `ranking` smallint(5) UNSIGNED NOT NULL DEFAULT '0'                                                 ,
+  `username` varchar(30) CHARACTER SET utf8 NOT NULL DEFAULT ''                                        ,
+  `erweima` varchar(255) CHARACTER SET utf8 NOT NULL DEFAULT ''                                        ,
+  `editor` varchar(50) CHARACTER SET utf8 NOT NULL DEFAULT ''                                          ,
+  `edittime` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                    ,
+  `shebei` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                      ,
+  `note` varchar(255) CHARACTER SET utf8 NOT NULL DEFAULT ''                                          ,
+  `sid` varchar(30) NOT NULL DEFAULT ''                                                               ,
+  `top_ten` tinyint(3) UNSIGNED NOT NULL DEFAULT '2'                                                  ,
+  `email` varchar(100) CHARACTER SET utf8 NOT NULL DEFAULT ''                                         ,
+  `tel` varchar(255) NOT NULL DEFAULT ''                                                              ,
+  `qq` varchar(50) NOT NULL DEFAULT ''                                                                ,
+  `remark` varchar(255) CHARACTER SET utf8 NOT NULL DEFAULT ''                                        ,
+  `web` varchar(100) CHARACTER SET utf8 NOT NULL DEFAULT ''                                           ,
+  `xianzhi` smallint(5) UNSIGNED NOT NULL DEFAULT '0'                                                 ,
+  `wxnum` int(10) UNSIGNED NOT NULL DEFAULT '0'                                                       ,
+  `backgift` int(10) UNSIGNED NOT NULL DEFAULT '0'                                                    ,
+  `giftvote` int(10) UNSIGNED NOT NULL DEFAULT '0'                                                    ,
+  `regCapital` decimal(10, 2) NOT NULL DEFAULT '0.00'                                                 ,
+  `actualCapital` decimal(10, 2) NOT NULL DEFAULT '0.00'                                              ,
+  `attention` int(11) NOT NULL DEFAULT '0'                                                            ,
+  `tuiguang` tinyint(1) UNSIGNED NOT NULL DEFAULT '1'                                                 ,
+  `regyear` varchar(255) NOT NULL DEFAULT ''                                                          ,
+  `is_new` tinyint(1) UNSIGNED NOT NULL DEFAULT '1'                                                   ,
+  `is_sign` tinyint(1) UNSIGNED NOT NULL DEFAULT '2'                                                  ,
+  `gongsi_status` tinyint(2) NOT NULL DEFAULT '0'                                                     ,
+  `share_count` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                 ,
+  `share_click` int(11) UNSIGNED NOT NULL DEFAULT '0'                                                 ,
+  `company_status` tinyint(1) NOT NULL DEFAULT '0'                                                    ,
+  `address` varchar(255) NOT NULL DEFAULT ''                                                          ,
+  `shenhe_pingtai_status` tinyint(4) NOT NULL DEFAULT '0'                                             ,
+  `video_url` varchar(255) CHARACTER SET utf8 NOT NULL DEFAULT ''                                     ,
+  `anjian_num` int(10) UNSIGNED NOT NULL DEFAULT '0'                                                  ,
+  PRIMARY KEY (`itemid`),
+  KEY `brandid` (`brandid`),
+  KEY `status` USING BTREE (`status`),
+  KEY `votes` USING BTREE (`votes`),
+  KEY `rds_idx_0` (`shuatime`, `brandid`, `status`),
+  KEY `shuatime` USING BTREE (`shuatime`),
+  KEY `idx_name` USING BTREE (`name`),
+  KEY `idx_brandid_shuatime_status_shuanum` USING BTREE (`brandid`, `status`, `shuatime`, `shuanum`),
+  KEY `idx_yzm_status` USING BTREE (`status`, `yzm`),
+  KEY `idx_status_isht_isapply_addtime` USING BTREE (`status`, `addtime`, `is_ht`, `is_apply`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 8519643 DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC dbpartition by hash(`brandid`)
+
 self_join_t1:
   CREATE TABLE `self_join_t1` (
   `pk` int(11) NOT NULL,
   `c1` int(11) DEFAULT NULL,
   PRIMARY KEY (`pk`)
   ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DBPARTITION BY HASH(c1)
+
+deliver_task:
+  CREATE TABLE `deliver_task` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `approve_id` char(20) DEFAULT NULL,
+  `status` varchar(32) NOT NULL                                    COMMENT '',
+  `relation_bill` varchar(32) NOT NULL                             COMMENT '',
+  `deliver_date` datetime NOT NULL                                 COMMENT '',
+  `material_type_code` varchar(32) NOT NULL                        COMMENT '',
+  `material_type_name` varchar(64) NOT NULL                        COMMENT '',
+  `unit` varchar(16) NOT NULL                                      COMMENT '',
+  `deliver_type` varchar(32) NOT NULL                              COMMENT '',
+  `deliver_site_code` varchar(32) NOT NULL                         COMMENT '',
+  `deliver_site_name` varchar(128) NOT NULL                        COMMENT '',
+  `deliver_site_type` varchar(32) NOT NULL                         COMMENT '',
+  `to_site_code` varchar(32) NOT NULL                              COMMENT '',
+  `to_site_name` varchar(128) NOT NULL                             COMMENT '',
+  `to_site_type` varchar(32) NOT NULL                              COMMENT '',
+  `execute_employee_no` varchar(32) DEFAULT NULL                   COMMENT '',
+  `execute_employee_name` varchar(64) DEFAULT NULL                 COMMENT '',
+  `execute_date` datetime DEFAULT NULL                             COMMENT '',
+  `deliver_quantity` int(11) DEFAULT '0'                           COMMENT '',
+  `actual_deliver_quantity` int(11) DEFAULT '0'                    COMMENT '',
+  `deploy_employee_no` varchar(32) DEFAULT NULL                    COMMENT '',
+  `deploy_employee_name` varchar(64) DEFAULT NULL                  COMMENT '',
+  `deploy_date` datetime DEFAULT NULL                              COMMENT '',
+  `remarks` varchar(2048) DEFAULT NULL                             COMMENT '',
+  `creator` varchar(64) NOT NULL                                   COMMENT '',
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP         COMMENT '',
+  `modifier` varchar(64) DEFAULT NULL                              COMMENT '',
+  `gmt_modified` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP COMMENT '',
+  `requisition_no` varchar(32) DEFAULT NULL                        COMMENT '',
+  `display_flag` varchar(32) DEFAULT NULL                          COMMENT '',
+  `operate_machine_type` varchar(64) DEFAULT NULL                  COMMENT '',
+  `operate_machine_serial` varchar(64) DEFAULT NULL                COMMENT '',
+  `cancel_remarks` varchar(2048) DEFAULT NULL                      COMMENT '',
+  PRIMARY KEY (`id`),
+  KEY `idx_deliver_site_code` (`deliver_site_code`),
+  KEY `idx_to_site_code` (`to_site_code`),
+  KEY `idx_deliver_type` (`deliver_type`),
+  KEY `idx_status` (`status`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 617 DEFAULT CHARSET = utf8mb4     COMMENT ''
+
+outbound_transaction:
+  CREATE TABLE `outbound_transaction` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT BY GROUP,
+  `material_type_code` varchar(32) NOT NULL                                                                                                                                                     COMMENT '',
+  `material_type_name` varchar(64) NOT NULL                                                                                                                                                     COMMENT '',
+  `material_serial` varchar(64) DEFAULT NULL                                                                                                                                                    COMMENT '',
+  `stock_id` bigint(20) NOT NULL                                                                                                                                                                COMMENT '',
+  `relation_bill` varchar(64) DEFAULT NULL                                                                                                                                                      COMMENT '',
+  `outbound_type` varchar(32) NOT NULL                                                                                                                                                          COMMENT '',
+  `operate_employee_no` varchar(32) NOT NULL                                                                                                                                                    COMMENT '',
+  `operate_employee_name` varchar(64) NOT NULL                                                                                                                                                  COMMENT '',
+  `outbound_date` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP                                                                                                                                   COMMENT '',
+  `outbound_quantity` int(11) NOT NULL                                                                                                                                                          COMMENT '',
+  `unit` varchar(16) NOT NULL                                                                                                                                                                   COMMENT '',
+  `batch_no` varchar(64) DEFAULT NULL                                                                                                                                                           COMMENT '',
+  `transport_bill` varchar(64) DEFAULT NULL                                                                                                                                                     COMMENT '',
+  `site_code` varchar(32) NOT NULL                                                                                                                                                              COMMENT '',
+  `site_name` varchar(128) NOT NULL                                                                                                                                                             COMMENT '',
+  `site_type` varchar(32) NOT NULL                                                                                                                                                              COMMENT '',
+  `operate_machine_type` varchar(64) NOT NULL                                                                                                                                                   COMMENT '',
+  `operate_machine_serial` varchar(128) DEFAULT NULL                                                                                                                                            COMMENT '',
+  `deliver_task_id` bigint(20) DEFAULT NULL                                                                                                                                                     COMMENT '',
+  `counts_id` bigint(20) DEFAULT NULL                                                                                                                                                           COMMENT '',
+  `creator` varchar(64) NOT NULL                                                                                                                                                                COMMENT '',
+  `gmt_create` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP                                                                                                                                      COMMENT '',
+  `modifier` varchar(64) DEFAULT NULL                                                                                                                                                           COMMENT '',
+  `gmt_modified` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP                                                                                                                              COMMENT '',
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_site_code` USING BTREE (`site_code`),
+  KEY `idx_task_id` (`deliver_task_id`),
+  GLOBAL INDEX `g_i_outbound_transaction_id`(`id`) COVERING (`site_code`) DBPARTITION BY HASH(`id`) TBPARTITION BY HASH(`id`) TBPARTITIONS 32,
+  GLOBAL INDEX `g_i_outbound_transaction_relation_bill`(`relation_bill`) COVERING (`id`, `site_code`) DBPARTITION BY HASH(`relation_bill`) TBPARTITION BY HASH(`relation_bill`) TBPARTITIONS 32
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4                                                                                                                                                   COMMENT ''  dbpartition by hash(`site_code`) tbpartition by hash(`site_code`) tbpartitions 128
+
+img:
+  CREATE TABLE `img` (
+  `imgid` bigint(20) NOT NULL AUTO_INCREMENT BY GROUP,
+  `imgid_md5` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `uid` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `picurl` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `picisnull` tinyint(1) UNSIGNED NOT NULL DEFAULT '1',
+  `img_title` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `img_info` text COLLATE utf8mb4_unicode_ci,
+  `img_param` text COLLATE utf8mb4_unicode_ci,
+  `font_id` text COLLATE utf8mb4_unicode_ci,
+  `store` int(11) UNSIGNED DEFAULT '0',
+  `ding_count` int(5) UNSIGNED DEFAULT '0',
+  `like_count` int(5) UNSIGNED DEFAULT '0',
+  `comment` int(4) UNSIGNED DEFAULT '0',
+  `ps` mediumtext COLLATE utf8mb4_unicode_ci,
+  `ps_content` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `ps_content_keywords` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `ps_origin_imgid` int(11) UNSIGNED DEFAULT '0',
+  `ps_origin_uid` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `square` int(11) DEFAULT '0',
+  `is_ding` tinyint(1) UNSIGNED DEFAULT '0',
+  `is_del` tinyint(1) UNSIGNED DEFAULT '0',
+  `is_private` tinyint(1) UNSIGNED DEFAULT '0',
+  `activity_id` int(11) UNSIGNED DEFAULT '0',
+  `ding_weight` int(3) UNSIGNED DEFAULT '0',
+  `admin_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`imgid`),
+  KEY `like_count` (`like_count`),
+  KEY `ding_weight` (`ding_weight`, `imgid`),
+  KEY `ps_origin_imgid` (`ps_origin_imgid`),
+  KEY `activity_id` (`activity_id`, `ding_weight`),
+  KEY `uid_is_null` (`uid`, `is_del`, `picisnull`),
+  KEY `imgid_cover` (`imgid`, `is_del`, `picisnull`, `is_private`),
+  KEY `uid_imgid_is_del_picisnull` USING BTREE (`uid`, `imgid`, `picisnull`, `is_del`),
+  KEY `idx_picurl` (`picurl`),
+  KEY `idx_imgid_md5` (`imgid_md5`),
+  KEY `idx_uid_admin_cover` (`uid`, `admin_time`, `picisnull`, `is_del`, `is_private`, `like_count`, `imgid`),
+  KEY `date` (`admin_time`, `imgid`)
+  ) ENGINE = InnoDB AUTO_INCREMENT = 1620733506 DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_unicode_ci ROW_FORMAT = DYNAMIC  dbpartition by hash(`imgid`) tbpartition by hash(`imgid`) tbpartitions 13
+
+test_hash_tb1:
+  CREATE TABLE `test_hash_tb1` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb2:
+  CREATE TABLE `test_hash_tb2` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  `int_col1` int DEFAULT NULL,
+  `int_col2` int DEFAULT NULL,
+  `int_col3` int DEFAULT NULL,
+  `int_col4` int DEFAULT NULL,
+  `int_col5` int DEFAULT NULL,
+  `int_col6` int DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);

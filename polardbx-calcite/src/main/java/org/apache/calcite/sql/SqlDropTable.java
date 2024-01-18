@@ -22,32 +22,33 @@ import org.apache.calcite.sql.parser.SqlParserPos;
  * Parse tree for {@code DROP TABLE} statement.
  */
 public class SqlDropTable extends SqlDropObject {
-  private static final SqlOperator OPERATOR =
-      new SqlSpecialOperator("DROP TABLE", SqlKind.DROP_TABLE);
-  
-  private boolean purge = false;
-  private final SqlIdentifier originTableName;
-  
-  SqlDropTable(SqlParserPos pos, boolean ifExists, SqlIdentifier name, boolean purge) {
-	    super(OPERATOR, pos, ifExists, name);
-	    this.purge = purge;
-	    this.originTableName = name;
-	  }
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("DROP TABLE", SqlKind.DROP_TABLE);
 
-  public SqlNode getTargetTable() {
-    return name;
-  }
+    private boolean purge = false;
+    private final SqlIdentifier originTableName;
 
-  public void setTargetTable(SqlNode targetTable) {
-    this.name = targetTable;
-  }
-  public boolean isPurge() {
-		return purge;
-	}
+    public SqlDropTable(SqlParserPos pos, boolean ifExists, SqlIdentifier name, boolean purge) {
+        super(OPERATOR, pos, ifExists, name);
+        this.purge = purge;
+        this.originTableName = name;
+    }
 
-	public void setPurge(boolean purge) {
-		this.purge = purge;
-	}
+    public SqlNode getTargetTable() {
+        return name;
+    }
+
+    public void setTargetTable(SqlNode targetTable) {
+        this.name = targetTable;
+    }
+
+    public boolean isPurge() {
+        return purge;
+    }
+
+    public void setPurge(boolean purge) {
+        this.purge = purge;
+    }
 
     public SqlIdentifier getOriginTableName() {
         return originTableName;

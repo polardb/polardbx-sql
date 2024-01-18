@@ -23,69 +23,57 @@ public interface BinlogEventOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.BinlogEvent)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The logName.
-     */
-    java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The logName.
+   */
+  java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The bytes for logName.
+   */
+  com.google.protobuf.ByteString
+      getLogNameBytes();
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The bytes for logName.
-     */
-    com.google.protobuf.ByteString
-    getLogNameBytes();
+  /**
+   * <code>int64 pos = 2;</code>
+   * @return The pos.
+   */
+  long getPos();
 
-    /**
-     * <code>int64 pos = 2;</code>
-     *
-     * @return The pos.
-     */
-    long getPos();
+  /**
+   * <code>string eventType = 3;</code>
+   * @return The eventType.
+   */
+  java.lang.String getEventType();
+  /**
+   * <code>string eventType = 3;</code>
+   * @return The bytes for eventType.
+   */
+  com.google.protobuf.ByteString
+      getEventTypeBytes();
 
-    /**
-     * <code>string eventType = 3;</code>
-     *
-     * @return The eventType.
-     */
-    java.lang.String getEventType();
+  /**
+   * <code>int64 serverId = 4;</code>
+   * @return The serverId.
+   */
+  long getServerId();
 
-    /**
-     * <code>string eventType = 3;</code>
-     *
-     * @return The bytes for eventType.
-     */
-    com.google.protobuf.ByteString
-    getEventTypeBytes();
+  /**
+   * <code>int64 endLogPos = 5;</code>
+   * @return The endLogPos.
+   */
+  long getEndLogPos();
 
-    /**
-     * <code>int64 serverId = 4;</code>
-     *
-     * @return The serverId.
-     */
-    long getServerId();
-
-    /**
-     * <code>int64 endLogPos = 5;</code>
-     *
-     * @return The endLogPos.
-     */
-    long getEndLogPos();
-
-    /**
-     * <code>string info = 6;</code>
-     *
-     * @return The info.
-     */
-    java.lang.String getInfo();
-
-    /**
-     * <code>string info = 6;</code>
-     *
-     * @return The bytes for info.
-     */
-    com.google.protobuf.ByteString
-    getInfoBytes();
+  /**
+   * <code>string info = 6;</code>
+   * @return The info.
+   */
+  java.lang.String getInfo();
+  /**
+   * <code>string info = 6;</code>
+   * @return The bytes for info.
+   */
+  com.google.protobuf.ByteString
+      getInfoBytes();
 }

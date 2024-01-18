@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.server.response;
 
-import com.alibaba.polardbx.ErrorCode;
 import com.alibaba.polardbx.Fields;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -51,7 +51,7 @@ public final class ShowConnection {
     private static final int FIELD_COUNT = 13;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
     private static final FieldPacket[] fields = new FieldPacket[FIELD_COUNT];
-    private static final EOFPacket eof = new EOFPacket();
+    private static final byte packetId = FIELD_COUNT + 1;
 
     static {
         int i = 0;
@@ -96,11 +96,9 @@ public final class ShowConnection {
 
         fields[i] = PacketUtil.getField("NEED_RECONNECT", Fields.FIELD_TYPE_LONG);
         fields[i++].packetId = ++packetId;
-
-        eof.packetId = ++packetId;
     }
 
-    public static void execute(ServerConnection c, boolean hasMore) {
+    public static boolean execute(ServerConnection c, boolean hasMore) {
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();
@@ -113,17 +111,21 @@ public final class ShowConnection {
             proxy = field.write(proxy);
         }
 
+        byte tmpPacketId = packetId;
         // write eof
-        proxy = eof.write(proxy);
+        if (!c.isEofDeprecated()) {
+            EOFPacket eof = new EOFPacket();
+            eof.packetId = ++tmpPacketId;
+            proxy = eof.write(proxy);
+        }
 
         // write rows
-        byte packetId = eof.packetId;
         String charset = c.getCharset();
 
         SchemaConfig schema = c.getSchemaConfig();
         if (schema == null) {
             c.writeErrMessage(ErrorCode.ER_BAD_DB_ERROR, "Unknown database '" + c.getSchema() + "'");
-            return;
+            return false;
         }
 
         TDataSource ds = schema.getDataSource();
@@ -132,7 +134,7 @@ public final class ShowConnection {
                 ds.init();
             } catch (Throwable e) {
                 c.handleError(ErrorCode.ERR_HANDLE_DATA, e);
-                return;
+                return false;
             }
         }
 
@@ -159,14 +161,14 @@ public final class ShowConnection {
                 row.add(IntegerUtil.toBytes(DataTypes.IntegerType.convertFrom(conn.get("CHANNELS"))));
                 row.add(IntegerUtil.toBytes(DataTypes.IntegerType.convertFrom(conn.get("TRX"))));
                 row.add(IntegerUtil.toBytes(DataTypes.IntegerType.convertFrom(conn.get("NEED_RECONNECT"))));
-                row.packetId = ++packetId;
+                row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);
 
             }
         }
         // write last eof
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++packetId;
+        lastEof.packetId = ++tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -174,6 +176,8 @@ public final class ShowConnection {
 
         // write buffer
         proxy.packetEnd();
+
+        return true;
     }
 
 }

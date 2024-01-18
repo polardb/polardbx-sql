@@ -20,21 +20,26 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataType;
 import com.alibaba.polardbx.druid.sql.ast.SQLParameter;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
-import com.alibaba.polardbx.executor.pl.type.BasicTypeBuilders;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import com.alibaba.polardbx.optimizer.core.datatype.type.BasicTypeBuilders;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.Multimap;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.schema.Function;
 import org.apache.calcite.schema.impl.TypeKnownScalarFunction;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.SqlSyntax;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.AssignableOperandTypeChecker;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
+import org.apache.calcite.sql.util.ReflectiveSqlOperatorTable;
 import org.apache.calcite.sql.validate.SqlUserDefinedFunction;
 
 import java.util.List;
@@ -43,15 +48,15 @@ import java.util.stream.Collectors;
 public class UdfUtils {
     public static void registerSqlUdf(String createFunctionStr, boolean canPush) {
         SqlUserDefinedFunction udf = createSqlUdf(createFunctionStr, canPush);
-        // register udf
-        TddlOperatorTable.instance().register(udf);
+        synchronized (TddlOperatorTable.instance()) {
+            // register udf
+            Multimap<ReflectiveSqlOperatorTable.Key, SqlOperator> operators =
+                HashMultimap.create(TddlOperatorTable.instance().getOperators());
+            operators.put(new ReflectiveSqlOperatorTable.Key(udf.getName(), udf.getSyntax()), udf);
+            TddlOperatorTable.instance().setOperators(operators);
+        }
         // enable type coercion
         SqlStdOperatorTable.instance().enableTypeCoercion(udf);
-    }
-
-    // TODO : check collation and other situation
-    private static RelDataType createBasicSqlType(RelDataTypeSystem typeSystem, SQLDataType dataType) {
-        return BasicTypeBuilders.getTypeBuilder(dataType.getName()).createBasicSqlType(typeSystem, dataType);
     }
 
     public static SqlUserDefinedFunction createSqlUdf(String createFunctionStr, boolean canPush) {
@@ -61,13 +66,14 @@ public class UdfUtils {
         // create scalar function
         List<SQLParameter> inputParams = statement.getParameters();
         List<RelDataType> inputTypes =
-            inputParams.stream().map(t -> createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), t.getDataType()))
+            inputParams.stream()
+                .map(t -> DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), t.getDataType()))
                 .collect(Collectors.toList());
         List<String> inputNames =
             inputParams.stream().map(t -> t.getName().getSimpleName()).collect(Collectors.toList());
 
         RelDataType returnType =
-            createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
+            DataTypeUtil.createBasicSqlType(TddlRelDataTypeSystemImpl.getInstance(), statement.getReturnDataType());
 
         Function function = new TypeKnownScalarFunction(returnType, inputTypes, inputNames);
 
@@ -79,7 +85,12 @@ public class UdfUtils {
     }
 
     public static void unregisterSqlUdf(String functionName) {
-        TddlOperatorTable.instance().unregister(functionName, SqlSyntax.FUNCTION);
+        synchronized (TddlOperatorTable.instance()) {
+            Multimap<ReflectiveSqlOperatorTable.Key, SqlOperator> operators =
+                HashMultimap.create(TddlOperatorTable.instance().getOperators());
+            operators.removeAll(new ReflectiveSqlOperatorTable.Key(functionName, SqlSyntax.FUNCTION));
+            TddlOperatorTable.instance().setOperators(operators);
+        }
         // disable type coercion
         SqlStdOperatorTable.instance().disableTypeCoercion(functionName, SqlSyntax.FUNCTION);
     }

@@ -1,0 +1,256 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `sb_pruning_test` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+CREATE TABLE `sb_pruning_test1` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+CREATE TABLE `sb_pruning_test2` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+CREATE TABLE `sb_pruning_test3` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+CREATE TABLE `sb_pruning_test4` (
+`a` bigint(20) NOT NULL,
+`b` bigint(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`a`,`b`,`c`)
+(PARTITION `p1` VALUES LESS THAN (100,1000,10000) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (200,2000,20000) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (300,3000,30000) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (400,4000,40000) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (500,5000,50000) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600,6000,60000) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (700,7000,70000) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (800,8000,80000) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (900,9000,90000) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (1000,10000,100000) ENGINE = InnoDB);
+
+insert into sb_pruning_test values
+ (90,900,9000,90000,900000)
+,(91,901,9001,90001,900001)
+,(92,902,9002,90002,900002)
+,(93,903,9003,90003,900003)
+,(94,904,9004,90004,900004)
+,(95,905,9005,90005,900005)
+,(96,906,9006,90006,900006)
+,(97,907,9007,90007,900007)
+,(98,908,9008,90008,900008)
+,(99,909,9009,90009,900009)
+,(190,1900,19000,190000,1900000)
+,(191,1901,19001,190001,1900001)
+,(192,1902,19002,190002,1900002)
+,(193,1903,19003,190003,1900003)
+,(194,1904,19004,190004,1900004)
+,(195,1905,19005,190005,1900005)
+,(196,1906,19006,190006,1900006)
+,(197,1907,19007,190007,1900007)
+,(198,1908,19008,190008,1900008)
+,(199,1909,19009,190009,1900009)
+;
+
+insert into sb_pruning_test1 values
+(90,900,9000,90000,900000)
+,(91,901,9001,90001,900001)
+,(92,902,9002,90002,900002)
+,(93,903,9003,90003,900003)
+,(94,904,9004,90004,900004)
+,(95,905,9005,90005,900005)
+,(96,906,9006,90006,900006)
+,(97,907,9007,90007,900007)
+,(98,908,9008,90008,900008)
+,(99,909,9009,90009,900009)
+,(190,1900,19000,190000,1900000)
+,(191,1901,19001,190001,1900001)
+,(192,1902,19002,190002,1900002)
+,(193,1903,19003,190003,1900003)
+,(194,1904,19004,190004,1900004)
+,(195,1905,19005,190005,1900005)
+,(196,1906,19006,190006,1900006)
+,(197,1907,19007,190007,1900007)
+,(198,1908,19008,190008,1900008)
+,(199,1909,19009,190009,1900009)
+;
+
+insert into sb_pruning_test2 values
+(90,900,9000,90000,900000)
+,(91,901,9001,90001,900001)
+,(92,902,9002,90002,900002)
+,(93,903,9003,90003,900003)
+,(94,904,9004,90004,900004)
+,(95,905,9005,90005,900005)
+,(96,906,9006,90006,900006)
+,(97,907,9007,90007,900007)
+,(98,908,9008,90008,900008)
+,(99,909,9009,90009,900009)
+,(190,1900,19000,190000,1900000)
+,(191,1901,19001,190001,1900001)
+,(192,1902,19002,190002,1900002)
+,(193,1903,19003,190003,1900003)
+,(194,1904,19004,190004,1900004)
+,(195,1905,19005,190005,1900005)
+,(196,1906,19006,190006,1900006)
+,(197,1907,19007,190007,1900007)
+,(198,1908,19008,190008,1900008)
+,(199,1909,19009,190009,1900009)
+;
+
+insert into sb_pruning_test3 values
+(90,900,9000,90000,900000)
+,(91,901,9001,90001,900001)
+,(92,902,9002,90002,900002)
+,(93,903,9003,90003,900003)
+,(94,904,9004,90004,900004)
+,(95,905,9005,90005,900005)
+,(96,906,9006,90006,900006)
+,(97,907,9007,90007,900007)
+,(98,908,9008,90008,900008)
+,(99,909,9009,90009,900009)
+,(190,1900,19000,190000,1900000)
+,(191,1901,19001,190001,1900001)
+,(192,1902,19002,190002,1900002)
+,(193,1903,19003,190003,1900003)
+,(194,1904,19004,190004,1900004)
+,(195,1905,19005,190005,1900005)
+,(196,1906,19006,190006,1900006)
+,(197,1907,19007,190007,1900007)
+,(198,1908,19008,190008,1900008)
+,(199,1909,19009,190009,1900009)
+;
+
+insert into sb_pruning_test4 values
+(90,900,9000,90000,900000)
+,(91,901,9001,90001,900001)
+,(92,902,9002,90002,900002)
+,(93,903,9003,90003,900003)
+,(94,904,9004,90004,900004)
+,(95,905,9005,90005,900005)
+,(96,906,9006,90006,900006)
+,(97,907,9007,90007,900007)
+,(98,908,9008,90008,900008)
+,(99,909,9009,90009,900009)
+,(190,1900,19000,190000,1900000)
+,(191,1901,19001,190001,1900001)
+,(192,1902,19002,190002,1900002)
+,(193,1903,19003,190003,1900003)
+,(194,1904,19004,190004,1900004)
+,(195,1905,19005,190005,1900005)
+,(196,1906,19006,190006,1900006)
+,(197,1907,19007,190007,1900007)
+,(198,1908,19008,190008,1900008)
+,(199,1909,19009,190009,1900009)
+;
+
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) = 98, one scalarSubQuery of equality;
+explain select a from sb_pruning_test1 where  a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  and a between 97 and 200 order by a;
+
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) = 98, one scalarSubQuery with comparative;
+explain select a from sb_pruning_test1 where  a <= ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a <= ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  and a between 97 and 200 order by a;
+
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1) = 99, multi-scalarSubQuery;
+explain select a from sb_pruning_test1 where  ( a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  or  a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1 )) and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  ( a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1 )  or  a = ( select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1 )) and a between 97 and 200 order by a;
+
+# scalarSubQuery + inQuery;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (96,97,98,190) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (96,97,98,190) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1) = 99
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) = 98
+# inQuery with multi scalar subQuery;
+explain select a from sb_pruning_test1 where  a in ( (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1), (select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1) )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1), (select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1) )  and a between 97 and 200 order by a;
+
+# scalarSubQuery wrapped with scalarSubQuery;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+
+# scalarSubQuery wrapped with applySubQuery;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+
+# (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) = 98
+# (select t3.b from sb_pruning_test3 t2 order by t3.b limit 8,1) = 908
+# multi inSubQuery with diff partition columns on one AND operator;
+explain select a,b from sb_pruning_test1 where  a in (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) and b in (select t3.b from sb_pruning_test3 t3 order by t3.b limit 8,1) and a between 97 and 200 order by a;
+select a,b from sb_pruning_test1 where  a in (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) and b in (select t3.b from sb_pruning_test3 t3 order by t3.b limit 8,1) and a between 97 and 200 order by a;
+
+## error_msg: $# SCALAR_QUERY must be one #$
+select a from sb_pruning_test1 where  (a,b) <= ( select t2.a,t2.b from sb_pruning_test2 t2 order by t2.a limit 8,1 )  and a between 97 and 200 order by a;
+

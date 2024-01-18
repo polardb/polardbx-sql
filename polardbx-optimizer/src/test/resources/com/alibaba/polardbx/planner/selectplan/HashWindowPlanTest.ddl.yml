@@ -1,0 +1,36 @@
+t1:
+  CREATE TABLE `t1` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c1`)
+
+t2:
+  CREATE TABLE `t2` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`c1`)
+
+t_single:
+  CREATE TABLE `t_single` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+
+t_broadcast:
+  CREATE TABLE `t_broadcast` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  KEY `auto_shard_key_c1` USING BTREE (`c1`)
+  ) ENGINE = InnoDB BROADCAST;
+
+t_gsi:
+  CREATE TABLE `t_gsi` (
+  `c1` int(11) NOT NULL,
+  `c2` int(11) DEFAULT NULL,
+  `c3` int(11) DEFAULT NULL,
+  PRIMARY KEY(`c1`),
+  GLOBAL INDEX `g_t_gsi`(`c2`) COVERING (`c1`) DBPARTITION BY HASH(`c2`)
+  ) ENGINE = InnoDB dbpartition by hash(`c1`)

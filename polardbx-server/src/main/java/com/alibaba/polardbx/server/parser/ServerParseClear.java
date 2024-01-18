@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.server.parser;
 
-import com.alibaba.polardbx.server.util.ParseUtil;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.server.util.ParseUtil;
+
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * @author xianmao.hexm 2011-5-7 下午01:23:06
@@ -32,6 +35,19 @@ public final class ServerParseClear {
     public static final int HEATMAP_CACHE = 4;
     public static final int PROCEDURE_CACHE = 5;
     public static final int FUNCTION_CACHE = 6;
+
+    public static final Set<Integer> PREPARE_UNSUPPORTED_CLEAR_TYPE;
+
+    static {
+        PREPARE_UNSUPPORTED_CLEAR_TYPE = new HashSet<>();
+
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(SLOW);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(PLANCACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(OSSCACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(HEATMAP_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(PROCEDURE_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(FUNCTION_CACHE);
+    }
 
     public static int parse(ByteString stmt, int offset) {
         int i = offset;
@@ -49,12 +65,12 @@ public final class ServerParseClear {
             case 'P':
             case 'p':
                 return pCheck(stmt, i);
-            case 'H':
-            case 'h':
-                return partitionsHeatmapCacheCheck(stmt, i);
             case 'O':
             case 'o':
                 return ossCacheCheck(stmt, i);
+            case 'H':
+            case 'h':
+                return partitionsHeatmapCacheCheck(stmt, i);
             case 'F':
             case 'f':
                 return functionCheck(stmt, i);
@@ -110,7 +126,7 @@ public final class ServerParseClear {
         return OTHER;
     }
 
-
+    // CLEAR PLANCACHE
     private static int ossCacheCheck(ByteString stmt, int offset) {
         final String expect = "OSS CACHE";
         if (stmt.length() >= offset + expect.length()) {

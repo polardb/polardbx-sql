@@ -1,0 +1,52 @@
+## DISABLE_FAST_SQL_PARSER
+
+  ## error_msg: $# too long #$
+create table if not exists r_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+  subpartition sp1 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd12345678900 values less than ( maxvalue )
+);
+
+
+  ## error_msg: $# too long #$
+create table if not exists r_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+subpartition sp1abc12345678900 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd1234567890 values less than ( maxvalue )
+);
+
+
+create table if not exists r_l_tp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a) (
+subpartition sp1abc1234567890 values in (1,2,3,4,5,6,7,8)
+)
+(
+partition pmabcd1234567890 values less than ( maxvalue )
+);
+alter table r_l_tp modify subpartition sp1abc1234567890 drop values (2,3,4);
+show create table r_l_tp;

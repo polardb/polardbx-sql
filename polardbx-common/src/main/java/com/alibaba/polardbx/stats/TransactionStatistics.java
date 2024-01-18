@@ -16,14 +16,47 @@
 
 package com.alibaba.polardbx.stats;
 
-import java.util.concurrent.atomic.AtomicLong;
+import com.alibaba.polardbx.common.type.TransactionType;
+import io.airlift.slice.XxHash64;
 
+/**
+ * Distributed transaction metrics
+ */
 public class TransactionStatistics {
+    public TransactionType transactionType;
+    public boolean readOnly = true;
+    public long startTimeInMs = 0;
+    public long startTime = 0;
+    public long sqlStartTime = 0;
+    public long sqlFinishTime = 0;
+    public long durationTime = 0;
+    public long finishTimeInMs = 0;
+    public long activeTime = 0;
+    public long idleTime = 0;
+    public long mdlWaitTime = 0;
+    public long getTsoTime = 0;
+    public long prepareTime = 0;
+    public long commitTime = 0;
+    public long trxLogTime = 0;
+    public long rollbackTime = 0;
+    public long readTime = 0;
+    public long readReturnRows = 0;
+    public long writeTime = 0;
+    public long writeAffectRows = 0;
+    public long sqlCount = 0;
+    public long rwSqlCount = 0;
+    public long lastActiveTime = 0;
+    public XxHash64 trxTemplate = new XxHash64();
 
-    public final AtomicLong countXA = new AtomicLong();
+    public enum Status {
+        UNKNOWN, COMMIT, ROLLBACK, COMMIT_FAIL, ROLLBACK_FAIL, KILL
+    }
 
-    public final AtomicLong countBestEffort = new AtomicLong();
+    public Status status = Status.UNKNOWN;
 
-    public final AtomicLong countTSO = new AtomicLong();
-
+    public void setIfUnknown(Status s) {
+        if (Status.UNKNOWN == status) {
+            status = s;
+        }
+    }
 }

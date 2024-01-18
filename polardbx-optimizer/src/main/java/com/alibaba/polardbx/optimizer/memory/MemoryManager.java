@@ -138,6 +138,10 @@ public class MemoryManager extends AbstractLifecycle {
         }
     }
 
+    public MemoryPool createCursorFetchMemoryPool(String name, long queryMemoryLimit) {
+        return apMemoryPool.getOrCreatePool(name, queryMemoryLimit, MemoryType.CURSOR_FETCH);
+    }
+
     public TpMemoryPool getTpMemoryPool() {
         return tpMemoryPool;
     }

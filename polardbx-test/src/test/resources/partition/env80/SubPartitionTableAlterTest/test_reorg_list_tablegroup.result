@@ -1,0 +1,285 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup if not exists reorg_list_tg;
+create tablegroup if not exists reorg_list_tg_n;
+drop table if exists sp_list_list_1;
+drop table if exists sp_list_list_2;
+drop table if exists sp_list_list_n;
+## sp_list_list_1
+create table sp_list_list_1 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by list (id)
+subpartition by list (age) subpartition template (
+subpartition sp1 values in (10),
+subpartition sp2 values in (20),
+subpartition sp3 values in (30),
+subpartition sp4 values in (40),
+subpartition sp5 values in (50)
+) (
+partition p1 values in (1000),
+partition p2 values in (2000),
+partition p3 values in (3000),
+partition p4 values in (4000),
+partition p5 values in (5000)
+) tablegroup=reorg_list_tg;
+## sp_list_list_2
+create table sp_list_list_2 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by list (id)
+subpartition by list (age) subpartition template (
+subpartition sp1 values in (10),
+subpartition sp2 values in (20),
+subpartition sp3 values in (30),
+subpartition sp4 values in (40),
+subpartition sp5 values in (50)
+) (
+partition p1 values in (1000),
+partition p2 values in (2000),
+partition p3 values in (3000),
+partition p4 values in (4000),
+partition p5 values in (5000)
+) tablegroup=reorg_list_tg;
+## sp_list_list_n
+create table sp_list_list_n (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by list (id)
+subpartition by list (age) (
+partition p1 values in (1000) (
+subpartition p1sp1 values in (10)
+),
+partition p2 values in (2000) (
+subpartition p2sp1 values in (10),
+subpartition p2sp2 values in (20)
+),
+partition p3 values in (3000) (
+subpartition p3sp1 values in (10),
+subpartition p3sp2 values in (20),
+subpartition p3sp3 values in (30)
+),
+partition p4 values in (4000) (
+subpartition p4sp1 values in (10),
+subpartition p4sp2 values in (20),
+subpartition p4sp3 values in (30),
+subpartition p4sp4 values in (40)
+),
+partition p5 values in (5000) (
+subpartition p5sp1 values in (10),
+subpartition p5sp2 values in (20),
+subpartition p5sp3 values in (30),
+subpartition p5sp4 values in (40),
+subpartition p5sp5 values in (50)
+)
+) tablegroup=reorg_list_tg_n;
+show full create table sp_list_list_1;
+Table,Create Table
+sp_list_list_1,CREATE TABLE `sp_list_list_1` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(SUBPARTITION sp1 VALUES IN (10),
+ SUBPARTITION sp2 VALUES IN (20),
+ SUBPARTITION sp3 VALUES IN (30),
+ SUBPARTITION sp4 VALUES IN (40),
+ SUBPARTITION sp5 VALUES IN (50))
+(PARTITION p1 VALUES IN (1000),
+ PARTITION p2 VALUES IN (2000),
+ PARTITION p3 VALUES IN (3000),
+ PARTITION p4 VALUES IN (4000),
+ PARTITION p5 VALUES IN (5000))
+tablegroup = `reorg_list_tg`
+show full create table sp_list_list_2;
+Table,Create Table
+sp_list_list_2,CREATE TABLE `sp_list_list_2` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(SUBPARTITION sp1 VALUES IN (10),
+ SUBPARTITION sp2 VALUES IN (20),
+ SUBPARTITION sp3 VALUES IN (30),
+ SUBPARTITION sp4 VALUES IN (40),
+ SUBPARTITION sp5 VALUES IN (50))
+(PARTITION p1 VALUES IN (1000),
+ PARTITION p2 VALUES IN (2000),
+ PARTITION p3 VALUES IN (3000),
+ PARTITION p4 VALUES IN (4000),
+ PARTITION p5 VALUES IN (5000))
+tablegroup = `reorg_list_tg`
+show full create table sp_list_list_n;
+Table,Create Table
+sp_list_list_n,CREATE TABLE `sp_list_list_n` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(PARTITION p1 VALUES IN (1000)
+ (SUBPARTITION p1sp1 VALUES IN (10) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2000)
+ (SUBPARTITION p2sp1 VALUES IN (10) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN (20) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (3000)
+ (SUBPARTITION p3sp1 VALUES IN (10) ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN (20) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES IN (30) ENGINE = InnoDB),
+ PARTITION p4 VALUES IN (4000)
+ (SUBPARTITION p4sp1 VALUES IN (10) ENGINE = InnoDB,
+  SUBPARTITION p4sp2 VALUES IN (20) ENGINE = InnoDB,
+  SUBPARTITION p4sp3 VALUES IN (30) ENGINE = InnoDB,
+  SUBPARTITION p4sp4 VALUES IN (40) ENGINE = InnoDB),
+ PARTITION p5 VALUES IN (5000)
+ (SUBPARTITION p5sp1 VALUES IN (10) ENGINE = InnoDB,
+  SUBPARTITION p5sp2 VALUES IN (20) ENGINE = InnoDB,
+  SUBPARTITION p5sp3 VALUES IN (30) ENGINE = InnoDB,
+  SUBPARTITION p5sp4 VALUES IN (40) ENGINE = InnoDB,
+  SUBPARTITION p5sp5 VALUES IN (50) ENGINE = InnoDB))
+tablegroup = `reorg_list_tg_n`
+insert into sp_list_list_1(id,age) values(1000,10);
+insert into sp_list_list_1(id,age) values(2000,20);
+insert into sp_list_list_1(id,age) values(3000,30);
+insert into sp_list_list_1(id,age) values(4000,40);
+insert into sp_list_list_1(id,age) values(5000,50);
+insert into sp_list_list_2(id,age) values(1000,10);
+insert into sp_list_list_2(id,age) values(2000,20);
+insert into sp_list_list_2(id,age) values(3000,30);
+insert into sp_list_list_2(id,age) values(4000,40);
+insert into sp_list_list_2(id,age) values(5000,50);
+insert into sp_list_list_n(id,age) values(1000,10);
+insert into sp_list_list_n(id,age) values(2000,20);
+insert into sp_list_list_n(id,age) values(3000,30);
+insert into sp_list_list_n(id,age) values(4000,40);
+insert into sp_list_list_n(id,age) values(5000,50);
+alter tablegroup reorg_list_tg reorganize partition p1,p2,p3,p4,p5 into (
+partition p1 values in (1000,2000),
+partition p2 values in (3000,4000,5000)
+);
+alter tablegroup reorg_list_tg reorganize partition p1,p2 into (
+partition p1 values in (1000,2000),
+partition p2 values in (3000,4000),
+partition p3 values in (5000)
+);
+alter tablegroup reorg_list_tg reorganize partition p1,p2 into (
+partition p1 values in (1000,3000),
+partition p2 values in (2000,4000)
+);
+alter tablegroup reorg_list_tg reorganize subpartition sp1,sp2,sp3,sp4,sp5 into (
+subpartition sp1 values in (10,20),
+subpartition sp2 values in (30,40,50)
+);
+alter tablegroup reorg_list_tg reorganize subpartition sp1,sp2 into (
+subpartition sp1 values in (10,20),
+subpartition sp2 values in (30,40),
+subpartition sp3 values in (50)
+);
+alter tablegroup reorg_list_tg reorganize subpartition sp1,sp2 into (
+subpartition sp1 values in (10,30),
+subpartition sp2 values in (20,40)
+);
+alter tablegroup reorg_list_tg_n reorganize partition p1,p2,p3,p4,p5 into (
+partition p1 values in (1000,2000),
+partition p2 values in (3000,4000,5000)
+);
+alter tablegroup reorg_list_tg_n reorganize partition p1,p2 into (
+partition p1 values in (1000,2000),
+partition p2 values in (3000,4000),
+partition p3 values in (5000)
+);
+alter tablegroup reorg_list_tg_n reorganize partition p1,p2 into (
+partition p1 values in (1000,3000),
+partition p2 values in (2000,4000)
+);
+alter tablegroup reorg_list_tg_n reorganize subpartition p3sp1 into (
+subpartition p3sp1 values in (10,30),
+subpartition p3sp2 values in (20,40),
+subpartition p3sp3 values in (50),
+subpartition p3sp4 values in (default)
+);
+alter tablegroup reorg_list_tg_n reorganize subpartition p2sp1 into (
+subpartition p2sp1 values in (10,20),
+subpartition p2sp2 values in (30,40,50),
+subpartition p2sp3 values in (default)
+);
+alter tablegroup reorg_list_tg_n reorganize subpartition p1sp1 into (
+subpartition p1sp1 values in (10,20,30,40,50),
+subpartition p1sp2 values in (default)
+);
+show full create table sp_list_list_1;
+Table,Create Table
+sp_list_list_1,CREATE TABLE `sp_list_list_1` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(SUBPARTITION sp1 VALUES IN (10,30),
+ SUBPARTITION sp2 VALUES IN (20,40),
+ SUBPARTITION sp3 VALUES IN (50))
+(PARTITION p1 VALUES IN (1000,3000),
+ PARTITION p2 VALUES IN (2000,4000),
+ PARTITION p3 VALUES IN (5000))
+tablegroup = `reorg_list_tg`
+show full create table sp_list_list_2;
+Table,Create Table
+sp_list_list_2,CREATE TABLE `sp_list_list_2` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(SUBPARTITION sp1 VALUES IN (10,30),
+ SUBPARTITION sp2 VALUES IN (20,40),
+ SUBPARTITION sp3 VALUES IN (50))
+(PARTITION p1 VALUES IN (1000,3000),
+ PARTITION p2 VALUES IN (2000,4000),
+ PARTITION p3 VALUES IN (5000))
+tablegroup = `reorg_list_tg`
+show full create table sp_list_list_n;
+Table,Create Table
+sp_list_list_n,CREATE TABLE `sp_list_list_n` (
+	`id` int(11) NOT NULL,
+	`age` int(11) DEFAULT NULL,
+	`name` char(32) DEFAULT NULL,
+	`ctime` datetime DEFAULT NULL,
+	`remark` varchar(32) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	LOCAL KEY `auto_shard_key_age` USING BTREE (`age`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`id`)
+SUBPARTITION BY LIST(`age`)
+(PARTITION p1 VALUES IN (1000,3000)
+ (SUBPARTITION p1sp1 VALUES IN (10,20,30,40,50) ENGINE = InnoDB,
+  SUBPARTITION p1sp2 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p2 VALUES IN (2000,4000)
+ (SUBPARTITION p2sp1 VALUES IN (10,20) ENGINE = InnoDB,
+  SUBPARTITION p2sp2 VALUES IN (30,40,50) ENGINE = InnoDB,
+  SUBPARTITION p2sp3 VALUES IN (DEFAULT) ENGINE = InnoDB),
+ PARTITION p3 VALUES IN (5000)
+ (SUBPARTITION p3sp1 VALUES IN (10,30) ENGINE = InnoDB,
+  SUBPARTITION p3sp2 VALUES IN (20,40) ENGINE = InnoDB,
+  SUBPARTITION p3sp3 VALUES IN (50) ENGINE = InnoDB,
+  SUBPARTITION p3sp4 VALUES IN (DEFAULT) ENGINE = InnoDB))
+tablegroup = `reorg_list_tg_n`

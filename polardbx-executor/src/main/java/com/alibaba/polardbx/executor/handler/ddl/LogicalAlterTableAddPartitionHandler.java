@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableAddPartitionJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -30,6 +31,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableAddPartition
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableAddPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.sql.SqlAlterTable;
+import org.apache.calcite.sql.SqlAlterTableAddPartition;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.util.Util;
 
@@ -52,18 +55,21 @@ public class LogicalAlterTableAddPartitionHandler extends LogicalCommonDdlHandle
 
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        AlterTable alterTable = (AlterTable) logicalDdlPlan.relDdl;
+        SqlAlterTable sqlAlterTable = (SqlAlterTable) alterTable.getSqlNode();
 
-        LogicalAlterTableAddPartition alterTableAddPartition =
-            (LogicalAlterTableAddPartition) logicalDdlPlan;
-        AlterTable alterTable = (AlterTable) alterTableAddPartition.relDdl;
+        assert sqlAlterTable.getAlters().size() == 1;
+        assert sqlAlterTable.getAlters().get(0) instanceof SqlAlterTableAddPartition;
 
+        String schemaName = logicalDdlPlan.getSchemaName();
         String logicalTableName = Util.last(((SqlIdentifier) alterTable.getTableName()).names);
-        String schemaName = alterTableAddPartition.getSchemaName();
-        boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-        if (!isNewPart) {
+
+        if (!DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                "can't execute the add partition command in drds mode");
+                "can't execute the add partition command in a non-auto mode database");
         }
+
+        TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
 
         final SchemaManager schemaManager = executionContext.getSchemaManager(schemaName);
         TableMeta tableMeta = schemaManager.getTable(logicalTableName);
@@ -72,7 +78,7 @@ public class LogicalAlterTableAddPartitionHandler extends LogicalCommonDdlHandle
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "can't add the partition group for single/broadcast tables");
         }
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

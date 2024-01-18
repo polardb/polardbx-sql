@@ -1,3 +1,19 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.calcite.sql;
 
 
@@ -30,17 +46,15 @@ public class SqlReplicationBase extends SqlDal {
     protected String keyWord;
     protected List<Pair<SqlNode, SqlNode>> optionNodes;
     protected SqlNode channelNode;
+    protected SqlNode subChannelNode;
     protected Map<String, String> params = new HashMap<>();
 
-    public SqlReplicationBase(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options) {
+    public SqlReplicationBase(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channelNode,
+                              SqlNode subChannelNode) {
         super(pos);
         this.optionNodes = options;
-    }
-
-    public SqlReplicationBase(SqlParserPos pos, List<Pair<SqlNode, SqlNode>> options, SqlNode channel) {
-        super(pos);
-        this.optionNodes = options;
-        this.channelNode = channel;
+        this.channelNode = channelNode;
+        this.subChannelNode = subChannelNode;
     }
 
     @Override
@@ -81,6 +95,13 @@ public class SqlReplicationBase extends SqlDal {
             params.put(RplConstants.CHANNEL, channel);
             writer.print(channel);
         }
+        if (subChannelNode != null) {
+            writer.keyword("FOR");
+            writer.keyword(RplConstants.SUB_CHANNEL);
+            String subChannel = ((NlsString)((SqlCharStringLiteral)subChannelNode).value).getValue();
+            params.put(RplConstants.SUB_CHANNEL, subChannel);
+            writer.print(subChannel);
+        }
         writer.endList(selectFrame);
     }
 
@@ -100,6 +121,7 @@ public class SqlReplicationBase extends SqlDal {
         } else {
             v = value.toString();
         }
+        v = v.trim();
         parseParams(k, v.replace("`", ""));
     }
 

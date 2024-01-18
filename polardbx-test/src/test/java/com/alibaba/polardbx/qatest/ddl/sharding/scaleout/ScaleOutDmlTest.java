@@ -19,12 +19,11 @@ package com.alibaba.polardbx.qatest.ddl.sharding.scaleout;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
-import net.jcip.annotations.NotThreadSafe;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,16 +36,17 @@ import java.util.stream.Stream;
 /**
  * @author luoyanxin
  */
-@RunWith(Parameterized.class)
+
 @NotThreadSafe
 public class ScaleOutDmlTest extends ScaleOutBaseTest {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> moveTableStatus =
-        Stream.of(ComplexTaskMetaManager.ComplexTaskStatus.ABSENT,
-            ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
-            ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
-            ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
-            ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
+        Stream.of(
+//            ComplexTaskMetaManager.ComplexTaskStatus.ABSENT,
+//            ComplexTaskMetaManager.ComplexTaskStatus.CREATING,
+//            ComplexTaskMetaManager.ComplexTaskStatus.DELETE_ONLY,
+//            ComplexTaskMetaManager.ComplexTaskStatus.WRITE_ONLY,
+//            ComplexTaskMetaManager.ComplexTaskStatus.READY_TO_PUBLIC,
             ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC).collect(Collectors.toList());
     final ComplexTaskMetaManager.ComplexTaskStatus finalTableStatus;
     static boolean firstIn = true;

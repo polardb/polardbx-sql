@@ -1,21 +1,32 @@
+/*
+ * Copyright [2013-2021], Alibaba Group Holding Limited
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.FunctionAccessor;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.pl.PLUtils;
-import com.alibaba.polardbx.executor.pl.StoredFunctionManager;
-import com.alibaba.polardbx.executor.pl.UdfUtils;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.pl.function.FunctionDefinitionRecord;
-import com.alibaba.polardbx.gms.metadb.pl.function.FunctionMetaRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -27,13 +38,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 
 @Getter
 @TaskName(name = "PushDownUdfTask")
 public class PushDownUdfTask extends BaseDdlTask {
-    private static String EXISTS_BUILTIN_FUNCTION = "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment != '%s' AND routine_name = '%s'";
-    private static String ALREADY_DEFINED_FUNCTION = "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment = '%s' AND routine_name = '%s'";
+    private static String EXISTS_BUILTIN_FUNCTION =
+        "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment != '%s' AND routine_name = '%s'";
+    private static String ALREADY_DEFINED_FUNCTION =
+        "SELECT * FROM information_schema.routines WHERE routine_schema = '%s' AND routine_comment = '%s' AND routine_name = '%s'";
 
     @JSONCreator
     public PushDownUdfTask(String schemaName) {
@@ -62,14 +74,18 @@ public class PushDownUdfTask extends BaseDdlTask {
                     String functionName = record.name;
                     String createFunction = PLUtils.getCreateFunctionOnDn(record.definition);
                     String originFunction = removeMysqlPrefix(functionName);
-                    try(ResultSet rs = stmt.executeQuery(String.format(EXISTS_BUILTIN_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT, originFunction))) {
+                    try (ResultSet rs = stmt.executeQuery(
+                        String.format(EXISTS_BUILTIN_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT,
+                            originFunction))) {
                         if (rs.next()) {
                             throw new TddlRuntimeException(ErrorCode.ERR_UDF_ALREADY_EXISTS,
                                 String.format("Function %s already exists on %s, and not created from polarx",
                                     originFunction, dnId));
                         }
                     }
-                    try(ResultSet rs = stmt.executeQuery(String.format(ALREADY_DEFINED_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT, originFunction))) {
+                    try (ResultSet rs = stmt.executeQuery(
+                        String.format(ALREADY_DEFINED_FUNCTION, PlConstants.MYSQL, PlConstants.POLARX_COMMENT,
+                            originFunction))) {
                         // if not found
                         if (!rs.next()) {
                             stmt.execute(createFunction);

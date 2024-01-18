@@ -38,6 +38,11 @@ import java.util.regex.Pattern;
  * @since 5.0.0
  */
 public class Like extends AbstractCollationScalarFunction {
+
+    public Like() {
+        super(null, null);
+    }
+
     public Like(List<DataType> operandTypes, DataType resultType) {
         super(operandTypes, resultType);
     }

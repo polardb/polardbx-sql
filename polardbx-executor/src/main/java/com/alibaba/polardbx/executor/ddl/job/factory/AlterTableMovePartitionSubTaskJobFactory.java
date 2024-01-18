@@ -21,6 +21,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
@@ -46,13 +47,14 @@ public class AlterTableMovePartitionSubTaskJobFactory extends AlterTableGroupSub
                                                     Map<String, List<List<String>>> tableTopology,
                                                     Map<String, Set<String>> targetTableTopology,
                                                     Map<String, Set<String>> sourceTableTopology,
-                                                    List<Pair<String, String>> orderedTargetTableLocations,
+                                                    Map<String, Pair<String, String>> orderedTargetTableLocations,
                                                     String targetPartition,
                                                     boolean skipBackfill,
                                                     ComplexTaskMetaManager.ComplexTaskType taskType,
                                                     ExecutionContext executionContext) {
-        super(ddl, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology, sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill, taskType, executionContext);
+        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology,
+            sourceTableTopology, orderedTargetTableLocations, targetPartition, skipBackfill, taskType,
+            executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 
@@ -60,27 +62,34 @@ public class AlterTableMovePartitionSubTaskJobFactory extends AlterTableGroupSub
     protected PartitionInfo generateNewPartitionInfo() {
         String schemaName = preparedData.getSchemaName();
         String tableName = preparedData.getTableName();
-        String tableGroupName = preparedData.getTableGroupName();
 
         PartitionInfo curPartitionInfo =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
 
         SqlNode sqlAlterTableSpecNode = ((SqlAlterTable) ddl.getSqlNode()).getAlters().get(0);
 
-        PartitionInfo newPartInfo =
-            AlterTableGroupSnapShotUtils
-                .getNewPartitionInfoForMoveType(curPartitionInfo,
-                    ((SqlAlterTableMovePartition) sqlAlterTableSpecNode).getTargetPartitions(),
-                    tableGroupName,
-                    orderedTargetTableLocations,
-                    executionContext);
+        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+            .getNewPartitionInfo(
+                parentPrepareData,
+                curPartitionInfo,
+                false,
+                sqlAlterTableSpecNode,
+                preparedData.getOldPartitionNames(),
+                preparedData.getNewPartitionNames(),
+                parentPrepareData.getTableGroupName(),
+                null,
+                preparedData.getInvisiblePartitionGroups(),
+                orderedTargetTableLocations,
+                executionContext);
 
         if (parentPrepareData.isMoveToExistTableGroup()) {
             updateNewPartitionInfoByTargetGroup(parentPrepareData, newPartInfo);
         }
-        PartitionInfoUtil.adjustPartitionPositionsForNewPartInfo(newPartInfo);
-        PartitionInfoUtil.validatePartitionInfoForDdl(newPartInfo, executionContext);
+
         return newPartInfo;
     }
 
+    public AlterTableGroupBasePreparedData getParentPrepareData() {
+        return parentPrepareData;
+    }
 }

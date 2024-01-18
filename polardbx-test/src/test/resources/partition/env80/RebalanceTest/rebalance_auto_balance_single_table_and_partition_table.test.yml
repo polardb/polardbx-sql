@@ -1,0 +1,390 @@
+schemaName: "rebalance_test_d27"
+dnNum: 2
+singleBalanceCaseBeans:
+  # case generate by python scripts:
+  #  import numpy as np
+  #  m = 5
+  #  n, upper_bound = 24, 1e6
+  #  w = np.random.lognormal(m, 1, n) single locality='balance_single_table=on' "
+  #  ranges = w * upper_bound/w.sum() single locality='balance_single_table=on' "
+  #  bounds = [int(sum(ranges[0:i]) single locality='balance_single_table=on' ") for i in range(1, n + 1)]
+  #  bounds[-1] = "MAXVALUE"
+  #  print(",\n".join([sql_temp.format(i + 1, bounds[i]) single locality='balance_single_table=on' " for i in range(n)]))
+  - createTableActions:
+
+    - tableName: "s0"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s0` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s1"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s1` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+    - tableName: "s2"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s2` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s3"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s3` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "s4"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s4` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s5"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s5` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "s6"
+      # m = 4
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s6` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s7"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s7` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 60000
+
+
+    - tableName: "s8"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s8` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s9"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s9` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 60000
+
+
+    - tableName: "s10"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s10` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 20000
+
+
+    - tableName: "s11"
+      # m = 5
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `s11` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+) single locality='balance_single_table=on' "
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+    - tableName: "t0"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t0` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+)
+PARTITION BY RANGE(`c1`) PARTITIONS 16
+(PARTITION `p1` VALUES LESS THAN (10310) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (259216) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (310435) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (318647) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (381890) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (424876) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (468168) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (474072) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (541988) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (788713) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (804024) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (879676) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (912081) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (916915) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (928310) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "t1"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t1` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+)
+PARTITION BY RANGE(`c1`) PARTITIONS 32
+(PARTITION `p1` VALUES LESS THAN (14899) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (37497) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (51731) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (83763) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (98576) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (107818) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (153372) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (201355) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (211831) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (224969) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (237730) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (269581) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (292431) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (301144) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (337485) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (344631) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (357239) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (399914) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (416568) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (421328) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (447815) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (451013) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (474490) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (747747) ENGINE = InnoDB,
+PARTITION `p25` VALUES LESS THAN (764251) ENGINE = InnoDB,
+PARTITION `p26` VALUES LESS THAN (790114) ENGINE = InnoDB,
+PARTITION `p27` VALUES LESS THAN (842861) ENGINE = InnoDB,
+PARTITION `p28` VALUES LESS THAN (892160) ENGINE = InnoDB,
+PARTITION `p29` VALUES LESS THAN (920270) ENGINE = InnoDB,
+PARTITION `p30` VALUES LESS THAN (964806) ENGINE = InnoDB,
+PARTITION `p31` VALUES LESS THAN (974567) ENGINE = InnoDB,
+PARTITION `p32` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 80000
+
+
+    - tableName: "t2"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t2` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+)
+PARTITION BY RANGE(`c1`) PARTITIONS 28
+(PARTITION `p1` VALUES LESS THAN (18941) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (31001) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (49886) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (67708) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (226502) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (404251) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (427722) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (437625) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (455785) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (463760) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (472053) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (509491) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (517427) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (523252) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (584968) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (641779) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (663975) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (737938) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (766452) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (787690) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (793044) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (874755) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (880454) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (931719) ENGINE = InnoDB,
+PARTITION `p25` VALUES LESS THAN (948824) ENGINE = InnoDB,
+PARTITION `p26` VALUES LESS THAN (957139) ENGINE = InnoDB,
+PARTITION `p27` VALUES LESS THAN (962221) ENGINE = InnoDB,
+PARTITION `p28` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 70000
+
+
+    - tableName: "t3"
+      # m = 6
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t3` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+)
+PARTITION BY RANGE(`c1`) PARTITIONS 16
+(PARTITION `p1` VALUES LESS THAN (27326) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (41297) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (257937) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (266503) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (301801) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (600526) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (662048) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (677089) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (688837) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (691998) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (807840) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (837371) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (864843) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (921022) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (947212) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 40000
+
+
+    - tableName: "t4"
+      # m = 7
+      createTableStmt: "CREATE TABLE IF NOT EXISTS `t4` (
+  `c1` bigint NOT NULL,
+  `c2` date NOT NULL,
+  `c3` double NOT NULL
+)
+PARTITION BY RANGE(`c1`) PARTITIONS 32
+(PARTITION `p1` VALUES LESS THAN (55540) ENGINE = InnoDB,
+PARTITION `p2` VALUES LESS THAN (101700) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (129118) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (205135) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (249671) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (264151) ENGINE = InnoDB,
+PARTITION `p7` VALUES LESS THAN (293896) ENGINE = InnoDB,
+PARTITION `p8` VALUES LESS THAN (302542) ENGINE = InnoDB,
+PARTITION `p9` VALUES LESS THAN (310267) ENGINE = InnoDB,
+PARTITION `p10` VALUES LESS THAN (336605) ENGINE = InnoDB,
+PARTITION `p11` VALUES LESS THAN (353507) ENGINE = InnoDB,
+PARTITION `p12` VALUES LESS THAN (359843) ENGINE = InnoDB,
+PARTITION `p13` VALUES LESS THAN (476673) ENGINE = InnoDB,
+PARTITION `p14` VALUES LESS THAN (487842) ENGINE = InnoDB,
+PARTITION `p15` VALUES LESS THAN (503910) ENGINE = InnoDB,
+PARTITION `p16` VALUES LESS THAN (509211) ENGINE = InnoDB,
+PARTITION `p17` VALUES LESS THAN (542956) ENGINE = InnoDB,
+PARTITION `p18` VALUES LESS THAN (590691) ENGINE = InnoDB,
+PARTITION `p19` VALUES LESS THAN (625440) ENGINE = InnoDB,
+PARTITION `p20` VALUES LESS THAN (648256) ENGINE = InnoDB,
+PARTITION `p21` VALUES LESS THAN (652112) ENGINE = InnoDB,
+PARTITION `p22` VALUES LESS THAN (673194) ENGINE = InnoDB,
+PARTITION `p23` VALUES LESS THAN (708966) ENGINE = InnoDB,
+PARTITION `p24` VALUES LESS THAN (713607) ENGINE = InnoDB,
+PARTITION `p25` VALUES LESS THAN (764121) ENGINE = InnoDB,
+PARTITION `p26` VALUES LESS THAN (771794) ENGINE = InnoDB,
+PARTITION `p27` VALUES LESS THAN (793235) ENGINE = InnoDB,
+PARTITION `p28` VALUES LESS THAN (811459) ENGINE = InnoDB,
+PARTITION `p29` VALUES LESS THAN (834609) ENGINE = InnoDB,
+PARTITION `p30` VALUES LESS THAN (866487) ENGINE = InnoDB,
+PARTITION `p31` VALUES LESS THAN (937388) ENGINE = InnoDB,
+PARTITION `p32` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB)"
+      keyDistribution: "uniform"
+      distributionParameter: ["1"]
+      rowNum: 80000
+
+
+
+    manipulateActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
+      expectedManipulateResult:
+      expectedManipulateColumns:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: []
+      manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
+      expectedManipulateColumns: [ 2 ]
+      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"]
+    dataDistributionCheckActions:
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "rebalance_test_d27"
+      objectType: "database"
+      expectedMu: 0.2
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t0"
+      objectType: "table"
+      expectedMu: 0.25
+
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t1"
+      objectType: "table"
+      expectedMu: 0.25
+
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t2"
+      objectType: "table"
+      expectedMu: 0.25
+
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t3"
+      objectType: "table"
+      expectedMu: 0.25
+
+    - conditionStmt: "show ddl"
+      expectedConditionResult: [ ]
+      objectName: "t4"
+      objectType: "table"
+      expectedMu: 0.25

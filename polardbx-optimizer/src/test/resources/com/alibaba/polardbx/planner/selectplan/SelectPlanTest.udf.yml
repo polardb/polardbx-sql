@@ -1,0 +1,11 @@
+my_func:
+  CREATE JAVA FUNCTION `my_func` return_type int input_types int, varchar(255) 
+  code
+  public class My_func extends UserDefinedJavaFunction {
+  public Object compute(Object[] args) {
+    Integer a = (Integer) args[0];
+    String b = (String) args[1];
+    return b.hashCode() + a;
+    }
+  }
+  end_code

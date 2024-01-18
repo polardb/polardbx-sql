@@ -18,6 +18,7 @@ package com.alibaba.polardbx.qatest.dql.sharding.functions;
 
 import com.alibaba.polardbx.common.utils.encrypt.aes.BlockEncryptionMode;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
+import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -45,7 +46,6 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * Created by chuanqin on 17/12/6.
  */
-@Ignore
 
 public class FunctionTest extends ReadBaseTestCase {
 
@@ -68,6 +68,10 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void subAndDateAddWithIntervalTest() {
         String sql = "select date_add(curdate(), interval 1 day) - interval 1 second";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/"
+            + "select date_add(curdate(), interval integer_test day) from " + baseOneTableName + " order by pk";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -107,6 +111,62 @@ public class FunctionTest extends ReadBaseTestCase {
         String sql = "select group_concat(varchar_test) from " + baseOneTableName
             + " group by varchar_test order by varchar_test";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    /**
+     * test cn variable GROUP_CONCAT_MAX_LEN by set global
+     */
+    @Test
+    @Ignore("global setting maybe affect other case.")
+    public void groupConcatTestLengthBySetGlobal() throws Exception {
+        // do not test single/broadcast table
+        if (baseOneTableName.endsWith(ExecuteTableName.ONE_DB_ONE_TB_SUFFIX) ||
+            baseOneTableName.endsWith(ExecuteTableName.BROADCAST_TB_SUFFIX)) {
+            return;
+        }
+        tddlConnection.createStatement().execute("set global group_concat_max_len=10");
+        Thread.sleep(5000);
+        String sql = "select group_concat(varchar_test) from " + baseOneTableName;
+        ResultSet rs = tddlConnection.createStatement().executeQuery(sql);
+        rs.next();
+        String groupConcat = rs.getString(1);
+        Assert.assertTrue(groupConcat.length() <= 10);
+        rs.close();
+        tddlConnection.createStatement().execute("set global group_concat_max_len=1024");
+    }
+
+    /**
+     * test cn variable GROUP_CONCAT_MAX_LEN by hint
+     */
+    @Test
+    public void groupConcatTestLengthByHint() throws Exception {
+        // do not test single/broadcast table
+        if (baseOneTableName.endsWith(ExecuteTableName.ONE_DB_ONE_TB_SUFFIX) ||
+            baseOneTableName.endsWith(ExecuteTableName.BROADCAST_TB_SUFFIX)) {
+            return;
+        }
+        String sql = "/*TDDL:group_concat_max_len=10*/ select group_concat(varchar_test) from " + baseOneTableName;
+        ResultSet rs = tddlConnection.createStatement().executeQuery(sql);
+        rs.next();
+        String groupConcat = rs.getString(1);
+        Assert.assertTrue(groupConcat.length() <= 10);
+        rs.close();
+    }
+
+    @Test
+    public void groupConcatTestLengthBySession() throws Exception {
+        // do not test single/broadcast table
+        if (baseOneTableName.endsWith(ExecuteTableName.ONE_DB_ONE_TB_SUFFIX) ||
+            baseOneTableName.endsWith(ExecuteTableName.BROADCAST_TB_SUFFIX)) {
+            return;
+        }
+        tddlConnection.createStatement().execute("set GROUP_CONCAT_MAX_LEN=100");
+        String sql = "select group_concat(varchar_test) from " + baseOneTableName;
+        ResultSet rs = tddlConnection.createStatement().executeQuery(sql);
+        rs.next();
+        String groupConcat = rs.getString(1);
+        Assert.assertTrue(groupConcat.length() == 100);
+        rs.close();
     }
 
     @Test
@@ -281,6 +341,16 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void strToDateTest() throws Exception {
         String sql = "SELECT STR_TO_DATE('01,5,2013','%d,%m,%Y')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT\n"
+            + "    STR_TO_DATE('a09:3:1', 'a%h:%i:%s') a,\n"
+            + "    STR_TO_DATE('a09:3:1p', 'a%h:%i:%s') b,\n"
+            + "    STR_TO_DATE('May 1, 2013', '%M %d, %Y') c,\n"
+            + "    STR_TO_DATE('Mayy 1, 2013', '%M %d, %Y') d,\n"
+            + "    STR_TO_DATE('9', '%m'),\n"
+            + "    STR_TO_DATE('9', '%s') e,\n"
+            + "    STR_TO_DATE('9/2001', '%i/%Y') f;\n";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -534,6 +604,11 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void timestampaddTest() throws Exception {
         String sql = "SELECT time_format( TIMESTAMPADD(MINUTE,1,'2003-01-02'), '%H:%i')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/"
+            + "SELECT time_format( TIMESTAMPADD(MINUTE,integer_test,'2003-01-02'), '%H:%i') from " + baseOneTableName
+            + " order by pk";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -800,6 +875,11 @@ public class FunctionTest extends ReadBaseTestCase {
     public void dateSubTest() throws Exception {
         String sql = "SELECT DATE_SUB('2000-12-31 23:59:59', INTERVAL 1 SECOND)";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/ "
+            + "SELECT DATE_SUB('2000-12-31 23:59:59', INTERVAL integer_test SECOND) from " + baseOneTableName
+            + " order by pk";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
     @Test
@@ -903,8 +983,47 @@ public class FunctionTest extends ReadBaseTestCase {
 
     @Test
     public void fromUnixTimeTest() throws Exception {
-        String sql = "SELECT FROM_UNIXTIME(1447430881)";
-        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+        String[] params = {
+            // normal integer
+            "1447430881",
+            "1",
+            "12",
+            "43819",
+            "85918535",
+            "1682566145",
+
+            // invalid integer
+            "-1",
+            "-1447430881",
+            "-1682566145",
+            "168256614589583",
+            "43189929583795485454",
+
+            // valid fractional
+            "1447430881.123",
+            "1447430881.999",
+            "1682566145.09999",
+            "1680285908.578457934598",
+            "1682566145.5784579345",
+
+            // invalid fractional
+            "111447430881.123",
+            "901447430881.999",
+            "-1682566145.09999",
+            "1680285777908.578457934598",
+            "11682566145.57845898979345"
+        };
+
+        // test numeric
+        String format1 = "SELECT FROM_UNIXTIME(%s)";
+        // test chars
+        String format2 = "SELECT FROM_UNIXTIME(\"%s\")";
+        for (String param : params) {
+            // test numeric
+            selectContentSameAssert(String.format(format1, param), null, mysqlConnection, tddlConnection);
+            // test chars
+            selectContentSameAssert(String.format(format2, param), null, mysqlConnection, tddlConnection);
+        }
     }
 
     @Test
@@ -934,6 +1053,12 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void isNotTest() throws Exception {
         String sql = "SELECT 1 IS NOT TRUE, 0 IS NOT FALSE, null IS NOT UNKNOWN";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "SELECT null IS NOT TRUE";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "select 'x' from dual where null is not true";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -997,6 +1122,12 @@ public class FunctionTest extends ReadBaseTestCase {
     @Test
     public void lengthTest() throws Exception {
         String sql = "SELECT LENGTH('text')";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void lengthUnhexTest() throws Exception {
+        String sql = "SELECT length(unhex(md5(\"abrakadabra\")));";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -1714,6 +1845,21 @@ public class FunctionTest extends ReadBaseTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
+    @Test
+    public void testConstantFold() {
+        String sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/select integer_test + 1 + 2 from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/"
+            + "select datetime_test <= date_add(cast('2018-12-01' as date ), Interval -90 day ) from "
+            + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+
+        sql = "/*+TDDL:ENABLE_PUSH_PROJECT=false*/"
+            + "select decimal_test between 100 - 50 and 100 + 50 from " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
     public void rowTest() {
         String[] sqls = {
             "SELECT ROW(1,2,3)=ROW(1,2,3)",
@@ -1792,39 +1938,53 @@ public class FunctionTest extends ReadBaseTestCase {
 
     @Test
     public void aesEncryptionTest() throws Exception {
-        boolean supportOpenSSL = ConnectionManager.getInstance().isEnableOpenSSL();
-        final int[] keylens = {128, 192, 256};
-        final String[] algorithms = {"ecb", "cbc", "cfb1", "cfb8", "cfb128", "ofb"};
-        for (int keylen : keylens) {
-            for (String algo : algorithms) {
-                String mode = String.format("aes-%d-%s", keylen, algo);
-                try {
-                    new BlockEncryptionMode(mode, supportOpenSSL);
-                } catch (BlockEncryptionMode.NotSupportOpensslException e) {
-                    continue;
+        try {
+            boolean supportOpenSSL = ConnectionManager.getInstance().isEnableOpenSSL();
+            final int[] keylens = {128, 192, 256};
+            final String[] algorithms = {"ecb", "cbc", "cfb1", "cfb8", "cfb128", "ofb"};
+            for (int keylen : keylens) {
+                for (String algo : algorithms) {
+                    String mode = String.format("aes-%d-%s", keylen, algo);
+                    try {
+                        new BlockEncryptionMode(mode, supportOpenSSL);
+                    } catch (BlockEncryptionMode.NotSupportOpensslException e) {
+                        continue;
+                    }
+                    testEncryptionSameResult(mode, supportOpenSSL);
+                    testBinaryEncryptionSameResult(mode, supportOpenSSL);
                 }
-                testEncryptionSameResult(mode, supportOpenSSL);
-                testBinaryEncryptionSameResult(mode, supportOpenSSL);
             }
+        } finally {
+            restoreDefaultEncryptionMode();
         }
     }
 
     @Test
     public void aesDecryptionTest() throws Exception {
-        boolean supportOpenSSL = ConnectionManager.getInstance().isEnableOpenSSL();
-        final int[] keylens = {128, 192, 256};
-        final String[] algorithms = {"ecb", "cbc", "cfb1", "cfb8", "cfb128", "ofb"};
-        for (int keylen : keylens) {
-            for (String algo : algorithms) {
-                String mode = String.format("aes-%d-%s", keylen, algo);
-                try {
-                    new BlockEncryptionMode(mode, supportOpenSSL);
-                } catch (BlockEncryptionMode.NotSupportOpensslException e) {
-                    continue;
+        try {
+            boolean supportOpenSSL = ConnectionManager.getInstance().isEnableOpenSSL();
+            final int[] keylens = {128, 192, 256};
+            final String[] algorithms = {"ecb", "cbc", "cfb1", "cfb8", "cfb128", "ofb"};
+            for (int keylen : keylens) {
+                for (String algo : algorithms) {
+                    String mode = String.format("aes-%d-%s", keylen, algo);
+                    try {
+                        new BlockEncryptionMode(mode, supportOpenSSL);
+                    } catch (BlockEncryptionMode.NotSupportOpensslException e) {
+                        continue;
+                    }
+                    testDecryption(mode);
                 }
-                testDecryption(mode);
             }
+        } finally {
+            restoreDefaultEncryptionMode();
         }
+    }
+
+    private void restoreDefaultEncryptionMode() {
+        String setModeSql = "set block_encryption_mode=default";
+        JdbcUtil.updateDataTddl(tddlConnection, setModeSql, null);
+        JdbcUtil.updateDataTddl(mysqlConnection, setModeSql, null);
     }
 
     /**

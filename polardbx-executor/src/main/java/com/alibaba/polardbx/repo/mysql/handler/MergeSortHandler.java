@@ -26,7 +26,6 @@ import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
@@ -71,9 +70,7 @@ public class MergeSortHandler extends HandlerCommon {
                 }
             }
         }
-        if (mergeSort.getInput() instanceof LogicalView) {
-            ((LogicalView) mergeSort.getInput()).setIsUnderMergeSort(true);
-        }
+
         List<Cursor> inputCursors = new ArrayList<>();
 
         Cursor inputCursor = ExecutorHelper.executeByCursor(mergeSort.getInput(), executionContext, false);

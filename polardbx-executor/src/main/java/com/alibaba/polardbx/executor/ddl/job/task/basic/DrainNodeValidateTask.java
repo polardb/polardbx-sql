@@ -49,6 +49,7 @@ public class DrainNodeValidateTask extends BaseValidateTask {
 
     private final static Logger LOG = SQLRecorderLogger.ddlLogger;
     private List<TableGroupConfig> tableGroupConfigs;
+
     @JSONCreator
     public DrainNodeValidateTask(String schemaName, List<TableGroupConfig> tableGroupConfigs) {
         super(schemaName);
@@ -61,15 +62,20 @@ public class DrainNodeValidateTask extends BaseValidateTask {
         Map<String, TableGroupConfig> curTableGroupMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, TableGroupConfig> saveTableGroupMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
-        curTableGroupConfigs.stream().forEach(o->curTableGroupMap.put(o.getTableGroupRecord().tg_name, o));
-        tableGroupConfigs.stream().forEach(o->saveTableGroupMap.put(o.getTableGroupRecord().tg_name, o));
+        curTableGroupConfigs.stream().forEach(o -> curTableGroupMap.put(o.getTableGroupRecord().tg_name, o));
+        tableGroupConfigs.stream().forEach(o -> saveTableGroupMap.put(o.getTableGroupRecord().tg_name, o));
 
         if (curTableGroupMap.size() == saveTableGroupMap.size()) {
-            for(Map.Entry<String, TableGroupConfig> entry:saveTableGroupMap.entrySet()) {
+            for (Map.Entry<String, TableGroupConfig> entry : saveTableGroupMap.entrySet()) {
                 if (!curTableGroupMap.containsKey(entry.getKey())) {
                     throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,
                         String.format("the metadata of tableGroup[%s] is too old, please retry this command",
                             entry.getKey()));
+                }
+                TableGroupConfig curTableGroupConfig = curTableGroupMap.get(entry.getKey());
+                TableGroupConfig saveTableGroupConfig = entry.getValue();
+                if (curTableGroupConfig.isEmpty() && saveTableGroupConfig.isEmpty()) {
+                    continue;
                 }
                 TableValidator.validateTableGroupChange(curTableGroupMap.get(entry.getKey()), entry.getValue());
                 for (PartitionGroupRecord record : GeneralUtil.emptyIfNull(

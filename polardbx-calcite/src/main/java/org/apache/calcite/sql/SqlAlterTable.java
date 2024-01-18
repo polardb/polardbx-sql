@@ -32,17 +32,16 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRenameTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.util.SqlString;
-import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -62,17 +61,33 @@ public class SqlAlterTable extends SqlCreate {
 
     private final SqlTableOptions tableOptions;
     private final List<SqlAlterSpecification> alters;
+    private List<SqlAlterSpecification> skAlters = new ArrayList<>();
     private final SqlIdentifier originTableName;
     private final List<SqlIdentifier> objectNames;
+    /**
+     * Label if current SqlAlterTable Node is from the rewrite result of alter index
+     */
+    private boolean fromAlterIndexPartition = false;
+    /**
+     * if fromAlterIndexPartition=true, alterIndexName is the real index name to be altered
+     */
+    private SqlNode alterIndexName = null;
+
+    // for repartition
+    private String logicalSecondaryTableName;
 
     private List<String> logicalReferencedTables = null;
     private List<String> physicalReferencedTables = null;
 
+    private Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel;
+
     /**
      * Creates a SqlCreateIndex.
      */
-    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
-                         SqlTableOptions tableOptions, List<SqlAlterSpecification> alters, SqlParserPos pos) {
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName,
+                         Map<ColumnOpt, List<String>> columnOpts, String sql,
+                         SqlTableOptions tableOptions, List<SqlAlterSpecification> alters,
+                         boolean fromAlterIndexPartition, SqlNode alterIndexName, SqlParserPos pos) {
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.tableOptions = tableOptions;
         this.alters = alters;
@@ -81,11 +96,20 @@ public class SqlAlterTable extends SqlCreate {
         this.sourceSql = sql;
         this.columnOpts = columnOpts;
         this.objectNames = objectNames;
+        this.fromAlterIndexPartition = fromAlterIndexPartition;
+        this.alterIndexName = alterIndexName;
     }
 
-    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName, Map<ColumnOpt, List<String>> columnOpts, String sql,
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName,
+                         Map<ColumnOpt, List<String>> columnOpts, String sql,
+                         SqlTableOptions tableOptions, List<SqlAlterSpecification> alters, SqlParserPos pos) {
+        this(objectNames, tableName, columnOpts, sql, tableOptions, alters, false, null, pos);
+    }
+
+    public SqlAlterTable(List<SqlIdentifier> objectNames, SqlIdentifier tableName,
+                         Map<ColumnOpt, List<String>> columnOpts, String sql,
                          SqlParserPos pos) {
-        this(objectNames, tableName, columnOpts, sql, null, null, pos);
+        this(objectNames, tableName, columnOpts, sql, null, new ArrayList<>(), false, null, pos);
     }
 
     private SequenceBean autoIncrement;
@@ -151,12 +175,70 @@ public class SqlAlterTable extends SqlCreate {
                 final int rightPrec = getOperator().getRightPrec();
                 unparse(writer, leftPrec, rightPrec, true);
                 sqlForExecute = writer.toSqlString().getSql();
+            } else if (addIndex instanceof SqlAddForeignKey) {
+                if (((SqlAddForeignKey) addIndex).isPushDown()) {
+                    // Remove constraint name.
+//                    ((SqlAddForeignKey) addIndex).removeConstraint();
+                    SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+                    writer.setAlwaysUseParentheses(true);
+                    writer.setSelectListItemsOnSeparateLines(false);
+                    writer.setIndentation(0);
+                    final int leftPrec = getOperator().getLeftPrec();
+                    final int rightPrec = getOperator().getRightPrec();
+                    unparse(writer, leftPrec, rightPrec, true);
+                    sqlForExecute = writer.toSqlString().getSql();
+                } else {
+                    // Rewrite foreign key to normal index.
+                    SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+                    writer.setAlwaysUseParentheses(true);
+                    writer.setSelectListItemsOnSeparateLines(false);
+                    writer.setIndentation(0);
+                    final int leftPrec = getOperator().getLeftPrec();
+                    final int rightPrec = getOperator().getRightPrec();
+                    alters.clear();
+                    alters.add(new SqlAddIndex(SqlParserPos.ZERO, addIndex.getIndexName(), addIndex.getIndexDef()));
+                    unparse(writer, leftPrec, rightPrec, true);
+                    sqlForExecute = writer.toSqlString().getSql();
+                    alters.clear();
+                    alters.add(addIndex);
+                }
             }
         } else if (alters.size() == 1 && alters.get(0).getKind() == SqlKind.TRUNCATE_PARTITION) {
             return alters.get(0).toString();
+        } else if (alters.size() == 1 && alters.get(0).getKind() == SqlKind.DROP_FOREIGN_KEY) {
+            // todo: currently not support push down foreign keys
+            final SqlDropForeignKey dropForeignKey = (SqlDropForeignKey) alters.get(0);
+            if (!dropForeignKey.isPushDown()) {
+                // Rewrite foreign key to normal index.
+                SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+                writer.setAlwaysUseParentheses(true);
+                writer.setSelectListItemsOnSeparateLines(false);
+                writer.setIndentation(0);
+                final int leftPrec = getOperator().getLeftPrec();
+                final int rightPrec = getOperator().getRightPrec();
+                alters.clear();
+                alters.add(new SqlAlterTableDropIndex(dropForeignKey.getOriginTableName(), dropForeignKey.getIndexName(),
+                    dropForeignKey.getSourceSql(), SqlParserPos.ZERO));
+                unparse(writer, leftPrec, rightPrec, true);
+                sqlForExecute = writer.toSqlString().getSql();
+                alters.clear();
+                alters.add(dropForeignKey);
+            } else {
+                // Rewrite foreign key to constraint name.
+                dropForeignKey.setConstraint(dropForeignKey.getIndexName());
+                SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+                writer.setAlwaysUseParentheses(true);
+                writer.setSelectListItemsOnSeparateLines(false);
+                writer.setIndentation(0);
+                final int leftPrec = getOperator().getLeftPrec();
+                final int rightPrec = getOperator().getRightPrec();
+                unparse(writer, leftPrec, rightPrec, true);
+                sqlForExecute = writer.toSqlString().getSql();
+            }
         }
 
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sqlForExecute, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList =
+            SQLUtils.parseStatementsWithDefaultFeatures(sqlForExecute, JdbcConstants.MYSQL);
         SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
         if (this.name instanceof SqlDynamicParam) {
             StringBuilder sql = new StringBuilder();
@@ -179,9 +261,9 @@ public class SqlAlterTable extends SqlCreate {
                     if (!ConfigDataMode.isFastMock() && logicalReferencedTables != null) {
                         String referencedTableName = null;
                         if (expr instanceof SQLIdentifierExpr) {
-                            referencedTableName = ((SQLIdentifierExpr) expr).getSimpleName();
+                            referencedTableName = SQLUtils.normalizeNoTrim(((SQLIdentifierExpr) expr).getSimpleName());
                         } else if (expr instanceof SQLPropertyExpr) {
-                            referencedTableName = ((SQLPropertyExpr) expr).getSimpleName();
+                            referencedTableName = SQLUtils.normalizeNoTrim(((SQLPropertyExpr) expr).getSimpleName());
                         }
                         if (TStringUtil.isNotEmpty(referencedTableName) &&
                             logicalReferencedTables.contains(referencedTableName)) {
@@ -201,7 +283,7 @@ public class SqlAlterTable extends SqlCreate {
     }
 
     public MySqlStatement rewrite() {
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList = SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) statementList.get(0);
         return stmt;
     }
@@ -277,6 +359,13 @@ public class SqlAlterTable extends SqlCreate {
         return alters != null && alters.size() == 1 && alters.get(0) instanceof SqlAlterTableExpireLocalPartition;
     }
 
+    public boolean isAlterIndexVisibility() {
+        return alters != null
+            && alters.size() == 1
+            && alters.get(0) instanceof SqlAlterTableAlterIndex
+            && ((SqlAlterTableAlterIndex) alters.get(0)).isAlterIndexVisibility();
+    }
+
     public boolean createClusteredIndex() {
         return addIndex() && ((SqlAddIndex) alters.get(0)).indexDef.isClustered();
     }
@@ -286,6 +375,10 @@ public class SqlAlterTable extends SqlCreate {
      */
     public boolean changeColumn() {
         return (alters.size() > 0 && alters.get(0) instanceof SqlChangeColumn);
+    }
+
+    public boolean modifyColumn() {
+        return (alters.size() > 0 && alters.get(0) instanceof SqlModifyColumn);
     }
 
     public SqlIdentifier getOriginTableName() {
@@ -304,6 +397,8 @@ public class SqlAlterTable extends SqlCreate {
             sourceSql,
             tableOptions,
             newAlters,
+            false,
+            null,
             getParserPosition());
     }
 
@@ -319,6 +414,8 @@ public class SqlAlterTable extends SqlCreate {
             genSourceSqlWithOutAfter(sourceSql),
             tableOptions,
             newAlters,
+            false,
+            null,
             getParserPosition());
         sqlAlterTable.setTargetTable(name);
         sqlAlterTable.setAutoIncrement(autoIncrement);
@@ -327,7 +424,7 @@ public class SqlAlterTable extends SqlCreate {
     }
 
     public static String genSourceSqlWithOutAfter(String sourceSql) {
-        List<SQLStatement> statementList = SQLUtils.parseStatements(sourceSql, JdbcConstants.MYSQL);
+        List<SQLStatement> statementList = SQLUtils.parseStatementsWithDefaultFeatures(sourceSql, JdbcConstants.MYSQL);
         SQLAlterTableStatement stmt = (SQLAlterTableStatement) statementList.get(0);
 
         for (SQLAlterTableItem item : stmt.getItems()) {
@@ -389,8 +486,26 @@ public class SqlAlterTable extends SqlCreate {
         this.physicalReferencedTables = physicalReferencedTables;
     }
 
+
+    public Map<Integer, Map<SqlNode, RexNode>> getPartRexInfoCtxByLevel() {
+        return partRexInfoCtxByLevel;
+    }
+
+    public void setPartRexInfoCtxByLevel(
+        Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel) {
+        this.partRexInfoCtxByLevel = partRexInfoCtxByLevel;
+    }
+
     public List<SqlIdentifier> getObjectNames() {
         return objectNames;
+    }
+
+    public List<SqlAlterSpecification> getSkAlters() {
+        return skAlters;
+    }
+
+    public void setSkAlters(List<SqlAlterSpecification> skAlters) {
+        this.skAlters = skAlters;
     }
 
     public boolean isExchangePartition() {
@@ -399,5 +514,29 @@ public class SqlAlterTable extends SqlCreate {
 
     public boolean isDropFile() {
         return alters.size() > 0 && alters.get(0) instanceof SqlAlterTableDropFile;
+    }
+
+    public String getLogicalSecondaryTableName() {
+        return logicalSecondaryTableName;
+    }
+
+    public void setLogicalSecondaryTableName(String logicalSecondaryTableName) {
+        this.logicalSecondaryTableName = logicalSecondaryTableName;
+    }
+
+    public boolean isFromAlterIndexPartition() {
+        return fromAlterIndexPartition;
+    }
+
+    public SqlNode getAlterIndexName() {
+        return alterIndexName;
+    }
+
+    public void setFromAlterIndexPartition(boolean fromAlterIndexPartition) {
+        this.fromAlterIndexPartition = fromAlterIndexPartition;
+    }
+
+    public void setAlterIndexName(SqlNode alterIndexName) {
+        this.alterIndexName = alterIndexName;
     }
 }

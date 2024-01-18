@@ -23,8 +23,10 @@ import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Used to backfill data from base table to index table when a secondary global
@@ -36,6 +38,7 @@ public class GsiBackfill extends AbstractRelNode {
     private String baseTableName;
     private List<String> indexNames; // Add one column and backfill one multi clustered index.
     private List<String> columns;
+    private Map<String, String> virtualColumnMap;
 
     public static GsiBackfill createGsiBackfill(String schemaName, String baseTableName, String indexName,
                                                 ExecutionContext ec) {
@@ -106,4 +109,15 @@ public class GsiBackfill extends AbstractRelNode {
         return CollectionUtils.isNotEmpty(columns);
     }
 
+    public boolean isModifyPartitionKeyCheck() {
+        return MapUtils.isNotEmpty(virtualColumnMap);
+    }
+
+    public Map<String, String> getVirtualColumnMap() {
+        return virtualColumnMap;
+    }
+
+    public void setVirtualColumnMap(Map<String, String> virtualColumnMap) {
+        this.virtualColumnMap = virtualColumnMap;
+    }
 }

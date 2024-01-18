@@ -31,6 +31,8 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryMana
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeFactory;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SpilledOutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.mpp.operator.factory.CacheExecFactory;
+import com.alibaba.polardbx.executor.mpp.operator.factory.CteAnchorExecFactory;
+import com.alibaba.polardbx.executor.mpp.operator.factory.CteExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.DynamicValuesExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.EmptyExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.ExchangeExecFactory;
@@ -39,6 +41,7 @@ import com.alibaba.polardbx.executor.mpp.operator.factory.ExpandExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.FilterExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HashAggExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HashGroupJoinExecutorFactory;
+import com.alibaba.polardbx.executor.mpp.operator.factory.HashWindowExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.HybridHashJoinExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.InsertSelectExecFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LimitExecFactory;
@@ -77,6 +80,7 @@ import com.alibaba.polardbx.executor.operator.util.bloomfilter.BloomFilterExpres
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.vectorized.build.VectorizedExpressionBuilder;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
@@ -88,6 +92,7 @@ import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.core.rel.HashGroupJoin;
 import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
+import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LocalBufferNode;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -124,13 +129,17 @@ import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.RecursiveCTE;
+import org.apache.calcite.rel.core.RecursiveCTEAnchor;
 import org.apache.calcite.rel.core.Sort;
+import org.apache.calcite.rel.core.Union;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.rel.logical.LogicalFilter;
@@ -156,6 +165,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
@@ -170,14 +180,16 @@ public class LocalExecutionPlanner {
         SortAgg.class, LogicalProject.class, LogicalExpand.class, LogicalFilter.class, MemSort.class, Limit.class,
         TopN.class, LogicalSort.class, LogicalValues.class, RemoteSourceNode.class, Gather.class,
         MergeSort.class, LogicalUnion.class, Exchange.class, HashGroupJoin.class, LogicalExpand.class,
-        DynamicValues.class, SortWindow.class, RuntimeFilterBuilder.class, LogicalCorrelate.class,
-        LogicalOutFile.class, PhysicalProject.class, PhysicalFilter.class, LogicalInsert.class);
+        DynamicValues.class, SortWindow.class, HashWindow.class, RuntimeFilterBuilder.class, LogicalCorrelate.class,
+        LogicalOutFile.class, PhysicalProject.class, PhysicalFilter.class, LogicalInsert.class, RecursiveCTE.class,
+        RecursiveCTEAnchor.class
+    );
 
     public static final Set<Class<? extends RelNode>> SUPPORT_ONE_SIDE_CACHE_NODES = ImmutableSet.of(
         HashJoin.class, SemiHashJoin.class, NLJoin.class, SemiNLJoin.class, HashGroupJoin.class);
 
     public static final Set<Class<? extends RelNode>> SUPPORT_ALL_CACHE_NODES = ImmutableSet.of(
-        HashAgg.class, MemSort.class, TopN.class, LogicalSort.class);
+        HashAgg.class, MemSort.class, TopN.class, LogicalSort.class, HashWindow.class);
 
     public static final boolean isAssignableFrom(Class<?> ret) {
         return isAssignableFrom(ret, SUPPORT_NODES);
@@ -520,10 +532,16 @@ public class LocalExecutionPlanner {
             return visitExpand((LogicalExpand) current, pipelineFragment);
         } else if (current instanceof SortWindow) {
             return visitOverWindow((SortWindow) current, pipelineFragment);
+        } else if (current instanceof HashWindow) {
+            return visitHashWindow((HashWindow) current, pipelineFragment);
         } else if (current instanceof LogicalCorrelate) {
             return visitLogicalCorrelate((LogicalCorrelate) current, pipelineFragment);
         } else if (current instanceof LogicalInsert) {
             return visitLogicalInsertExec((LogicalInsert) current, pipelineFragment);
+        } else if (current instanceof RecursiveCTE) {
+            return visitCTE((RecursiveCTE) current, pipelineFragment);
+        } else if (current instanceof RecursiveCTEAnchor) {
+            return visitCTEAnchor((RecursiveCTEAnchor) current, pipelineFragment);
         } else {
             return visitGeneralExec(current, pipelineFragment);
         }
@@ -579,10 +597,48 @@ public class LocalExecutionPlanner {
         return overWindowFactory;
     }
 
+    private ExecutorFactory visitHashWindow(HashWindow overWindow, PipelineFragment pipelineFragment) {
+        ExecutorFactory overWindowFactory = createHashWindowFactory(overWindow, pipelineFragment);
+        // Note: 原理上这里的overWindow只会包含一个group，但是担心有其他地方未遵守该规定，因此采取了较保守的做法
+        // 只要包含不分组的group，即over中的partition by字段为空，则该windowExec的并行度就应当是1
+        if (overWindow.groups.stream().anyMatch(g -> g.keys.size() == 0)) {
+            pipelineFragment.setParallelism(1);
+        }
+        return overWindowFactory;
+    }
+
     private ExecutorFactory createOverWindowFactory(SortWindow overWindow, PipelineFragment pipelineFragment) {
         RelNode input = overWindow.getInput();
         ExecutorFactory childExecutorFactory = visit(overWindow, input, pipelineFragment);
         return new OverWindowFramesExecFactory(overWindow, childExecutorFactory);
+    }
+
+    private ExecutorFactory createHashWindowFactory(HashWindow overWindow, PipelineFragment pipelineFragment) {
+        List<DataType> columnTypes = CalciteUtils.getTypes(overWindow.getInput().getRowType());
+        PipelineFragment childFragment = new PipelineFragment(defaultParallelism, overWindow.getInput());
+        ExecutorFactory childExecutorFactory = visit(overWindow, overWindow.getInput(), childFragment);
+        if (holdCollation) {
+            pipelineFragment.holdSingleTonParallelism();
+        }
+
+        boolean supportBuffer = supportLocalBuffer && childFragment.getParallelism() > 1;
+        boolean asyncConsume = supportBuffer || childFragment.getParallelism() == 1;
+        LocalExchange localExchange = null;
+        if (overWindow.groups.get(0).keys.cardinality() == 0) {
+            localExchange = new LocalExchange(columnTypes, ImmutableList.of(),
+                LocalExchange.LocalExchangeMode.SINGLE, asyncConsume);
+            pipelineFragment.holdSingleTonParallelism();
+        } else {
+            LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
+                LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.PARTITION;
+            localExchange = new LocalExchange(columnTypes, overWindow.groups.get(0).keys.toList(), mode, asyncConsume);
+        }
+        ExecutorFactory windowFactory = new HashWindowExecFactory(overWindow, pipelineFragment.getParallelism(),
+            taskNumber, spillerFactory, getRelNodeDistinctKeyCount(overWindow, overWindow.groups.get(0).keys),
+            columnTypes);
+        createConsumeSideExchangeFactory(windowFactory, pipelineFragment, localExchange, childExecutorFactory,
+            childFragment, columnTypes, supportBuffer);
+        return windowFactory;
     }
 
     private ExecutorFactory visitExpand(LogicalExpand expand, PipelineFragment pipelineFragment) {
@@ -596,13 +652,14 @@ public class LocalExecutionPlanner {
             throw new RuntimeException("Don't support SingleTableOperation for mpp!");
         }
 
-        LogicalView logicalView = ExecUtils.convertToLogicalView(other);
+        LogicalView logicalView = ExecUtils.convertToLogicalView(other, context);
         logicalView.setRelatedId(other.getRelatedId());
         pipelineFragment.addLogicalView(logicalView);
         pipelineFragment.holdSingleTonParallelism();
         SplitInfo splitInfo = new SplitManager().getSingleSplit(logicalView, context);
         pipelineFragment.putSource(logicalView.getRelatedId(), splitInfo);
-        return createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, 1);
+        return createViewFactory(
+            parent, logicalView, pipelineFragment, spillerFactory, 1, false);
     }
 
     private ExecutorFactory visitUnion(RelNode parent, LogicalUnion union, PipelineFragment pipelineFragment) {
@@ -788,7 +845,8 @@ public class LocalExecutionPlanner {
             RelNode outerInput = current.getOuter();
             List<DataType> buildColumns = CalciteUtils.getTypes(outerInput.getRowType());
             List<EquiJoinKey> joinKeys = EquiJoinUtils
-                .buildEquiJoinKeys(current, outerInput, current.getInner(), (RexCall) equalCond, current.getJoinType());
+                .buildEquiJoinKeys(
+                    current, outerInput, current.getInner(), (RexCall) equalCond, current.getJoinType());
             List<DataType> keyTypes = joinKeys.stream().map(t -> t.getUnifiedType()).collect(Collectors.toList());
             List<Integer> keyInnerIndexes = joinKeys.stream().map(t -> t.getInnerIndex()).collect(Collectors.toList());
             List<Integer> keyOuterIndexes = joinKeys.stream().map(t -> t.getOuterIndex()).collect(Collectors.toList());
@@ -889,7 +947,7 @@ public class LocalExecutionPlanner {
 
             List<EquiJoinKey> joinKeys = EquiJoinUtils
                 .buildEquiJoinKeys(current, current.getOuter(), current.getInner(), (RexCall) equalCond,
-                    current.getJoinType(), true);
+                    current.getJoinType());
             List<DataType> keyTypes = joinKeys.stream().map(t -> t.getUnifiedType()).collect(Collectors.toList());
             List<Integer> keyInnerIndexes = joinKeys.stream().map(t -> t.getInnerIndex()).collect(Collectors.toList());
             List<Integer> keyOuterIndexes = joinKeys.stream().map(t -> t.getOuterIndex()).collect(Collectors.toList());
@@ -981,10 +1039,25 @@ public class LocalExecutionPlanner {
     }
 
     private ExecutorFactory visitBKAJoin(Join current, PipelineFragment pipelineFragment) {
-        forbidMultipleReadConn = this.forbidMultipleReadConn ||
-            !ExecUtils.allowMultipleReadConns(context, null);
-        if (defaultParallelism != 1 && forbidMultipleReadConn) {
-            //FIXME 本来这里应该根据forbidMultipleReadConn来设置并发度的，这里投机取巧下知识使用useTransaction
+        new RelVisitor() {
+            @Override
+            public void visit(RelNode node, int ordinal, RelNode parent) {
+                if (node instanceof LogicalView) {
+                    forbidMultipleReadConn = forbidMultipleReadConn ||
+                        !ExecUtils.allowMultipleReadConns(context, (LogicalView) node);
+                }
+                if (node instanceof Filter ||
+                    node instanceof Project ||
+                    node instanceof Exchange ||
+                    node instanceof Union ||
+                    node instanceof BKAJoin) {
+                    super.visit(node, ordinal, parent);
+                }
+            }
+        }.go(current);
+
+        boolean forbidMultipleConn = this.forbidMultipleReadConn;
+        if (defaultParallelism != 1 && forbidMultipleConn) {
             //事务下并发度必须为1,并且当前并发度需要被保持
             pipelineFragment.holdSingleTonParallelism();
         }
@@ -996,7 +1069,7 @@ public class LocalExecutionPlanner {
         try {
             expandView = true;
             innerExecutorFactory = visit(current, current.getInner(), pipelineFragment);
-            if (forbidMultipleReadConn) {
+            if (forbidMultipleConn) {
                 Preconditions.checkArgument(pipelineFragment.getParallelism() == 1,
                     "The LookupJoinExec's parallelism must be 1!");
             }
@@ -1119,9 +1192,6 @@ public class LocalExecutionPlanner {
     private ExecutorFactory visitMergeSort(RelNode parent, MergeSort mergeSort, PipelineFragment pipelineFragment) {
         PipelineFragment childFragment =
             new PipelineFragment(defaultParallelism, mergeSort.getInput());
-        if (mergeSort.getInput() instanceof LogicalView) {
-            ((LogicalView) mergeSort.getInput()).setIsUnderMergeSort(true);
-        }
         ExecutorFactory childExecutorFactory = visit(mergeSort, mergeSort.getInput(), childFragment);
         if (childFragment.getParallelism() == 1) {
             //ignore current mergeSort
@@ -1288,14 +1358,17 @@ public class LocalExecutionPlanner {
         return topNExecutorFactory;
     }
 
-    private ExecutorFactory visitView(RelNode parent, LogicalView logicalView, PipelineFragment pipelineFragment) {
+    private ExecutorFactory visitView(
+        RelNode parent, LogicalView logicalView, PipelineFragment pipelineFragment) {
+
+        boolean isUnderMergeSort = parent instanceof MergeSort;
         pipelineFragment.addLogicalView(logicalView);
         if (expandView) {
             logicalView.setExpandView(true);
         }
         int prefetch = totalPrefetch;
         if (isCluster) {
-            if (logicalView.isUnderMergeSort() || logicalView.pushedRelNodeIsSort()) {
+            if (isUnderMergeSort || logicalView.pushedRelNodeIsSort()) {
                 holdCollation = true;
                 pipelineFragment.holdSingleTonParallelism();
             }
@@ -1315,7 +1388,7 @@ public class LocalExecutionPlanner {
                 splitInfo = new SplitManager().getSplits(logicalView, context, false);
             }
 
-            if (logicalView.isUnderMergeSort() || logicalView.pushedRelNodeIsSort()) {
+            if (logicalView.pushedRelNodeIsSort()) {
                 holdCollation = true;
             }
 
@@ -1331,9 +1404,8 @@ public class LocalExecutionPlanner {
                 } else {
                     if (defaultParallelism > 1 && !holdCollation) {
                         if (!pipelineFragment.isHoldParallelism()) {
-                            int parallelism =
-                                logicalView.isUnderMergeSort() ? 1 :
-                                    context.getParamManager().getInt(ConnectionParams.PARALLELISM);
+                            int parallelism = isUnderMergeSort ? 1 :
+                                context.getParamManager().getInt(ConnectionParams.PARALLELISM);
                             if (parallelism < 0) {
                                 int shards;
                                 switch (splitInfo.getConcurrencyPolicy()) {
@@ -1379,42 +1451,61 @@ public class LocalExecutionPlanner {
                     logicalView.getRelatedId() + " pipelineFragment.getParallelism=" + pipelineFragment
                         .getParallelism()
                         + ",totalprefetch=" + prefetch
-                        + ",isUnderSort=" + logicalView.isUnderMergeSort() + ",pushedRelNodeIsSort=" + logicalView
+                        + ",isUnderSort=" + isUnderMergeSort + ",pushedRelNodeIsSort=" + logicalView
                         .pushedRelNodeIsSort() + ",SplitCount=" + splitInfo.getSplitCount());
             }
         }
 
-        return createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch);
+        return createViewFactory(parent, logicalView, pipelineFragment, spillerFactory, prefetch, isUnderMergeSort);
     }
 
     private LogicalViewExecutorFactory createViewFactory(
         RelNode parent, LogicalView logicalView, PipelineFragment pipelineFragment, SpillerFactory spillerFactory,
-        int prefetch) {
+        int prefetch, boolean isUnderMergeSort) {
         long fetched = Long.MAX_VALUE;
         long offset = 0;
         boolean bSort = false;
 
         Map<Integer, ParameterContext> params = context.getParams().getCurrentParameter();
         Sort sort = null;
-        if (parent instanceof Sort && (logicalView.pushedRelNodeIsSort() || logicalView.isUnderMergeSort())
-            && pipelineFragment.getParallelism() == 1) {
-            sort = (Sort) parent;
-            if (sort.fetch != null) {
-                fetched = CBOUtil.getRexParam(sort.fetch, params);
-                if (sort.offset != null) {
-                    offset = CBOUtil.getRexParam(sort.offset, params);
+        if (logicalView.pushedRelNodeIsSort()) {
+            sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
+            if (isUnderMergeSort) {
+                sort = (Sort) parent;
+                if (sort.fetch != null) {
+                    fetched = CBOUtil.getRexParam(sort.fetch, params);
+                    if (sort.offset != null) {
+                        offset = CBOUtil.getRexParam(sort.offset, params);
+                    }
                 }
             }
-        } else if (logicalView.pushedRelNodeIsSort()) {
-            sort = (Sort) logicalView.getOptimizedPushedRelNodeForMetaQuery();
         }
 
         if (sort != null) {
             bSort = true;
         }
+
         long maxRowCount = ExecUtils.getMaxRowCount(sort, context);
+
+        int policy = -1;
+        boolean randomSplits = false;
+        if (!bSort && isUnderMergeSort) {
+            policy = context.getParamManager().getInt(ConnectionParams.PREFETCH_EXECUTE_POLICY);
+            switch (policy) {
+            case 1:
+                prefetch = 1;
+                break;
+            case 2:
+                prefetch = 1;
+                randomSplits = true;
+                break;
+            default:
+                break;
+            }
+        }
         return new LogicalViewExecutorFactory(logicalView, prefetch, pipelineFragment.getParallelism(),
-            maxRowCount, bSort, fetched, offset, spillerFactory, bloomFilterExpressionMap, enableRuntimeFilter);
+            maxRowCount, bSort, fetched, offset, spillerFactory, bloomFilterExpressionMap, enableRuntimeFilter,
+            randomSplits);
     }
 
     private ExecutorFactory visitProject(Project project, PipelineFragment pipelineFragment) {
@@ -1492,6 +1583,17 @@ public class LocalExecutionPlanner {
             enableRuntimeFilter, bloomFilterExpressionMap);
     }
 
+    private ExecutorFactory visitCTE(RecursiveCTE cte, PipelineFragment pipelineFragment) {
+        ExecutorFactory anchorExecutorFactory = visit(cte, cte.getLeft(), pipelineFragment);
+        ExecutorFactory recursiveExecutorFactory = visit(cte, cte.getRight(), pipelineFragment);
+        return new CteExecFactory(cte, anchorExecutorFactory, recursiveExecutorFactory);
+    }
+
+    private ExecutorFactory visitCTEAnchor(RecursiveCTEAnchor cteAnchor, PipelineFragment pipelineFragment) {
+        List<DataType> dataTypes = CalciteUtils.getTypes(cteAnchor.getRowType());
+        return new CteAnchorExecFactory(cteAnchor, dataTypes);
+    }
+
     private ExecutorFactory visitRuntimeFilterBuild(RuntimeFilterBuilder filterBuilder,
                                                     PipelineFragment pipelineFragment) {
         ExecutorFactory childExecutorFactory = visit(filterBuilder, filterBuilder.getInput(), pipelineFragment);
@@ -1513,31 +1615,24 @@ public class LocalExecutionPlanner {
         LocalExchange localExchange = null;
         if (agg.isPartial()) {
             if (supportBuffer) {
-                LocalExchange.LocalExchangeMode mode =
-                    pipelineFragment.getParallelism() == 1 ? LocalExchange.LocalExchangeMode.SINGLE :
-                        LocalExchange.LocalExchangeMode.PARTITION;
-                localExchange = new LocalExchange(
-                    CalciteUtils.getTypes(agg.getInput().getRowType()), ImmutableList.of(), mode, true);
+                LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
+                    LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.PARTITION;
+                localExchange = new LocalExchange(columns, ImmutableList.of(), mode, true);
             } else {
-                LocalExchange.LocalExchangeMode mode =
-                    pipelineFragment.getParallelism() == 1 ? LocalExchange.LocalExchangeMode.SINGLE :
-                        LocalExchange.LocalExchangeMode.RANDOM;
+                LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
+                    LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.RANDOM;
                 localExchange =
-                    new LocalExchange(CalciteUtils.getTypes(agg.getInput().getRowType()), ImmutableList.of(),
-                        mode, childFragment.getParallelism() == 1);
+                    new LocalExchange(columns, ImmutableList.of(), mode, childFragment.getParallelism() == 1);
             }
         } else {
             if (agg.getGroupSet().cardinality() == 0) {
-                localExchange =
-                    new LocalExchange(CalciteUtils.getTypes(agg.getInput().getRowType()), ImmutableList.of(),
-                        LocalExchange.LocalExchangeMode.SINGLE, asyncConsume);
+                localExchange = new LocalExchange(columns, ImmutableList.of(), LocalExchange.LocalExchangeMode.SINGLE,
+                    asyncConsume);
                 pipelineFragment.holdSingleTonParallelism();
             } else {
-                LocalExchange.LocalExchangeMode mode =
-                    pipelineFragment.getParallelism() == 1 ? LocalExchange.LocalExchangeMode.SINGLE :
-                        LocalExchange.LocalExchangeMode.PARTITION;
-                localExchange = new LocalExchange(CalciteUtils.getTypes(agg.getInput().getRowType()),
-                    agg.getGroupSet().toList(), mode, asyncConsume);
+                LocalExchange.LocalExchangeMode mode = pipelineFragment.getParallelism() == 1 ?
+                    LocalExchange.LocalExchangeMode.SINGLE : LocalExchange.LocalExchangeMode.PARTITION;
+                localExchange = new LocalExchange(columns, agg.getGroupSet().toList(), mode, asyncConsume);
             }
         }
 
@@ -1554,6 +1649,17 @@ public class LocalExecutionPlanner {
         if (rowCount == null) {
             rowCount = RelUtils.getRowCount(relNode).intValue();
             context.getRecordRowCnt().put(relNode.getRelatedId(), rowCount);
+        }
+        return rowCount;
+    }
+
+    private Integer getRelNodeDistinctKeyCount(RelNode relNode, ImmutableBitSet groupKey) {
+        Integer rowCount = context.getDistinctKeyCnt().get(relNode.getRelatedId());
+        if (rowCount == null) {
+            rowCount =
+                Optional.ofNullable(RelUtils.getDistinctKeyCount(relNode, groupKey, null)).map(Double::intValue).orElse(
+                    CostModelWeight.GUESS_AGG_OUTPUT_NUM);
+            context.getDistinctKeyCnt().put(relNode.getRelatedId(), rowCount);
         }
         return rowCount;
     }

@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -31,7 +32,15 @@ import java.util.stream.Collectors;
 public class TablePartRecordInfoContext {
 
     private TablePartitionRecord logTbRec = null;
+
+    /**
+     * The list of all the partitions
+     */
     private List<TablePartitionRecord> partitionRecList = null;
+
+    /**
+     * The list of all the subpartitions
+     */
     private List<TablePartitionRecord> subPartitionRecList = null;
     /**
      * key : the name of top level partition
@@ -53,8 +62,61 @@ public class TablePartRecordInfoContext {
         return partitionRecList;
     }
 
+    public List<TablePartitionRecord> fetchAllPhysicalPartitionRecList() {
+        if (subPartitionRecList != null && !subPartitionRecList.isEmpty()) {
+            return subPartitionRecList;
+        } else {
+            return partitionRecList;
+        }
+    }
+
+    public static List<TablePartitionRecord> buildAllPhysicalPartitionRecList(
+        TablePartRecordInfoContext tblPartRecCtx) {
+        Map<String, List<TablePartitionRecord>> subPartitionRecMap = tblPartRecCtx.getSubPartitionRecMap();
+        if (subPartitionRecMap.isEmpty()) {
+            return tblPartRecCtx.getPartitionRecList();
+        }
+        List<TablePartitionRecord> phyPartRecList = new ArrayList<>();
+        for (Map.Entry<String, List<TablePartitionRecord>> subPartRecListItem : subPartitionRecMap.entrySet()) {
+            phyPartRecList.addAll(subPartRecListItem.getValue());
+        }
+        return phyPartRecList;
+    }
+
+    public static List<TablePartitionRecord> buildAllSubPartitionRecList(
+        Map<String, List<TablePartitionRecord>> subPartitionRecMap) {
+        List<TablePartitionRecord> allSubPartRecList = new ArrayList<>();
+        if (subPartitionRecMap == null || subPartitionRecMap.isEmpty()) {
+            return allSubPartRecList;
+        }
+        for (Map.Entry<String, List<TablePartitionRecord>> subPartInfoItem : subPartitionRecMap.entrySet()) {
+            allSubPartRecList.addAll(subPartInfoItem.getValue());
+        }
+        return allSubPartRecList;
+    }
+
+//    public static Map<String, List<TablePartitionRecord>> buildSubPartitionRecMap(List<TablePartitionRecord> allSubPartRecList,
+//                                                                                  List<TablePartitionRecord> allPartRecList) {
+//
+//        Map<String, List<TablePartitionRecord>> partNameSubPartListMap = new TreeMap<>();
+//        Map<Long, List<TablePartitionRecord>> partIdSubPartListMap = new HashMap<>();
+//        for (int i = 0; i < allPartRecList.size(); i++) {
+//            partIdSubPartListMap.putIfAbsent(allPartRecList.get(i).getId(), new ArrayList<>());
+//        }
+//        for (int i = 0; i < allSubPartRecList.size(); i++) {
+//            TablePartitionRecord subPartRec = allSubPartRecList.get(i);
+//            Long parentId =
+//            List<TablePartitionRecord> subPartListOfOnePart = result.get(subPartRec.)
+//        }
+//        return result;
+//    }
+
     public List<TablePartitionRecord> filterPartitions(Predicate<TablePartitionRecord> pred) {
         return this.partitionRecList.stream().filter(pred).collect(Collectors.toList());
+    }
+
+    public List<TablePartitionRecord> filterSubPartitions(Predicate<TablePartitionRecord> pred) {
+        return this.getSubPartitionRecList().stream().filter(pred).collect(Collectors.toList());
     }
 
     public void setPartitionRecList(List<TablePartitionRecord> partitionRecList) {
@@ -105,7 +167,11 @@ public class TablePartRecordInfoContext {
     }
 
     public List<TablePartitionRecord> getPartitionRecListByGroupId(long pgId) {
-        return getPartitionRecList().stream()
+        List<TablePartitionRecord> phyPartRecList = partitionRecList;
+        if (subPartitionRecList != null && !subPartitionRecList.isEmpty()) {
+            phyPartRecList = subPartitionRecList;
+        }
+        return phyPartRecList.stream()
             .filter(p -> filterPartitionByGroupId(p, pgId))
             .collect(Collectors.toList());
     }

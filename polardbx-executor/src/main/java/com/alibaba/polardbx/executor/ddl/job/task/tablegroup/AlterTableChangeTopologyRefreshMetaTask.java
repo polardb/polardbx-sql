@@ -129,7 +129,7 @@ public class AlterTableChangeTopologyRefreshMetaTask extends BaseDdlTask {
         }
         newPartitionInfo = newPartitionInfo.copy();
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
-        for (PartitionSpec partitionSpec : newPartitionInfo.getPartitionBy().getPartitions()) {
+        for (PartitionSpec partitionSpec : newPartitionInfo.getPartitionBy().getPhysicalPartitions()) {
             if (!partitionSpec.getLocation().isVisiable()) {
                 Optional<PartitionGroupRecord> partitionGroupRecord = partitionGroupRecords.stream()
                     .filter(o -> o.partition_name.equalsIgnoreCase(partitionSpec.getName())).findFirst();

@@ -72,7 +72,8 @@ public class DrdsViewExpander implements RelOptTable.ToRelContext {
                 VirtualView.create(getCluster(), SystemTableView.Row.getVirtualViewType(queryString));
             return RelRoot.of(virtualView, SqlKind.VIRTUAL_VIEW);
         } else {
-            SqlNode ast = new FastsqlParser().parse(queryString, plannerContext.getExecutionContext()).get(0);
+            // sql from expanding a view is an internal query
+            SqlNode ast = new FastsqlParser().parse(queryString, plannerContext.getExecutionContext(), true).get(0);
             SqlNode validatedNode = sqlConverter.validate(ast);
             return RelRoot.of(sqlConverter.toRel(validatedNode, getCluster()), ast.getKind());
         }

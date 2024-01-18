@@ -24,14 +24,13 @@ public class SQLAlterTableRenameIndex extends SQLObjectImpl implements SQLAlterT
     private SQLName name;
     private SQLName to;
 
-    public SQLAlterTableRenameIndex(SQLName name, SQLName to){
+    public SQLAlterTableRenameIndex(SQLName name, SQLName to) {
         this.setName(name);
         this.setTo(to);
     }
 
-    public SQLAlterTableRenameIndex(){
+    public SQLAlterTableRenameIndex() {
     }
-
 
     public void accept0(SQLASTVisitor visitor) {
         if (visitor.visit(this)) {

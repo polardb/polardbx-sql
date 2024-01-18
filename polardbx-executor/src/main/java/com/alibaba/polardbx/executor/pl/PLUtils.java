@@ -65,7 +65,7 @@ public class PLUtils {
      */
     public static SpParameterizedStmt parameterize(Map<String, SpParameter> spVariables, String sql) {
         SQLStatementParser parser = SQLParserUtils.createSQLStatementParser(sql, JdbcConstants.MYSQL,
-            SqlParameterizeUtils.parserFeatures);
+            SQLUtils.parserFeatures);
         List<SQLStatement> statements = parser.parseStatementList();
         final SQLStatement statement = statements.get(0);
         return parameterize(spVariables, statement);

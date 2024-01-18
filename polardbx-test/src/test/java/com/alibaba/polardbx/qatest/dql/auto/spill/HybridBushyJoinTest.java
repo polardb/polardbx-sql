@@ -31,6 +31,7 @@ import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class HybridBushyJoinTest extends AutoReadBaseTestCase {
 
     private static final Log log = LogFactory.getLog(HybridBushyJoinTest.class);

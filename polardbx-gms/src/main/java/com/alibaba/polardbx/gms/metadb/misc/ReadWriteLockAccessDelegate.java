@@ -16,10 +16,13 @@
 
 package com.alibaba.polardbx.gms.metadb.misc;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.gms.metadb.delegate.MetaDbAccessorWrapper;
-import com.alibaba.polardbx.gms.metadb.misc.ReadWriteLockAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 
 public abstract class ReadWriteLockAccessDelegate<T> extends MetaDbAccessorWrapper<T> {
 
@@ -43,5 +46,23 @@ public abstract class ReadWriteLockAccessDelegate<T> extends MetaDbAccessorWrapp
 
     public Connection getConnection() {
         return this.connection;
+    }
+
+    @Override
+    public T execute() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+            int iso = metaDbConn.getTransactionIsolation();
+            try {
+                open(metaDbConn);
+                metaDbConn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+                T r = invoke();
+                return r;
+            } finally {
+                metaDbConn.setTransactionIsolation(iso);
+                close();
+            }
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+        }
     }
 }

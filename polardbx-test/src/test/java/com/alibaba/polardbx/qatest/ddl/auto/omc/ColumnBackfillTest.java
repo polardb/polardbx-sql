@@ -20,15 +20,14 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.RandomUtils;
 import com.google.common.collect.ImmutableList;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
@@ -128,35 +127,48 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void singlePkTest() throws Exception {
-        backfillTestInternal("column_backfill_single_pk_tbl", SINGLE_PK_TMPL, true, true);
-        backfillTestInternal("column_backfill_single_pk_tbl", SINGLE_PK_TMPL, false, true);
+        backfillTestInternal("column_backfill_single_pk_tbl" + RandomUtils.getStringBetween(1, 5), SINGLE_PK_TMPL, true,
+            true);
+        backfillTestInternal("column_backfill_single_pk_tbl" + RandomUtils.getStringBetween(1, 5), SINGLE_PK_TMPL,
+            false, true);
 
-        backfillTestInternal("column_backfill_single_pk_tbl", SINGLE_PK_TMPL, true, false);
-        backfillTestInternal("column_backfill_single_pk_tbl", SINGLE_PK_TMPL, false, false);
+        backfillTestInternal("column_backfill_single_pk_tbl" + RandomUtils.getStringBetween(1, 5), SINGLE_PK_TMPL, true,
+            false);
+        backfillTestInternal("column_backfill_single_pk_tbl" + RandomUtils.getStringBetween(1, 5), SINGLE_PK_TMPL,
+            false, false);
     }
 
     @Test
     public void multiPkTest() throws Exception {
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL, true, true);
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL, false, true);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL, true,
+            true);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL, false,
+            true);
 
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL, true, false);
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL, false, false);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL, true,
+            false);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL, false,
+            false);
 
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL_1, true, true);
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL_1, false, true);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL_1, true,
+            true);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL_1,
+            false, true);
 
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL_1, true, false);
-        backfillTestInternal("column_backfill_multi_pk_tbl", MULTI_PK_TMPL_1, false, false);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL_1, true,
+            false);
+        backfillTestInternal("column_backfill_multi_pk_tbl" + RandomUtils.getStringBetween(1, 5), MULTI_PK_TMPL_1,
+            false, false);
     }
 
     @Test
     public void noPkTest() throws Exception {
-        backfillTestInternal("column_backfill_no_pk_tbl", NO_PK_TMPL, true, true);
-        backfillTestInternal("column_backfill_no_pk_tbl", NO_PK_TMPL, false, true);
+        backfillTestInternal("column_backfill_no_pk_tbl" + RandomUtils.getStringBetween(1, 5), NO_PK_TMPL, true, true);
+        backfillTestInternal("column_backfill_no_pk_tbl" + RandomUtils.getStringBetween(1, 5), NO_PK_TMPL, false, true);
 
-        backfillTestInternal("column_backfill_no_pk_tbl", NO_PK_TMPL, true, false);
-        backfillTestInternal("column_backfill_no_pk_tbl", NO_PK_TMPL, false, false);
+        backfillTestInternal("column_backfill_no_pk_tbl" + RandomUtils.getStringBetween(1, 5), NO_PK_TMPL, true, false);
+        backfillTestInternal("column_backfill_no_pk_tbl" + RandomUtils.getStringBetween(1, 5), NO_PK_TMPL, false,
+            false);
     }
 
     public void backfillTestInternal(String tableName, String tableTmpl, boolean fillNull, boolean withGsi)
@@ -210,7 +222,8 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
         String alterTableSql =
             buildCmdExtra(returningHint, OMC_ALTER_TABLE_WITH_GSI, SLOW_HINT) + MessageFormat.format(ALTER_TMPL,
                 tableName);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, alterTableSql);
+
+        execDdlWithRetry(tddlDatabase1, tableName, alterTableSql, tddlConnection);
         Thread.sleep(500);
 
         shouldStop.set(true);
@@ -279,7 +292,7 @@ public class ColumnBackfillTest extends DDLBaseNewDBTestCase {
         // Alter
         String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + " alter table " + tableName
             + " modify column c1_1 timestamp(6) on update current_timestamp(6) default current_timestamp(6) algorithm=omc";
-        JdbcUtil.executeUpdateSuccess(tddlConnection, alterSql);
+        execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
 
         // Check
         String querySql =

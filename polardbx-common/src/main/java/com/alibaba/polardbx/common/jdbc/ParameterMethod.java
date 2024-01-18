@@ -41,11 +41,11 @@ import java.util.Map;
 
 public enum ParameterMethod {
 
-    setArray, setAsciiStream, setBigDecimal, setBinaryStream, setBlob, setBoolean, setByte, setBytes,
-    setCharacterStream, setClob, setDate1, setDate2, setDouble, setFloat, setInt, setLong, setBit,
-    setNull1, setNull2, setObject1, setObject2, setObject3, setRef, setShort, setString,
-    setTime1, setTime2, setTimestamp1, setTimestamp2, setURL, setUnicodeStream, setTableName,
-    setBloomFilterData, setBloomFilterDataLength, setBloomFilterFuncNum, setDelegate;
+    setArray, setAsciiStream, setBigDecimal, setBinaryStream, setBlob, setBoolean, setByte, setBytes, //
+    setCharacterStream, setClob, setDate1, setDate2, setDouble, setFloat, setInt, setLong, setBit, //
+    setNull1, setNull2, setObject1, setObject2, setObject3, setRef, setShort, setString, //
+    setTime1, setTime2, setTimestamp1, setTimestamp2, setURL, setUnicodeStream, setTableName, //
+    setBloomFilterData, setBloomFilterDataLength, setBloomFilterFuncNum, setDelegate; //
 
     public boolean isBloomFilterParameterMethod() {
         return (this == setBloomFilterData)
@@ -81,9 +81,10 @@ public enum ParameterMethod {
         }
 
         if (null != parameterSettings) {
-            for (int i = 0; i < parameterSettings.size(); i++) {
-                ParameterContext context = parameterSettings.get(i);
-                context.getParameterMethod().setParameter((PreparedStatement) stmt, i + 1, context.getArgs());
+            int i = 0;
+            for (ParameterContext parameterContext : parameterSettings) {
+                parameterContext.getParameterMethod()
+                    .setParameter((PreparedStatement) stmt, ++i, parameterContext.getArgs());
             }
         }
     }

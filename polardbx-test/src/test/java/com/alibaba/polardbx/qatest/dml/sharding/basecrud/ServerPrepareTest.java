@@ -16,16 +16,16 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.basecrud;
 
-import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
+import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.io.ByteArrayInputStream;
@@ -42,18 +42,31 @@ import java.util.List;
  * JDBC二进制prepare语句测试
  * 主要通过执行结果验证参数化后参数绑定是否正确
  */
-@RunWith(Parameterized.class)
-public class ServerPrepareTest extends CrudBasedLockTestCase {
+public class ServerPrepareTest extends ReadBaseTestCase {
 
     private Connection tddlPreparedConn;
+    private Connection mysqlPreparedConn;
 
     @Before
     public void beforePrepare() {
         if (!PropertiesUtil.usePrepare()) {
             this.tddlPreparedConn = tddlConnection;
+            this.mysqlPreparedConn = mysqlConnection;
         } else {
             // 对于prepare阶段报错的语句 不再尝试客户端prepare (JDBC驱动行为)
-            this.tddlPreparedConn = getPolardbxConnectionWithExtraParams("&emulateUnsupportedPstmts=false");
+            this.tddlPreparedConn =
+                getPolardbxConnectionWithExtraParams("&emulateUnsupportedPstmts=false&useCursorFetch=false");
+            // 对于prepare阶段报错的语句 不再尝试客户端prepare (JDBC驱动行为)
+            this.mysqlPreparedConn =
+                getMysqlConnectionWithExtraParams("&emulateUnsupportedPstmts=false&useCursorFetch=false");
+        }
+    }
+
+    @After
+    public void afterPrepare() {
+        if (PropertiesUtil.usePrepare()) {
+            JdbcUtil.close(tddlPreparedConn);
+            JdbcUtil.close(mysqlPreparedConn);
         }
     }
 
@@ -292,7 +305,8 @@ public class ServerPrepareTest extends CrudBasedLockTestCase {
      */
     @Test
     public void sendLongDataTest() throws SQLException {
-        ResultSet rs = JdbcUtil.executeQuery("select blob_test from " + baseOneTableName + " limit 1", tddlPreparedConn);
+        ResultSet rs =
+            JdbcUtil.executeQuery("select blob_test from " + baseOneTableName + " limit 1", tddlPreparedConn);
         Assert.assertTrue(rs.next());
         byte[] data = rs.getBytes(1);
 
@@ -355,6 +369,72 @@ public class ServerPrepareTest extends CrudBasedLockTestCase {
         List<Object> params = new ArrayList<>();
         params.add(ColumnDataGenerator.pkValue);
         assertServerPrepareTest(mysqlConnection, tddlPreparedConn, sql, params);
+    }
+
+    /**
+     * 多次执行验证information_schema查询
+     */
+    @Test
+    public void informationSchemaPrepareTest() throws SQLException {
+        final int execCount = 3;
+        String sql = "SELECT TABLES.TABLE_NAME, CCSA.CHARACTER_SET_NAME "
+            + " FROM INFORMATION_SCHEMA.TABLES JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY AS CCSA"
+            + " ON TABLES.TABLE_COLLATION = CCSA.COLLATION_NAME "
+            + " WHERE TABLES.TABLE_SCHEMA = ? limit 1";
+        PreparedStatement preparedStmt = null;
+        ResultSet rs = null;
+        for (int i = 0; i < 2; i++) {
+            try {
+                preparedStmt = tddlPreparedConn.prepareStatement(sql);
+                for (int j = 0; j < execCount; j++) {
+                    preparedStmt.setString(1, polardbxOneDB);
+                    try {
+                        rs = preparedStmt.executeQuery();
+                        rs.next();
+                    } finally {
+                        JdbcUtil.close(rs);
+                    }
+                }
+            } finally {
+                JdbcUtil.close(preparedStmt);
+            }
+        }
+    }
+
+    /**
+     * 参数数量超出两个字节应当报错
+     */
+    @Test
+    public void tooManyPlaceholderErrorTest() {
+        if (!PropertiesUtil.usePrepare() || PropertiesUtil.useCursorFetch()) {
+            // 只有 ServerPrepare 才报错
+            return;
+        }
+        final String errMsg = "Prepared statement contains too many placeholders";
+        int placeHolderCount = 0xFFFF;
+        StringBuilder sql = new StringBuilder(placeHolderCount * 2 + 16);
+        sql.append("select ");
+        for (int i = 0; i < placeHolderCount; i++) {
+            sql.append("?,");
+        }
+        sql.append("?");
+        String overflowSql = sql.toString();
+        try {
+            PreparedStatement polarxPrepareStmt = tddlPreparedConn.prepareStatement(overflowSql);
+            Assert.fail("Expect exception");
+        } catch (SQLException e) {
+            // 预期PolarDB-X prepare失败
+            System.out.println(e.getMessage());
+            Assert.assertTrue(e.getMessage().contains(errMsg));
+        }
+        try {
+            PreparedStatement mysqlPrepareStmt = mysqlPreparedConn.prepareStatement(overflowSql);
+            Assert.fail("Expect exception");
+        } catch (SQLException e) {
+            // 预期MySQL prepare也失败
+            System.out.println(e.getMessage());
+            Assert.assertTrue(e.getMessage().contains(errMsg));
+        }
     }
 
     private void assertServerPrepareTest(

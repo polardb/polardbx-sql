@@ -1,0 +1,221 @@
+## DISABLE_FAST_SQL_PARSER
+
+#  * <pre>
+#  * TINYINT (1 Byte): -128~127
+#  * TINYINT UNSIGNED (1 Byte): 0~255
+#  * SMALLINT (2 Bytes): -32768~32767
+#  * SMALLINT UNSIGNED (2 Bytes): 0~65535
+#  * MEDIUMINT (3 Bytes): -8388608~8388607
+#  * MEDIUMINT UNSIGNED (3 Bytes): 0~16777215
+#  * INT (4 Bytes): -2147483648~2147483647
+#  * INT UNSIGNED (4 Bytes): 0~4294967295
+#  * BIGINT (8 Bytes): -9223372036854775808 ~ 9223372036854775807
+#  * BIGINT UNSIGNED (8 Bytes): 0~18446744073709551615
+
+
+####------- case 1 ------
+set sql_mode='';
+
+CREATE TABLE `tb_decimal` (
+`id` decimal(24,0) NOT NULL,
+`name` varchar(32) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 3;
+show create table tb_decimal;
+
+CREATE TABLE `tb_sp_decimal` (
+`id` decimal(24,0) NOT NULL,
+`id2` decimal(24,0) NOT NULL,
+`name` varchar(32) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+partition by key(id) partitions 3
+subpartition by key(id2) subpartitions 3;
+show create table tb_sp_decimal;
+
+
+insert into tb_decimal values ('123456789012345678901234', '123456789012345678901234');
+insert into tb_decimal values ('1234567890123456789012340', '1234567890123456789012340');
+insert into tb_decimal values ('999999999999999999999999', '999999999999999999999999');
+
+select * from tb_decimal where id='123456789012345678901234';
+select * from tb_decimal where id='1234567890123456789012340';
+select * from tb_decimal where id='999999999999999999999999';
+
+select * from tb_decimal where id=123456789012345678901234;
+select * from tb_decimal where id=1234567890123456789012340;
+select * from tb_decimal where id=999999999999999999999999;
+
+select * from tb_decimal order by id;
+
+
+####------- case 2 ------
+drop table if exists key_decimal_6500;
+CREATE TABLE `key_decimal_6500` (
+`c1` decimal(65, 0) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100111 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 16 ;
+
+insert into key_decimal_6500 values (123456789012345678901234);
+select * from key_decimal_6500 where c1 in (123456789012345678901234);
+select * from key_decimal_6500 where c1 = 123456789012345678901234 ;
+delete from  key_decimal_6500 where c1 = 123456789012345678901234;
+
+insert into key_decimal_6500 values ('123456789012345678901234');
+select * from key_decimal_6500 where c1 in ('123456789012345678901234');
+select * from key_decimal_6500 where c1 = '123456789012345678901234';
+delete from  key_decimal_6500 where c1 = '123456789012345678901234';
+select * from key_decimal_6500;
+
+####------- case 3 test range enum ------
+set sql_mode='';
+drop table if exists key_decimal_6500;
+CREATE TABLE `key_decimal_6500` (
+`c1` decimal(65, 0) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100057 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 16 ;
+
+insert into key_decimal_6500(c1) values (0),(null),(-1234567890123456789012340),(-999999999999999999999999),(-123456789012345678901234),(-123456789012345678901234),(-9223372036854775808),(-9223372036854775808),(-9223372036854775807),(-9223372036854775808),(-9223372036854775803),(-2147483653),(-2147483648),(-2147483643),(-8388613),(-8388608),(-8388603),(-32773),(-32768),(-32763),(-133),(-128),(-123),(-5),(0),(5),(122),(127),(132),(255),(32762),(32767),(32772),(65530),(65535),(65540),(8388602),(8388607),(8388612),(16777210),(16777215),(16777220),(2147483642),(2147483647),(2147483652),(4294967290),(4294967295),(4294967300),(9223372036854775802),(9223372036854775807),(9223372036854775812),(18446744073709551610),(18446744073709551615),(123456789012345678901234),(999999999999999999999999),(1234567890123456789012340);
+
+
+select c1 from key_decimal_6500 where ((c1) >= ('9223372036854775807')) AND ((c1) < ('9223372036854775812')) order by c1;
+
+
+
+####------- case 3 test range enum ------
+
+set sql_mode='';
+drop table if exists key_decimal_6500;
+CREATE TABLE `key_decimal_6500` (
+`c1` decimal(65, 0) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100057 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 16 ;
+
+insert into key_decimal_6500(c1) values (0),(null),(123456789012345678901234),(999999999999999999999999);
+
+select c1 from key_decimal_6500 where ((c1) >= ('123456789012345678901234')) AND ((c1) < ('999999999999999999999999')) order by c1;
+
+####------- case 4 test Monotonicity of decimal and range enum ------
+
+set sql_mode='';
+drop table if exists key_decimal_6500;
+CREATE TABLE `key_decimal_6500` (
+`c1` decimal(65, 0) DEFAULT NULL,
+KEY `auto_shard_key_c1` USING BTREE (`c1`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100057 DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 16 ;
+insert into key_decimal_6500(c1) values (18446744073709551615);
+explain select c1 from key_decimal_6500 where ((c1) >= ('18446744073709551615')) AND ((c1) < ('18446744073709551616')) order by c1;
+
+
+####------- case 5 test value truncated ------
+drop table if exists key_decimal_2400;
+set sql_mode='';
+create table if not exists key_decimal_2400 (c1 decimal(24,0) default null ) partition by key(c1) partitions 16;
+
+insert into key_decimal_2400(c1) values (-1234567890123456789012340),(-999999999999999999999999);
+
+explain select * from key_decimal_2400 where c1='-999999999999999999999999';
+explain select * from key_decimal_2400 where c1=-999999999999999999999999;
+explain select * from key_decimal_2400 where c1=-1234567890123456789012340;
+explain select * from key_decimal_2400 where c1='-1234567890123456789012340';
+
+select * from key_decimal_2400 where c1='-999999999999999999999999';
+select * from key_decimal_2400 where c1='-1234567890123456789012340';
+
+
+####------- case 6 test rng route ------
+drop table if exists rng_decimal_2400;
+set sql_mode='';
+CREATE TABLE `rng_decimal_2400` (
+`c1` decimal(24, 0) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100054 DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c1`)
+(
+PARTITION p1 VALUES LESS THAN (-9223372036854775807),
+PARTITION p2 VALUES LESS THAN (-4294967295),
+PARTITION p3 VALUES LESS THAN (-2147483647),
+PARTITION p4 VALUES LESS THAN (-16777215),
+PARTITION p5 VALUES LESS THAN (0),
+PARTITION p6 VALUES LESS THAN (16777215),
+PARTITION p7 VALUES LESS THAN (2147483647),
+PARTITION p8 VALUES LESS THAN (4294967295),
+PARTITION p9 VALUES LESS THAN (9223372036854775807),
+PARTITION p10 VALUES LESS THAN (123456789012345678909999),
+PARTITION pm VALUES LESS THAN (maxvalue)
+)
+;
+
+## p7,p8,p9
+explain select * from rng_decimal_2400 where c1 between '16777215' and '4294967295';
+
+## p10,pm
+explain select * from rng_decimal_2400 where c1 between '123456789012345678809999' and '123456789012345679909999';
+
+## pm
+explain select * from rng_decimal_2400 where c1 between '123456789012345678909999' and '123456789012345678919999';
+
+####------- case 7 test rng route with biggest int------
+drop table if exists rng_decimal_6500;
+set sql_mode='';
+CREATE TABLE `rng_decimal_6500` (
+`c1` decimal(65, 0) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100054 DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(`c1`)
+(
+PARTITION pmin VALUES LESS THAN (-99999999999999999999999999999999999999999999999999999999999999999),
+PARTITION p0 VALUES LESS THAN (-99999999999999999999999999999999999999999999999999999999999999998),
+PARTITION p1 VALUES LESS THAN (9223372036854775807),
+PARTITION p2 VALUES LESS THAN (18446744073709551615),
+PARTITION p3 VALUES LESS THAN (12345678901234567890123456789012345678901234567890123456789012345),
+PARTITION p4 VALUES LESS THAN (99999999999999999999999999999999999999999999999999999999999999999),
+PARTITION pmax VALUES LESS THAN (maxvalue)
+)
+;
+
+explain select * from rng_decimal_6500 where c1='-99999999999999999999999999999999999999999999999999999999999999999';
+explain select * from rng_decimal_6500 where c1<'-99999999999999999999999999999999999999999999999999999999999999998';
+explain select * from rng_decimal_6500 where c1='99999999999999999999999999999999999999999999999999999999999999999';
+explain select * from rng_decimal_6500 where c1>'99999999999999999999999999999999999999999999999999999999999999999';
+
+select part_route('','key_decimal_6500',-1234567890123456789012340);
+select part_route('','key_decimal_6500','-1234567890123456789012340');
+
+####------- case 8 test list route ------
+drop table if exists list_decimal_2400;
+set sql_mode='';
+CREATE TABLE `list_decimal_2400` (
+`c1` decimal(24, 0) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100054 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`c1`)
+(
+PARTITION p1 VALUES IN (-9223372036854775807,-4294967295,-2147483647),
+PARTITION p2 VALUES IN (-16777215,0,16777215),
+PARTITION p3 VALUES IN (2147483647,4294967295),
+PARTITION p4 VALUES IN (9223372036854775807),
+PARTITION p5 VALUES IN (123456789012345678909999),
+PARTITION pm VALUES IN (default)
+)
+;
+
+## p2,p3,pm
+explain select * from list_decimal_2400 where c1 between '16777215' and '4294967295';
+
+## p10,pm
+explain select * from list_decimal_2400 where c1 between '123456789012345678809999' and '123456789012345679909999';
+
+## zero
+explain select * from list_decimal_2400 where c1 >= '123456789012345688909999' and c1 <= '123456789012345678919999';
+
+## pm
+explain select * from list_decimal_2400 where c1 <= '123456789012345688909999' and c1 >= '123456789012345678919999';
+
+
+
+

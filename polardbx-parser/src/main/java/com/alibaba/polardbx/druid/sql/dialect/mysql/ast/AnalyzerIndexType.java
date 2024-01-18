@@ -17,5 +17,5 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast;
 
 public enum AnalyzerIndexType {
-   INDEX, QUERY
+    INDEX, QUERY
 }

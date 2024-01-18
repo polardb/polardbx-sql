@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.BroadCastReplaceScaleOutWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.InsertWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ReplaceRelocateWriter;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
@@ -49,13 +49,16 @@ public class LogicalReplace extends LogicalInsertIgnore {
     private final List<ReplaceRelocateWriter> gsiRelocateWriters;
     private final BroadCastReplaceScaleOutWriter broadCastReplaceScaleOutWriter;
 
+    private final boolean hasJsonColumn;
+
     public LogicalReplace(LogicalInsert insert,
                           InsertWriter primaryInsertWriter,
                           ReplaceRelocateWriter primaryRelocateWriter,
                           List<InsertWriter> gsiInsertWriters,
                           List<ReplaceRelocateWriter> gsiRelocateWriters,
                           BroadCastReplaceScaleOutWriter broadCastReplaceScaleOutWriter,
-                          List<String> selectListForDuplicateCheck
+                          List<String> selectListForDuplicateCheck,
+                          boolean hasJsonColumn
     ) {
         super(insert.getCluster(),
             insert.getTraitSet(),
@@ -82,13 +85,22 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.getPushDownInsertWriter(),
             insert.getGsiInsertIgnoreWriters(),
             insert.getPrimaryDeleteWriter(),
-            insert.getGsiDeleteWriters()
+            insert.getGsiDeleteWriters(),
+            insert.getEvalRowColMetas(),
+            insert.getGenColRexNodes(),
+            insert.getInputToEvalFieldsMapping(),
+            insert.getDefaultExprColMetas(),
+            insert.getDefaultExprColRexNodes(),
+            insert.getDefaultExprEvalFieldsMapping(),
+            insert.isPushablePrimaryKeyCheck(),
+            insert.isPushableForeignConstraintCheck()
         );
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.primaryInsertWriter = primaryInsertWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.gsiInsertWriters = gsiInsertWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     protected LogicalReplace(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table,
@@ -98,8 +110,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              InsertWriter primaryInsertWriter, List<InsertWriter> gsiInsertWriters,
                              List<Integer> autoIncParamIndex, List<List<String>> ukColumnNamesList,
                              List<List<Integer>> beforeUkMapping, List<List<Integer>> afterUkMapping,
-                             List<Integer> selectInsertRowMapping, List<String> pkColumnNames,
-                             List<Integer> beforePkMapping, List<Integer> afterPkMapping,
+                             List<Integer> afterUgsiUkMapping, List<Integer> selectInsertRowMapping,
+                             List<String> pkColumnNames, List<Integer> beforePkMapping, List<Integer> afterPkMapping,
                              Set<String> allUkSet, Map<String, Map<String, Set<String>>> tableUkMap,
                              Map<String, List<List<String>>> ukGroupByTable,
                              Map<String, List<String>> localIndexPhyName, List<ColumnMeta> rowColumnMetas,
@@ -111,19 +123,26 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              boolean sourceTablesIsReadyToPublish, LogicalDynamicValues logicalDynamicValues,
                              List<RexNode> unOpitimizedDuplicateKeyUpdateList, InsertWriter pushDownInsertWriter,
                              List<InsertWriter> gsiInsertIgnoreWriter, DistinctWriter primaryDeleteWriter,
-                             List<DistinctWriter> gsiDeleteWriters, boolean usePartFieldChecker,
-                             Map<String, ColumnMeta> columnMetaMap) {
+                             List<DistinctWriter> gsiDeleteWriters, boolean usePartFieldChecker, boolean hasJsonColumn,
+                             Map<String, ColumnMeta> columnMetaMap, boolean ukContainGeneratedColumn,
+                             List<ColumnMeta> evalRowColMetas, List<RexNode> genColRexNodes,
+                             List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
+                             List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
+                             boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
-            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping,
+            gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
             selectInsertRowMapping, pkColumnNames, beforePkMapping, afterPkMapping, allUkSet, tableUkMap,
             ukGroupByTable, localIndexPhyName, rowColumnMetas, tableColumnMetas, selectListForDuplicateCheck,
             targetTableIsWritable, targetTableIsReadyToPublish, sourceTablesIsReadyToPublish, logicalDynamicValues,
             unOpitimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriter, primaryDeleteWriter,
-            gsiDeleteWriters, usePartFieldChecker, columnMetaMap);
+            gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
+            genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
+        this.hasJsonColumn = hasJsonColumn;
     }
 
     @Override
@@ -148,6 +167,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getUkColumnNamesList(),
             getBeforeUkMapping(),
             getAfterUkMapping(),
+            getAfterUgsiUkIndex(),
             getSelectInsertColumnMapping(),
             getPkColumnNames(),
             getBeforePkMapping(),
@@ -172,7 +192,17 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getPrimaryDeleteWriter(),
             getGsiDeleteWriters(),
             isUsePartFieldChecker(),
-            getColumnMetaMap());
+            isHasJsonColumn(),
+            getColumnMetaMap(),
+            isUkContainGeneratedColumn(),
+            getEvalRowColMetas(),
+            getGenColRexNodes(),
+            getInputToEvalFieldsMapping(),
+            getDefaultExprColMetas(),
+            getDefaultExprColRexNodes(),
+            getDefaultExprEvalFieldsMapping(),
+            isPushablePrimaryKeyCheck(),
+            isPushableForeignConstraintCheck());
         return newLogicalReplace;
     }
 
@@ -198,7 +228,10 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.getInsertRowType(), insert.getKeywords(), insert.getDuplicateKeyUpdateList(),
             insert.getBatchSize(), insert.getAppendedColumnIndex(), insert.getHints(), insert.getTableInfo(), null,
             new ArrayList<>(), insert.getAutoIncParamIndex(), insert.getUnOptimizedLogicalDynamicValues(),
-            insert.getUnOptimizedDuplicateKeyUpdateList());
+            insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
+            insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
+            insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
+            insert.isPushableForeignConstraintCheck());
 
         final InsertWriter replaceWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return replaceWriter.getInput(executionContext);
@@ -208,5 +241,9 @@ public class LogicalReplace extends LogicalInsertIgnore {
     public InsertWriter getPrimaryInsertWriter() {
         return Optional.ofNullable(this.primaryInsertWriter)
             .orElseGet(() -> getPrimaryRelocateWriter().getModifyWriter().unwrap(InsertWriter.class));
+    }
+
+    public boolean isHasJsonColumn() {
+        return hasJsonColumn;
     }
 }

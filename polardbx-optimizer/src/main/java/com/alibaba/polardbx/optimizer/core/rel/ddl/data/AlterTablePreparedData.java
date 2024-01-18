@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.calcite.sql.SqlEnableKeys;
@@ -37,11 +39,13 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private List<String> droppedColumns;
     private List<String> addedColumns;
     private List<String> updatedColumns;
-    private Map<String, String> changedColumns;
+    private List<Pair<String, String>> changedColumns;
     private List<String> alterDefaultColumns;
+    private List<String> alterDefaultNewColumns;
 
     private boolean timestampColumnDefault;
-    Map<String, String> binaryColumnDefaultValues;
+    private Map<String, String> specialDefaultValues;
+    private Map<String, Long> specialDefaultValueFlags;
 
     /**
      * Index modifications
@@ -49,7 +53,14 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private List<String> droppedIndexes;
     private List<String> addedIndexes;
     private List<String> addedIndexesWithoutNames;
-    private Map<String, String> renamedIndexes;
+    private List<Pair<String, String>> renamedIndexes;
+
+    /**
+     * Foreign key
+     */
+    private List<String> referencedTables; // Set this if push down physical foreign key.
+    private List<ForeignKeyData> addedForeignKeys;
+    private List<String> droppedForeignKeys;
 
     /**
      * Primary key modifications
@@ -58,6 +69,9 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private List<String> addedPrimaryKeyColumns;
 
     private List<Pair<String, String>> columnAfterAnother;
+
+    //Pair<indexName, visibility>
+    private List<Pair<String, String>> indexVisibility;
     private boolean logicalColumnOrder;
 
     private String tableComment;
@@ -94,6 +108,14 @@ public class AlterTablePreparedData extends DdlPreparedData {
 
     private Boolean isGsi = false;
 
+    private boolean needRepartition = false;
+
+    private boolean keepPartitionKeyRange = true;
+
+    private boolean needDropImplicitKey = false;
+
+    private TableMeta newTableMeta;
+
     public boolean hasColumnModify() {
         return GeneralUtil.isNotEmpty(droppedColumns) ||
             GeneralUtil.isNotEmpty(addedColumns) ||
@@ -109,6 +131,7 @@ public class AlterTablePreparedData extends DdlPreparedData {
     private boolean onlineChangeColumn = false;
 
     private String modifyColumnType = null;
+    private String modifyColumnTypeNullable = null;
     private String modifyColumnName = null;
 
     private String tmpColumnName = null;
@@ -129,9 +152,15 @@ public class AlterTablePreparedData extends DdlPreparedData {
     // if algorithm=omc_index
     private boolean onlineModifyColumnIndexTask = false;
 
+    /**
+     * Used by online modify column / add generated column
+     */
     private boolean useChecker;
     private boolean useSimpleChecker;
-    private String checkerColumnName;
+    private List<String> checkerColumnNames;
 
-    private boolean skipBackfill;
+    private boolean skipBackfill = false;
+    private boolean forceCnEval = false;
+
+    private Map<String, Pair<String, String>> notNullableGeneratedColumnDefs;
 }

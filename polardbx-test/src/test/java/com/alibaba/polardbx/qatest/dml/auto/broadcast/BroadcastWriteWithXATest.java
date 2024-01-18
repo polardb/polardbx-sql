@@ -40,7 +40,6 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * @author chenmo.cm
  */
-@Ignore
 
 public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
 
@@ -147,7 +146,7 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
         mysqlConnection.setAutoCommit(false);
         tddlConnection.setAutoCommit(false);
 
-        String sql = "set drds_transaction_policy='free'";
+        String sql = "set drds_transaction_policy='no_transaction'";
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test, timestamp_test) VALUES"
@@ -161,12 +160,12 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
         sql = "DELETE FROM " + baseOneTableName + " WHERE pk = 6";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
 
-        assertVariable("drds_transaction_policy", "FREE", tddlConnection, false);
+        assertVariable("drds_transaction_policy", "NO_TRANSACTION", tddlConnection, false);
 
         sql = "COMMIT";
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
 
-        assertVariable("drds_transaction_policy", "FREE", tddlConnection, false);
+        assertVariable("drds_transaction_policy", "NO_TRANSACTION", tddlConnection, false);
 
         sql = "SELECT * FROM " + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
@@ -234,12 +233,15 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
 
             } else {
 
-                sql = "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/DELETE FROM " + physicalSimpleTableName + " WHERE pk = 1";
+                sql =
+                    "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/DELETE FROM " + physicalSimpleTableName
+                        + " WHERE pk = 1";
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-                sql = "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/INSERT INTO " + physicalSimpleTableName
-                    + "(pk, varchar_test, integer_test) VALUES"
-                    + "(4, 'something in broadcast table', 999);";
+                sql =
+                    "/*+TDDL:cmd_extra(PUSHDOWN_HINT_ON_BROADCAST=true) node(1)*/INSERT INTO " + physicalSimpleTableName
+                        + "(pk, varchar_test, integer_test) VALUES"
+                        + "(4, 'something in broadcast table', 999);";
                 JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
             }
         }
@@ -248,7 +250,7 @@ public class BroadcastWriteWithXATest extends AutoCrudBasedLockTestCase {
             + "(4, 'something in broadcast table', 666), (3, 'something in broadcast table', 888);";
         if (baseOneTableName.equalsIgnoreCase("update_delete_base_broadcast")) {
             executeErrorAssert(tddlConnection, sql, ImmutableList.of(),
-                "Duplicate entry '4' for key 'PRIMARY'");
+                "Duplicate entry '4' for key ");
         } else {
             sql = "INSERT INTO " + baseOneTableName + "(pk, varchar_test, integer_test) VALUES"
                 + "(4, 'something in broadcast table', 666), (3, 'something in broadcast table', 888);";

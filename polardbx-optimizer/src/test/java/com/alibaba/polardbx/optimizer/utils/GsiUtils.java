@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -548,7 +549,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            0);
+            0,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexCoveringRecord(String catalog, String schema, String tableName,
@@ -585,7 +587,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            0L);
+            0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexColumnRecord(String catalog, String schema, String tableName,
@@ -623,7 +626,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L);
+            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static GsiMetaManager.IndexRecord indexColumnRecord(String catalog, String schema, String tableName,
@@ -660,6 +664,7 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            0L);
+            0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 }

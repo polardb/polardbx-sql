@@ -66,13 +66,25 @@ public class FastsqlParser {
     }
 
     public SqlNodeList parse(final ByteString sql, ExecutionContext executionContext) throws SqlParserException {
-        boolean testMode = executionContext == null ? false : executionContext.isTestMode();
-        return parse(sql, null, new ContextParameters(testMode), executionContext);
+        return parse(sql, executionContext, false);
+    }
+
+    public SqlNodeList parse(final ByteString sql, ExecutionContext executionContext, boolean internalQuery)
+        throws SqlParserException {
+        boolean testMode = executionContext != null && executionContext.isTestMode();
+        ContextParameters contextParameters = new ContextParameters(testMode);
+        contextParameters.setInternalQuery(internalQuery);
+        return parse(sql, null, contextParameters, executionContext);
     }
 
     public SqlNodeList parse(final String sql, ExecutionContext executionContext)
         throws SqlParserException {
         return parse(ByteString.from(sql), executionContext);
+    }
+
+    public SqlNodeList parse(final String sql, ExecutionContext executionContext, boolean internalQuery)
+        throws SqlParserException {
+        return parse(ByteString.from(sql), executionContext, internalQuery);
     }
 
     @VisibleForTesting

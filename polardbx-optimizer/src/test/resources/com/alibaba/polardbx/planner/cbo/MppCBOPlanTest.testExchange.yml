@@ -360,10 +360,10 @@
       exchange(distribution=single, collation=[0 asc-nulls-first])
         hashjoin(condition="id = v3_k", type="left")
           exchange(distribution=hash[0], collation=[0 asc-nulls-first])
-            logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` order by `id`")
+            limit(fetch=2)
+              logicalview(tables="[0000-0003].v2_[0-7]", shardcount=8, sql="select `id`, `v2_k`, `name2`, `create_time` from `v2` as `v2` order by `id` limit 2")
           exchange(distribution=hash[1], collation=[])
             logicalview(tables="[0000-0003].v3_[00-11]", shardcount=12, sql="select `id`, `v3_k`, `name3`, `create_time` from `v3` as `v3`")
-
 -
   sql: |
     /*+TDDL: cmd_extra(enable_broadcast_join=false,PARTIAL_AGG_SELECTIVITY_THRESHOLD=0) HASH_JOIN(v2, v3)*/

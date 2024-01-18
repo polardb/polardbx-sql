@@ -56,5 +56,13 @@ public class DeleteBaselineSyncAction implements ISyncAction {
         }
         return null;
     }
+
+    public String getParameterSql() {
+        return parameterSql;
+    }
+
+    public Integer getPlanInfoId() {
+        return planInfoId;
+    }
 }
 

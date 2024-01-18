@@ -29,20 +29,20 @@ import java.util.List;
 
 public class MySqlDeleteStatement extends SQLDeleteStatement {
 
-    private boolean              lowPriority        = false;
-    private boolean              quick              = false;
-    private boolean              ignore             = false;
-    private SQLOrderBy           orderBy;
-    private SQLLimit             limit;
+    private boolean lowPriority = false;
+    private boolean quick = false;
+    private boolean ignore = false;
+    private SQLOrderBy orderBy;
+    private SQLLimit limit;
     // for petadata
-    private boolean              forceAllPartitions = false;
-    private SQLName              forcePartition;
+    private boolean forceAllPartitions = false;
+    private SQLName forcePartition;
 
     private List<SQLCommentHint> hints;
 
     private boolean fulltextDictionary = false;
 
-    public MySqlDeleteStatement(){
+    public MySqlDeleteStatement() {
         super(DbType.mysql);
     }
 
@@ -74,12 +74,12 @@ public class MySqlDeleteStatement extends SQLDeleteStatement {
         }
         return hints;
     }
-    
+
     public int getHintsSize() {
         if (hints == null) {
             return 0;
         }
-        
+
         return hints.size();
     }
 

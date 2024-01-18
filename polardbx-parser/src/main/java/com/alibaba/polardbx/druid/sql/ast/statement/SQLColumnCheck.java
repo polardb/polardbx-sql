@@ -24,11 +24,11 @@ public class SQLColumnCheck extends SQLConstraintImpl implements SQLColumnConstr
 
     private SQLExpr expr;
 
-    public SQLColumnCheck(){
+    public SQLColumnCheck() {
 
     }
 
-    public SQLColumnCheck(SQLExpr expr){
+    public SQLColumnCheck(SQLExpr expr) {
         this.setExpr(expr);
     }
 

@@ -23,10 +23,15 @@ public interface DumpStreamOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.DumpStream)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>bytes payload = 1;</code>
-     *
-     * @return The payload.
-     */
-    com.google.protobuf.ByteString getPayload();
+  /**
+   * <code>bytes payload = 1;</code>
+   * @return The payload.
+   */
+  com.google.protobuf.ByteString getPayload();
+
+  /**
+   * <code>bool isHeartBeat = 2;</code>
+   * @return The isHeartBeat.
+   */
+  boolean getIsHeartBeat();
 }

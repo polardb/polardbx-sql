@@ -45,6 +45,7 @@ import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.PredicateLeaf;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneId;
 import java.util.Map;
 import java.util.Optional;

@@ -93,4 +93,6 @@ public abstract class AbstractCollationScalarFunction extends AbstractScalarFunc
 
         return compareType;
     }
+
+
 }

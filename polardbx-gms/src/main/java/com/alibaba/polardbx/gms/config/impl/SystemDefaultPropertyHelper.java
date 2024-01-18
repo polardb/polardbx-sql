@@ -22,12 +22,12 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.topology.DbInfoRecord;
-import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
+import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 
@@ -47,8 +47,9 @@ import java.util.Properties;
 public class SystemDefaultPropertyHelper {
     private final static Logger logger = LoggerFactory.getLogger(SystemDefaultPropertyHelper.class);
 
-    private final static String countContainShardingTypeLogDbSql = String.format("select count(1) from db_info where db_type=%s",
-        DbInfoRecord.DB_TYPE_PART_DB);
+    private final static String countContainShardingTypeLogDbSql =
+        String.format("select count(1) from db_info where db_type=%s",
+            DbInfoRecord.DB_TYPE_PART_DB);
 
     public static void initDefaultInstConfig() {
 
@@ -98,6 +99,10 @@ public class SystemDefaultPropertyHelper {
         int logicalDbCnt = DbTopologyManager.DEFAULT_MAX_LOGICAL_DB_COUNT;
         sysDefaultProperties.put(ConnectionProperties.MAX_LOGICAL_DB_COUNT, String.valueOf(logicalDbCnt));
 
+        // Prepare the server default collation, default collation is utf8mb4_general_ci
+        String serverDefaultCollation = DbTopologyManager.DEFAULT_SERVER_COLLATION;
+        sysDefaultProperties.put(ConnectionProperties.COLLATION_SERVER, serverDefaultCollation);
+
         // whether to enable the scaleOut feature
         sysDefaultProperties.put(ConnectionProperties.ENABLE_SCALE_OUT_FEATURE,
             ConnectionParams.ENABLE_SCALE_OUT_FEATURE.getDefault());
@@ -111,6 +116,9 @@ public class SystemDefaultPropertyHelper {
         sysDefaultProperties.put(ConnectionProperties.CDC_STARTUP_MODE,
             ConnectionParams.CDC_STARTUP_MODE.getDefault());
 
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_CDC_META_BUILD_SNAPSHOT,
+            ConnectionParams.ENABLE_CDC_META_BUILD_SNAPSHOT.getDefault());
+
         // Prepare the default logical time zone
         sysDefaultProperties.put(ConnectionProperties.LOGICAL_DB_TIME_ZONE, String.valueOf(
             InternalTimeZone.defaultTimeZone.getMySqlTimeZoneName()));
@@ -119,8 +127,21 @@ public class SystemDefaultPropertyHelper {
         sysDefaultProperties.put(ConnectionProperties.GROUP_PARALLELISM, String.valueOf(
             ConnectionParams.GROUP_PARALLELISM.getDefault()));
 
+        //  allow use group parallelism for select-query on autocommit=true trans when shareReadView is closed
+        sysDefaultProperties.put(ConnectionProperties.ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW, String.valueOf(
+            ConnectionParams.ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW.getDefault()));
+
+        sysDefaultProperties.put(ConnectionProperties.ALLOW_MOVING_BALANCED_SINGLE_TABLE, String.valueOf(
+            ConnectionParams.ALLOW_MOVING_BALANCED_SINGLE_TABLE.getDefault()));
+
+        sysDefaultProperties.put(ConnectionProperties.DATABASE_DEFAULT_SINGLE, String.valueOf(
+            ConnectionParams.DATABASE_DEFAULT_SINGLE.getDefault()));
+
         // Prepare some default properties for partition management
         prepareDefaultPropertiesForPartitionManagementProperties(sysDefaultProperties);
+
+        // prepare server_id , initialized from server_id of gms, and then persisted.
+        prepareDefaultPropertiesForServerId(sysDefaultProperties);
 
         return sysDefaultProperties;
     }
@@ -208,10 +229,6 @@ public class SystemDefaultPropertyHelper {
             String.valueOf(defaultConnPoolConfig.xprotoChecker));
         properties.setProperty(ConnectionProperties.CONN_POOL_XPROTO_MAX_PACKET_SIZE,
             String.valueOf(defaultConnPoolConfig.xprotoMaxPacketSize));
-        properties.setProperty(ConnectionProperties.CONN_POOL_XPROTO_QUERY_TOKEN,
-            String.valueOf(defaultConnPoolConfig.xprotoQueryToken));
-        properties.setProperty(ConnectionProperties.CONN_POOL_XPROTO_PIPE_BUFFER_SIZE,
-            String.valueOf(defaultConnPoolConfig.xprotoPipeBufferSize));
         sysDefaultProperties.putAll(properties);
     }
 
@@ -254,20 +271,37 @@ public class SystemDefaultPropertyHelper {
         sysDefaultProperties.put(ConnectionProperties.USE_FAST_SINGLE_POINT_INTERVAL_MERGING,
             ConnectionParams.USE_FAST_SINGLE_POINT_INTERVAL_MERGING.getDefault());
         sysDefaultProperties.put(ConnectionProperties.ENABLE_CONST_EXPR_EVAL_CACHE,
-            ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE.getDefault());;
+            ConnectionParams.ENABLE_CONST_EXPR_EVAL_CACHE.getDefault());
 
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX,
+            ConnectionParams.ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX.getDefault());
+        sysDefaultProperties.put(ConnectionProperties.ENABLE_AUTO_USE_COLUMNS_PARTITION,
+            ConnectionParams.ENABLE_AUTO_USE_COLUMNS_PARTITION.getDefault());
+    }
+
+    private static void prepareDefaultPropertiesForServerId(Properties sysDefaultProperties) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery("show variables like 'server_id'");
+            while (rs.next()) {
+                String serverId = rs.getString("Value");
+                sysDefaultProperties.put(ConnectionProperties.SERVER_ID, serverId);
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+        }
     }
 
     protected static Boolean checkNeedEnableAutoPartitionMode() {
         int shardingDbCnt = 0;
-        try (Connection conn = MetaDbDataSource.getInstance().getConnection();Statement stmt = conn.createStatement();
-            ResultSet rs = stmt.executeQuery(countContainShardingTypeLogDbSql)){
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection(); Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery(countContainShardingTypeLogDbSql)) {
             if (rs != null) {
                 rs.next();
                 shardingDbCnt = rs.getInt(1);
             }
         } catch (Throwable ex) {
-            logger.warn("Failed to count the sharding type logical db",ex);
+            logger.warn("Failed to count the sharding type logical db", ex);
         }
         return shardingDbCnt == 0;
     }

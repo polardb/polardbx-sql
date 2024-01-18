@@ -41,6 +41,8 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager.ComplexTaskStatus.PUBLIC;
+
 /**
  * Created by luoyanxin.
  *
@@ -112,6 +114,8 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
          */
         WRITE_REORG(3),
         READY_TO_PUBLIC(4),
+        CHANGE_SET_START(5),
+        DOING_CHECKER(6),
         ABSENT(7),
 
         /**
@@ -150,6 +154,10 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 return WRITE_REORG;
             case 4:
                 return READY_TO_PUBLIC;
+            case 5:
+                return CHANGE_SET_START;
+            case 6:
+                return DOING_CHECKER;
             case 7:
                 return ABSENT;
             case 10:
@@ -355,7 +363,8 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
         MODIFY_PARTITION(8),
         REFRESH_TOPOLOGY(9),
         MOVE_DATABASE(10),
-        SPLIT_HOT_VALUE(11);
+        SPLIT_HOT_VALUE(11),
+        REORGANIZE_PARTITION(12);
 
         private final int value;
 
@@ -383,6 +392,8 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 return MOVE_DATABASE;
             case 11:
                 return SPLIT_HOT_VALUE;
+            case 12:
+                return REORGANIZE_PARTITION;
             default:
                 return null;
             }
@@ -568,6 +579,19 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 }
             }
             return true;
+        }
+
+        public ComplexTaskStatus getFirstPartStatus() {
+            if (GeneralUtil.isEmpty(partitionTableMetaMap)) {
+                return PUBLIC;
+            } else {
+                for (Map.Entry<String, ComplexTaskStatus> entry : partitionTableMetaMap.entrySet()) {
+                    if (!entry.getValue().isPublic()) {
+                        return entry.getValue();
+                    }
+                }
+            }
+            return PUBLIC;
         }
 
         public String getSchemaName() {

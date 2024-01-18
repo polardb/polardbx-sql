@@ -20,11 +20,13 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
@@ -68,6 +70,7 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -140,6 +143,12 @@ public abstract class AccessPathRule extends RelOptRule {
         @Override
         public void onMatch(RelOptRuleCall call) {
             final LogicalView logicalView = call.rel(0);
+            if (logicalView.getScalarList().size() > 0) {
+                // apply node stop gsi selection, try hint PUSH_CORRELATE_MATERIALIZED_LIMIT=0
+                // to avoid pushing scalar subquery
+                return;
+            }
+
             final ExecutionContext ec = PlannerContext.getPlannerContext(call).getExecutionContext();
             final String schemaName = logicalView.getSchemaName();
             final RelOptTable primaryTable = logicalView.getTable();
@@ -164,7 +173,8 @@ public abstract class AccessPathRule extends RelOptRule {
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
                 if (isCoveringIndex(mq, logicalView, primaryTable, gsiName)
                     && (lockMode == null || lockMode == SqlSelect.LockMode.UNDEF)) {
-                    final IndexScanVisitor indexScanVisitor = new IndexScanVisitor(primaryTable, indexTable, call.builder());
+                    final IndexScanVisitor indexScanVisitor =
+                        new IndexScanVisitor(primaryTable, indexTable, call.builder());
                     final LogicalIndexScan logicalIndexScan =
                         new LogicalIndexScan(plan.accept(indexScanVisitor), indexTable, logicalView.getHints(),
                             lockMode, logicalView.getFlashback());
@@ -301,12 +311,13 @@ public abstract class AccessPathRule extends RelOptRule {
             // do index selection for single logical table only
             final String logicalTableName = logicalView.getLogicalTableName();
             gsiPublishedNameList = GlobalIndexMeta.getPublishedIndexNames(logicalTableName, schemaName, ec);
+            gsiPublishedNameList = filterVisibleIndex(schemaName, logicalTableName, gsiPublishedNameList, ec);
         } else if (logicalView.getTableNames().size() > 1) {
             // do index selection for shard logical table with multi broadcast table
             List<String> tableNames = logicalView.getTableNames();
             String logicalTableName = null;
             for (String tableName : tableNames) {
-                if (!OptimizerContext.getContext(schemaName).getRuleManager().isBroadCast(tableName)) {
+                if (!ec.getSchemaManager(schemaName).getTddlRuleManager().isBroadCast(tableName)) {
                     if (logicalTableName == null) {
                         logicalTableName = tableName;
                     } else {
@@ -318,6 +329,7 @@ public abstract class AccessPathRule extends RelOptRule {
                 return null;
             }
             gsiPublishedNameList = GlobalIndexMeta.getPublishedIndexNames(logicalTableName, schemaName, ec);
+            gsiPublishedNameList = filterVisibleIndex(schemaName, logicalTableName, gsiPublishedNameList, ec);
         }
 
         if (logicalView.getIndexNode() != null) {
@@ -370,6 +382,34 @@ public abstract class AccessPathRule extends RelOptRule {
 
         ArrayList<String> result = new ArrayList<>();
         result.addAll(gsiNameSet);
+        return result;
+    }
+
+    /**
+     * 返回visible index列表
+     * see: https://dev.mysql.com/doc/refman/8.0/en/invisible-indexes.html
+     * visible与gsi在online schema change中的状态不同
+     */
+    private static List<String> filterVisibleIndex(String schemaName, String primaryTable, List<String> gsiNameList,
+                                                   ExecutionContext ec) {
+        final List<String> result = new ArrayList<>();
+        if (CollectionUtils.isEmpty(gsiNameList)) {
+            return result;
+        }
+        if (ec.getSchemaManager(schemaName) == null || ec.getSchemaManager(schemaName).getTable(primaryTable) == null) {
+            return gsiNameList;
+        }
+        final TableMeta table = ec.getSchemaManager(schemaName).getTable(primaryTable);
+        final Map<String, GsiMetaManager.GsiIndexMetaBean> gsiPublished = table.getGsiPublished();
+        if (gsiPublished == null) {
+            return gsiNameList;
+        }
+        for (String gsiName : gsiNameList) {
+            if (gsiPublished.containsKey(gsiName) && gsiPublished.get(gsiName).visibility == IndexVisibility.VISIBLE) {
+                result.add(gsiName);
+            }
+        }
+
         return result;
     }
 
@@ -580,6 +620,7 @@ public abstract class AccessPathRule extends RelOptRule {
         private final RelOptTable index;
         private final Map<String, Integer> indexColumnRefMap;
         private final RelBuilder relBuilder;
+
         private IndexScanVisitor(RelOptTable primary, RelOptTable index, RelBuilder relBuilder) {
             this.primary = primary;
             this.index = index;
@@ -612,6 +653,7 @@ public abstract class AccessPathRule extends RelOptRule {
                 stack.pop();
             }
         }
+
         @Override
         public RelNode visit(TableScan scan) {
             if (!scan.getTable().equals(primary)) {

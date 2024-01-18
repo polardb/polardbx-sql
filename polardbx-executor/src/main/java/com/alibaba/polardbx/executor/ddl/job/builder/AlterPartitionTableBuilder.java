@@ -20,9 +20,13 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTable;
+
+import java.util.List;
+import java.util.Map;
 
 public class AlterPartitionTableBuilder extends AlterTableBuilder {
 
@@ -41,6 +45,7 @@ public class AlterPartitionTableBuilder extends AlterTableBuilder {
         partitionInfo = OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
             .getPartitionInfo(preparedData.getTableName());
         tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
+        buildAlterPartitionReferenceTableTopology();
     }
 
     @Override
@@ -54,4 +59,34 @@ public class AlterPartitionTableBuilder extends AlterTableBuilder {
         handleInstantAddColumn();
     }
 
+    public void buildAlterPartitionReferenceTableTopology() {
+        if (preparedData.getReferencedTables() != null) {
+            for (String referencedTable : preparedData.getReferencedTables()) {
+                final PartitionInfo refPartInfo =
+                    OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
+                        .getPartitionInfo(referencedTable);
+                final Map<String, List<List<String>>> refTopo =
+                    PartitionInfoUtil.buildTargetTablesFromPartitionInfo(refPartInfo);
+                if (refPartInfo.isBroadcastTable()) {
+                    final String phyTable =
+                        refTopo.values().stream().map(l -> l.get(0).get(0)).findFirst().orElse(null);
+                    assert phyTable != null;
+                    for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
+                        for (List<String> l : entry.getValue()) {
+                            l.add(phyTable);
+                        }
+                    }
+                } else {
+                    for (Map.Entry<String, List<List<String>>> entry : refTopo.entrySet()) {
+                        final List<List<String>> partList = tableTopology.get(entry.getKey());
+                        assert partList != null;
+                        assert partList.size() == entry.getValue().size();
+                        for (int i = 0; i < entry.getValue().size(); ++i) {
+                            partList.get(i).addAll(entry.getValue().get(i));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

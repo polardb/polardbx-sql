@@ -49,7 +49,7 @@ public final class SQLInListExpr extends SQLExprImpl implements SQLReplaceable, 
 
     public SQLInListExpr(String expr, String... values) {
         this.setExpr(
-                SQLUtils.toSQLExpr(expr));
+            SQLUtils.toSQLExpr(expr));
 
         for (String value : values) {
             targetList.add(new SQLCharExpr(value));

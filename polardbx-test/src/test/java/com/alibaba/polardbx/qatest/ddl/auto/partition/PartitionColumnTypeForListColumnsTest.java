@@ -35,7 +35,9 @@ public class PartitionColumnTypeForListColumnsTest extends PartitionColumnTypeTe
 
     public PartitionColumnTypeForListColumnsTest(TestParameter parameter) {
         super(parameter);
+        this.testDbName = this.testDbName + "_l1";
         //this.testQueryByPrepStmt = true;
+        this.testDbName = this.testDbName + "_l1";
     }
 
     @Before

@@ -1,0 +1,49 @@
+# clean
+drop table if exists `t_order`;
+
+CREATE TABLE `t_order` (
+`x` int(11) primary key auto_increment,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+global INDEX (`seller_id`) partition by key(seller_id)
+) partition by key(order_id);
+
+show full create table `t_order`;
+
+insert into t_order(order_id, seller_id) values
+("12345", "678910"),
+("23456", "7891011"),
+("34567", "89101112"),
+("45678", "910111213"),
+("56789", "101112131415");
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id varchar(30) after x;
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id varchar(30) CHARACTER SET utf8 first;
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+alter table `t_order` modify column seller_id bigint(11) after order_id;
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+
+select * from t_order where seller_id = 7891011;
+
+select * from t_order where seller_id = 101112131415;
+
+alter table `t_order` modify column seller_id varchar(10);
+
+show full create table `t_order`;
+
+select * from t_order order by order_id asc;
+

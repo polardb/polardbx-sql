@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.manager;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.manager.handler.KillQueryHandler;
 import com.alibaba.polardbx.manager.handler.LockTransHandler;
 import com.alibaba.polardbx.manager.handler.ManagerSelectHandler;
@@ -40,10 +40,10 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
  */
 public class ManagerQueryHandler implements QueryHandler {
 
-    private static final Logger     logger = LoggerFactory.getLogger(ManagerQueryHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(ManagerQueryHandler.class);
     private final ManagerConnection source;
 
-    public ManagerQueryHandler(ManagerConnection source){
+    public ManagerQueryHandler(ManagerConnection source) {
         this.source = source;
     }
 
@@ -55,48 +55,48 @@ public class ManagerQueryHandler implements QueryHandler {
         }
         int rs = ManagerParse.parse(sql);
         switch (rs & 0xff) {
-            case ManagerParse.SELECT:
-                ManagerSelectHandler.handle(sql, c, rs >>> 8);
-                break;
-            case ManagerParse.SET:
-                PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
-                break;
-            case ManagerParse.SET_CONFIG:
-                SetConfigHandler.handle(sql, c, rs >>> 8);
-                break;
-            case ManagerParse.SHOW:
-                ShowHandler.handle(sql, c, rs >>> 8);
-                break;
-            case ManagerParse.KILL_CONN:
-                KillConnection.response(sql, rs >>> 8, c);
-                break;
-            case ManagerParse.OFFLINE:
-                Offline.execute(sql, c);
-                break;
-            case ManagerParse.ONLINE:
-                Online.execute(sql, c);
-                break;
-            case ManagerParse.KILL_QUERY:
-                KillQueryHandler.handle(sql, rs >>> 8, c);
-                break;
-            case ManagerParse.KILL_IDLE:
-                KillIdle.response(sql, rs >>> 8, c);
-                break;
-            case ManagerParse.SYNC:
-                SyncHandler.handle(sql, c, rs >>> 8);
-                break;
-            case ManagerParse.SET_READ_ONLY:
-                DbStatusHandler.handle(sql, c);
-                break;
-            case ManagerParse.LOCK_TRANS:
-                LockTransHandler.lock(sql, c);
-                break;
-            case ManagerParse.UNLOCK_TRANS:
-                LockTransHandler.unlock(sql, c);
-                break;
-            default: {
-                c.writeErrMessage(ErrorCode.ER_YES, "Unsupported statement");
-            }
+        case ManagerParse.SELECT:
+            ManagerSelectHandler.handle(sql, c, rs >>> 8);
+            break;
+        case ManagerParse.SET:
+            PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
+            break;
+        case ManagerParse.SET_CONFIG:
+            SetConfigHandler.handle(sql, c, rs >>> 8);
+            break;
+        case ManagerParse.SHOW:
+            ShowHandler.handle(sql, c, rs >>> 8);
+            break;
+        case ManagerParse.KILL_CONN:
+            KillConnection.response(sql, rs >>> 8, c);
+            break;
+        case ManagerParse.OFFLINE:
+            Offline.execute(sql, c);
+            break;
+        case ManagerParse.ONLINE:
+            Online.execute(sql, c);
+            break;
+        case ManagerParse.KILL_QUERY:
+            KillQueryHandler.handle(sql, rs >>> 8, c);
+            break;
+        case ManagerParse.KILL_IDLE:
+            KillIdle.response(sql, rs >>> 8, c);
+            break;
+        case ManagerParse.SYNC:
+            SyncHandler.handle(sql, c, rs >>> 8);
+            break;
+        case ManagerParse.SET_READ_ONLY:
+            DbStatusHandler.handle(sql, c);
+            break;
+        case ManagerParse.LOCK_TRANS:
+            LockTransHandler.lock(sql, c);
+            break;
+        case ManagerParse.UNLOCK_TRANS:
+            LockTransHandler.unlock(sql, c);
+            break;
+        default: {
+            c.writeErrMessage(ErrorCode.ER_YES, "Unsupported statement");
+        }
         }
     }
 }

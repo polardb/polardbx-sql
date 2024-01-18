@@ -20,9 +20,14 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
+import com.alibaba.polardbx.common.type.TransactionType;
+import com.alibaba.polardbx.net.AbstractConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.stats.CurrentTransactionStatistics;
+import com.alibaba.polardbx.stats.TransactionStatistics;
 
 import java.sql.SQLException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 事务对象
@@ -69,6 +74,18 @@ public interface ITransaction {
 
     void close();
 
+    void updateStatisticsWhenStatementFinished(AtomicLong rowCount);
+
+    void setMdlWaitTime(long mdlWaitTime);
+
+    void setStartTimeInMs(long startTime);
+
+    void setStartTime(long startTime);
+
+    void setSqlStartTime(long sqlStartTime);
+
+    public void setSqlFinishTime(long t);
+
     void kill() throws SQLException;
 
     void savepoint(String savepoint);
@@ -79,7 +96,7 @@ public interface ITransaction {
 
     void clearTrxContext();
 
-    void setCrucialError(ErrorCode errorCode);
+    void setCrucialError(ErrorCode errorCode, String cause);
 
     ErrorCode getCrucialError();
 
@@ -103,7 +120,7 @@ public interface ITransaction {
 
     ITransactionPolicy.TransactionClass getTransactionClass();
 
-    long getStartTime();
+    long getStartTimeInMs();
 
     boolean isBegun();
 
@@ -123,5 +140,52 @@ public interface ITransaction {
      */
     boolean handleStatementError(Throwable t);
 
+    /**
+     * Release auto savepoint set by this statement.
+     */
     void releaseAutoSavepoint();
+
+    /**
+     * A trx is under committing iff all of its branches
+     * are prepared but some of them are not yet committed.
+     * A trx under committing can only be committed.
+     *
+     * @return true if this trx is in async commit phase.
+     */
+    boolean isUnderCommitting();
+
+    /**
+     * Whether a trx is an async-commit trx.
+     *
+     * @return true if this trx is an async-commit trx.
+     */
+    boolean isAsyncCommit();
+
+    /**
+     * Update statistics or running slow trans.
+     * MUST NOT access not-thread-safe variables.
+     */
+    default void updateCurrentStatistics(CurrentTransactionStatistics stat, long durationTimeMs) {
+        // do nothing
+    }
+
+    TransactionStatistics getStat();
+
+    TransactionType getType();
+
+    default boolean isRwTransaction() {
+        return false;
+    }
+
+    void setLastActiveTime();
+
+    long getLastActiveTime();
+
+    void resetLastActiveTime();
+
+    long getIdleTimeout();
+
+    long getIdleROTimeout();
+
+    long getIdleRWTimeout();
 }

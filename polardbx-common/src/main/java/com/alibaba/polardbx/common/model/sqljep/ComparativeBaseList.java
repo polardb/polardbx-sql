@@ -16,6 +16,9 @@
 
 package com.alibaba.polardbx.common.model.sqljep;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+
 import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,23 +29,23 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 public abstract class ComparativeBaseList extends Comparative {
 
     private static final Logger logger = LoggerFactory.getLogger(ComparativeBaseList.class);
-    protected List<Comparative> list   = new ArrayList<Comparative>(2);
+    protected List<Comparative> list = new ArrayList<Comparative>(2);
 
-    public ComparativeBaseList(int function, Comparable<?> value){
+    public ComparativeBaseList(int function, Comparable<?> value) {
         super(function, value);
         list.add(new Comparative(function, value));
     }
 
-    protected ComparativeBaseList(){
+    protected ComparativeBaseList() {
         super();
     }
 
-    public ComparativeBaseList(int capacity){
+    public ComparativeBaseList(int capacity) {
         super();
         list = new ArrayList<Comparative>(capacity);
     }
 
-    public ComparativeBaseList(Comparative item){
+    public ComparativeBaseList(Comparative item) {
         super(item.getComparison(), item.getValue());
         list.add(item);
     }
@@ -120,5 +123,12 @@ public abstract class ComparativeBaseList extends Comparative {
 
     public void setList(List<Comparative> list) {
         this.list = list;
+    }
+
+    @Override
+    public void childrenAccept(ComparativeVisitor visitor) {
+        for (int i = 0; i < list.size(); i++) {
+            visitor.visit(list.get(i), i, this);
+        }
     }
 }

@@ -44,6 +44,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author chenmo.cm
  */
 
+
 public class SelectGsiTest extends GsiDMLTest {
 
     @Parameterized.Parameters(name = "{index}:hint={0} table1={1} table2={2}")

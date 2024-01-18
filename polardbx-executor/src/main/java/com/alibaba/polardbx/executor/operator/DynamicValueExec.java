@@ -16,22 +16,23 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.DataTypeUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 
 public class DynamicValueExec extends AbstractExecutor {
 
-    private int currCount;
+    private int calExpressionIndex;
 
-    private int count;
+    private int expressionCount;
 
     private List<DataType> outputColumnMeta;
     private List<List<IExpression>> expressionLists;
@@ -40,7 +41,7 @@ public class DynamicValueExec extends AbstractExecutor {
         List<List<IExpression>> expressionLists, List<DataType> outputColumnMeta, ExecutionContext context) {
         super(context);
         this.outputColumnMeta = outputColumnMeta;
-        this.count = expressionLists.size();
+        this.expressionCount = expressionLists.size();
         this.chunkLimit = Math.min(chunkLimit, expressionLists.size());
         this.expressionLists = expressionLists;
     }
@@ -48,16 +49,19 @@ public class DynamicValueExec extends AbstractExecutor {
     @Override
     void doOpen() {
         createBlockBuilders();
-        currCount = 0;
+        calExpressionIndex = 0;
     }
 
     @Override
     Chunk doNextChunk() {
-        if (currCount < count) {
-            while (currentPosition() < chunkLimit && currCount < count) {
-                currCount++;
+        if (calExpressionIndex < expressionCount) {
+            while (calExpressionIndex < expressionCount) {
+                calExpressionIndex++;
                 for (int i = 0; i < outputColumnMeta.size(); i++) {
-                    evaluateExpression(currCount - 1, i);
+                    evaluateExpression(calExpressionIndex - 1, i);
+                }
+                if (blockBuilders[0].getPositionCount() >= chunkLimit) {
+                    return buildChunkAndReset();
                 }
             }
             return buildChunkAndReset();
@@ -71,7 +75,13 @@ public class DynamicValueExec extends AbstractExecutor {
         final IExpression expression = expressionLists.get(nRow).get(c);
 
         Object result = expression.eval(null);
-        blockBuilder.writeObject(DataTypeUtils.convert(outputColumnMeta.get(c), result));
+        if (result instanceof List) {
+            for (Object obj : (List<Object>) result) {
+                blockBuilder.writeObject(DataTypeUtils.convert(outputColumnMeta.get(c), obj));
+            }
+        } else {
+            blockBuilder.writeObject(DataTypeUtils.convert(outputColumnMeta.get(c), result));
+        }
     }
 
     @Override
@@ -91,7 +101,7 @@ public class DynamicValueExec extends AbstractExecutor {
 
     @Override
     public boolean produceIsFinished() {
-        return currCount >= count;
+        return calExpressionIndex >= expressionCount;
     }
 
     @Override

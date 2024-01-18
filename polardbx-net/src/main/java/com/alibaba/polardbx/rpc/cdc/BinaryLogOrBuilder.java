@@ -23,25 +23,21 @@ public interface BinaryLogOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.BinaryLog)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The logName.
-     */
-    java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The logName.
+   */
+  java.lang.String getLogName();
+  /**
+   * <code>string logName = 1;</code>
+   * @return The bytes for logName.
+   */
+  com.google.protobuf.ByteString
+      getLogNameBytes();
 
-    /**
-     * <code>string logName = 1;</code>
-     *
-     * @return The bytes for logName.
-     */
-    com.google.protobuf.ByteString
-    getLogNameBytes();
-
-    /**
-     * <code>int64 fileSize = 2;</code>
-     *
-     * @return The fileSize.
-     */
-    long getFileSize();
+  /**
+   * <code>int64 fileSize = 2;</code>
+   * @return The fileSize.
+   */
+  long getFileSize();
 }

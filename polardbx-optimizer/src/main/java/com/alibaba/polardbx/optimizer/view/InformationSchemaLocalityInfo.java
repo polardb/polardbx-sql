@@ -42,14 +42,15 @@ public class InformationSchemaLocalityInfo extends VirtualView {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new ArrayList<>();
 
-        columns.add(new RelDataTypeFieldImpl("ID", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+//        columns.add(new RelDataTypeFieldImpl("ID", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("DB_NAME", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("OBJECT_TYPE", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("OBJECT_NAME", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("OBJECT_ID", 3, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(new RelDataTypeFieldImpl("PRIMARY_ZONE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("LOCALITY", 5, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("CREATED", 6, typeFactory.createSqlType(SqlTypeName.DATETIME)));
-        columns.add(new RelDataTypeFieldImpl("MODIFIED", 7, typeFactory.createSqlType(SqlTypeName.DATETIME)));
+        columns.add(new RelDataTypeFieldImpl("GROUP_ELEMENT", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCATION", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

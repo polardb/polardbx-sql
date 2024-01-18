@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic.oss;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
+import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -25,6 +26,7 @@ import com.alibaba.polardbx.executor.archive.writer.OSSBackFillValidator;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.partitionmanagement.LocalPartitionManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
@@ -35,6 +37,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
+import com.alibaba.polardbx.optimizer.memory.QueryMemoryPoolHolder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.repo.mysql.checktable.LocalPartitionDescription;
@@ -97,55 +100,75 @@ public class FileValidationTask extends BaseGmsTask {
 
         PartitionInfo sourceTablePartitionInfo =
             OSSTaskUtils.getSourcePartitionInfo(executionContext, sourceLogicalSchema, sourceLogicalTable);
-
-        Map<String, List<PhysicalPartitionInfo>> targetPartitionTopology =
-            OptimizerContext.getContext(targetLogicalSchema).getLatestSchemaManager().getTable(targetLogicalTable)
-                .getPartitionInfo().getPhysicalPartitionTopology(ImmutableList.of());
+        final boolean isSingle = sourceTablePartitionInfo.isSingleTable();
+        final boolean isBroadcast = sourceTablePartitionInfo.isBroadcastTable();
 
         // construct back-fill validators.
         FilesAccessor filesAccessor = new FilesAccessor();
         filesAccessor.setConnection(metaDbConnection);
         List<OSSBackFillValidator> validatorList = new ArrayList<>();
-        for (Map.Entry<String, List<PhysicalPartitionInfo>> entry : targetPartitionTopology.entrySet()) {
-            for (PhysicalPartitionInfo targetPhysicalPartitionInfo : entry.getValue()) {
-                final String partName = targetPhysicalPartitionInfo.getPartName();
-                Pair<String, String> sourcePhySchemaAndTable = Optional
-                    .ofNullable(singleTopology)
-                    .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
+        for (PhysicalPartitionInfo targetPhysicalPartitionInfo :
+            getFlattenedPartitionInfo(targetLogicalSchema, targetLogicalTable)) {
+            final String partName = targetPhysicalPartitionInfo.getPartName();
+            Pair<String, String> sourcePhySchemaAndTable = Optional
+                .ofNullable(singleTopology)
+                .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
 
-                String targetPhySchema = targetPhysicalPartitionInfo.getGroupKey();
-                String targetPhyTable = targetPhysicalPartitionInfo.getPhyTable();
-                String sourcePhySchema = sourcePhySchemaAndTable.getKey();
-                String sourcePhyTable = sourcePhySchemaAndTable.getValue();
+            String targetPhySchema = targetPhysicalPartitionInfo.getGroupKey();
+            String targetPhyTable = targetPhysicalPartitionInfo.getPhyTable();
+            String sourcePhySchema = sourcePhySchemaAndTable.getKey();
+            String sourcePhyTable = sourcePhySchemaAndTable.getValue();
 
-                List<FilesRecord> filesRecords = filesAccessor.queryByLocalPartition(
-                    targetLogicalSchema, targetLogicalTable, targetPhySchema, targetPhyTable, localPartitionName);
+            List<FilesRecord> filesRecords = filesAccessor.queryByLocalPartition(
+                targetLogicalSchema, targetLogicalTable, targetPhySchema, targetPhyTable, localPartitionName);
 
-                OSSBackFillValidator validator = new OSSBackFillValidator(
-                    targetLogicalSchema, targetLogicalTable, targetPhySchema, targetPhyTable,
-                    filesRecords,
-                    sourceLogicalSchema, sourceLogicalTable, sourcePhySchema, sourcePhyTable,
-                    partName, boundVal
-                );
-                validatorList.add(validator);
-            }
+            OSSBackFillValidator validator = new OSSBackFillValidator(
+                isSingle, isBroadcast, targetLogicalSchema, targetLogicalTable, targetPhySchema, targetPhyTable,
+                filesRecords,
+                sourceLogicalSchema, sourceLogicalTable, sourcePhySchema, sourcePhyTable,
+                partName, boundVal, getTaskId()
+            );
+            validatorList.add(validator);
         }
 
         // 2. invoke all validators
         List<OSSBackFillValidator.ValidationResult> validationResults = validatorList.stream()
-            .map(validator -> validator.validate(executionContext)).collect(Collectors.toList());
+            .map(validator -> {
+                ExecutionContext xaEc = null;
+                try {
+                    ExecutionContext.CopyOption copyOption = new ExecutionContext.CopyOption()
+                        .setMemoryPoolHolder(new QueryMemoryPoolHolder())
+                        .setParameters(executionContext.cloneParamsOrNull());
+                    xaEc = executionContext.copy(copyOption);
+                    xaEc.setTxIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                    return GsiUtils.wrapWithTransaction(
+                        ExecutorContext.getContext(loadTableSchema).getTransactionManager(),
+                        ITransactionPolicy.XA,
+                        xaEc,
+                        validator::validate);
+                } finally {
+                    if (xaEc != null) {
+                        xaEc.clearAllMemoryPool();
+                    }
+                }
+            }).collect(Collectors.toList());
 
         // 3. pause ddl if check failed.
         List<OSSBackFillValidator.ValidationResult> failedResults =
             validationResults.stream().filter(r -> !r.isCheckSuccess()).collect(Collectors.toList());
         if (!failedResults.isEmpty()) {
-            throw GeneralUtil.nestedException("Data validation failed! Check the source table modification during migration. "
-                + "Checksum info: " + validationResults.stream().map(
-                OSSBackFillValidator.ValidationResult::toString).collect(Collectors.toList()));
+            throw GeneralUtil.nestedException(
+                "Data validation failed! Check the source table modification during migration. "
+                    + "Checksum info: " + validationResults.stream().map(
+                    OSSBackFillValidator.ValidationResult::toString).collect(Collectors.toList()));
         }
     }
 
-    private boolean allowSkip(Connection metaDbConnection) {
+    protected List<PhysicalPartitionInfo> getFlattenedPartitionInfo(String schema, String table) {
+        return OSSTaskUtils.getFlattenedPartitionInfo(schema, table);
+    }
+
+    protected boolean allowSkip(Connection metaDbConnection) {
         DdlEngineTaskAccessor ddlEngineTaskAccessor = new DdlEngineTaskAccessor();
         ddlEngineTaskAccessor.setConnection(metaDbConnection);
         DdlEngineTaskRecord ddlEngineTaskRecord = ddlEngineTaskAccessor.query(getJobId(), getTaskId());
@@ -153,8 +176,8 @@ public class FileValidationTask extends BaseGmsTask {
             && DdlTaskState.valueOf(ddlEngineTaskRecord.state) == DdlTaskState.SUCCESS;
     }
 
-    private OSSBackFillValidator.ValidatorBound findBoundVal(ExecutionContext executionContext,
-                                                             String sourceLogicalSchema, String sourceLogicalTable) {
+    protected OSSBackFillValidator.ValidatorBound findBoundVal(ExecutionContext executionContext,
+                                                               String sourceLogicalSchema, String sourceLogicalTable) {
         IRepository repository =
             ExecutorContext.getContext(sourceLogicalSchema)
                 .getTopologyHandler()

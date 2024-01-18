@@ -20,6 +20,7 @@ import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.sync.BaselinePlanValidCheckSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -38,7 +39,6 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_P
 @TaskName(name = "CreateTableShowTableMetaTask")
 public class CreateTableShowTableMetaTask extends BaseGmsTask {
 
-    @JSONCreator
     public CreateTableShowTableMetaTask(String schemaName, String logicalTableName) {
         super(schemaName, logicalTableName);
         onExceptionTryRecoveryThenPause();
@@ -57,7 +57,7 @@ public class CreateTableShowTableMetaTask extends BaseGmsTask {
 
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        PlanManager.getInstance().invalidateCache();
+        SyncManagerHelper.syncWithDefaultDB(new BaselinePlanValidCheckSyncAction());
     }
 
     @Override

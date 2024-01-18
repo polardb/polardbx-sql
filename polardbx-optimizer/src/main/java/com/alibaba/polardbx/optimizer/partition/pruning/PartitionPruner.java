@@ -23,6 +23,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -56,20 +57,33 @@ public class PartitionPruner {
      */
     public static PartitionTupleRouteInfo generatePartitionTupleRoutingInfo(LogicalInsert insert,
                                                                             PartitionInfo partitionInfo) {
-        return PartitionTupleRouteInfoBuilder.generatePartitionTupleRoutingInfo(insert, partitionInfo);
+        return PartitionTupleRouteInfoBuilder.genPartTupleRoutingInfo(insert, partitionInfo);
     }
 
     /**
      * Methods for generating TupleRouteInfo by special row values
+     *
+     * @param tupleValRowType tupleValRowType will contain the datatype of all partition/subpartition columns
+     * @param tupleValAst tupleValAst will contain the dynamic params of all partition/subpartition columns
      */
     public static PartitionTupleRouteInfo generatePartitionTupleRoutingInfo(String schemaName,
                                                                             String logTbName,
                                                                             PartitionInfo specificPartInfo,
-                                                                            RelDataType valueRowType,
-                                                                            List<List<SqlNode>> astValues,
+                                                                            RelDataType tupleValRowType,
+                                                                            List<List<SqlNode>> tupleValAst,
                                                                             ExecutionContext ec) {
+
+//        GenPartTupleRouteInfoParams genParams = new GenPartTupleRouteInfoParams();
+//        genParams.setSchemaName(schemaName);
+//        genParams.setLogTbName(logTbName);
+//        genParams.setSpecificPartInfo(specificPartInfo);
+//        genParams.setValueRowType(valueRowType);
+//        genParams.setAstValues(astValues);
+//        genParams.setEc(ec);
+//        return PartitionTupleRouteInfoBuilder.genParTupleRoutingInfo(genParams);
+
         return PartitionTupleRouteInfoBuilder
-            .generatePartitionTupleRoutingInfo(schemaName, logTbName, specificPartInfo, valueRowType, astValues, ec);
+            .genPartTupleRoutingInfo(schemaName, logTbName, specificPartInfo, tupleValRowType, tupleValAst, ec);
     }
 
     //========== Pruning Phase =============
@@ -81,15 +95,18 @@ public class PartitionPruner {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
         boolean enablePartPruning = context.getParamManager().getBoolean(ConnectionParams.ENABLE_PARTITION_PRUNING);
         if (!enablePartPruning) {
+            PartitionInfo partInfo = stepInfo.getPartitionInfo();
             PartitionPruneStep fullScanStep =
-                PartitionPruneStepBuilder.generateFullScanPruneStepInfo(stepInfo.getPartitionInfo());
+                PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
+                    partInfo.getPartitionBy().getPhysicalPartLevel(), true);
             pruningCtx.setRootStep(fullScanStep);
-            PartPrunedResult prunedResult = fullScanStep.prunePartitions(context, pruningCtx);
+
+            PartPrunedResult prunedResult = fullScanStep.prunePartitions(context, pruningCtx, null);
             PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
             return prunedResult;
         }
         pruningCtx.setRootStep(stepInfo);
-        PartPrunedResult prunedResult = stepInfo.prunePartitions(context, pruningCtx);
+        PartPrunedResult prunedResult = stepInfo.prunePartitions(context, pruningCtx, null);
         PartitionPrunerUtils.logStepExplainInfo(context, prunedResult.getPartInfo(), pruningCtx);
         return prunedResult;
     }
@@ -114,8 +131,9 @@ public class PartitionPruner {
     /**
      * Methods for calculating partition func expression by tupleRouteInfo
      */
-    public static SearchDatumInfo doCalcSearchDatumByTupleRouteInfo(PartitionTupleRouteInfo tupleRouteInfo, int tupleIndex,
-                                                                    ExecutionContext context) {
+    public static List<SearchDatumInfo> doCalcSearchDatumByTupleRouteInfo(PartitionTupleRouteInfo tupleRouteInfo,
+                                                                          int tupleIndex,
+                                                                          ExecutionContext context) {
         PartPruneStepPruningContext pruningCtx = PartPruneStepPruningContext.initPruningContext(context);
         pruningCtx.setPruningByTuple(true);
         /**
@@ -144,7 +162,8 @@ public class PartitionPruner {
                         pruneStepInfo = relShardInfo.getPartPruneStepInfo();
                     } else {
                         PartitionInfo partInfo = relShardInfo.getPartPruneStepInfo().getPartitionInfo();
-                        pruneStepInfo = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
+                        pruneStepInfo = PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
+                            partInfo.getPartitionBy().getPhysicalPartLevel(), true);
                     }
 
                     /**
@@ -170,11 +189,32 @@ public class PartitionPruner {
                     }
                 }
                 if (!bitSetSame) {
+                    /**
+                     * <pre>
+                     *     When bitSetSame = false, that means:
+                     *     a. LogicalView contains a Pushed Join with at least 2 tables;
+                     *     b. the predicates of left tbl of join and
+                     *        the predicates of right tbl of join are NOT the same,
+                     *        so the pruning bitset of left tbl and right tbl are different;
+                     *     c. As building the physical of the pushed join of logicalVew must
+                     *        be sure that the pruning result of left tbl and right tbl
+                     *        are the same, so here have to generate full scan for both
+                     *        left tbl and right tbl ignoring there actual pruning result.
+                     * <pre/>
+                     *
+                     *
+                     */
                     List<PartPrunedResult> fullScanResults = new ArrayList<>();
                     for (int i = 0; i < logicalView.getTableNames().size(); i++) {
+                        String tblName = logicalView.getTableNames().get(i);
+                        PartitionInfoManager partitionInfoManager =
+                            context.getSchemaManager(logicalView.getSchemaName()).getTddlRuleManager()
+                                .getPartitionInfoManager();
+                        PartitionInfo partInfo =
+                            partitionInfoManager.getPartitionInfo(tblName);
                         PartitionPruneStep partitionPruneStep =
-                            PartitionPruneStepBuilder.generateFullScanPruneStepInfo(logicalView.getSchemaName(),
-                                logicalView.getTableNames().get(i), context);
+                            PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
+                                partInfo.getPartitionBy().getPhysicalPartLevel(), true);
                         PartPrunedResult tbPrunedResult =
                             PartitionPruner.doPruningByStepInfo(partitionPruneStep, context);
                         fullScanResults.add(tbPrunedResult);
@@ -194,7 +234,8 @@ public class PartitionPruner {
                     tbPrunedResult = PartitionPruner.doPruningByStepInfo(pruneStepInfo, context);
                 } else {
                     PartitionInfo partInfo = relShardInfo.getPartPruneStepInfo().getPartitionInfo();
-                    PartitionPruneStep fullScanStep = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(partInfo);
+                    PartitionPruneStep fullScanStep = PartitionPruneStepBuilder.genFullScanPruneStepInfoInner(partInfo,
+                        partInfo.getPartitionBy().getPhysicalPartLevel(), true);
                     tbPrunedResult = PartitionPruner.doPruningByStepInfo(fullScanStep, context);
                 }
                 List<PartPrunedResult> allTbPrunedResults = new ArrayList<>();

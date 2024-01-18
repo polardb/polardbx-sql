@@ -17,6 +17,10 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -35,6 +39,7 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLNumberExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
@@ -45,21 +50,22 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -68,6 +74,7 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
@@ -94,6 +101,7 @@ import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.alibaba.polardbx.rule.model.AdvancedParameter;
 import com.alibaba.polardbx.rule.model.DateEnumerationParameter;
 import com.alibaba.polardbx.rule.utils.GroovyRuleTimeShardFuncionUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptSchema;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlIdentifier;
@@ -108,6 +116,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * @author chenmo.cm
@@ -625,20 +634,27 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
 
                 // handle implicit pk
                 final MySqlCreateTableStatement createTable =
-                    (MySqlCreateTableStatement) SQLUtils.parseStatements(sql,
+                    (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sql,
                             JdbcConstants.MYSQL)
                         .get(0)
                         .clone();
+                List<SQLTableElement> toAdd = Lists.newArrayList();
                 List<SQLTableElement> toRemove = Lists.newArrayList();
                 for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
-                    // handle binary default value
                     if (tableMeta != null && sqlTableElement instanceof SQLColumnDefinition) {
-                        String columnName =
-                            SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
+                        SQLColumnDefinition sqlColumnDefinition = (SQLColumnDefinition) sqlTableElement;
+                        String columnName = SQLUtils.normalizeNoTrim(sqlColumnDefinition.getColumnName());
                         ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
                         if (columnMeta != null && columnMeta.isBinaryDefault()) {
+                            // handle binary default value
                             SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
-                            ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
+                            sqlColumnDefinition.setDefaultExpr(newDefaultVal);
+                        } else if (columnMeta != null && columnMeta.isLogicalGeneratedColumn()) {
+                            // handle generated column
+                            sqlColumnDefinition.setGeneratedAlawsAs(
+                                new MySqlExprParser(ByteString.from(columnMeta.getField().getDefault())).expr());
+                            sqlColumnDefinition.setLogical(true);
+                            sqlColumnDefinition.setDefaultExpr(null);
                         }
                     }
 
@@ -676,8 +692,73 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                             foreignKey.getReferencedTable().setSimpleName(logicalTableNames.iterator().next());
                         }
                     }
+
+                    // Remove index key and add foreign key if it is logical FK.
+                    if (sqlTableElement instanceof MySqlKey && ((MySqlKey) sqlTableElement).getName() != null &&
+                        ((MySqlKey) sqlTableElement).getName().getSimpleName() != null) {
+                        final ForeignKeyData foreignKeyData =
+                            tableMeta.getForeignKeys()
+                                .get(SQLUtils.normalizeNoTrim(((MySqlKey) sqlTableElement).getName().getSimpleName()));
+                        if (foreignKeyData != null && !foreignKeyData.isPushDown()) {
+                            toRemove.add(sqlTableElement);
+                            final MysqlForeignKey mysqlForeignKey = new MysqlForeignKey();
+                            mysqlForeignKey.setName(
+                                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(foreignKeyData.constraint)));
+                            mysqlForeignKey.setHasConstraint(true);
+                            // do not show fk index name
+//                            mysqlForeignKey.setIndexName(
+//                                new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(foreignKeyData.indexName)));
+                            mysqlForeignKey.setReferencedTable(
+                                new SQLExprTableSource(foreignKeyData.refSchema.equals(schemaName) ?
+                                    SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName) :
+                                    SqlIdentifier.surroundWithBacktick(foreignKeyData.refSchema) + "."
+                                        + SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName)));
+                            mysqlForeignKey.getReferencingColumns().addAll(foreignKeyData.columns.stream()
+                                .map(col -> new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(col)))
+                                .collect(Collectors.toList()));
+                            mysqlForeignKey.getReferencedColumns().addAll(foreignKeyData.refColumns.stream()
+                                .map(col -> new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(col)))
+                                .collect(Collectors.toList()));
+                            if (foreignKeyData.onDelete != null && !foreignKeyData.onDelete.equals(
+                                ForeignKeyData.ReferenceOptionType.NO_ACTION)) {
+                                mysqlForeignKey.setOnDelete(
+                                    MysqlForeignKey.Option.fromString(foreignKeyData.onDelete.getText()));
+                            }
+                            if (foreignKeyData.onUpdate != null && !foreignKeyData.onUpdate.equals(
+                                ForeignKeyData.ReferenceOptionType.NO_ACTION)) {
+                                mysqlForeignKey.setOnUpdate(
+                                    MysqlForeignKey.Option.fromString(foreignKeyData.onUpdate.getText()));
+                            }
+                            if (showCreateTable.isFull()) {
+                                mysqlForeignKey.setPushDown(
+                                    MysqlForeignKey.PushDown.fromBoolean(foreignKeyData.isPushDown()));
+                            }
+                            toAdd.add(mysqlForeignKey);
+                        }
+                    }
+
+                    // Remove duplicate foreign key if it is identical with logical one.
+                    if (sqlTableElement instanceof MysqlForeignKey) {
+                        // Enable constraint name by default.
+                        final ForeignKeyData foreignKeyData =
+                            tableMeta.getForeignKeys()
+                                .get(SQLUtils.normalizeNoTrim(
+                                    ((MysqlForeignKey) sqlTableElement).getName().getSimpleName()));
+                        if (((MysqlForeignKey) sqlTableElement).getName() != null) {
+                            ((MysqlForeignKey) sqlTableElement).setHasConstraint(true);
+                        }
+                        ((MysqlForeignKey) sqlTableElement).setReferencedTableName(new SQLIdentifierExpr(
+                            SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName)));
+                        ((MysqlForeignKey) sqlTableElement).setName(new SQLIdentifierExpr(
+                            SqlIdentifier.surroundWithBacktick(foreignKeyData.constraint)));
+                        if (showCreateTable.isFull()) {
+                            ((MysqlForeignKey) sqlTableElement).setPushDown(
+                                MysqlForeignKey.PushDown.fromBoolean(foreignKeyData.isPushDown()));
+                        }
+                    }
                 }
                 createTable.getTableElementList().removeAll(toRemove);
+                createTable.getTableElementList().addAll(toAdd);
 
                 // handle auto partition.
                 if (tableMeta != null) {
@@ -706,7 +787,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 }
                 if (gsiMeta.withGsi(tableName)) {
                     final List<SQLTableElement> gsiDefs;
-                    gsiDefs = buildGsiDefs(schemaName, gsiMeta, tableName);
+                    gsiDefs = buildGsiDefs(schemaName, gsiMeta, tableName, showCreateTable.isFull());
                     createTable.getTableElementList().addAll(gsiDefs);
                 }
 
@@ -741,7 +822,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 LocalityManager lm = LocalityManager.getInstance();
                 LocalityInfo localityInfo = lm.getLocalityOfTable(tableMeta.getId());
                 if (localityInfo != null) {
-                    LocalityDesc localityDesc = LocalityDesc.parse(localityInfo.getLocality());
+                    LocalityDesc localityDesc = LocalityInfoUtils.parse(localityInfo.getLocality());
                     if (!localityDesc.holdEmptyDnList()) {
                         sql += "\n" + localityDesc.showCreate();
                     }
@@ -770,7 +851,8 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
         }
     }
 
-    public List<SQLTableElement> buildGsiDefs(String schemaName, GsiMetaBean gsiMeta, String mainTableName) {
+    public List<SQLTableElement> buildGsiDefs(String schemaName, GsiMetaBean gsiMeta, String mainTableName,
+                                              boolean full) {
         final GsiMetaManager.GsiTableMetaBean mainTableMeta = gsiMeta.getTableMeta().get(mainTableName);
         List<SQLTableElement> gsiDefs = new ArrayList<>(mainTableMeta.indexMap.size());
         for (Map.Entry<String, GsiMetaManager.GsiIndexMetaBean> entry : mainTableMeta.indexMap.entrySet()) {
@@ -851,6 +933,11 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                     tableIndex.getCovering().addAll(coveringColumns);
                 }
 
+                if (indexMeta.visibility == IndexVisibility.VISIBLE) {
+                    tableIndex.getIndexDefinition().setVisible(true);
+                } else {
+                    tableIndex.getIndexDefinition().setVisible(false);
+                }
                 gsiDefs.add(tableIndex);
 
             } else {
@@ -870,6 +957,12 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                 } else {
                     tableIndex.setGlobal(true);
                     tableIndex.getCovering().addAll(coveringColumns);
+                }
+
+                if (indexMeta.visibility == IndexVisibility.VISIBLE) {
+                    tableIndex.getIndexDefinition().setVisible(true);
+                } else {
+                    tableIndex.getIndexDefinition().setVisible(false);
                 }
 
                 gsiDefs.add(tableIndex);
@@ -963,15 +1056,15 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
             if (row != null) {
                 ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
                 // | View | Create View | character_set_client | collation_connection |
-                resultCursor.addColumn("View", DataTypes.StringType);
-                resultCursor.addColumn("Create View", DataTypes.StringType);
-                resultCursor.addColumn("character_set_client", DataTypes.StringType);
-                resultCursor.addColumn("collation_connection", DataTypes.StringType);
+                resultCursor.addColumn("View", DataTypes.StringType, false);
+                resultCursor.addColumn("Create View", DataTypes.StringType, false);
+                resultCursor.addColumn("character_set_client", DataTypes.StringType, false);
+                resultCursor.addColumn("collation_connection", DataTypes.StringType, false);
                 boolean printPlan = row.getPlan() != null && row.getPlanType() != null;
                 if (printPlan) {
                     // | PLAN | PLAN_TYPE |
-                    resultCursor.addColumn("PLAN", DataTypes.StringType);
-                    resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType);
+                    resultCursor.addColumn("PLAN", DataTypes.StringType, false);
+                    resultCursor.addColumn("PLAN_TYPE", DataTypes.StringType, false);
                 }
 
                 String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :

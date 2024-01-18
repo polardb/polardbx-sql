@@ -30,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -43,10 +44,10 @@ import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * @author luoyanxin
@@ -60,7 +61,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                                                         Map<String, Map<String, List<List<String>>>> tablesTopologyMap,
                                                         Map<String, Map<String, Set<String>>> targetTablesTopology,
                                                         Map<String, Map<String, Set<String>>> sourceTablesTopology,
-                                                        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations,
+                                                        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations,
                                                         ExecutionContext executionContext) {
         super(ddl, preparedData, tablesPrepareData, newPartitionsPhysicalPlansMap, tablesTopologyMap,
             targetTablesTopology, sourceTablesTopology, orderedTargetTablesLocations,
@@ -97,24 +98,25 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                 preparedData.getTableGroupName(), tablesVersion, true,
                 preparedData.getTargetPhysicalGroups());
 
-        Set<Long> outdatedPartitionGroupId = new HashSet<>();
+        Set<Long> outdatedPartitionGroupId =
+            getOldDatePartitionGroups(preparedData, preparedData.getOldPartitionNames(),
+                ((AlterTableSplitPartitionByHotValuePreparedData) preparedData).isSplitSubPartition());
 
-        for (String splitPartitionName : preparedData.getOldPartitionNames()) {
-            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-                if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
-                    outdatedPartitionGroupId.add(record.id);
-                    break;
-                }
-            }
-        }
         List<String> targetDbList = new ArrayList<>();
-        int targetDbCnt =
-            preparedData.getTargetGroupDetailInfoExRecords().size();
-        List<String> newPartitions = preparedData.getNewPartitionNames();
-        for (int i = 0; i < preparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(preparedData.getTargetGroupDetailInfoExRecords()
-                .get(i % targetDbCnt).phyDbName);
+
+        List<String> newPartitions = getNewPartitions();
+
+        List<String> localities = new ArrayList<>();
+        Map<String, String> partAndDbMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (PartitionGroupRecord partitionGroupRecord : preparedData.getInvisiblePartitionGroups()) {
+            partAndDbMap.put(partitionGroupRecord.partition_name, partitionGroupRecord.phy_db);
         }
+        for (int i = 0; i < newPartitions.size(); i++) {
+            targetDbList.add(partAndDbMap.get(newPartitions.get(i)));
+            localities.add(preparedData.getInvisiblePartitionGroups().get(i)
+                .getLocality());
+        }
+
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             tableGroupName,
             tableGroupConfig.getTableGroupRecord().getId(),
@@ -123,7 +125,8 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
             taskType.getValue(),
             outdatedPartitionGroupId,
             targetDbList,
-            newPartitions);
+            newPartitions,
+            localities);
 
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
@@ -187,21 +190,23 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         executableDdlJob.addTaskRelationship(emptyTask, validateSourceTableGroup);
         executableDdlJob.addTaskRelationship(emptyTask, validateTargetTableGroup);
 
-        Set<Long> outdatedPartitionGroupId = new HashSet<>();
+        Set<Long> outdatedPartitionGroupId =
+            getOldDatePartitionGroups(preparedData, preparedData.getOldPartitionNames(),
+                ((AlterTableSplitPartitionByHotValuePreparedData) preparedData).isSplitSubPartition());
 
-        for (String splitPartitionName : preparedData.getOldPartitionNames()) {
-            for (PartitionGroupRecord record : tableGroupConfig.getPartitionGroupRecords()) {
-                if (record.partition_name.equalsIgnoreCase(splitPartitionName)) {
-                    outdatedPartitionGroupId.add(record.id);
-                    break;
-                }
-            }
-        }
         List<String> targetDbList = new ArrayList<>();
-        List<String> newPartitions = preparedData.getNewPartitionNames();
-        for (int i = 0; i < preparedData.getNewPartitionNames().size(); i++) {
-            targetDbList.add(preparedData.getInvisiblePartitionGroups().get(i).getPhy_db());
+        List<String> localities = new ArrayList<>();
+        List<String> newPartitions = getNewPartitions();
+        Map<String, String> partAndDbMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (PartitionGroupRecord partitionGroupRecord : preparedData.getInvisiblePartitionGroups()) {
+            partAndDbMap.put(partitionGroupRecord.partition_name, partitionGroupRecord.phy_db);
         }
+        for (int i = 0; i < newPartitions.size(); i++) {
+            targetDbList.add(partAndDbMap.get(newPartitions.get(i)));
+            localities.add(preparedData.getInvisiblePartitionGroups().get(i)
+                .getLocality());
+        }
+
         DdlTask addMetaTask = new AlterTableGroupAddMetaTask(schemaName,
             targetTableGroup,
             tableGroupConfig.getTableGroupRecord().getId(),
@@ -210,7 +215,8 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
             taskType.getValue(),
             outdatedPartitionGroupId,
             targetDbList,
-            newPartitions);
+            newPartitions,
+            localities);
 
         executableDdlJob.addTask(addMetaTask);
         executableDdlJob.addTaskRelationship(validateSourceTableGroup, addMetaTask);
@@ -258,8 +264,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                 preparedData.getTargetPhysicalGroups());
 
         SubJobTask subJobMoveTableToNewGroup =
-            new SubJobTask(schemaName, String.format("alter table %s set tablegroup=''", preparedData.getTableName()),
-                null);
+            new SubJobTask(schemaName, String.format(SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
         SubJobTask subJobSplitTable = new SubJobTask(schemaName, preparedData.getSourceSql(), null);
         subJobMoveTableToNewGroup.setParentAcquireResource(true);
         subJobSplitTable.setParentAcquireResource(true);
@@ -286,7 +291,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
             alterTableSplitPartitionByHotValueBuilder.getTablesPreparedData();
         Map<String, List<PhyDdlTableOperation>> newPartitionsPhysicalPlansMap =
             alterTableSplitPartitionByHotValueBuilder.getNewPartitionsPhysicalPlansMap();
-        Map<String, List<Pair<String, String>>> orderedTargetTablesLocations =
+        Map<String, Map<String, Pair<String, String>>> orderedTargetTablesLocations =
             alterTableSplitPartitionByHotValueBuilder.getOrderedTargetTablesLocations();
         return new AlterTableSplitPartitionByHotValueJobFactory(ddl, preparedData, tableGroupItemPreparedDataMap,
             newPartitionsPhysicalPlansMap, tablesTopologyMap, targetTablesTopology, sourceTablesTopology,
@@ -331,6 +336,23 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
                     dropUselessTableTask);
         }
         executableDdlJob.getExcludeResources().addAll(subTask.getExcludeResources());
+    }
+
+    private List<String> getNewPartitions() {
+        AlterTableSplitPartitionByHotValuePreparedData splitData =
+            (AlterTableSplitPartitionByHotValuePreparedData) preparedData;
+
+        if (splitData.isUseTemplatePart()) {
+            List<String> newPartitions = new ArrayList<>();
+            for (String logicalPartName : preparedData.getLogicalParts()) {
+                for (String newPartName : preparedData.getNewPartitionNames()) {
+                    newPartitions.add(PartitionNameUtil.autoBuildSubPartitionName(logicalPartName, newPartName));
+                }
+            }
+            return newPartitions;
+        } else {
+            return preparedData.getNewPartitionNames();
+        }
     }
 
     @Override

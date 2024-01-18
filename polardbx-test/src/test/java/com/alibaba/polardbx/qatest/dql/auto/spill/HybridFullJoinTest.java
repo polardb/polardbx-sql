@@ -41,8 +41,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlA
 import static com.alibaba.polardbx.qatest.validator.DataValidator.explainAllResultMatchAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
-@RunWith(CommonCaseRunner.class)
-@FileStoreIgnore
+
 @NotThreadSafe
 public class HybridFullJoinTest extends AutoCrudBasedLockTestCase {
 

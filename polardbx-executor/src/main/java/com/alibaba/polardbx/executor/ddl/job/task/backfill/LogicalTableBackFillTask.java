@@ -26,20 +26,25 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.GsiBackfill;
 import lombok.Getter;
 
+import java.util.Map;
+
 @TaskName(name = "LogicalTableBackFillTask")
 @Getter
 public class LogicalTableBackFillTask extends BaseBackfillTask implements RemoteExecutableDdlTask {
 
-    String sourceTableName;
-    String targetTableName;
+    public String sourceTableName;
+    public String targetTableName;
+    public Map<String, String> virtualColumns;
 
     @JSONCreator
     public LogicalTableBackFillTask(String schemaName,
                                     String sourceTableName,
-                                    String targetTableName) {
+                                    String targetTableName,
+                                    Map<String, String> virtualColumns) {
         super(schemaName);
         this.sourceTableName = sourceTableName;
         this.targetTableName = targetTableName;
+        this.virtualColumns = virtualColumns;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -49,6 +54,7 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
         executionContext.setBackfillId(getTaskId());
         GsiBackfill backFillPlan =
             GsiBackfill.createGsiBackfill(schemaName, sourceTableName, targetTableName, executionContext);
+        backFillPlan.setVirtualColumnMap(virtualColumns);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         ExecutorHelper.execute(backFillPlan, executionContext);

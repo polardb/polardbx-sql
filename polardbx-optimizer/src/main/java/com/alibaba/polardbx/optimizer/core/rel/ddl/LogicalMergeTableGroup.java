@@ -24,7 +24,6 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -32,6 +31,7 @@ import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MergeTableGroupPreparedData;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.MergeTableGroup;
@@ -54,6 +54,24 @@ public class LogicalMergeTableGroup extends BaseDdlOperation {
 
     public LogicalMergeTableGroup(DDL ddl) {
         super(ddl);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return false;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        MergeTableGroup mergeTableGroup = (MergeTableGroup) relDdl;
+        SqlMergeTableGroup sqlMergeTableGroup = (SqlMergeTableGroup) mergeTableGroup.sqlNode;
+
+        for (String tableGroup : sqlMergeTableGroup.getSourceTableGroups()) {
+            if (!CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroup)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST, "unarchive tablegroup " + tableGroup);
+            }
+        }
+        return true;
     }
 
     public void preparedData(ExecutionContext executionContext) {
@@ -141,5 +159,31 @@ public class LogicalMergeTableGroup extends BaseDdlOperation {
 
     public static LogicalMergeTableGroup create(DDL ddl) {
         return new LogicalMergeTableGroup(ddl);
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        MergeTableGroup mergeTableGroup = (MergeTableGroup) relDdl;
+        SqlMergeTableGroup sqlMergeTableGroup = (SqlMergeTableGroup) mergeTableGroup.sqlNode;
+
+        for (String tableGroup : sqlMergeTableGroup.getSourceTableGroups()) {
+            if (TableGroupNameUtil.isOssTg(tableGroup)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        MergeTableGroup mergeTableGroup = (MergeTableGroup) relDdl;
+        SqlMergeTableGroup sqlMergeTableGroup = (SqlMergeTableGroup) mergeTableGroup.sqlNode;
+
+        for (String tableGroup : sqlMergeTableGroup.getSourceTableGroups()) {
+            if (!CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroup)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

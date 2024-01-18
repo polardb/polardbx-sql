@@ -27,6 +27,7 @@ import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
+import com.alibaba.polardbx.executor.gsi.backfill.CdasLoader;
 import com.alibaba.polardbx.executor.gsi.backfill.GsiExtractor;
 import com.alibaba.polardbx.executor.gsi.backfill.GsiLoader;
 import com.alibaba.polardbx.executor.gsi.backfill.Updater;
@@ -34,6 +35,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +96,94 @@ public class BackfillExecutor {
                         });
                     }
                 });
+            } catch (TddlNestableRuntimeException e) {
+                if (e.getMessage().contains("need to be split into smaller batches")) {
+                    finished = false;
+                } else {
+                    throw e;
+                }
+            }
+        } while (!finished);
+
+        return affectRows.get();
+    }
+
+    public int logicalTableDataMigrationBackFill(String srcSchemaName, String dstSchemaName,
+                                                 String srcTableName, String dstTableName, List<String> dstGsiNames,
+                                                 ExecutionContext baseEc) {
+        final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.CREATE_DATABASE_AS_BATCH_SIZE);
+        final long speedLimit =
+            baseEc.getParamManager().getLong(ConnectionParams.CREATE_DATABASE_AS_BACKFILL_SPEED_LIMITATION);
+        final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.CREATE_DATABASE_AS_BACKFILL_SPEED_MIN);
+        final long parallelism =
+            baseEc.getParamManager().getLong(ConnectionParams.CREATE_DATABASE_AS_BACKFILL_PARALLELISM);
+
+        if (null == baseEc.getServerVariables()) {
+            baseEc.setServerVariables(new HashMap<>());
+        }
+
+        SQLRecorderLogger.ddlLogger.info(String.format("createDatabaseBackFill srcSchema[%s] dstSchema[%s] table[%s]",
+            srcSchemaName, dstSchemaName, srcTableName));
+
+        // Init extractor and loader
+        ExecutionContext copiedEc = baseEc.copy();
+        copiedEc.setSchemaName(dstSchemaName);
+        final Extractor extractor =
+            GsiExtractor.create(srcSchemaName, srcTableName, srcTableName, batchSize, speedMin, speedLimit, parallelism,
+                baseEc);
+        final CdasLoader cdasLoader =
+            CdasLoader.create(srcSchemaName, dstSchemaName, srcTableName, dstTableName, this.executeFunc,
+                copiedEc.isUseHint(), copiedEc, false);
+        final List<CdasLoader> gsiCdasLoaders = new ArrayList<>();
+        dstGsiNames.forEach(gsiName -> {
+            ExecutionContext gsiCopiedEc = baseEc.copy();
+            gsiCopiedEc.setSchemaName(dstSchemaName);
+            CdasLoader gsiCdasLoader
+                = CdasLoader.create(srcSchemaName, dstSchemaName, srcTableName, gsiName, this.executeFunc,
+                gsiCopiedEc.isUseHint(),
+                gsiCopiedEc, true);
+            gsiCdasLoaders.add(gsiCdasLoader);
+        });
+
+        // Foreach row: lock batch -> fill into index -> release lock
+        final AtomicInteger affectRows = new AtomicInteger();
+
+        boolean finished;
+        do {
+            finished = true;
+            // Load latest extractor position mark
+            extractor.loadBackfillMeta(baseEc);
+            try {
+                extractor.foreachBatch(baseEc, new BatchConsumer() {
+                        @Override
+                        public void consume(List<Map<Integer, ParameterContext>> batch,
+                                            Pair<ExecutionContext, Pair<String, String>> extractEcAndIndexPair) {
+
+                            cdasLoader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()), () -> {
+                                try {
+                                    extractEcAndIndexPair.getKey().getTransaction().commit();
+                                    return true;
+                                } catch (Exception e) {
+                                    logger.error("Close extract statement failed!", e);
+                                    return false;
+                                }
+                            });
+
+                            for (CdasLoader gsiCdasLoader : gsiCdasLoaders) {
+                                gsiCdasLoader.fillIntoIndex(batch, Pair.of(baseEc, extractEcAndIndexPair.getValue()),
+                                    () -> {
+                                        try {
+                                            extractEcAndIndexPair.getKey().getTransaction().commit();
+                                            return true;
+                                        } catch (Exception e) {
+                                            logger.error("Close extract statement failed!", e);
+                                            return false;
+                                        }
+                                    });
+                            }
+                        }
+                    }
+                );
             } catch (TddlNestableRuntimeException e) {
                 if (e.getMessage().contains("need to be split into smaller batches")) {
                     finished = false;

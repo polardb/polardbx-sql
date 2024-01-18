@@ -42,12 +42,20 @@ public class LocalityDetailInfoRecord implements SystemTableRecord {
     public String objectName;
     public String locality;
 
-    public LocalityDetailInfoRecord(long id, int objectType,long objectId, String objectName, String locality){
+    public LocalityDetailInfoRecord(long id, int objectType, long objectId, String objectName, String locality) {
         this.id = id;
         this.objectType = objectType;
         this.objectName = objectName;
         this.locality = locality;
         this.objectId = objectId;
+    }
+
+    public LocalityDetailInfoRecord(LocalityDetailInfoRecord localityDetailInfoRecord) {
+        this.id = localityDetailInfoRecord.id;
+        this.objectType = localityDetailInfoRecord.objectType;
+        this.objectName = localityDetailInfoRecord.objectName;
+        this.locality = localityDetailInfoRecord.locality;
+        this.objectId = localityDetailInfoRecord.objectId;
     }
 
     @Override

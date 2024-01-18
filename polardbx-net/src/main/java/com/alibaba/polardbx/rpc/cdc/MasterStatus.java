@@ -26,1142 +26,1027 @@ public final class MasterStatus extends
     com.google.protobuf.GeneratedMessageV3 implements
     // @@protoc_insertion_point(message_implements:dumper.MasterStatus)
     MasterStatusOrBuilder {
-    private static final long serialVersionUID = 0L;
+private static final long serialVersionUID = 0L;
+  // Use MasterStatus.newBuilder() to construct.
+  private MasterStatus(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
+    super(builder);
+  }
+  private MasterStatus() {
+    file_ = "";
+    binlogDoDB_ = "";
+    binlogIgnoreDB_ = "";
+    executedGtidSet_ = "";
+  }
 
-    // Use MasterStatus.newBuilder() to construct.
-    private MasterStatus(com.google.protobuf.GeneratedMessageV3.Builder<?> builder) {
-        super(builder);
+  @java.lang.Override
+  @SuppressWarnings({"unused"})
+  protected java.lang.Object newInstance(
+      UnusedPrivateParameter unused) {
+    return new MasterStatus();
+  }
+
+  @java.lang.Override
+  public final com.google.protobuf.UnknownFieldSet
+  getUnknownFields() {
+    return this.unknownFields;
+  }
+  private MasterStatus(
+      com.google.protobuf.CodedInputStream input,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    this();
+    if (extensionRegistry == null) {
+      throw new java.lang.NullPointerException();
     }
+    com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+        com.google.protobuf.UnknownFieldSet.newBuilder();
+    try {
+      boolean done = false;
+      while (!done) {
+        int tag = input.readTag();
+        switch (tag) {
+          case 0:
+            done = true;
+            break;
+          case 10: {
+            java.lang.String s = input.readStringRequireUtf8();
 
-    private MasterStatus() {
-        file_ = "";
-        binlogDoDB_ = "";
-        binlogIgnoreDB_ = "";
-        executedGtidSet_ = "";
-    }
+            file_ = s;
+            break;
+          }
+          case 16: {
 
-    @java.lang.Override
-    @SuppressWarnings({"unused"})
-    protected java.lang.Object newInstance(
-        UnusedPrivateParameter unused) {
-        return new MasterStatus();
-    }
+            position_ = input.readInt64();
+            break;
+          }
+          case 26: {
+            java.lang.String s = input.readStringRequireUtf8();
 
-    @java.lang.Override
-    public final com.google.protobuf.UnknownFieldSet
-    getUnknownFields() {
-        return this.unknownFields;
-    }
+            binlogDoDB_ = s;
+            break;
+          }
+          case 34: {
+            java.lang.String s = input.readStringRequireUtf8();
 
-    private MasterStatus(
-        com.google.protobuf.CodedInputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        this();
-        if (extensionRegistry == null) {
-            throw new java.lang.NullPointerException();
-        }
-        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
-            com.google.protobuf.UnknownFieldSet.newBuilder();
-        try {
-            boolean done = false;
-            while (!done) {
-                int tag = input.readTag();
-                switch (tag) {
-                case 0:
-                    done = true;
-                    break;
-                case 10: {
-                    java.lang.String s = input.readStringRequireUtf8();
+            binlogIgnoreDB_ = s;
+            break;
+          }
+          case 42: {
+            java.lang.String s = input.readStringRequireUtf8();
 
-                    file_ = s;
-                    break;
-                }
-                case 16: {
-
-                    position_ = input.readInt64();
-                    break;
-                }
-                case 26: {
-                    java.lang.String s = input.readStringRequireUtf8();
-
-                    binlogDoDB_ = s;
-                    break;
-                }
-                case 34: {
-                    java.lang.String s = input.readStringRequireUtf8();
-
-                    binlogIgnoreDB_ = s;
-                    break;
-                }
-                case 42: {
-                    java.lang.String s = input.readStringRequireUtf8();
-
-                    executedGtidSet_ = s;
-                    break;
-                }
-                default: {
-                    if (!parseUnknownField(
-                        input, unknownFields, extensionRegistry, tag)) {
-                        done = true;
-                    }
-                    break;
-                }
-                }
+            executedGtidSet_ = s;
+            break;
+          }
+          default: {
+            if (!parseUnknownField(
+                input, unknownFields, extensionRegistry, tag)) {
+              done = true;
             }
-        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
-            throw e.setUnfinishedMessage(this);
-        } catch (java.io.IOException e) {
-            throw new com.google.protobuf.InvalidProtocolBufferException(
-                e).setUnfinishedMessage(this);
-        } finally {
-            this.unknownFields = unknownFields.build();
-            makeExtensionsImmutable();
+            break;
+          }
         }
+      }
+    } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+      throw e.setUnfinishedMessage(this);
+    } catch (java.io.IOException e) {
+      throw new com.google.protobuf.InvalidProtocolBufferException(
+          e).setUnfinishedMessage(this);
+    } finally {
+      this.unknownFields = unknownFields.build();
+      makeExtensionsImmutable();
     }
+  }
+  public static final com.google.protobuf.Descriptors.Descriptor
+      getDescriptor() {
+    return com.alibaba.polardbx.rpc.cdc.DumperServer.internal_static_dumper_MasterStatus_descriptor;
+  }
 
+  @java.lang.Override
+  protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
+      internalGetFieldAccessorTable() {
+    return com.alibaba.polardbx.rpc.cdc.DumperServer.internal_static_dumper_MasterStatus_fieldAccessorTable
+        .ensureFieldAccessorsInitialized(
+            com.alibaba.polardbx.rpc.cdc.MasterStatus.class, com.alibaba.polardbx.rpc.cdc.MasterStatus.Builder.class);
+  }
+
+  public static final int FILE_FIELD_NUMBER = 1;
+  private volatile java.lang.Object file_;
+  /**
+   * <code>string file = 1;</code>
+   * @return The file.
+   */
+  @java.lang.Override
+  public java.lang.String getFile() {
+    java.lang.Object ref = file_;
+    if (ref instanceof java.lang.String) {
+      return (java.lang.String) ref;
+    } else {
+      com.google.protobuf.ByteString bs = 
+          (com.google.protobuf.ByteString) ref;
+      java.lang.String s = bs.toStringUtf8();
+      file_ = s;
+      return s;
+    }
+  }
+  /**
+   * <code>string file = 1;</code>
+   * @return The bytes for file.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getFileBytes() {
+    java.lang.Object ref = file_;
+    if (ref instanceof java.lang.String) {
+      com.google.protobuf.ByteString b = 
+          com.google.protobuf.ByteString.copyFromUtf8(
+              (java.lang.String) ref);
+      file_ = b;
+      return b;
+    } else {
+      return (com.google.protobuf.ByteString) ref;
+    }
+  }
+
+  public static final int POSITION_FIELD_NUMBER = 2;
+  private long position_;
+  /**
+   * <code>int64 position = 2;</code>
+   * @return The position.
+   */
+  @java.lang.Override
+  public long getPosition() {
+    return position_;
+  }
+
+  public static final int BINLOGDODB_FIELD_NUMBER = 3;
+  private volatile java.lang.Object binlogDoDB_;
+  /**
+   * <code>string binlogDoDB = 3;</code>
+   * @return The binlogDoDB.
+   */
+  @java.lang.Override
+  public java.lang.String getBinlogDoDB() {
+    java.lang.Object ref = binlogDoDB_;
+    if (ref instanceof java.lang.String) {
+      return (java.lang.String) ref;
+    } else {
+      com.google.protobuf.ByteString bs = 
+          (com.google.protobuf.ByteString) ref;
+      java.lang.String s = bs.toStringUtf8();
+      binlogDoDB_ = s;
+      return s;
+    }
+  }
+  /**
+   * <code>string binlogDoDB = 3;</code>
+   * @return The bytes for binlogDoDB.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getBinlogDoDBBytes() {
+    java.lang.Object ref = binlogDoDB_;
+    if (ref instanceof java.lang.String) {
+      com.google.protobuf.ByteString b = 
+          com.google.protobuf.ByteString.copyFromUtf8(
+              (java.lang.String) ref);
+      binlogDoDB_ = b;
+      return b;
+    } else {
+      return (com.google.protobuf.ByteString) ref;
+    }
+  }
+
+  public static final int BINLOGIGNOREDB_FIELD_NUMBER = 4;
+  private volatile java.lang.Object binlogIgnoreDB_;
+  /**
+   * <code>string binlogIgnoreDB = 4;</code>
+   * @return The binlogIgnoreDB.
+   */
+  @java.lang.Override
+  public java.lang.String getBinlogIgnoreDB() {
+    java.lang.Object ref = binlogIgnoreDB_;
+    if (ref instanceof java.lang.String) {
+      return (java.lang.String) ref;
+    } else {
+      com.google.protobuf.ByteString bs = 
+          (com.google.protobuf.ByteString) ref;
+      java.lang.String s = bs.toStringUtf8();
+      binlogIgnoreDB_ = s;
+      return s;
+    }
+  }
+  /**
+   * <code>string binlogIgnoreDB = 4;</code>
+   * @return The bytes for binlogIgnoreDB.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getBinlogIgnoreDBBytes() {
+    java.lang.Object ref = binlogIgnoreDB_;
+    if (ref instanceof java.lang.String) {
+      com.google.protobuf.ByteString b = 
+          com.google.protobuf.ByteString.copyFromUtf8(
+              (java.lang.String) ref);
+      binlogIgnoreDB_ = b;
+      return b;
+    } else {
+      return (com.google.protobuf.ByteString) ref;
+    }
+  }
+
+  public static final int EXECUTEDGTIDSET_FIELD_NUMBER = 5;
+  private volatile java.lang.Object executedGtidSet_;
+  /**
+   * <code>string executedGtidSet = 5;</code>
+   * @return The executedGtidSet.
+   */
+  @java.lang.Override
+  public java.lang.String getExecutedGtidSet() {
+    java.lang.Object ref = executedGtidSet_;
+    if (ref instanceof java.lang.String) {
+      return (java.lang.String) ref;
+    } else {
+      com.google.protobuf.ByteString bs = 
+          (com.google.protobuf.ByteString) ref;
+      java.lang.String s = bs.toStringUtf8();
+      executedGtidSet_ = s;
+      return s;
+    }
+  }
+  /**
+   * <code>string executedGtidSet = 5;</code>
+   * @return The bytes for executedGtidSet.
+   */
+  @java.lang.Override
+  public com.google.protobuf.ByteString
+      getExecutedGtidSetBytes() {
+    java.lang.Object ref = executedGtidSet_;
+    if (ref instanceof java.lang.String) {
+      com.google.protobuf.ByteString b = 
+          com.google.protobuf.ByteString.copyFromUtf8(
+              (java.lang.String) ref);
+      executedGtidSet_ = b;
+      return b;
+    } else {
+      return (com.google.protobuf.ByteString) ref;
+    }
+  }
+
+  private byte memoizedIsInitialized = -1;
+  @java.lang.Override
+  public final boolean isInitialized() {
+    byte isInitialized = memoizedIsInitialized;
+    if (isInitialized == 1) return true;
+    if (isInitialized == 0) return false;
+
+    memoizedIsInitialized = 1;
+    return true;
+  }
+
+  @java.lang.Override
+  public void writeTo(com.google.protobuf.CodedOutputStream output)
+                      throws java.io.IOException {
+    if (!getFileBytes().isEmpty()) {
+      com.google.protobuf.GeneratedMessageV3.writeString(output, 1, file_);
+    }
+    if (position_ != 0L) {
+      output.writeInt64(2, position_);
+    }
+    if (!getBinlogDoDBBytes().isEmpty()) {
+      com.google.protobuf.GeneratedMessageV3.writeString(output, 3, binlogDoDB_);
+    }
+    if (!getBinlogIgnoreDBBytes().isEmpty()) {
+      com.google.protobuf.GeneratedMessageV3.writeString(output, 4, binlogIgnoreDB_);
+    }
+    if (!getExecutedGtidSetBytes().isEmpty()) {
+      com.google.protobuf.GeneratedMessageV3.writeString(output, 5, executedGtidSet_);
+    }
+    unknownFields.writeTo(output);
+  }
+
+  @java.lang.Override
+  public int getSerializedSize() {
+    int size = memoizedSize;
+    if (size != -1) return size;
+
+    size = 0;
+    if (!getFileBytes().isEmpty()) {
+      size += com.google.protobuf.GeneratedMessageV3.computeStringSize(1, file_);
+    }
+    if (position_ != 0L) {
+      size += com.google.protobuf.CodedOutputStream
+        .computeInt64Size(2, position_);
+    }
+    if (!getBinlogDoDBBytes().isEmpty()) {
+      size += com.google.protobuf.GeneratedMessageV3.computeStringSize(3, binlogDoDB_);
+    }
+    if (!getBinlogIgnoreDBBytes().isEmpty()) {
+      size += com.google.protobuf.GeneratedMessageV3.computeStringSize(4, binlogIgnoreDB_);
+    }
+    if (!getExecutedGtidSetBytes().isEmpty()) {
+      size += com.google.protobuf.GeneratedMessageV3.computeStringSize(5, executedGtidSet_);
+    }
+    size += unknownFields.getSerializedSize();
+    memoizedSize = size;
+    return size;
+  }
+
+  @java.lang.Override
+  public boolean equals(final java.lang.Object obj) {
+    if (obj == this) {
+     return true;
+    }
+    if (!(obj instanceof com.alibaba.polardbx.rpc.cdc.MasterStatus)) {
+      return super.equals(obj);
+    }
+    com.alibaba.polardbx.rpc.cdc.MasterStatus other = (com.alibaba.polardbx.rpc.cdc.MasterStatus) obj;
+
+    if (!getFile()
+        .equals(other.getFile())) return false;
+    if (getPosition()
+        != other.getPosition()) return false;
+    if (!getBinlogDoDB()
+        .equals(other.getBinlogDoDB())) return false;
+    if (!getBinlogIgnoreDB()
+        .equals(other.getBinlogIgnoreDB())) return false;
+    if (!getExecutedGtidSet()
+        .equals(other.getExecutedGtidSet())) return false;
+    if (!unknownFields.equals(other.unknownFields)) return false;
+    return true;
+  }
+
+  @java.lang.Override
+  public int hashCode() {
+    if (memoizedHashCode != 0) {
+      return memoizedHashCode;
+    }
+    int hash = 41;
+    hash = (19 * hash) + getDescriptor().hashCode();
+    hash = (37 * hash) + FILE_FIELD_NUMBER;
+    hash = (53 * hash) + getFile().hashCode();
+    hash = (37 * hash) + POSITION_FIELD_NUMBER;
+    hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
+        getPosition());
+    hash = (37 * hash) + BINLOGDODB_FIELD_NUMBER;
+    hash = (53 * hash) + getBinlogDoDB().hashCode();
+    hash = (37 * hash) + BINLOGIGNOREDB_FIELD_NUMBER;
+    hash = (53 * hash) + getBinlogIgnoreDB().hashCode();
+    hash = (37 * hash) + EXECUTEDGTIDSET_FIELD_NUMBER;
+    hash = (53 * hash) + getExecutedGtidSet().hashCode();
+    hash = (29 * hash) + unknownFields.hashCode();
+    memoizedHashCode = hash;
+    return hash;
+  }
+
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      java.nio.ByteBuffer data)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      java.nio.ByteBuffer data,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data, extensionRegistry);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      com.google.protobuf.ByteString data)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      com.google.protobuf.ByteString data,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data, extensionRegistry);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(byte[] data)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      byte[] data,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws com.google.protobuf.InvalidProtocolBufferException {
+    return PARSER.parseFrom(data, extensionRegistry);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(java.io.InputStream input)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseWithIOException(PARSER, input);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      java.io.InputStream input,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseWithIOException(PARSER, input, extensionRegistry);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseDelimitedFrom(java.io.InputStream input)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseDelimitedWithIOException(PARSER, input);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseDelimitedFrom(
+      java.io.InputStream input,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseDelimitedWithIOException(PARSER, input, extensionRegistry);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      com.google.protobuf.CodedInputStream input)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseWithIOException(PARSER, input);
+  }
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus parseFrom(
+      com.google.protobuf.CodedInputStream input,
+      com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+      throws java.io.IOException {
+    return com.google.protobuf.GeneratedMessageV3
+        .parseWithIOException(PARSER, input, extensionRegistry);
+  }
+
+  @java.lang.Override
+  public Builder newBuilderForType() { return newBuilder(); }
+  public static Builder newBuilder() {
+    return DEFAULT_INSTANCE.toBuilder();
+  }
+  public static Builder newBuilder(com.alibaba.polardbx.rpc.cdc.MasterStatus prototype) {
+    return DEFAULT_INSTANCE.toBuilder().mergeFrom(prototype);
+  }
+  @java.lang.Override
+  public Builder toBuilder() {
+    return this == DEFAULT_INSTANCE
+        ? new Builder() : new Builder().mergeFrom(this);
+  }
+
+  @java.lang.Override
+  protected Builder newBuilderForType(
+      com.google.protobuf.GeneratedMessageV3.BuilderParent parent) {
+    Builder builder = new Builder(parent);
+    return builder;
+  }
+  /**
+   * Protobuf type {@code dumper.MasterStatus}
+   */
+  public static final class Builder extends
+      com.google.protobuf.GeneratedMessageV3.Builder<Builder> implements
+      // @@protoc_insertion_point(builder_implements:dumper.MasterStatus)
+      com.alibaba.polardbx.rpc.cdc.MasterStatusOrBuilder {
     public static final com.google.protobuf.Descriptors.Descriptor
-    getDescriptor() {
-        return DumperServer.internal_static_dumper_MasterStatus_descriptor;
+        getDescriptor() {
+      return com.alibaba.polardbx.rpc.cdc.DumperServer.internal_static_dumper_MasterStatus_descriptor;
     }
 
     @java.lang.Override
     protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-    internalGetFieldAccessorTable() {
-        return DumperServer.internal_static_dumper_MasterStatus_fieldAccessorTable
-            .ensureFieldAccessorsInitialized(
-                MasterStatus.class, MasterStatus.Builder.class);
+        internalGetFieldAccessorTable() {
+      return com.alibaba.polardbx.rpc.cdc.DumperServer.internal_static_dumper_MasterStatus_fieldAccessorTable
+          .ensureFieldAccessorsInitialized(
+              com.alibaba.polardbx.rpc.cdc.MasterStatus.class, com.alibaba.polardbx.rpc.cdc.MasterStatus.Builder.class);
     }
 
-    public static final int FILE_FIELD_NUMBER = 1;
-    private volatile java.lang.Object file_;
+    // Construct using com.alibaba.polardbx.rpc.cdc.MasterStatus.newBuilder()
+    private Builder() {
+      maybeForceBuilderInitialization();
+    }
 
+    private Builder(
+        com.google.protobuf.GeneratedMessageV3.BuilderParent parent) {
+      super(parent);
+      maybeForceBuilderInitialization();
+    }
+    private void maybeForceBuilderInitialization() {
+      if (com.google.protobuf.GeneratedMessageV3
+              .alwaysUseFieldBuilders) {
+      }
+    }
+    @java.lang.Override
+    public Builder clear() {
+      super.clear();
+      file_ = "";
+
+      position_ = 0L;
+
+      binlogDoDB_ = "";
+
+      binlogIgnoreDB_ = "";
+
+      executedGtidSet_ = "";
+
+      return this;
+    }
+
+    @java.lang.Override
+    public com.google.protobuf.Descriptors.Descriptor
+        getDescriptorForType() {
+      return com.alibaba.polardbx.rpc.cdc.DumperServer.internal_static_dumper_MasterStatus_descriptor;
+    }
+
+    @java.lang.Override
+    public com.alibaba.polardbx.rpc.cdc.MasterStatus getDefaultInstanceForType() {
+      return com.alibaba.polardbx.rpc.cdc.MasterStatus.getDefaultInstance();
+    }
+
+    @java.lang.Override
+    public com.alibaba.polardbx.rpc.cdc.MasterStatus build() {
+      com.alibaba.polardbx.rpc.cdc.MasterStatus result = buildPartial();
+      if (!result.isInitialized()) {
+        throw newUninitializedMessageException(result);
+      }
+      return result;
+    }
+
+    @java.lang.Override
+    public com.alibaba.polardbx.rpc.cdc.MasterStatus buildPartial() {
+      com.alibaba.polardbx.rpc.cdc.MasterStatus result = new com.alibaba.polardbx.rpc.cdc.MasterStatus(this);
+      result.file_ = file_;
+      result.position_ = position_;
+      result.binlogDoDB_ = binlogDoDB_;
+      result.binlogIgnoreDB_ = binlogIgnoreDB_;
+      result.executedGtidSet_ = executedGtidSet_;
+      onBuilt();
+      return result;
+    }
+
+    @java.lang.Override
+    public Builder clone() {
+      return super.clone();
+    }
+    @java.lang.Override
+    public Builder setField(
+        com.google.protobuf.Descriptors.FieldDescriptor field,
+        java.lang.Object value) {
+      return super.setField(field, value);
+    }
+    @java.lang.Override
+    public Builder clearField(
+        com.google.protobuf.Descriptors.FieldDescriptor field) {
+      return super.clearField(field);
+    }
+    @java.lang.Override
+    public Builder clearOneof(
+        com.google.protobuf.Descriptors.OneofDescriptor oneof) {
+      return super.clearOneof(oneof);
+    }
+    @java.lang.Override
+    public Builder setRepeatedField(
+        com.google.protobuf.Descriptors.FieldDescriptor field,
+        int index, java.lang.Object value) {
+      return super.setRepeatedField(field, index, value);
+    }
+    @java.lang.Override
+    public Builder addRepeatedField(
+        com.google.protobuf.Descriptors.FieldDescriptor field,
+        java.lang.Object value) {
+      return super.addRepeatedField(field, value);
+    }
+    @java.lang.Override
+    public Builder mergeFrom(com.google.protobuf.Message other) {
+      if (other instanceof com.alibaba.polardbx.rpc.cdc.MasterStatus) {
+        return mergeFrom((com.alibaba.polardbx.rpc.cdc.MasterStatus)other);
+      } else {
+        super.mergeFrom(other);
+        return this;
+      }
+    }
+
+    public Builder mergeFrom(com.alibaba.polardbx.rpc.cdc.MasterStatus other) {
+      if (other == com.alibaba.polardbx.rpc.cdc.MasterStatus.getDefaultInstance()) return this;
+      if (!other.getFile().isEmpty()) {
+        file_ = other.file_;
+        onChanged();
+      }
+      if (other.getPosition() != 0L) {
+        setPosition(other.getPosition());
+      }
+      if (!other.getBinlogDoDB().isEmpty()) {
+        binlogDoDB_ = other.binlogDoDB_;
+        onChanged();
+      }
+      if (!other.getBinlogIgnoreDB().isEmpty()) {
+        binlogIgnoreDB_ = other.binlogIgnoreDB_;
+        onChanged();
+      }
+      if (!other.getExecutedGtidSet().isEmpty()) {
+        executedGtidSet_ = other.executedGtidSet_;
+        onChanged();
+      }
+      this.mergeUnknownFields(other.unknownFields);
+      onChanged();
+      return this;
+    }
+
+    @java.lang.Override
+    public final boolean isInitialized() {
+      return true;
+    }
+
+    @java.lang.Override
+    public Builder mergeFrom(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      com.alibaba.polardbx.rpc.cdc.MasterStatus parsedMessage = null;
+      try {
+        parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
+      } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        parsedMessage = (com.alibaba.polardbx.rpc.cdc.MasterStatus) e.getUnfinishedMessage();
+        throw e.unwrapIOException();
+      } finally {
+        if (parsedMessage != null) {
+          mergeFrom(parsedMessage);
+        }
+      }
+      return this;
+    }
+
+    private java.lang.Object file_ = "";
     /**
      * <code>string file = 1;</code>
-     *
      * @return The file.
      */
-    @java.lang.Override
     public java.lang.String getFile() {
-        java.lang.Object ref = file_;
-        if (ref instanceof java.lang.String) {
-            return (java.lang.String) ref;
-        } else {
-            com.google.protobuf.ByteString bs =
-                (com.google.protobuf.ByteString) ref;
-            java.lang.String s = bs.toStringUtf8();
-            file_ = s;
-            return s;
-        }
+      java.lang.Object ref = file_;
+      if (!(ref instanceof java.lang.String)) {
+        com.google.protobuf.ByteString bs =
+            (com.google.protobuf.ByteString) ref;
+        java.lang.String s = bs.toStringUtf8();
+        file_ = s;
+        return s;
+      } else {
+        return (java.lang.String) ref;
+      }
     }
-
     /**
      * <code>string file = 1;</code>
-     *
      * @return The bytes for file.
      */
-    @java.lang.Override
     public com.google.protobuf.ByteString
-    getFileBytes() {
-        java.lang.Object ref = file_;
-        if (ref instanceof java.lang.String) {
-            com.google.protobuf.ByteString b =
-                com.google.protobuf.ByteString.copyFromUtf8(
-                    (java.lang.String) ref);
-            file_ = b;
-            return b;
-        } else {
-            return (com.google.protobuf.ByteString) ref;
-        }
+        getFileBytes() {
+      java.lang.Object ref = file_;
+      if (ref instanceof String) {
+        com.google.protobuf.ByteString b = 
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
+        file_ = b;
+        return b;
+      } else {
+        return (com.google.protobuf.ByteString) ref;
+      }
+    }
+    /**
+     * <code>string file = 1;</code>
+     * @param value The file to set.
+     * @return This builder for chaining.
+     */
+    public Builder setFile(
+        java.lang.String value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  
+      file_ = value;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string file = 1;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearFile() {
+      
+      file_ = getDefaultInstance().getFile();
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string file = 1;</code>
+     * @param value The bytes for file to set.
+     * @return This builder for chaining.
+     */
+    public Builder setFileBytes(
+        com.google.protobuf.ByteString value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  checkByteStringIsUtf8(value);
+      
+      file_ = value;
+      onChanged();
+      return this;
     }
 
-    public static final int POSITION_FIELD_NUMBER = 2;
-    private long position_;
-
+    private long position_ ;
     /**
      * <code>int64 position = 2;</code>
-     *
      * @return The position.
      */
     @java.lang.Override
     public long getPosition() {
-        return position_;
+      return position_;
+    }
+    /**
+     * <code>int64 position = 2;</code>
+     * @param value The position to set.
+     * @return This builder for chaining.
+     */
+    public Builder setPosition(long value) {
+      
+      position_ = value;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>int64 position = 2;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearPosition() {
+      
+      position_ = 0L;
+      onChanged();
+      return this;
     }
 
-    public static final int BINLOGDODB_FIELD_NUMBER = 3;
-    private volatile java.lang.Object binlogDoDB_;
-
+    private java.lang.Object binlogDoDB_ = "";
     /**
      * <code>string binlogDoDB = 3;</code>
-     *
      * @return The binlogDoDB.
      */
-    @java.lang.Override
     public java.lang.String getBinlogDoDB() {
-        java.lang.Object ref = binlogDoDB_;
-        if (ref instanceof java.lang.String) {
-            return (java.lang.String) ref;
-        } else {
-            com.google.protobuf.ByteString bs =
-                (com.google.protobuf.ByteString) ref;
-            java.lang.String s = bs.toStringUtf8();
-            binlogDoDB_ = s;
-            return s;
-        }
+      java.lang.Object ref = binlogDoDB_;
+      if (!(ref instanceof java.lang.String)) {
+        com.google.protobuf.ByteString bs =
+            (com.google.protobuf.ByteString) ref;
+        java.lang.String s = bs.toStringUtf8();
+        binlogDoDB_ = s;
+        return s;
+      } else {
+        return (java.lang.String) ref;
+      }
     }
-
     /**
      * <code>string binlogDoDB = 3;</code>
-     *
      * @return The bytes for binlogDoDB.
      */
-    @java.lang.Override
     public com.google.protobuf.ByteString
-    getBinlogDoDBBytes() {
-        java.lang.Object ref = binlogDoDB_;
-        if (ref instanceof java.lang.String) {
-            com.google.protobuf.ByteString b =
-                com.google.protobuf.ByteString.copyFromUtf8(
-                    (java.lang.String) ref);
-            binlogDoDB_ = b;
-            return b;
-        } else {
-            return (com.google.protobuf.ByteString) ref;
-        }
+        getBinlogDoDBBytes() {
+      java.lang.Object ref = binlogDoDB_;
+      if (ref instanceof String) {
+        com.google.protobuf.ByteString b = 
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
+        binlogDoDB_ = b;
+        return b;
+      } else {
+        return (com.google.protobuf.ByteString) ref;
+      }
+    }
+    /**
+     * <code>string binlogDoDB = 3;</code>
+     * @param value The binlogDoDB to set.
+     * @return This builder for chaining.
+     */
+    public Builder setBinlogDoDB(
+        java.lang.String value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  
+      binlogDoDB_ = value;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string binlogDoDB = 3;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearBinlogDoDB() {
+      
+      binlogDoDB_ = getDefaultInstance().getBinlogDoDB();
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string binlogDoDB = 3;</code>
+     * @param value The bytes for binlogDoDB to set.
+     * @return This builder for chaining.
+     */
+    public Builder setBinlogDoDBBytes(
+        com.google.protobuf.ByteString value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  checkByteStringIsUtf8(value);
+      
+      binlogDoDB_ = value;
+      onChanged();
+      return this;
     }
 
-    public static final int BINLOGIGNOREDB_FIELD_NUMBER = 4;
-    private volatile java.lang.Object binlogIgnoreDB_;
-
+    private java.lang.Object binlogIgnoreDB_ = "";
     /**
      * <code>string binlogIgnoreDB = 4;</code>
-     *
      * @return The binlogIgnoreDB.
      */
-    @java.lang.Override
     public java.lang.String getBinlogIgnoreDB() {
-        java.lang.Object ref = binlogIgnoreDB_;
-        if (ref instanceof java.lang.String) {
-            return (java.lang.String) ref;
-        } else {
-            com.google.protobuf.ByteString bs =
-                (com.google.protobuf.ByteString) ref;
-            java.lang.String s = bs.toStringUtf8();
-            binlogIgnoreDB_ = s;
-            return s;
-        }
+      java.lang.Object ref = binlogIgnoreDB_;
+      if (!(ref instanceof java.lang.String)) {
+        com.google.protobuf.ByteString bs =
+            (com.google.protobuf.ByteString) ref;
+        java.lang.String s = bs.toStringUtf8();
+        binlogIgnoreDB_ = s;
+        return s;
+      } else {
+        return (java.lang.String) ref;
+      }
     }
-
     /**
      * <code>string binlogIgnoreDB = 4;</code>
-     *
      * @return The bytes for binlogIgnoreDB.
      */
-    @java.lang.Override
     public com.google.protobuf.ByteString
-    getBinlogIgnoreDBBytes() {
-        java.lang.Object ref = binlogIgnoreDB_;
-        if (ref instanceof java.lang.String) {
-            com.google.protobuf.ByteString b =
-                com.google.protobuf.ByteString.copyFromUtf8(
-                    (java.lang.String) ref);
-            binlogIgnoreDB_ = b;
-            return b;
-        } else {
-            return (com.google.protobuf.ByteString) ref;
-        }
+        getBinlogIgnoreDBBytes() {
+      java.lang.Object ref = binlogIgnoreDB_;
+      if (ref instanceof String) {
+        com.google.protobuf.ByteString b = 
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
+        binlogIgnoreDB_ = b;
+        return b;
+      } else {
+        return (com.google.protobuf.ByteString) ref;
+      }
+    }
+    /**
+     * <code>string binlogIgnoreDB = 4;</code>
+     * @param value The binlogIgnoreDB to set.
+     * @return This builder for chaining.
+     */
+    public Builder setBinlogIgnoreDB(
+        java.lang.String value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  
+      binlogIgnoreDB_ = value;
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string binlogIgnoreDB = 4;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearBinlogIgnoreDB() {
+      
+      binlogIgnoreDB_ = getDefaultInstance().getBinlogIgnoreDB();
+      onChanged();
+      return this;
+    }
+    /**
+     * <code>string binlogIgnoreDB = 4;</code>
+     * @param value The bytes for binlogIgnoreDB to set.
+     * @return This builder for chaining.
+     */
+    public Builder setBinlogIgnoreDBBytes(
+        com.google.protobuf.ByteString value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  checkByteStringIsUtf8(value);
+      
+      binlogIgnoreDB_ = value;
+      onChanged();
+      return this;
     }
 
-    public static final int EXECUTEDGTIDSET_FIELD_NUMBER = 5;
-    private volatile java.lang.Object executedGtidSet_;
-
+    private java.lang.Object executedGtidSet_ = "";
     /**
      * <code>string executedGtidSet = 5;</code>
-     *
      * @return The executedGtidSet.
      */
-    @java.lang.Override
     public java.lang.String getExecutedGtidSet() {
-        java.lang.Object ref = executedGtidSet_;
-        if (ref instanceof java.lang.String) {
-            return (java.lang.String) ref;
-        } else {
-            com.google.protobuf.ByteString bs =
-                (com.google.protobuf.ByteString) ref;
-            java.lang.String s = bs.toStringUtf8();
-            executedGtidSet_ = s;
-            return s;
-        }
+      java.lang.Object ref = executedGtidSet_;
+      if (!(ref instanceof java.lang.String)) {
+        com.google.protobuf.ByteString bs =
+            (com.google.protobuf.ByteString) ref;
+        java.lang.String s = bs.toStringUtf8();
+        executedGtidSet_ = s;
+        return s;
+      } else {
+        return (java.lang.String) ref;
+      }
     }
-
     /**
      * <code>string executedGtidSet = 5;</code>
-     *
      * @return The bytes for executedGtidSet.
      */
-    @java.lang.Override
     public com.google.protobuf.ByteString
-    getExecutedGtidSetBytes() {
-        java.lang.Object ref = executedGtidSet_;
-        if (ref instanceof java.lang.String) {
-            com.google.protobuf.ByteString b =
-                com.google.protobuf.ByteString.copyFromUtf8(
-                    (java.lang.String) ref);
-            executedGtidSet_ = b;
-            return b;
-        } else {
-            return (com.google.protobuf.ByteString) ref;
-        }
+        getExecutedGtidSetBytes() {
+      java.lang.Object ref = executedGtidSet_;
+      if (ref instanceof String) {
+        com.google.protobuf.ByteString b = 
+            com.google.protobuf.ByteString.copyFromUtf8(
+                (java.lang.String) ref);
+        executedGtidSet_ = b;
+        return b;
+      } else {
+        return (com.google.protobuf.ByteString) ref;
+      }
     }
-
-    private byte memoizedIsInitialized = -1;
-
-    @java.lang.Override
-    public final boolean isInitialized() {
-        byte isInitialized = memoizedIsInitialized;
-        if (isInitialized == 1) {
-            return true;
-        }
-        if (isInitialized == 0) {
-            return false;
-        }
-
-        memoizedIsInitialized = 1;
-        return true;
+    /**
+     * <code>string executedGtidSet = 5;</code>
+     * @param value The executedGtidSet to set.
+     * @return This builder for chaining.
+     */
+    public Builder setExecutedGtidSet(
+        java.lang.String value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  
+      executedGtidSet_ = value;
+      onChanged();
+      return this;
     }
-
-    @java.lang.Override
-    public void writeTo(com.google.protobuf.CodedOutputStream output)
-        throws java.io.IOException {
-        if (!getFileBytes().isEmpty()) {
-            com.google.protobuf.GeneratedMessageV3.writeString(output, 1, file_);
-        }
-        if (position_ != 0L) {
-            output.writeInt64(2, position_);
-        }
-        if (!getBinlogDoDBBytes().isEmpty()) {
-            com.google.protobuf.GeneratedMessageV3.writeString(output, 3, binlogDoDB_);
-        }
-        if (!getBinlogIgnoreDBBytes().isEmpty()) {
-            com.google.protobuf.GeneratedMessageV3.writeString(output, 4, binlogIgnoreDB_);
-        }
-        if (!getExecutedGtidSetBytes().isEmpty()) {
-            com.google.protobuf.GeneratedMessageV3.writeString(output, 5, executedGtidSet_);
-        }
-        unknownFields.writeTo(output);
+    /**
+     * <code>string executedGtidSet = 5;</code>
+     * @return This builder for chaining.
+     */
+    public Builder clearExecutedGtidSet() {
+      
+      executedGtidSet_ = getDefaultInstance().getExecutedGtidSet();
+      onChanged();
+      return this;
     }
-
+    /**
+     * <code>string executedGtidSet = 5;</code>
+     * @param value The bytes for executedGtidSet to set.
+     * @return This builder for chaining.
+     */
+    public Builder setExecutedGtidSetBytes(
+        com.google.protobuf.ByteString value) {
+      if (value == null) {
+    throw new NullPointerException();
+  }
+  checkByteStringIsUtf8(value);
+      
+      executedGtidSet_ = value;
+      onChanged();
+      return this;
+    }
     @java.lang.Override
-    public int getSerializedSize() {
-        int size = memoizedSize;
-        if (size != -1) {
-            return size;
-        }
-
-        size = 0;
-        if (!getFileBytes().isEmpty()) {
-            size += com.google.protobuf.GeneratedMessageV3.computeStringSize(1, file_);
-        }
-        if (position_ != 0L) {
-            size += com.google.protobuf.CodedOutputStream
-                .computeInt64Size(2, position_);
-        }
-        if (!getBinlogDoDBBytes().isEmpty()) {
-            size += com.google.protobuf.GeneratedMessageV3.computeStringSize(3, binlogDoDB_);
-        }
-        if (!getBinlogIgnoreDBBytes().isEmpty()) {
-            size += com.google.protobuf.GeneratedMessageV3.computeStringSize(4, binlogIgnoreDB_);
-        }
-        if (!getExecutedGtidSetBytes().isEmpty()) {
-            size += com.google.protobuf.GeneratedMessageV3.computeStringSize(5, executedGtidSet_);
-        }
-        size += unknownFields.getSerializedSize();
-        memoizedSize = size;
-        return size;
+    public final Builder setUnknownFields(
+        final com.google.protobuf.UnknownFieldSet unknownFields) {
+      return super.setUnknownFields(unknownFields);
     }
 
     @java.lang.Override
-    public boolean equals(final java.lang.Object obj) {
-        if (obj == this) {
-            return true;
-        }
-        if (!(obj instanceof MasterStatus)) {
-            return super.equals(obj);
-        }
-        MasterStatus other = (MasterStatus) obj;
-
-        if (!getFile()
-            .equals(other.getFile())) {
-            return false;
-        }
-        if (getPosition()
-            != other.getPosition()) {
-            return false;
-        }
-        if (!getBinlogDoDB()
-            .equals(other.getBinlogDoDB())) {
-            return false;
-        }
-        if (!getBinlogIgnoreDB()
-            .equals(other.getBinlogIgnoreDB())) {
-            return false;
-        }
-        if (!getExecutedGtidSet()
-            .equals(other.getExecutedGtidSet())) {
-            return false;
-        }
-        if (!unknownFields.equals(other.unknownFields)) {
-            return false;
-        }
-        return true;
+    public final Builder mergeUnknownFields(
+        final com.google.protobuf.UnknownFieldSet unknownFields) {
+      return super.mergeUnknownFields(unknownFields);
     }
 
+
+    // @@protoc_insertion_point(builder_scope:dumper.MasterStatus)
+  }
+
+  // @@protoc_insertion_point(class_scope:dumper.MasterStatus)
+  private static final com.alibaba.polardbx.rpc.cdc.MasterStatus DEFAULT_INSTANCE;
+  static {
+    DEFAULT_INSTANCE = new com.alibaba.polardbx.rpc.cdc.MasterStatus();
+  }
+
+  public static com.alibaba.polardbx.rpc.cdc.MasterStatus getDefaultInstance() {
+    return DEFAULT_INSTANCE;
+  }
+
+  private static final com.google.protobuf.Parser<MasterStatus>
+      PARSER = new com.google.protobuf.AbstractParser<MasterStatus>() {
     @java.lang.Override
-    public int hashCode() {
-        if (memoizedHashCode != 0) {
-            return memoizedHashCode;
-        }
-        int hash = 41;
-        hash = (19 * hash) + getDescriptor().hashCode();
-        hash = (37 * hash) + FILE_FIELD_NUMBER;
-        hash = (53 * hash) + getFile().hashCode();
-        hash = (37 * hash) + POSITION_FIELD_NUMBER;
-        hash = (53 * hash) + com.google.protobuf.Internal.hashLong(
-            getPosition());
-        hash = (37 * hash) + BINLOGDODB_FIELD_NUMBER;
-        hash = (53 * hash) + getBinlogDoDB().hashCode();
-        hash = (37 * hash) + BINLOGIGNOREDB_FIELD_NUMBER;
-        hash = (53 * hash) + getBinlogIgnoreDB().hashCode();
-        hash = (37 * hash) + EXECUTEDGTIDSET_FIELD_NUMBER;
-        hash = (53 * hash) + getExecutedGtidSet().hashCode();
-        hash = (29 * hash) + unknownFields.hashCode();
-        memoizedHashCode = hash;
-        return hash;
-    }
-
-    public static MasterStatus parseFrom(
-        java.nio.ByteBuffer data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data);
-    }
-
-    public static MasterStatus parseFrom(
-        java.nio.ByteBuffer data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data, extensionRegistry);
-    }
-
-    public static MasterStatus parseFrom(
-        com.google.protobuf.ByteString data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data);
-    }
-
-    public static MasterStatus parseFrom(
-        com.google.protobuf.ByteString data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data, extensionRegistry);
-    }
-
-    public static MasterStatus parseFrom(byte[] data)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data);
-    }
-
-    public static MasterStatus parseFrom(
-        byte[] data,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws com.google.protobuf.InvalidProtocolBufferException {
-        return PARSER.parseFrom(data, extensionRegistry);
-    }
-
-    public static MasterStatus parseFrom(java.io.InputStream input)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseWithIOException(PARSER, input);
-    }
-
-    public static MasterStatus parseFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseWithIOException(PARSER, input, extensionRegistry);
-    }
-
-    public static MasterStatus parseDelimitedFrom(java.io.InputStream input)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseDelimitedWithIOException(PARSER, input);
-    }
-
-    public static MasterStatus parseDelimitedFrom(
-        java.io.InputStream input,
-        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseDelimitedWithIOException(PARSER, input, extensionRegistry);
-    }
-
-    public static MasterStatus parseFrom(
-        com.google.protobuf.CodedInputStream input)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseWithIOException(PARSER, input);
-    }
-
-    public static MasterStatus parseFrom(
+    public MasterStatus parsePartialFrom(
         com.google.protobuf.CodedInputStream input,
         com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-        throws java.io.IOException {
-        return com.google.protobuf.GeneratedMessageV3
-            .parseWithIOException(PARSER, input, extensionRegistry);
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return new MasterStatus(input, extensionRegistry);
     }
-
-    @java.lang.Override
-    public Builder newBuilderForType() {
-        return newBuilder();
-    }
-
-    public static Builder newBuilder() {
-        return DEFAULT_INSTANCE.toBuilder();
-    }
-
-    public static Builder newBuilder(MasterStatus prototype) {
-        return DEFAULT_INSTANCE.toBuilder().mergeFrom(prototype);
-    }
-
-    @java.lang.Override
-    public Builder toBuilder() {
-        return this == DEFAULT_INSTANCE
-            ? new Builder() : new Builder().mergeFrom(this);
-    }
-
-    @java.lang.Override
-    protected Builder newBuilderForType(
-        com.google.protobuf.GeneratedMessageV3.BuilderParent parent) {
-        Builder builder = new Builder(parent);
-        return builder;
-    }
-
-    /**
-     * Protobuf type {@code dumper.MasterStatus}
-     */
-    public static final class Builder extends
-        com.google.protobuf.GeneratedMessageV3.Builder<Builder> implements
-        // @@protoc_insertion_point(builder_implements:dumper.MasterStatus)
-        MasterStatusOrBuilder {
-        public static final com.google.protobuf.Descriptors.Descriptor
-        getDescriptor() {
-            return DumperServer.internal_static_dumper_MasterStatus_descriptor;
-        }
-
-        @java.lang.Override
-        protected com.google.protobuf.GeneratedMessageV3.FieldAccessorTable
-        internalGetFieldAccessorTable() {
-            return DumperServer.internal_static_dumper_MasterStatus_fieldAccessorTable
-                .ensureFieldAccessorsInitialized(
-                    MasterStatus.class, MasterStatus.Builder.class);
-        }
-
-        // Construct using com.alibaba.tddl.rpc.cdc.MasterStatus.newBuilder()
-        private Builder() {
-            maybeForceBuilderInitialization();
-        }
-
-        private Builder(
-            com.google.protobuf.GeneratedMessageV3.BuilderParent parent) {
-            super(parent);
-            maybeForceBuilderInitialization();
-        }
-
-        private void maybeForceBuilderInitialization() {
-            if (com.google.protobuf.GeneratedMessageV3
-                .alwaysUseFieldBuilders) {
-            }
-        }
-
-        @java.lang.Override
-        public Builder clear() {
-            super.clear();
-            file_ = "";
-
-            position_ = 0L;
-
-            binlogDoDB_ = "";
-
-            binlogIgnoreDB_ = "";
-
-            executedGtidSet_ = "";
-
-            return this;
-        }
-
-        @java.lang.Override
-        public com.google.protobuf.Descriptors.Descriptor
-        getDescriptorForType() {
-            return DumperServer.internal_static_dumper_MasterStatus_descriptor;
-        }
-
-        @java.lang.Override
-        public MasterStatus getDefaultInstanceForType() {
-            return MasterStatus.getDefaultInstance();
-        }
-
-        @java.lang.Override
-        public MasterStatus build() {
-            MasterStatus result = buildPartial();
-            if (!result.isInitialized()) {
-                throw newUninitializedMessageException(result);
-            }
-            return result;
-        }
-
-        @java.lang.Override
-        public MasterStatus buildPartial() {
-            MasterStatus result = new MasterStatus(this);
-            result.file_ = file_;
-            result.position_ = position_;
-            result.binlogDoDB_ = binlogDoDB_;
-            result.binlogIgnoreDB_ = binlogIgnoreDB_;
-            result.executedGtidSet_ = executedGtidSet_;
-            onBuilt();
-            return result;
-        }
-
-        @java.lang.Override
-        public Builder clone() {
-            return super.clone();
-        }
-
-        @java.lang.Override
-        public Builder setField(
-            com.google.protobuf.Descriptors.FieldDescriptor field,
-            java.lang.Object value) {
-            return super.setField(field, value);
-        }
-
-        @java.lang.Override
-        public Builder clearField(
-            com.google.protobuf.Descriptors.FieldDescriptor field) {
-            return super.clearField(field);
-        }
-
-        @java.lang.Override
-        public Builder clearOneof(
-            com.google.protobuf.Descriptors.OneofDescriptor oneof) {
-            return super.clearOneof(oneof);
-        }
-
-        @java.lang.Override
-        public Builder setRepeatedField(
-            com.google.protobuf.Descriptors.FieldDescriptor field,
-            int index, java.lang.Object value) {
-            return super.setRepeatedField(field, index, value);
-        }
-
-        @java.lang.Override
-        public Builder addRepeatedField(
-            com.google.protobuf.Descriptors.FieldDescriptor field,
-            java.lang.Object value) {
-            return super.addRepeatedField(field, value);
-        }
-
-        @java.lang.Override
-        public Builder mergeFrom(com.google.protobuf.Message other) {
-            if (other instanceof MasterStatus) {
-                return mergeFrom((MasterStatus) other);
-            } else {
-                super.mergeFrom(other);
-                return this;
-            }
-        }
-
-        public Builder mergeFrom(MasterStatus other) {
-            if (other == MasterStatus.getDefaultInstance()) {
-                return this;
-            }
-            if (!other.getFile().isEmpty()) {
-                file_ = other.file_;
-                onChanged();
-            }
-            if (other.getPosition() != 0L) {
-                setPosition(other.getPosition());
-            }
-            if (!other.getBinlogDoDB().isEmpty()) {
-                binlogDoDB_ = other.binlogDoDB_;
-                onChanged();
-            }
-            if (!other.getBinlogIgnoreDB().isEmpty()) {
-                binlogIgnoreDB_ = other.binlogIgnoreDB_;
-                onChanged();
-            }
-            if (!other.getExecutedGtidSet().isEmpty()) {
-                executedGtidSet_ = other.executedGtidSet_;
-                onChanged();
-            }
-            this.mergeUnknownFields(other.unknownFields);
-            onChanged();
-            return this;
-        }
-
-        @java.lang.Override
-        public final boolean isInitialized() {
-            return true;
-        }
-
-        @java.lang.Override
-        public Builder mergeFrom(
-            com.google.protobuf.CodedInputStream input,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws java.io.IOException {
-            MasterStatus parsedMessage = null;
-            try {
-                parsedMessage = PARSER.parsePartialFrom(input, extensionRegistry);
-            } catch (com.google.protobuf.InvalidProtocolBufferException e) {
-                parsedMessage = (MasterStatus) e.getUnfinishedMessage();
-                throw e.unwrapIOException();
-            } finally {
-                if (parsedMessage != null) {
-                    mergeFrom(parsedMessage);
-                }
-            }
-            return this;
-        }
-
-        private java.lang.Object file_ = "";
-
-        /**
-         * <code>string file = 1;</code>
-         *
-         * @return The file.
-         */
-        public java.lang.String getFile() {
-            java.lang.Object ref = file_;
-            if (!(ref instanceof java.lang.String)) {
-                com.google.protobuf.ByteString bs =
-                    (com.google.protobuf.ByteString) ref;
-                java.lang.String s = bs.toStringUtf8();
-                file_ = s;
-                return s;
-            } else {
-                return (java.lang.String) ref;
-            }
-        }
-
-        /**
-         * <code>string file = 1;</code>
-         *
-         * @return The bytes for file.
-         */
-        public com.google.protobuf.ByteString
-        getFileBytes() {
-            java.lang.Object ref = file_;
-            if (ref instanceof String) {
-                com.google.protobuf.ByteString b =
-                    com.google.protobuf.ByteString.copyFromUtf8(
-                        (java.lang.String) ref);
-                file_ = b;
-                return b;
-            } else {
-                return (com.google.protobuf.ByteString) ref;
-            }
-        }
-
-        /**
-         * <code>string file = 1;</code>
-         *
-         * @param value The file to set.
-         * @return This builder for chaining.
-         */
-        public Builder setFile(
-            java.lang.String value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-
-            file_ = value;
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string file = 1;</code>
-         *
-         * @return This builder for chaining.
-         */
-        public Builder clearFile() {
-
-            file_ = getDefaultInstance().getFile();
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string file = 1;</code>
-         *
-         * @param value The bytes for file to set.
-         * @return This builder for chaining.
-         */
-        public Builder setFileBytes(
-            com.google.protobuf.ByteString value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-            checkByteStringIsUtf8(value);
-
-            file_ = value;
-            onChanged();
-            return this;
-        }
-
-        private long position_;
-
-        /**
-         * <code>int64 position = 2;</code>
-         *
-         * @return The position.
-         */
-        @java.lang.Override
-        public long getPosition() {
-            return position_;
-        }
-
-        /**
-         * <code>int64 position = 2;</code>
-         *
-         * @param value The position to set.
-         * @return This builder for chaining.
-         */
-        public Builder setPosition(long value) {
-
-            position_ = value;
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>int64 position = 2;</code>
-         *
-         * @return This builder for chaining.
-         */
-        public Builder clearPosition() {
-
-            position_ = 0L;
-            onChanged();
-            return this;
-        }
-
-        private java.lang.Object binlogDoDB_ = "";
-
-        /**
-         * <code>string binlogDoDB = 3;</code>
-         *
-         * @return The binlogDoDB.
-         */
-        public java.lang.String getBinlogDoDB() {
-            java.lang.Object ref = binlogDoDB_;
-            if (!(ref instanceof java.lang.String)) {
-                com.google.protobuf.ByteString bs =
-                    (com.google.protobuf.ByteString) ref;
-                java.lang.String s = bs.toStringUtf8();
-                binlogDoDB_ = s;
-                return s;
-            } else {
-                return (java.lang.String) ref;
-            }
-        }
-
-        /**
-         * <code>string binlogDoDB = 3;</code>
-         *
-         * @return The bytes for binlogDoDB.
-         */
-        public com.google.protobuf.ByteString
-        getBinlogDoDBBytes() {
-            java.lang.Object ref = binlogDoDB_;
-            if (ref instanceof String) {
-                com.google.protobuf.ByteString b =
-                    com.google.protobuf.ByteString.copyFromUtf8(
-                        (java.lang.String) ref);
-                binlogDoDB_ = b;
-                return b;
-            } else {
-                return (com.google.protobuf.ByteString) ref;
-            }
-        }
-
-        /**
-         * <code>string binlogDoDB = 3;</code>
-         *
-         * @param value The binlogDoDB to set.
-         * @return This builder for chaining.
-         */
-        public Builder setBinlogDoDB(
-            java.lang.String value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-
-            binlogDoDB_ = value;
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string binlogDoDB = 3;</code>
-         *
-         * @return This builder for chaining.
-         */
-        public Builder clearBinlogDoDB() {
-
-            binlogDoDB_ = getDefaultInstance().getBinlogDoDB();
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string binlogDoDB = 3;</code>
-         *
-         * @param value The bytes for binlogDoDB to set.
-         * @return This builder for chaining.
-         */
-        public Builder setBinlogDoDBBytes(
-            com.google.protobuf.ByteString value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-            checkByteStringIsUtf8(value);
-
-            binlogDoDB_ = value;
-            onChanged();
-            return this;
-        }
-
-        private java.lang.Object binlogIgnoreDB_ = "";
-
-        /**
-         * <code>string binlogIgnoreDB = 4;</code>
-         *
-         * @return The binlogIgnoreDB.
-         */
-        public java.lang.String getBinlogIgnoreDB() {
-            java.lang.Object ref = binlogIgnoreDB_;
-            if (!(ref instanceof java.lang.String)) {
-                com.google.protobuf.ByteString bs =
-                    (com.google.protobuf.ByteString) ref;
-                java.lang.String s = bs.toStringUtf8();
-                binlogIgnoreDB_ = s;
-                return s;
-            } else {
-                return (java.lang.String) ref;
-            }
-        }
-
-        /**
-         * <code>string binlogIgnoreDB = 4;</code>
-         *
-         * @return The bytes for binlogIgnoreDB.
-         */
-        public com.google.protobuf.ByteString
-        getBinlogIgnoreDBBytes() {
-            java.lang.Object ref = binlogIgnoreDB_;
-            if (ref instanceof String) {
-                com.google.protobuf.ByteString b =
-                    com.google.protobuf.ByteString.copyFromUtf8(
-                        (java.lang.String) ref);
-                binlogIgnoreDB_ = b;
-                return b;
-            } else {
-                return (com.google.protobuf.ByteString) ref;
-            }
-        }
-
-        /**
-         * <code>string binlogIgnoreDB = 4;</code>
-         *
-         * @param value The binlogIgnoreDB to set.
-         * @return This builder for chaining.
-         */
-        public Builder setBinlogIgnoreDB(
-            java.lang.String value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-
-            binlogIgnoreDB_ = value;
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string binlogIgnoreDB = 4;</code>
-         *
-         * @return This builder for chaining.
-         */
-        public Builder clearBinlogIgnoreDB() {
-
-            binlogIgnoreDB_ = getDefaultInstance().getBinlogIgnoreDB();
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string binlogIgnoreDB = 4;</code>
-         *
-         * @param value The bytes for binlogIgnoreDB to set.
-         * @return This builder for chaining.
-         */
-        public Builder setBinlogIgnoreDBBytes(
-            com.google.protobuf.ByteString value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-            checkByteStringIsUtf8(value);
-
-            binlogIgnoreDB_ = value;
-            onChanged();
-            return this;
-        }
-
-        private java.lang.Object executedGtidSet_ = "";
-
-        /**
-         * <code>string executedGtidSet = 5;</code>
-         *
-         * @return The executedGtidSet.
-         */
-        public java.lang.String getExecutedGtidSet() {
-            java.lang.Object ref = executedGtidSet_;
-            if (!(ref instanceof java.lang.String)) {
-                com.google.protobuf.ByteString bs =
-                    (com.google.protobuf.ByteString) ref;
-                java.lang.String s = bs.toStringUtf8();
-                executedGtidSet_ = s;
-                return s;
-            } else {
-                return (java.lang.String) ref;
-            }
-        }
-
-        /**
-         * <code>string executedGtidSet = 5;</code>
-         *
-         * @return The bytes for executedGtidSet.
-         */
-        public com.google.protobuf.ByteString
-        getExecutedGtidSetBytes() {
-            java.lang.Object ref = executedGtidSet_;
-            if (ref instanceof String) {
-                com.google.protobuf.ByteString b =
-                    com.google.protobuf.ByteString.copyFromUtf8(
-                        (java.lang.String) ref);
-                executedGtidSet_ = b;
-                return b;
-            } else {
-                return (com.google.protobuf.ByteString) ref;
-            }
-        }
-
-        /**
-         * <code>string executedGtidSet = 5;</code>
-         *
-         * @param value The executedGtidSet to set.
-         * @return This builder for chaining.
-         */
-        public Builder setExecutedGtidSet(
-            java.lang.String value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-
-            executedGtidSet_ = value;
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string executedGtidSet = 5;</code>
-         *
-         * @return This builder for chaining.
-         */
-        public Builder clearExecutedGtidSet() {
-
-            executedGtidSet_ = getDefaultInstance().getExecutedGtidSet();
-            onChanged();
-            return this;
-        }
-
-        /**
-         * <code>string executedGtidSet = 5;</code>
-         *
-         * @param value The bytes for executedGtidSet to set.
-         * @return This builder for chaining.
-         */
-        public Builder setExecutedGtidSetBytes(
-            com.google.protobuf.ByteString value) {
-            if (value == null) {
-                throw new NullPointerException();
-            }
-            checkByteStringIsUtf8(value);
-
-            executedGtidSet_ = value;
-            onChanged();
-            return this;
-        }
-
-        @java.lang.Override
-        public final Builder setUnknownFields(
-            final com.google.protobuf.UnknownFieldSet unknownFields) {
-            return super.setUnknownFields(unknownFields);
-        }
-
-        @java.lang.Override
-        public final Builder mergeUnknownFields(
-            final com.google.protobuf.UnknownFieldSet unknownFields) {
-            return super.mergeUnknownFields(unknownFields);
-        }
-
-        // @@protoc_insertion_point(builder_scope:dumper.MasterStatus)
-    }
-
-    // @@protoc_insertion_point(class_scope:dumper.MasterStatus)
-    private static final MasterStatus DEFAULT_INSTANCE;
-
-    static {
-        DEFAULT_INSTANCE = new MasterStatus();
-    }
-
-    public static MasterStatus getDefaultInstance() {
-        return DEFAULT_INSTANCE;
-    }
-
-    private static final com.google.protobuf.Parser<MasterStatus>
-        PARSER = new com.google.protobuf.AbstractParser<MasterStatus>() {
-        @java.lang.Override
-        public MasterStatus parsePartialFrom(
-            com.google.protobuf.CodedInputStream input,
-            com.google.protobuf.ExtensionRegistryLite extensionRegistry)
-            throws com.google.protobuf.InvalidProtocolBufferException {
-            return new MasterStatus(input, extensionRegistry);
-        }
-    };
-
-    public static com.google.protobuf.Parser<MasterStatus> parser() {
-        return PARSER;
-    }
-
-    @java.lang.Override
-    public com.google.protobuf.Parser<MasterStatus> getParserForType() {
-        return PARSER;
-    }
-
-    @java.lang.Override
-    public MasterStatus getDefaultInstanceForType() {
-        return DEFAULT_INSTANCE;
-    }
+  };
+
+  public static com.google.protobuf.Parser<MasterStatus> parser() {
+    return PARSER;
+  }
+
+  @java.lang.Override
+  public com.google.protobuf.Parser<MasterStatus> getParserForType() {
+    return PARSER;
+  }
+
+  @java.lang.Override
+  public com.alibaba.polardbx.rpc.cdc.MasterStatus getDefaultInstanceForType() {
+    return DEFAULT_INSTANCE;
+  }
 
 }
 

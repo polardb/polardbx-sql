@@ -18,7 +18,6 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast;
 import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
-
 public interface MySqlObject extends SQLObject {
     void accept0(MySqlASTVisitor v);
 }

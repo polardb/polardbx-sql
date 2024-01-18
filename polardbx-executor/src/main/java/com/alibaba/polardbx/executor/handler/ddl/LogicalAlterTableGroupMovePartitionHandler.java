@@ -16,24 +16,24 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupMovePartitionJobFactory;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.partitionmanagement.AlterTableGroupUtils;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableGroupMovePartition;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.sql.SqlAlterTableGroup;
 import org.apache.calcite.sql.SqlAlterTableGroupMovePartition;
 
-public class LogicalAlterTableGroupMovePartitionHandler extends LogicalAlterTableMovePartitionHandler {
+public class LogicalAlterTableGroupMovePartitionHandler extends LogicalCommonDdlHandler {
 
     public LogicalAlterTableGroupMovePartitionHandler(IRepository repo) {
         super(repo);
@@ -45,27 +45,21 @@ public class LogicalAlterTableGroupMovePartitionHandler extends LogicalAlterTabl
             (LogicalAlterTableGroupMovePartition) logicalDdlPlan;
 
         AlterTableGroupMovePartition alterTableGroupMovePartition =
-            (AlterTableGroupMovePartition) logicalAlterTableGroupMovePartition.relDdl;
-        SqlAlterTableGroup sqlAlterTableGroup =
-            (SqlAlterTableGroup) alterTableGroupMovePartition.getSqlNode();
+            (AlterTableGroupMovePartition) logicalDdlPlan.relDdl;
+        SqlAlterTableGroup sqlAlterTableGroup = (SqlAlterTableGroup) logicalDdlPlan.relDdl.getSqlNode();
 
         assert sqlAlterTableGroup.getAlters().size() == 1;
+        assert sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupMovePartition;
+
         SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition =
             (SqlAlterTableGroupMovePartition) sqlAlterTableGroup.getAlters().get(0);
 
-        String schemaName = logicalAlterTableGroupMovePartition.getSchemaName();
-
-        final TableGroupInfoManager tableGroupInfoManager =
-            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-        String tableGroupName = alterTableGroupMovePartition.getTableGroupName();
-
-        TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
-
-        if (preProcessMovePartitionPlan(sqlAlterTableGroupMovePartition, tableGroupConfig)) {
+        if (GeneralUtil.isEmpty(sqlAlterTableGroupMovePartition.getTargetPartitions())) {
             return new TransientDdlJob();
         }
+
         logicalAlterTableGroupMovePartition.preparedData(executionContext);
-        CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupMovePartition.getPreparedData());
+        //CheckOSSArchiveUtil.checkWithoutOSS(logicalAlterTableGroupMovePartition.getPreparedData());
         return AlterTableGroupMovePartitionJobFactory
             .create(logicalAlterTableGroupMovePartition.relDdl, logicalAlterTableGroupMovePartition.getPreparedData(),
                 executionContext);
@@ -74,11 +68,51 @@ public class LogicalAlterTableGroupMovePartitionHandler extends LogicalAlterTabl
     @Override
     protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
         AlterTableGroupUtils.alterTableGroupPreCheck(
-            (SqlAlterTableGroup) ((logicalDdlPlan).relDdl.getSqlNode()),
+            (SqlAlterTableGroup) logicalDdlPlan.relDdl.getSqlNode(),
             logicalDdlPlan.getSchemaName(),
             executionContext);
-        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
         return false;
+    }
+
+    @Override
+    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        BaseDdlOperation logicalDdlPlan = (BaseDdlOperation) logicalPlan;
+
+        executionContext.getServerVariables().put("foreign_key_checks", false);
+        initDdlContext(logicalDdlPlan, executionContext);
+
+        // Validate the plan on file storage first
+        TableValidator.validateTableEngine(logicalDdlPlan, executionContext);
+        // Validate the plan first and then return immediately if needed.
+        boolean returnImmediately = validatePlan(logicalDdlPlan, executionContext);
+
+        boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalDdlPlan.getSchemaName());
+
+        if (isNewPartDb) {
+            setPartitionDbIndexAndPhyTable(logicalDdlPlan);
+        } else {
+            setDbIndexAndPhyTable(logicalDdlPlan);
+        }
+
+        // Build a specific DDL job by subclass.
+        DdlJob ddlJob = returnImmediately ?
+            new TransientDdlJob() :
+            buildDdlJob(logicalDdlPlan, executionContext);
+
+        // Validate the DDL job before request.
+        validateJob(logicalDdlPlan, ddlJob, executionContext);
+
+        if (executionContext.getDdlContext().getExplain()) {
+            return buildExplainResultCursor(logicalDdlPlan, ddlJob, executionContext);
+        }
+
+        // Handle the client DDL request on the worker side.
+        handleDdlRequest(ddlJob, executionContext);
+
+        if (executionContext.getDdlContext().isSubJob()) {
+            return buildSubJobResultCursor(ddlJob, executionContext);
+        }
+        return buildResultCursor(logicalDdlPlan, ddlJob, executionContext);
     }
 
 }

@@ -16,15 +16,21 @@
 
 package com.alibaba.polardbx.qatest.dql.auto.join;
 
-import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
+import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.updateErrorAssert;
 
 /**
  * @author dylan
@@ -89,6 +95,222 @@ public class CTETest extends AutoReadBaseTestCase {
         String mysqlSql = "select count(pk) from " + group1[1];
         selectContentSameAssertWithDiffSql(tddlSql, mysqlSql, null, mysqlConnection, tddlConnection, false, false,
             false);
+    }
+
+    /**
+     * mysql 5.6/7 do not suppot recursive cte, compare test mode wont work here
+     */
+    @Test
+    public void recursiveCteTest() throws SQLException {
+        String sql =
+            " WITH recursive         cte2 AS         (         SELECT  2 AS id          union all "
+                + " select id+2 from cte2 where id<=5000000    limit 100     ) SELECT  * FROM    cte2 ";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+
+        // result should start with 2,ended after output 100 rows
+        int count = 0;
+        int value = 2;
+        try {
+            while (resultSet.next()) {
+                count++;
+                Assert.assertTrue(value == resultSet.getInt(1));
+                value += 2;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 100);
+    }
+
+    @Test
+    public void recursiveCteOverMaxRecursiveTimeTest() {
+        String sql =
+            " WITH recursive         cte2 AS         (         SELECT  2 AS id          union all "
+                + " select id+2 from cte2 where id<=5000000    limit 600     ) SELECT  * FROM    cte2 ";
+        JdbcUtil.executeQueryFaied(tddlConnection, sql,
+            new String[] {"Communications link failure", "Recursive query aborted after"});
+    }
+
+    @Test
+    public void recursiveCteTest1() throws SQLException {
+        String sql =
+            " WITH RECURSIVE cte (n) AS\n"
+                + "(\n"
+                + "  SELECT 1\n"
+                + "  UNION ALL\n"
+                + "  SELECT n + 1 FROM cte WHERE n < 5\n"
+                + ")\n"
+                + "SELECT * FROM cte;";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        int count = 0;
+        int value = 1;
+        try {
+            while (resultSet.next()) {
+                count++;
+                Assert.assertTrue(value == resultSet.getInt(1));
+                value += 1;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 5);
+    }
+
+    /**
+     * strict SQL mode should call an error like "Data too long for column 'str' at row 1"
+     */
+    @Test
+    public void recursiveCteTest2() throws SQLException {
+        String sql =
+            " WITH RECURSIVE cte AS\n"
+                + "(\n"
+                + "  SELECT 1 AS n, 'abc' AS str\n"
+                + "  UNION ALL\n"
+                + "  SELECT n + 1, CONCAT(str, str) FROM cte WHERE n < 3\n"
+                + ")\n"
+                + "SELECT * FROM cte;";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        int count = 0;
+        String abc = "abc";
+        int value = 1;
+        try {
+            while (resultSet.next()) {
+                count++;
+                Assert.assertTrue(value == resultSet.getInt(1));
+                Assert.assertTrue(abc.equals(resultSet.getString(2)));
+                value += 1;
+                abc += abc;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 3);
+    }
+
+    @Test
+    public void recursiveCteTest3() throws SQLException {
+        String sql =
+            " WITH RECURSIVE cte AS\n"
+                + "(\n"
+                + "  SELECT 1 AS n, 1 AS p, -1 AS q\n"
+                + "  UNION ALL\n"
+                + "  SELECT n + 1, q * 2, p * 2 FROM cte WHERE n < 5\n"
+                + ")\n"
+                + "SELECT * FROM cte;";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        int index = 0;
+        int count = 0;
+        int[][] result = {
+            {1, 1, -1},
+            {2, -2, 2},
+            {3, 4, -4},
+            {4, -8, 8},
+            {5, 16, -16}};
+        try {
+            while (resultSet.next()) {
+                count++;
+                Assert.assertTrue(result[index][0] == resultSet.getInt(1));
+                Assert.assertTrue(result[index][1] == resultSet.getInt(2));
+                Assert.assertTrue(result[index][2] == resultSet.getInt(3));
+                index++;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 5);
+    }
+
+    @Test
+    public void recursiveCteTest4() throws SQLException {
+        String sql =
+            " WITH RECURSIVE fibonacci (n, fib_n, next_fib_n) AS\n"
+                + "(\n"
+                + "  SELECT 1, 0, 1\n"
+                + "  UNION ALL\n"
+                + "  SELECT n + 1, next_fib_n, fib_n + next_fib_n\n"
+                + "    FROM fibonacci WHERE n < 10\n"
+                + ")\n"
+                + "SELECT * FROM fibonacci;";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        int n = 1;
+        int fibN = 0;
+        int nextFibN = 1;
+        int count = 0;
+
+        try {
+            while (resultSet.next()) {
+                count++;
+                Assert.assertTrue(n == resultSet.getInt(1));
+                Assert.assertTrue(fibN == resultSet.getInt(2));
+                Assert.assertTrue(nextFibN == resultSet.getInt(3));
+                n += 1;
+                int tempFibN = fibN;
+                fibN = nextFibN;
+                nextFibN = tempFibN + nextFibN;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 10);
+    }
+
+    @Test
+    public void recursiveCteTestUnion() throws SQLException {
+        String sql =
+            " WITH RECURSIVE cte2 AS\n"
+                + "  (SELECT 2 AS id\n"
+                + "   UNION SELECT id\n"
+                + "   FROM cte2\n"
+                + "   WHERE id<=5000000 LIMIT 99)\n"
+                + "SELECT *\n"
+                + "FROM cte2;";
+        ResultSet resultSet = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        int count = 0;
+
+        try {
+            while (resultSet.next()) {
+                count++;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            throw e;
+        } finally {
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+
+        Assert.assertTrue(count == 1);
     }
 }
 

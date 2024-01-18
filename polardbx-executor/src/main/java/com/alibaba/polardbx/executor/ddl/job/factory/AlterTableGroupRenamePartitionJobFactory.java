@@ -93,7 +93,8 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
         }
 
         DdlTask changeMetaTask = new AlterTableGroupRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
-            preparedData.getTableGroupName(), preparedData.getChangePartitionsPair());
+            preparedData.getTableGroupName(), preparedData.getChangePartitionsPair(),
+            preparedData.isSubPartitionRename());
         DdlTask syncTask =
             new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, initWait, interval,
                 TimeUnit.MILLISECONDS);

@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -18,6 +18,8 @@
         <orc.version>1.6.9</orc.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
         <hadoop-aliyun.version>3.2.2</hadoop-aliyun.version>
+        <jna.version>5.9.0</jna.version>
+        <ojalgo.version>43.0</ojalgo.version>
     </properties>
     <dependencies>
         <dependency>
@@ -29,14 +31,6 @@
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-optimizer</artifactId>
             <version>${project.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>polardbx-optimizer</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-            <type>test-jar</type>
         </dependency>
 
         <dependency>
@@ -98,6 +92,17 @@
             <groupId>org.jgrapht</groupId>
             <artifactId>jgrapht-core</artifactId>
             <version>${jgrapht.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>${jna.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.ojalgo</groupId>
+            <artifactId>ojalgo</artifactId>
+            <version>${ojalgo.version}</version>
         </dependency>
         <dependency>
             <groupId>com.google.guava</groupId>
@@ -275,9 +280,16 @@
             </exclusions>
         </dependency>
         <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-client</artifactId>
+            <version>${hadoop.version}</version>
+        </dependency>
+
+        <dependency>
             <groupId>com.cronutils</groupId>
             <artifactId>cron-utils</artifactId>
         </dependency>
+
     </dependencies>
 
     <build>

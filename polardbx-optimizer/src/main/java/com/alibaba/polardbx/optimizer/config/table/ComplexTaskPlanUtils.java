@@ -22,7 +22,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
@@ -188,7 +188,7 @@ public class ComplexTaskPlanUtils {
         if (partitionInfo == null) {
             return StringUtils.EMPTY;
         }
-        for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+        for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
             PartitionLocation location = partitionSpec.getLocation();
             if (location.getPhyTableName().equalsIgnoreCase(phyTableName) && location.getGroupKey()
                 .equalsIgnoreCase(groupName)) {

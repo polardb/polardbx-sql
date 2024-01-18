@@ -34,20 +34,20 @@ public class SQLNumberExpr extends SQLNumericLiteralExpr implements SQLValuableE
 
     private char[] chars;
 
-    public SQLNumberExpr(){
+    public SQLNumberExpr() {
 
     }
 
-    public SQLNumberExpr(Number number){
+    public SQLNumberExpr(Number number) {
         this.number = number;
     }
 
-    public SQLNumberExpr(char[] chars, SQLObject parent){
+    public SQLNumberExpr(char[] chars, SQLObject parent) {
         this.chars = chars;
         this.parent = parent;
     }
 
-    public SQLNumberExpr(char[] chars){
+    public SQLNumberExpr(char[] chars) {
         this.chars = chars;
     }
 

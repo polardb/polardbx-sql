@@ -33,6 +33,8 @@ import java.math.BigInteger;
 import java.time.ZoneId;
 import java.util.Optional;
 
+import static com.alibaba.polardbx.executor.operator.ResultSetCursorExec.bytesToLong;
+
 class BigBitColumnProvider implements ColumnProvider<Long> {
 
     @Override
@@ -41,7 +43,8 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int startIndex, int endIndex,
+                          SessionProperties sessionProperties) {
         long[] array = ((LongColumnVector) vector).vector;
         BigIntegerBlockBuilder bigIntegerBlockBuilder = (BigIntegerBlockBuilder) blockBuilder;
         for (int i = startIndex; i < endIndex; i++) {
@@ -58,7 +61,8 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize, SessionProperties sessionProperties) {
+    public void transform(ColumnVector vector, BlockBuilder blockBuilder, int[] selection, int selSize,
+                          SessionProperties sessionProperties) {
         long[] array = ((LongColumnVector) vector).vector;
         BigIntegerBlockBuilder bigIntegerBlockBuilder = (BigIntegerBlockBuilder) blockBuilder;
         for (int i = 0; i < selSize; i++) {
@@ -91,23 +95,27 @@ class BigBitColumnProvider implements ColumnProvider<Long> {
     }
 
     @Override
-    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType, ZoneId timezone, Optional<CrcAccumulator> accumulator) {
+    public void putRow(ColumnVector columnVector, int rowNumber, Row row, int columnId, DataType dataType,
+                       ZoneId timezone, Optional<CrcAccumulator> accumulator) {
         if (row instanceof XRowSet) {
             try {
-                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber, accumulator);
+                ((XRowSet) row).fastParseToColumnVector(columnId, ColumnProviders.UTF_8, columnVector, rowNumber,
+                    accumulator);
             } catch (Exception e) {
                 throw GeneralUtil.nestedException(e);
             }
         } else {
-            Long num = row.getLong(columnId);
-            if (num == null) {
+            byte[] bytes = row.getBytes(columnId);
+            if (bytes == null) {
                 columnVector.isNull[rowNumber] = true;
                 columnVector.noNulls = false;
                 ((LongColumnVector) columnVector).vector[rowNumber] = 0;
                 accumulator.ifPresent(CrcAccumulator::appendNull);
             } else {
-                ((LongColumnVector) columnVector).vector[rowNumber] = num;
-                accumulator.ifPresent(a -> a.appendHash(Long.hashCode(num)));
+                long longValue = bytesToLong(bytes);
+                ((LongColumnVector) columnVector).vector[rowNumber] = longValue;
+
+                accumulator.ifPresent(a -> a.appendHash(Long.hashCode(longValue)));
             }
         }
     }

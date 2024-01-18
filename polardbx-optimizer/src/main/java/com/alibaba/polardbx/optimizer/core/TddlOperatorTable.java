@@ -136,7 +136,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     public static SqlFunction AES_DECRYPT = new SqlFunction("AES_DECRYPT",
         SqlKind.OTHER_FUNCTION,
-        ReturnTypes.VARCHAR_2000,
+        ReturnTypes.VARCHAR_BINARY,
         InferTypes.FIRST_KNOWN,
         OperandTypes.STRING_STRING_OPTIONAL_STRING,
         SqlFunctionCategory.STRING);
@@ -330,6 +330,18 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
 
     // Todo: DAYOFWEEK
     public static SqlFunction DAYOFYEAR = new SqlDayOfYearFunction("DAYOFYEAR");
+    public static SqlFunction DAYOFMONTH = new SqlFunction("DAYOFMONTH",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT_NULLABLE,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.ANY,
+        SqlFunctionCategory.TIMEDATE);
+    public static SqlFunction DAYOFWEEK = new SqlFunction("DAYOFWEEK",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT_NULLABLE,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.ANY,
+        SqlFunctionCategory.TIMEDATE);
 
     public static SqlFunction DATE_SUB = new SqlDateManipulationFunction("DATE_SUB");
     public static SqlFunction DATE_ADD = new SqlDateManipulationFunction("DATE_ADD");
@@ -403,7 +415,7 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         SqlFunctionCategory.TIMEDATE);
 
     public static SqlFunction FROM_UNIXTIME = new SqlTimeStampFunction("FROM_UNIXTIME",
-        ReturnTypes.DATETIMEWITHFORMAT);
+        MySQLStandardTypeInference.FROM_UNIX_TIME_TYPE);
 
     public static SqlFunction FIND_IN_SET = new SqlFunction("FIND_IN_SET",
         SqlKind.OTHER_FUNCTION,
@@ -818,6 +830,18 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         OperandTypes.family(SqlTypeFamily.ANY, SqlTypeFamily.ANY),
         SqlFunctionCategory.TIMEDATE);
     public static SqlFunction TO_DAYS = new SqlFunction("TO_DAYS",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT_NULLABLE,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.ANY,
+        SqlFunctionCategory.TIMEDATE);
+    public static SqlFunction TO_WEEKS = new SqlFunction("TO_WEEKS",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT_NULLABLE,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.ANY,
+        SqlFunctionCategory.TIMEDATE);
+    public static SqlFunction TO_MONTHS = new SqlFunction("TO_MONTHS",
         SqlKind.OTHER_FUNCTION,
         ReturnTypes.BIGINT_NULLABLE,
         InferTypes.FIRST_KNOWN,

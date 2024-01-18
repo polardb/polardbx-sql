@@ -249,8 +249,12 @@ public class InternalNode implements Node {
             .toString();
     }
 
-    public String getHostPort() {
+    public String getHostMppPort() {
         return host + ":" + rpcPort;
+    }
+
+    public String getHostPort() {
+        return host + ":" + port;
     }
 
     public boolean isMaster() {

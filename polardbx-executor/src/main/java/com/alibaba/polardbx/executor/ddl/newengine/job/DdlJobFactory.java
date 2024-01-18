@@ -29,6 +29,11 @@ import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_HIJA
  * @author guxu
  */
 public abstract class DdlJobFactory {
+    protected int affectRows = 0;
+
+    public int getAffectRows() {
+        return affectRows;
+    }
 
     public ExecutableDdlJob create() {
         return create(true);

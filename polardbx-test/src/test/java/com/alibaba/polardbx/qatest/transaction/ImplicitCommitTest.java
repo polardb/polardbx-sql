@@ -35,6 +35,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @author Eric Fu
  */
 
+
 public class ImplicitCommitTest extends CrudBasedLockTestCase {
 
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")

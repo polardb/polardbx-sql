@@ -26,6 +26,7 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+
 public class ExtractRandomTest extends TimeTestBase {
     private String interval;
 

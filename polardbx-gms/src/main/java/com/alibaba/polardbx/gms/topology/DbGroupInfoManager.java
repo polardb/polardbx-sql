@@ -40,6 +40,7 @@ public class DbGroupInfoManager extends AbstractLifecycle {
 
     private final static DbGroupInfoManager instance = new DbGroupInfoManager();
 
+    //!!!NOTE!!! the key(schema name) should convert to lower case
     private final static Map<String, Map<String, DbGroupInfoRecord>> cache = new ConcurrentHashMap<>();
 
     public static DbGroupInfoManager getInstance() {
@@ -70,6 +71,7 @@ public class DbGroupInfoManager extends AbstractLifecycle {
                 records.stream().collect(Collectors.toMap(x -> x.groupName, x -> x));
 
             // replace existed cache
+            schema = schema.toLowerCase();
             cache.put(schema, dbGroups);
             MetaDbLogUtil.META_DB_LOG.info(String.format("reload db group info for database %s: %s", schema, records));
         } catch (SQLException e) {
@@ -78,6 +80,7 @@ public class DbGroupInfoManager extends AbstractLifecycle {
     }
 
     public DbGroupInfoRecord queryGroupInfo(String schema, String groupName) {
+        schema = schema.toLowerCase();
         Map<String, DbGroupInfoRecord> dbGroup = cache.get(schema);
         if (dbGroup == null) {
             return null;
@@ -108,6 +111,7 @@ public class DbGroupInfoManager extends AbstractLifecycle {
             reloadGroupsOfDb(dbName);
         }
         for (String dbName : removed.keySet()) {
+            dbName = dbName.toLowerCase();
             cache.remove(dbName);
         }
 

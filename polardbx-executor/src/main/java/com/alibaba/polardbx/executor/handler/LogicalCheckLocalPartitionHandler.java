@@ -31,7 +31,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.CanAccessTable;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.repo.mysql.checktable.TableDescription;
 import com.alibaba.polardbx.repo.mysql.spi.MyRepository;
 import com.google.common.collect.ImmutableList;
@@ -43,7 +43,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 
-public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
+public class LogicalCheckLocalPartitionHandler extends HandlerCommon {
 
     private static final Logger logger = LoggerFactory.getLogger(LogicalCheckLocalPartitionHandler.class);
 
@@ -57,14 +57,15 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         final LogicalDal dal = (LogicalDal) logicalPlan;
         final SqlCheckTable checkTable = (SqlCheckTable) dal.getNativeSqlNode();
-        if(checkTable.getTableNames().size() > MAX_CHECK_TABLE_COUNT){
+        if (checkTable.getTableNames().size() > MAX_CHECK_TABLE_COUNT) {
             throw new TddlNestableRuntimeException(
                 String.format("Check more than %d table is not supported", MAX_CHECK_TABLE_COUNT));
         }
-        final ImmutableList<String> schemaAndTableName =  ((SqlIdentifier) checkTable.getTableName()).names;
-        final String schemaName = schemaAndTableName.size()>1? schemaAndTableName.get(0): executionContext.getSchemaName();
+        final ImmutableList<String> schemaAndTableName = ((SqlIdentifier) checkTable.getTableName()).names;
+        final String schemaName =
+            schemaAndTableName.size() > 1 ? schemaAndTableName.get(0) : executionContext.getSchemaName();
         final String logicalTableName = ((SqlIdentifier) checkTable.getTableName()).getLastName();
-        if(!StringUtils.equalsIgnoreCase(executionContext.getSchemaName(), schemaName)){
+        if (!StringUtils.equalsIgnoreCase(executionContext.getSchemaName(), schemaName)) {
             throw new TddlNestableRuntimeException("Check table with local partition on other schema is forbidden, "
                 + "so please login with corresponding schema.");
         }
@@ -83,16 +84,16 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
         return resultCursor;
     }
 
-
     protected void doCheckForOneTable(String schemaName,
                                       String logicalTableName,
                                       ExecutionContext executionContext,
-                                      ArrayResultCursor resultCursor){
-        TableMeta primaryTableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+                                      ArrayResultCursor resultCursor) {
+        TableMeta primaryTableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
         LocalPartitionDefinitionInfo definitionInfo = primaryTableMeta.getLocalPartitionDefinitionInfo();
-        if(definitionInfo == null){
+        if (definitionInfo == null) {
             //输出错误信息：不是一个local partition表
-            resultCursor.addRow(new Object[]{
+            resultCursor.addRow(new Object[] {
                 schemaName + "." + logicalTableName,
                 "ERROR",
                 "-",
@@ -114,8 +115,8 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
         tablesToCheck.add(primaryTableMeta);
         List<TableMeta> gsiMetaList =
             GlobalIndexMeta.getIndex(logicalTableName, schemaName, IndexStatus.ALL, null);
-        if(!GlobalIndexMeta.isAllGsiPublished(gsiMetaList, executionContext)){
-            resultCursor.addRow(new Object[]{
+        if (!GlobalIndexMeta.isAllGsiPublished(gsiMetaList, executionContext)) {
+            resultCursor.addRow(new Object[] {
                 schemaName + "." + logicalTableName,
                 "ERROR",
                 "-",
@@ -124,14 +125,14 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
             return;
         }
 
-        for(TableMeta gsiMeta: gsiMetaList){
+        for (TableMeta gsiMeta : gsiMetaList) {
             tablesToCheck.add(gsiMeta);
         }
 
         List partitionInfo = new ArrayList();
 
         boolean consistency = true;
-        for(TableMeta meta: tablesToCheck){
+        for (TableMeta meta : tablesToCheck) {
             //1. 去DN拉取所有的local partition信息. 校验local partition对齐
             List<TableDescription> tableDescriptionList =
                 LocalPartitionManager.getLocalPartitionInfoList(
@@ -140,8 +141,8 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
                     meta.getTableName(),
                     false
                 );
-            for(TableDescription tableDescription: tableDescriptionList){
-                partitionInfo.add(new Object[]{
+            for (TableDescription tableDescription : tableDescriptionList) {
+                partitionInfo.add(new Object[] {
                     tableDescription.getGroupName() + "." + tableDescription.getTableName(),
                     "ERROR",
                     String.valueOf(tableDescription.getPartitions().size()),
@@ -151,20 +152,18 @@ public class LogicalCheckLocalPartitionHandler extends HandlerCommon{
             consistency &= LocalPartitionManager.checkLocalPartitionConsistency(expect, tableDescriptionList);
         }
 
-        if(consistency){
-            resultCursor.addRow(new Object[]{
+        if (consistency) {
+            resultCursor.addRow(new Object[] {
                 schemaName + "." + logicalTableName,
                 "OK",
                 String.valueOf(expect.getPartitions().size()),
                 "-"
             });
             return;
-        }else {
-            partitionInfo.stream().forEach(e->resultCursor.addRow((Object[]) e));
+        } else {
+            partitionInfo.stream().forEach(e -> resultCursor.addRow((Object[]) e));
             return;
         }
     }
-
-
 
 }

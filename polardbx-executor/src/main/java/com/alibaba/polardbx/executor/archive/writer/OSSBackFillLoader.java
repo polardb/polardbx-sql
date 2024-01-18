@@ -47,7 +47,7 @@ import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
-public class OSSBackFillLoader extends Loader {
+public class OSSBackFillLoader extends com.alibaba.polardbx.executor.backfill.Loader {
     final Map<String, String> sourceTargetGroupMap;
     final String designateLogicalPart;
 

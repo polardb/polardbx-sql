@@ -148,10 +148,13 @@ public class SQLCreateTableParser extends SQLDDLParser {
 
         if (lexer.token == Token.AS) {
             lexer.nextToken();
-
-            SQLSelect select = null;
-            select = this.createSQLSelectParser().select();
-            createTable.setSelect(select);
+            if (lexer.token() == Token.IDENTIFIER) {
+                createTable.setAsTable(this.exprParser.name());
+            } else {
+                SQLSelect select = null;
+                select = this.createSQLSelectParser().select();
+                createTable.setSelect(select);
+            }
         }
 
         if (lexer.token == Token.TABLESPACE) {
@@ -165,6 +168,10 @@ public class SQLCreateTableParser extends SQLDDLParser {
     }
 
     public SQLPartitionBy parsePartitionBy() {
+        throw new ParserException("TODO " + lexer.info());
+    }
+
+    public SQLPartitionBy parsePartitionBy(boolean forTableGroup) {
         throw new ParserException("TODO " + lexer.info());
     }
 

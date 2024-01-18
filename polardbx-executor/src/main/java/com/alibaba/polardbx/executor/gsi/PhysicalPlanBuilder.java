@@ -21,8 +21,8 @@ import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
-import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.utils.GroupKey;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.Field;
@@ -63,10 +63,9 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rel.type.RelDataTypeSystem;
 import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDelete;
 import org.apache.calcite.sql.SqlDynamicParam;
-import org.apache.calcite.sql.SqlFunction;
-import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlInsert;
@@ -82,12 +81,10 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.InferTypes;
-import org.apache.calcite.sql.type.OperandTypes;
-import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.MapUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
@@ -113,6 +110,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     protected int nextDynamicIndex;
     protected Map<Integer, ParameterContext> currentParams;
     protected String schemaName;
+    public SqlNode sqlNode;
 
     public PhysicalPlanBuilder(String schemaName, ExecutionContext ec) {
         this.schemaName = schemaName;
@@ -148,6 +146,24 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         }
     }
 
+    protected void buildCascadeParams(Map<String, ParameterContext> updateParamList, List<String> updateColumnList) {
+        for (String column : updateColumnList) {
+            // including target table
+            currentParams.put(nextDynamicIndex + 2,
+                PlannerUtils.changeParameterContextIndex(updateParamList.get(column), nextDynamicIndex + 2));
+            nextDynamicIndex++;
+        }
+    }
+
+    protected void buildNullParams(List<String> updateColumnList) {
+        for (int i = 0; i < updateColumnList.size(); i++) {
+            // including target table
+            currentParams.put(nextDynamicIndex + 2,
+                new ParameterContext(ParameterMethod.setObject1, new Object[] {nextDynamicIndex + 2, null}));
+            nextDynamicIndex++;
+        }
+    }
+
     /**
      * build PhyTableOperation according to SqlNode
      *
@@ -155,13 +171,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * doesn't matter
      * @param rowType returned data types in one row
      */
-    protected static PhyTableOperation buildPhyTableOperation(SqlNode sqlNode,
-                                                              RelNode primaryTblPhyOp,
-                                                              String dbIndex,
-                                                              List<List<String>> tableNames,
-                                                              RelDataType rowType,
-                                                              Map<Integer, ParameterContext> params,
-                                                              LockMode lockMode,
+    protected static PhyTableOperation buildPhyTableOperation(SqlNode sqlNode, RelNode primaryTblPhyOp, String dbIndex,
+                                                              List<List<String>> tableNames, RelDataType rowType,
+                                                              Map<Integer, ParameterContext> params, LockMode lockMode,
                                                               TableMeta tableMeta) {
 
         BytesSql sql = RelUtils.toNativeBytesSql(sqlNode, DbType.MYSQL);
@@ -239,9 +251,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     protected static SqlNode buildKeyNameNodeForInClause(List<String> keyNames) {
         // keyNameNode
         if (keyNames.size() > 1) {
-            SqlNode[] keyNameNodes = keyNames.stream()
-                .map(keyName -> new SqlIdentifier(keyName, SqlParserPos.ZERO))
-                .toArray(SqlNode[]::new);
+            SqlNode[] keyNameNodes =
+                keyNames.stream().map(keyName -> new SqlIdentifier(keyName, SqlParserPos.ZERO)).toArray(SqlNode[]::new);
             return new SqlBasicCall(SqlStdOperatorTable.ROW, keyNameNodes, SqlParserPos.ZERO);
         } else {
             return new SqlIdentifier(keyNames.get(0), SqlParserPos.ZERO);
@@ -326,20 +337,36 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         }
     }
 
+    private void buildFkTargetColumnList(SqlNodeList oldColumnList, SqlNodeList oldExpressionList,
+                                         List<String> columns, Map<String, String> columnMap) {
+        columnList = new SqlNodeList(SqlParserPos.ZERO);
+        expressionList = new SqlNodeList(SqlParserPos.ZERO);
+        nextDynamicIndex = 0;
+
+        for (int i = 0; i < oldColumnList.size(); i++) {
+            SqlIdentifier oldColumn = (SqlIdentifier) oldColumnList.get(i);
+            for (String column : columns) {
+                if (column.equalsIgnoreCase(columnMap.get(oldColumn.getLastName()))) {
+                    columnList.add(new SqlIdentifier(column, SqlParserPos.ZERO));
+                    SqlNode exp = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
+                    expressionList.add(exp);
+//                    expressionList.add(oldExpressionList.get(i));
+                }
+            }
+        }
+    }
+
     /**
      * @return {targetDb: {targetTb: [[index, pk]]}}
      */
     protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> buildCommonInUpdateAndDelete(
-        TableMeta tableMeta,
-        List<List<Object>> selectedResults,
-        List<String> selectKeys) {
+        TableMeta tableMeta, List<List<Object>> selectedResults, List<String> selectKeys) {
         buildTargetTable();
 
         // primary key indexes and ColumnMetas
         List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(tableMeta);
-        List<Integer> primaryKeyIndexes = primaryKeyNames.stream()
-            .map(selectKeys::indexOf)
-            .collect(Collectors.toList());
+        List<Integer> primaryKeyIndexes =
+            primaryKeyNames.stream().map(selectKeys::indexOf).collect(Collectors.toList());
 
         // sharding key indexes and ColumnMetas
         List<String> shardingKeyNames = GlobalIndexMeta.getShardingKeys(tableMeta, schemaName);
@@ -355,14 +382,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         List<String> relShardingKeyNames = BuildPlanUtils.getRelColumnNames(tableMeta, shardingKeyMetas);
         // targetDb: { targetTb: [[pk1], [pk2]] }
-        return BuildPlanUtils.buildResultForShardingTable(schemaName,
-            tableMeta.getTableName(),
-            selectedResults,
-            relShardingKeyNames,
-            shardingKeyIndexes,
-            shardingKeyMetas,
-            primaryKeyIndexes,
-            ec);
+        return BuildPlanUtils.buildResultForShardingTable(schemaName, tableMeta.getTableName(), selectedResults,
+            relShardingKeyNames, shardingKeyIndexes, shardingKeyMetas, primaryKeyIndexes, ec);
     }
 
     /**
@@ -376,13 +397,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * fields are used to build new plans
      * @return new physical plans
      */
-    public List<RelNode> buildUpdate(SqlUpdate oldSqlUpdate, TableMeta tableMeta,
-                                     List<List<Object>> selectedResults, List<String> selectKeys,
-                                     PhyTableOperation oldPhysicalPlan) {
+    public List<RelNode> buildUpdate(SqlUpdate oldSqlUpdate, TableMeta tableMeta, List<List<Object>> selectedResults,
+                                     List<String> selectKeys, PhyTableOperation oldPhysicalPlan) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
-            buildCommonInUpdateAndDelete(tableMeta,
-                selectedResults,
-                selectKeys);
+            buildCommonInUpdateAndDelete(tableMeta, selectedResults, selectKeys);
 
         // new plans to be returned
         List<RelNode> newPhysicalPlans = new ArrayList<>();
@@ -402,10 +420,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             String targetDb = dbEntry.getKey();
             for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbEntry : dbEntry.getValue().entrySet()) {
                 String targetTb = tbEntry.getKey();
-                List<List<Object>> pkValues = tbEntry.getValue()
-                    .stream()
-                    .map(Pair::getValue)
-                    .collect(Collectors.toList());
+                List<List<Object>> pkValues =
+                    tbEntry.getValue().stream().map(Pair::getValue).collect(Collectors.toList());
 
                 initParams(0);
                 buildTargetTableParams(targetTb);
@@ -414,23 +430,14 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
                 SqlNode inCondition = buildInCondition(pkValues, keyNameNodeForInClause);
 
-                SqlNode newNode = new SqlUpdate(SqlParserPos.ZERO,
-                    targetTableNode,
-                    columnList,
-                    expressionList,
-                    inCondition,
-                    null,
-                    null);
+                SqlNode newNode =
+                    new SqlUpdate(SqlParserPos.ZERO, targetTableNode, columnList, expressionList, inCondition, null,
+                        null);
 
                 List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
-                PhyTableOperation operation = buildPhyTableOperation(newNode,
-                    oldPhysicalPlan,
-                    targetDb,
-                    tableNames,
-                    oldPhysicalPlan.getRowType(),
-                    currentParams,
-                    LockMode.UNDEF,
-                    tableMeta);
+                PhyTableOperation operation =
+                    buildPhyTableOperation(newNode, oldPhysicalPlan, targetDb, tableNames, oldPhysicalPlan.getRowType(),
+                        currentParams, LockMode.UNDEF, tableMeta);
 
                 newPhysicalPlans.add(operation);
             }
@@ -439,13 +446,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return newPhysicalPlans;
     }
 
-    public List<RelNode> buildDelete(TableMeta tableMeta,
-                                     List<List<Object>> selectedResults, List<String> selectKeys,
+    public List<RelNode> buildDelete(TableMeta tableMeta, List<List<Object>> selectedResults, List<String> selectKeys,
                                      PhyTableOperation oldPhysicalPlan) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults =
-            buildCommonInUpdateAndDelete(tableMeta,
-                selectedResults,
-                selectKeys);
+            buildCommonInUpdateAndDelete(tableMeta, selectedResults, selectKeys);
 
         // new plans to be returned
         List<RelNode> newPhysicalPlans = new ArrayList<>();
@@ -455,10 +459,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             String targetDb = dbEntry.getKey();
             for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbEntry : dbEntry.getValue().entrySet()) {
                 String targetTb = tbEntry.getKey();
-                List<List<Object>> pkValues = tbEntry.getValue()
-                    .stream()
-                    .map(Pair::getValue)
-                    .collect(Collectors.toList());
+                List<List<Object>> pkValues =
+                    tbEntry.getValue().stream().map(Pair::getValue).collect(Collectors.toList());
 
                 initParams(0);
                 buildTargetTableParams(targetTb);
@@ -466,14 +468,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                 SqlNode newNode = new SqlDelete(SqlParserPos.ZERO, targetTableNode, inCondition, null, null);
 
                 List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
-                PhyTableOperation operation = buildPhyTableOperation(newNode,
-                    oldPhysicalPlan,
-                    targetDb,
-                    tableNames,
-                    oldPhysicalPlan.getRowType(),
-                    currentParams,
-                    LockMode.UNDEF,
-                    tableMeta);
+                PhyTableOperation operation =
+                    buildPhyTableOperation(newNode, oldPhysicalPlan, targetDb, tableNames, oldPhysicalPlan.getRowType(),
+                        currentParams, LockMode.UNDEF, tableMeta);
 
                 newPhysicalPlans.add(operation);
             }
@@ -488,91 +485,6 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     public List<RelNode> buildSelect(TableMeta baseTableMeta, List<RelNode> oldPhysicalPlans, List<String> selectKeys,
                                      List<List<String>> conditionKeys) {
         return buildSelectUnion(baseTableMeta, oldPhysicalPlans, selectKeys, conditionKeys);
-    }
-
-    /**
-     * Create a physical SELECT that corresponds to the physical INSERT, to find
-     * conflicting data to the INSERT. Format: SELECT PRIMARY_KEY FROM
-     * PHYSICAL_TABLE WHERE (UNIQUE_KEY1 IN VALUE_LIST) OR (UNIQUE_KEY2 IN
-     * VALUE_LIST). Why not create a logical SELECT: no need to shard again. Why
-     * not use (SELECT 1, PK FROM TB WHERE UK1 = X1 OR UK2 = X2) UNION (SELECT
-     * 2, PK FROM TB WHERE UK1 = X3 OR UK2 = X4) to find the duplicate value
-     * indexes: the SQL may exceed the MAX_PACKET_SIZE, and then it should be
-     * split into several SQLs, which increases RTs.
-     *
-     * @param oldPhysicalPlans old physical INSERT plan on the base table
-     * @param selectKeys the columns to be queried
-     * @param conditionKeys ((key1, key2) IN ((xx, xx)) OR (key3, key4) IN ((xx,
-     * xx)))
-     * @return the physical SELECT corresponding to the physical INSERT
-     */
-    private List<RelNode> buildSelectIn(TableMeta baseTableMeta, List<RelNode> oldPhysicalPlans,
-                                        List<String> selectKeys, List<List<String>> conditionKeys) {
-        // build select list
-        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
-        RelDataType rowType = buildRowTypeForSelect(selectKeys, baseTableMeta, selectList);
-
-        // build target table
-        buildTargetTable();
-
-        // keyNameNode, [(key1, key2), (key3, key4)]
-        List<SqlNode> keyNameNodeList = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
-
-        // to implement concurrent query, gather all selects and apply once.
-        List<RelNode> selects = new ArrayList<>(oldPhysicalPlans.size());
-
-        for (RelNode oldPhysicalPlan : oldPhysicalPlans) {
-            PhyTableOperation insertPlan = (PhyTableOperation) oldPhysicalPlan;
-            SqlInsert sqlInsert = (SqlInsert) insertPlan.getNativeSqlNode();
-
-            initParams(0);
-            buildTargetTableParams(insertPlan.getTableNames().get(0).get(0));
-
-            // build condition
-            List<SqlNode> inClauses = new ArrayList<>(conditionKeys.size());
-            for (int i = 0; i < conditionKeys.size(); i++) {
-                List<String> conditionKey = conditionKeys.get(i);
-                SqlNode keyNameNode = keyNameNodeList.get(i);
-
-                List<List<Object>> keyValues = BuildPlanUtils.pickValuesFromInsert(sqlInsert,
-                    conditionKey,
-                    new Parameters(insertPlan.getParam(), false),
-                    false, new ArrayList<>());
-
-                inClauses.add(buildInCondition(keyValues, keyNameNode));
-            }
-
-            // if there are more than one unique keys, construct OR
-            SqlNode condition = PlannerUtils.buildOrTree(inClauses);
-
-            SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                null,
-                selectList,
-                targetTableNode,
-                condition,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
-            sqlSelect.setLockMode(LockMode.EXCLUSIVE_LOCK);
-
-            PhyTableOperation select = buildPhyTableOperation(sqlSelect,
-                insertPlan,
-                insertPlan.getDbIndex(),
-                insertPlan.getTableNames(),
-                rowType,
-                currentParams,
-                LockMode.EXCLUSIVE_LOCK,
-                baseTableMeta);
-
-            selects.add(select);
-        }
-
-        return selects;
     }
 
     /**
@@ -596,9 +508,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         buildTargetTable();
 
         // keyNameNode, [(key1, key2), (key3, key4)]
-        List<SqlNode> keyNameNodeList = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
+        List<SqlNode> keyNameNodeList =
+            conditionKeys.stream().map(PhysicalPlanBuilder::buildKeyNameNodeForInClause).collect(Collectors.toList());
 
         // to implement concurrent query, gather all selects and apply once.
         List<RelNode> selects = new ArrayList<>(oldPhysicalPlans.size());
@@ -617,10 +528,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             for (int i = 0; i < conditionKeys.size(); i++) {
                 List<String> conditionKey = conditionKeys.get(i);
 
-                List<List<Object>> keyValues = BuildPlanUtils.pickValuesFromInsert(sqlInsert,
-                    conditionKey,
-                    new Parameters(insertPlan.getParam(), false),
-                    false, new ArrayList<>());
+                List<List<Object>> keyValues = BuildPlanUtils.pickValuesFromInsert(sqlInsert, conditionKey,
+                    new Parameters(insertPlan.getParam(), false), false, new ArrayList<>());
 
                 SqlNode keyNameNode = keyNameNodeList.get(i);
                 // for each row
@@ -631,17 +540,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                     // build condition
                     SqlNode condition = buildInCondition(ImmutableList.of(row), keyNameNode);
 
-                    SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                        null,
-                        selectList,
-                        targetTableNode,
-                        condition,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null);
+                    SqlSelect sqlSelect =
+                        new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null,
+                            null, null, null);
                     sqlSelect.setLockMode(LockMode.EXCLUSIVE_LOCK);
 
                     if (unionSql.length() > 0) {
@@ -713,30 +614,12 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             SqlSelect sqlSelect;
             if (sqlNode.getKind() == SqlKind.UPDATE) {
                 SqlUpdate sqlUpdate = (SqlUpdate) sqlNode;
-                sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                    null,
-                    selectList,
-                    sqlUpdate.getTargetTable(),
-                    sqlUpdate.getCondition(),
-                    null,
-                    null,
-                    null,
-                    sqlUpdate.getOrderList(),
-                    null,
-                    sqlUpdate.getFetch());
+                sqlSelect = new SqlSelect(SqlParserPos.ZERO, null, selectList, sqlUpdate.getTargetTable(),
+                    sqlUpdate.getCondition(), null, null, null, sqlUpdate.getOrderList(), null, sqlUpdate.getFetch());
             } else {
                 SqlDelete sqlDelete = (SqlDelete) sqlNode;
-                sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                    null,
-                    selectList,
-                    sqlDelete.getTargetTable(),
-                    sqlDelete.getCondition(),
-                    null,
-                    null,
-                    null,
-                    sqlDelete.getOrderList(),
-                    null,
-                    sqlDelete.getFetch());
+                sqlSelect = new SqlSelect(SqlParserPos.ZERO, null, selectList, sqlDelete.getTargetTable(),
+                    sqlDelete.getCondition(), null, null, null, sqlDelete.getOrderList(), null, sqlDelete.getFetch());
             }
 
             initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
@@ -744,14 +627,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             buildParams(plan.getParam(), sqlSelect, false);
             sqlSelect.setLockMode(LockMode.EXCLUSIVE_LOCK);
 
-            PhyTableOperation select = buildPhyTableOperation(sqlSelect,
-                plan,
-                plan.getDbIndex(),
-                plan.getTableNames(),
-                rowType,
-                currentParams,
-                LockMode.EXCLUSIVE_LOCK,
-                baseTableMeta);
+            PhyTableOperation select =
+                buildPhyTableOperation(sqlSelect, plan, plan.getDbIndex(), plan.getTableNames(), rowType, currentParams,
+                    LockMode.EXCLUSIVE_LOCK, baseTableMeta);
 
             selects.add(select);
         }
@@ -768,13 +646,13 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * </pre>
      *
      * @param tableMeta Primary table meta
-     * @param sourceColumn Source column name
-     * @param targetColumn Target column name
+     * @param sourceNodes Source expressions
+     * @param targetColumnNames Target column names
      * @return ExecutionPlan for extracting data from primary table
      */
-    public PhyTableOperation buildUpdateForColumnBackfill(TableMeta tableMeta, String sourceColumn, String targetColumn,
-                                                          List<String> primaryKeys, boolean withLowerBound,
-                                                          boolean withUpperBound) {
+    public PhyTableOperation buildUpdateForColumnBackfill(TableMeta tableMeta, List<SqlCall> sourceNodes,
+                                                          List<String> targetColumnNames, List<String> primaryKeys,
+                                                          boolean withLowerBound, boolean withUpperBound) {
         initParams(0);
 
         // build target table
@@ -782,9 +660,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         final List<SqlIdentifier> targetColumns = new ArrayList<>();
         final List<SqlNode> sourceExpressions = new ArrayList<>();
 
-        targetColumns.add(new SqlIdentifier(targetColumn, SqlParserPos.ZERO));
-        sourceExpressions.add(new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-            new SqlNode[] {new SqlIdentifier(sourceColumn, SqlParserPos.ZERO)}, SqlParserPos.ZERO));
+        for (int i = 0; i < sourceNodes.size(); i++) {
+            targetColumns.add(new SqlIdentifier(targetColumnNames.get(i), SqlParserPos.ZERO));
+            sourceExpressions.add(sourceNodes.get(i));
+        }
 
         // Add auto update columns
         tableMeta.getAutoUpdateColumns().forEach(c -> {
@@ -804,9 +683,53 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             // WHERE (pk0, ... , pkn) <= (?, ... , ?)
             final SqlNode upperBound = buildCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
 
-            condition = null == condition ? upperBound : PlannerUtils
-                .buildAndTree(ImmutableList.of(condition, upperBound));
+            condition =
+                null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
         }
+
+        final SqlUpdate sqlUpdate =
+            new SqlUpdate(SqlParserPos.ZERO, targetTableNode, new SqlNodeList(targetColumns, SqlParserPos.ZERO),
+                new SqlNodeList(sourceExpressions, SqlParserPos.ZERO), condition, null, null);
+
+        // create PhyTableOperation
+        return buildDmlPhyTblOpTemplate(tableMeta.getSchemaName(), sqlUpdate, tableMeta);
+    }
+
+    /**
+     * <pre>
+     * UPDATE {physical_primary_table}
+     * SET {target_column} = ?, {auto_update_column_1} = {auto_update_column_1}, ...
+     * WHERE (pk0, ... , pkn) = (?, ... , ?)
+     * </pre>
+     *
+     * @param tableMeta Primary table meta
+     * @param sourceNodes Source expressions
+     * @param targetColumnNames Target column names
+     * @return ExecutionPlan for extracting data from primary table
+     */
+    public PhyTableOperation buildUpdateSingleRowForColumnBackfill(TableMeta tableMeta, List<SqlCall> sourceNodes,
+                                                                   List<String> targetColumnNames,
+                                                                   List<String> primaryKeys) {
+        initParams(0);
+
+        // build target table
+        buildTargetTable();
+        final List<SqlIdentifier> targetColumns = new ArrayList<>();
+        final List<SqlNode> sourceExpressions = new ArrayList<>();
+
+        for (int i = 0; i < sourceNodes.size(); i++) {
+            targetColumns.add(new SqlIdentifier(targetColumnNames.get(i), SqlParserPos.ZERO));
+            sourceExpressions.add(new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO));
+        }
+
+        // Add auto update columns
+        tableMeta.getAutoUpdateColumns().forEach(c -> {
+            targetColumns.add(new SqlIdentifier(c.getName(), SqlParserPos.ZERO));
+            sourceExpressions.add(new SqlIdentifier(c.getName(), SqlParserPos.ZERO));
+        });
+
+        // build where
+        SqlNode condition = buildEqualsCondition(primaryKeys);
 
         final SqlUpdate sqlUpdate = new SqlUpdate(SqlParserPos.ZERO,
             targetTableNode,
@@ -832,13 +755,14 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * </pre>
      *
      * @param tableMeta Primary table meta
-     * @param sourceColumn Source column name
-     * @param targetColumn Target column name
+     * @param sourceNodes Source expressions
+     * @param targetColumnNames Target column names
      * @return ExecutionPlan for extracting data from primary table
      */
-    public PhyTableOperation buildUpdateReturningForColumnBackfill(TableMeta tableMeta, String sourceColumn,
-                                                                   String targetColumn, List<String> primaryKeys,
-                                                                   boolean withLowerBound, boolean withUpperBound) {
+    public PhyTableOperation buildUpdateReturningForColumnBackfill(TableMeta tableMeta, List<SqlCall> sourceNodes,
+                                                                   List<String> targetColumnNames,
+                                                                   List<String> primaryKeys, boolean withLowerBound,
+                                                                   boolean withUpperBound) {
         initParams(0);
 
         // build target table
@@ -846,9 +770,10 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         final List<SqlIdentifier> targetColumns = new ArrayList<>();
         final List<SqlNode> sourceExpressions = new ArrayList<>();
 
-        targetColumns.add(new SqlIdentifier(targetColumn, SqlParserPos.ZERO));
-        sourceExpressions.add(new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-            new SqlNode[] {new SqlIdentifier(sourceColumn, SqlParserPos.ZERO)}, SqlParserPos.ZERO));
+        for (int i = 0; i < sourceNodes.size(); i++) {
+            targetColumns.add(new SqlIdentifier(targetColumnNames.get(i), SqlParserPos.ZERO));
+            sourceExpressions.add(sourceNodes.get(i));
+        }
 
         // Add auto update columns
         tableMeta.getAutoUpdateColumns().forEach(c -> {
@@ -867,28 +792,20 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             // WHERE (pk0, ... , pkn) <= (?, ... , ?)
             final SqlNode upperBound = buildCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
 
-            condition = null == condition ? upperBound : PlannerUtils
-                .buildAndTree(ImmutableList.of(condition, upperBound));
+            condition =
+                null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
         }
 
         // order by primary keys
-        SqlNodeList orderBy = new SqlNodeList(primaryKeys.stream()
-            .map(key -> new SqlIdentifier(key, SqlParserPos.ZERO))
-            .collect(Collectors.toList()), SqlParserPos.ZERO);
+        SqlNodeList orderBy = new SqlNodeList(
+            primaryKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
 
         SqlNode fetch = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
 
-        final SqlUpdate sqlUpdate = new SqlUpdate(SqlParserPos.ZERO,
-            targetTableNode,
-            new SqlNodeList(targetColumns, SqlParserPos.ZERO),
-            new SqlNodeList(sourceExpressions, SqlParserPos.ZERO),
-            condition,
-            null,
-            null,
-            orderBy,
-            fetch,
-            null
-        );
+        final SqlUpdate sqlUpdate =
+            new SqlUpdate(SqlParserPos.ZERO, targetTableNode, new SqlNodeList(targetColumns, SqlParserPos.ZERO),
+                new SqlNodeList(sourceExpressions, SqlParserPos.ZERO), condition, null, null, orderBy, fetch, null);
 
         // create PhyTableOperation
         return buildDmlPhyTblOpTemplate(tableMeta.getSchemaName(), sqlUpdate, tableMeta);
@@ -914,29 +831,17 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         buildTargetTable();
 
         // order by primary keys desc
-        SqlNodeList orderBy = new SqlNodeList(
-            primaryKeys.stream()
-                .map(key -> new SqlBasicCall(SqlStdOperatorTable.DESC,
-                    new SqlNode[] {new SqlIdentifier(key, SqlParserPos.ZERO)},
-                    SqlParserPos.ZERO))
-                .collect(Collectors.toList()),
-            SqlParserPos.ZERO);
+        SqlNodeList orderBy = new SqlNodeList(primaryKeys.stream().map(
+            key -> new SqlBasicCall(SqlStdOperatorTable.DESC, new SqlNode[] {new SqlIdentifier(key, SqlParserPos.ZERO)},
+                SqlParserPos.ZERO)).collect(Collectors.toList()), SqlParserPos.ZERO);
 
         // limit 1
         SqlNode fetch = SqlLiteral.createExactNumeric("1", SqlParserPos.ZERO);
 
         // inner select
-        SqlSelect select = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            targetTableNode,
-            null,
-            null,
-            null,
-            null,
-            orderBy,
-            null,
-            fetch);
+        SqlSelect select =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, null, null, null, null, orderBy, null,
+                fetch);
 
         // create PhyTableOperation
         return buildSelectPhyTblOpTemplate(select, rowType, tableMeta, LockMode.UNDEF, ec);
@@ -982,9 +887,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         buildTargetTable();
 
         // order by
-        SqlNodeList orderBy = new SqlNodeList(primaryKeys.stream()
-            .map(key -> new SqlIdentifier(key, SqlParserPos.ZERO))
-            .collect(Collectors.toList()), SqlParserPos.ZERO);
+        SqlNodeList orderBy = new SqlNodeList(
+            primaryKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
 
         // limit
         SqlNode fetch = SqlLiteral.createExactNumeric(String.valueOf(batchSize), SqlParserPos.ZERO);
@@ -1011,20 +916,183 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         }
 
         // inner select
-        SqlSelect select = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            targetTableNode,
-            condition,
-            null,
-            null,
-            null,
-            orderBy,
-            null,
-            fetch);
+        SqlSelect select =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
+                null, fetch);
 
         // create PhyTableOperation
         return buildSelectPhyTblOpTemplate(select, rowType, tableMeta, LockMode.UNDEF, ec);
+    }
+
+    /**
+     * <pre>
+     *  SELECT pk0, ... , pkn
+     *  FROM ?
+     *  WHERE ...
+     * </pre>
+     *
+     * @return Query plan
+     */
+    public List<RelNode> buildSelectForCascade(TableMeta tableMeta,
+                                               Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                               List<String> selectKeys, RelNode oldPhysicalPlan,
+                                               List<String> refColumns, List<List<Object>> conditionValues) {
+
+        // new plans to be returned
+        List<RelNode> newPhysicalPlans = new ArrayList<>();
+
+        // build physical plans
+        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbEntry : shardResults.entrySet()) {
+            String targetDb = dbEntry.getKey();
+            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbEntry : dbEntry.getValue().entrySet()) {
+                String targetTb = tbEntry.getKey();
+
+                initParams(0);
+                buildTargetTable();
+                buildTargetTableParams(targetTb);
+
+                SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+                RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
+
+                keyNameNodeForInClause = buildKeyNameNodeForInClause(refColumns);
+
+                // where
+                SqlNode inCondition = buildInCondition(conditionValues, keyNameNodeForInClause);
+
+                // inner select
+                SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
+                    null,
+                    selectList,
+                    targetTableNode,
+                    inCondition,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+
+                List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
+                PhyTableOperation operation = buildPhyTableOperation(sqlSelect,
+                    oldPhysicalPlan,
+                    targetDb,
+                    tableNames,
+                    rowType,
+                    currentParams,
+                    LockMode.EXCLUSIVE_LOCK,
+                    tableMeta);
+
+                newPhysicalPlans.add(operation);
+            }
+        }
+
+        return newPhysicalPlans;
+    }
+
+    /**
+     * <pre>
+     *  ( SELECT pk0, ... , pkn
+     *  FROM ?
+     *  WHERE ...
+     *  LIMIT 1 )
+     *  UNION
+     *  ( SELECT pk0, ... , pkn
+     *  FROM ?
+     *  WHERE ...
+     *  LIMIT 1 )
+     *  UNION ...
+     * </pre>
+     *
+     * @return Query plan
+     */
+    public List<RelNode> buildSelectForCascadeUnionAll(TableMeta tableMeta,
+                                                       Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults,
+                                                       List<String> selectKeys, RelNode oldPhysicalPlan,
+                                                       List<String> refColumns, List<List<Object>> conditionValues) {
+
+        // new plans to be returned
+        List<RelNode> newPhysicalPlans = new ArrayList<>();
+
+        // build physical plans
+        for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbEntry : shardResults.entrySet()) {
+            String targetDb = dbEntry.getKey();
+            for (Map.Entry<String, List<Pair<Integer, List<Object>>>> tbEntry : dbEntry.getValue().entrySet()) {
+                String targetTb = tbEntry.getKey();
+
+                SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+                RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
+
+                // Build sql directly, because UNION node can't be executed.
+                StringBuilder unionSql = new StringBuilder();
+
+                SqlNode keyNameNode = buildKeyNameNodeForInClause(refColumns);
+
+                initParams(PlannerUtils.TABLE_NAME_PARAM_INDEX);
+
+                // for each row
+                for (List<Object> row : conditionValues) {
+
+                    buildTargetTable();
+                    buildParam(ParameterMethod.setTableName, targetTb);
+
+                    // build condition
+                    SqlNode inCondition = buildInCondition(ImmutableList.of(row), keyNameNode);
+
+                    // limit 1
+                    SqlNode fetch = SqlLiteral.createExactNumeric("1", SqlParserPos.ZERO);
+
+                    // inner select
+                    SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
+                        null,
+                        selectList,
+                        targetTableNode,
+                        inCondition,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        fetch);
+
+                    sqlSelect.setLockMode(LockMode.EXCLUSIVE_LOCK);
+
+                    if (unionSql.length() > 0) {
+                        unionSql.append(" UNION ALL ");
+                    }
+                    unionSql.append("(").append(RelUtils.toNativeSql(sqlSelect, DbType.MYSQL)).append(")");
+
+                }
+
+                BytesSql sql = BytesSql.getBytesSql(unionSql.toString());
+
+                List<List<String>> tableNames = ImmutableList.of(ImmutableList.of(targetTb));
+
+                PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
+                buildParams.setSchemaName(tableMeta.getSchemaName());
+                buildParams.setLogTables(ImmutableList.of(tableMeta.getTableName()));
+                buildParams.setGroupName(targetDb);
+                buildParams.setPhyTables(tableNames);
+                buildParams.setSqlKind(SqlKind.SELECT);
+                buildParams.setLockMode(LockMode.EXCLUSIVE_LOCK);
+
+                buildParams.setLogicalPlan(oldPhysicalPlan);
+                buildParams.setCluster(oldPhysicalPlan.getCluster());
+                buildParams.setTraitSet(oldPhysicalPlan.getTraitSet());
+                buildParams.setRowType(rowType);
+                buildParams.setCursorMeta(null);
+
+                buildParams.setBytesSql(sql);
+                buildParams.setDbType(DbType.MYSQL);
+                buildParams.setDynamicParams(currentParams);
+                buildParams.setBatchParameters(null);
+
+                PhyTableOperation select = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+
+                newPhysicalPlans.add(select);
+            }
+        }
+
+        return newPhysicalPlans;
     }
 
     /**
@@ -1070,29 +1138,21 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             // WHERE (pk0, ... , pkn) <= (?, ... , ?)
             final SqlNode upperBound = buildCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
 
-            condition = null == condition ? upperBound : PlannerUtils
-                .buildAndTree(ImmutableList.of(condition, upperBound));
+            condition =
+                null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
         }
 
         // order by primary keys
-        SqlNodeList orderBy = new SqlNodeList(primaryKeys.stream()
-            .map(key -> new SqlIdentifier(key, SqlParserPos.ZERO))
-            .collect(Collectors.toList()), SqlParserPos.ZERO);
+        SqlNodeList orderBy = new SqlNodeList(
+            primaryKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
 
         // limit ?
         SqlNode fetch = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
 
-        final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            targetTableNode,
-            condition,
-            null,
-            null,
-            null,
-            orderBy,
-            null,
-            fetch);
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
+                null, fetch);
 
         // lock mode
         sqlSelect.setLockMode(lockMode);
@@ -1107,6 +1167,49 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         // create PhyTableOperation
         return buildSelectPhyTblOpTemplate(physicalSelect, rowType, tableMeta, lockMode, ec);
+    }
+
+    public PhyTableOperation buildSelectForBackfillNotLimit(TableMeta tableMeta, List<String> selectKeys,
+                                                            List<String> primaryKeys, boolean withLowerBound,
+                                                            boolean withUpperBound, LockMode lockMode) {
+        initParams(0);
+
+        // build select list
+        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+        RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
+
+        // build target table
+        buildTargetTable();
+
+        // build where
+        SqlNode condition = null;
+        if (withLowerBound) {
+            // WHERE (pk0, ... , pkn) > (?, ... , ?)
+            condition = buildCondition(primaryKeys, SqlStdOperatorTable.GREATER_THAN);
+        }
+
+        if (withUpperBound) {
+            // WHERE (pk0, ... , pkn) <= (?, ... , ?)
+            final SqlNode upperBound = buildCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+
+            condition =
+                null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
+        }
+
+        // order by primary keys
+        SqlNodeList orderBy = new SqlNodeList(
+            primaryKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
+
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
+                null, null);
+
+        // lock mode
+        sqlSelect.setLockMode(lockMode);
+
+        // create PhyTableOperation
+        return buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, lockMode, ec);
     }
 
     /**
@@ -1125,8 +1228,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * @param primaryKeys Primary key list, for condition building
      */
     public Pair<SqlSelect, PhyTableOperation> buildSelectWithInForChecker(TableMeta tableMeta, List<String> selectKeys,
-                                                                          List<String> primaryKeys,
-                                                                          String forceIndex) {
+                                                                          List<String> primaryKeys, String forceIndex) {
         initParams(0);
 
         // build select list
@@ -1141,15 +1243,14 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         if (1 == primaryKeys.size()) {
             pks = new SqlIdentifier(primaryKeys.get(0), SqlParserPos.ZERO);
         } else {
-            final SqlNode[] pkNodes = primaryKeys.stream()
-                .map(col -> new SqlIdentifier(col, SqlParserPos.ZERO))
-                .toArray(SqlNode[]::new);
+            final SqlNode[] pkNodes =
+                primaryKeys.stream().map(col -> new SqlIdentifier(col, SqlParserPos.ZERO)).toArray(SqlNode[]::new);
             pks = new SqlBasicCall(SqlStdOperatorTable.ROW, pkNodes, SqlParserPos.ZERO);
         }
 
-        final SqlNode condition = new SqlBasicCall(SqlStdOperatorTable.IN,
-            new SqlNode[] {pks, new SqlNodeList(SqlParserPos.ZERO)},
-            SqlParserPos.ZERO);
+        final SqlNode condition =
+            new SqlBasicCall(SqlStdOperatorTable.IN, new SqlNode[] {pks, new SqlNodeList(SqlParserPos.ZERO)},
+                SqlParserPos.ZERO);
 
         // order by primary keys
         SqlNodeList orderBy = new SqlNodeList(
@@ -1165,31 +1266,18 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         final SqlNode from;
         if (forceIndex != null) {
             final SqlIdentifier asNode = new SqlIdentifier("tb", SqlParserPos.ZERO);
-            asNode.indexNode = new SqlNodeList(
-                ImmutableList.of(new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO),
-                    null,
+            asNode.indexNode = new SqlNodeList(ImmutableList.of(
+                new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO), null,
                     new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(forceIndex, SqlParserPos.ZERO)),
-                        SqlParserPos.ZERO),
-                    SqlParserPos.ZERO)),
-                SqlParserPos.ZERO);
-            from = new SqlBasicCall(SqlStdOperatorTable.AS,
-                new SqlNode[] {targetTableNode, asNode},
-                SqlParserPos.ZERO);
+                        SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
+            from = new SqlBasicCall(SqlStdOperatorTable.AS, new SqlNode[] {targetTableNode, asNode}, SqlParserPos.ZERO);
         } else {
             from = null;
         }
 
-        final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            from != null ? from : targetTableNode,
-            condition,
-            null,
-            null,
-            null,
-            orderBy,
-            null,
-            null);
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, from != null ? from : targetTableNode, condition, null,
+                null, null, orderBy, null, null);
 
         // create PhyTableOperation
         return new Pair<>(sqlSelect, buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec));
@@ -1205,7 +1293,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * @param selectKeys Keys that need to be hash
      * @return Query plan
      */
-    public PhyTableOperation buildSelectHashCheckForChecker(TableMeta tableMeta, List<String> selectKeys) {
+    public PhyTableOperation buildSelectHashCheckForChecker(TableMeta tableMeta, List<String> selectKeys,
+                                                            List<String> conditionKeys, boolean withLowerBound,
+                                                            boolean withUpperBound) {
 
         initParams(0);
 
@@ -1216,25 +1306,103 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         // build target table
         buildTargetTable();
 
+        //build where
+        SqlNode condition = null;
+        if (withLowerBound) {
+            //where (k0, ..., kn) > (?, ..., ?)
+            condition = buildCondition(conditionKeys, SqlStdOperatorTable.GREATER_THAN);
+        }
+        if (withUpperBound) {
+            // where (k0, ..., kn) <= (?, ..., ?)
+            final SqlNode upperBound = buildCondition(conditionKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+            if (condition == null) {
+                condition = upperBound;
+            } else {
+                condition = PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
+            }
+        }
+
         final SqlNode functionCallNode =
             new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
 
         final SqlNodeList selectListWithFunctionCall = new SqlNodeList(SqlParserPos.ZERO);
         selectListWithFunctionCall.add(functionCallNode);
-        final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectListWithFunctionCall,
-            targetTableNode,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-        );
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectListWithFunctionCall, targetTableNode, condition, null, null,
+                null, null, null, null);
 
-        return buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec);
+        PhyTableOperation phyTableOperation =
+            buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec);
+        phyTableOperation.setNativeSqlNode(sqlSelect);
+        return phyTableOperation;
+    }
+
+    /**
+     * <pre>
+     *  SELECT HASHCKECK({all_select_keys})
+     *  FROM ?
+     * </pre>
+     *
+     * @param tableMeta Table meta
+     * @param selectKeys Keys that need to be hash
+     * @return Query plan
+     */
+    public PhyTableOperation buildSelectHashCheckForGSIChecker(TableMeta tableMeta,
+                                                               List<String> selectKeys,
+                                                               Map<String, String> virtualSelectKeys,
+                                                               List<String> conditionKeys,
+                                                               boolean withLowerBound,
+                                                               boolean withUpperBound) {
+
+        initParams(0);
+
+        // build select list
+        SqlNodeList selectList = new SqlNodeList(SqlParserPos.ZERO);
+        RelDataType rowType = buildRowTypeForSelect(selectKeys, tableMeta, selectList);
+
+        // for modify partition key check
+        if (MapUtils.isNotEmpty(virtualSelectKeys)) {
+            for (int i = 0; i < selectList.size(); ++i) {
+                SqlIdentifier colName = (SqlIdentifier) selectList.get(i);
+                String colNameStr = colName.getLastName().toLowerCase();
+                if (virtualSelectKeys.containsKey(colNameStr)) {
+                    selectList.set(i, new SqlIdentifier(virtualSelectKeys.get(colNameStr), SqlParserPos.ZERO));
+                }
+            }
+        }
+
+        // build target table
+        buildTargetTable();
+
+        //build where
+        SqlNode condition = null;
+        if (withLowerBound) {
+            //where (k0, ..., kn) > (?, ..., ?)
+            condition = buildCondition(conditionKeys, SqlStdOperatorTable.GREATER_THAN);
+        }
+        if (withUpperBound) {
+            // where (k0, ..., kn) <= (?, ..., ?)
+            final SqlNode upperBound = buildCondition(conditionKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+            if (condition == null) {
+                condition = upperBound;
+            } else {
+                condition = PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
+            }
+        }
+
+        final SqlNode functionCallNode =
+            new SqlBasicCall(new SqlHashCheckAggFunction(), selectList.toArray(), SqlParserPos.ZERO);
+
+        final SqlNodeList selectListWithFunctionCall = new SqlNodeList(SqlParserPos.ZERO);
+        selectListWithFunctionCall.add(functionCallNode);
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectListWithFunctionCall, targetTableNode, condition, null, null,
+                null, null, null, null);
+
+        PhyTableOperation phyTableOperation =
+            buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec);
+        phyTableOperation.setNativeSqlNode(sqlSelect);
+        return phyTableOperation;
     }
 
     /**
@@ -1261,17 +1429,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         // limit 1
         final SqlNode fetch = SqlLiteral.createExactNumeric("1", SqlParserPos.ZERO);
 
-        final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            targetTableNode,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            fetch);
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, null, null, null, null, null, null,
+                fetch);
 
         return buildSelectPhyTblOpTemplate(sqlSelect, rowType, tableMeta, LockMode.UNDEF, ec);
     }
@@ -1289,9 +1449,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             values = new SqlDynamicParam(nextDynamicIndex, SqlParserPos.ZERO);
             ++nextDynamicIndex;
         } else {
-            final SqlNode[] pkNodes = primaryKeys.stream()
-                .map(col -> new SqlIdentifier(col, SqlParserPos.ZERO))
-                .toArray(SqlNode[]::new);
+            final SqlNode[] pkNodes =
+                primaryKeys.stream().map(col -> new SqlIdentifier(col, SqlParserPos.ZERO)).toArray(SqlNode[]::new);
             pks = new SqlBasicCall(SqlStdOperatorTable.ROW, pkNodes, SqlParserPos.ZERO);
             final SqlNode[] valueNodes = new SqlNode[primaryKeys.size()];
             for (int i = 0; i < valueNodes.length; ++i) {
@@ -1301,8 +1460,53 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             values = new SqlBasicCall(SqlStdOperatorTable.ROW, valueNodes, SqlParserPos.ZERO);
         }
 
-        final SqlNode condition = new SqlBasicCall(SqlStdOperatorTable.EQUALS,
-            new SqlNode[] {pks, values},
+        final SqlNode condition =
+            new SqlBasicCall(SqlStdOperatorTable.EQUALS, new SqlNode[] {pks, values}, SqlParserPos.ZERO);
+
+        final SqlDelete sqlDelete = new SqlDelete(SqlParserPos.ZERO, targetTableNode, condition, null, null);
+        return buildDmlPhyTblOpTemplate(schemaName, sqlDelete, null);
+    }
+
+    private SqlNode buildEqualsCondition(List<String> primaryKeys) {
+        // build PKs equals values condition
+        final SqlNode pks, values;
+        if (1 == primaryKeys.size()) {
+            pks = new SqlIdentifier(primaryKeys.get(0), SqlParserPos.ZERO);
+            values = new SqlDynamicParam(nextDynamicIndex, SqlParserPos.ZERO);
+            ++nextDynamicIndex;
+        } else {
+            final SqlNode[] pkNodes =
+                primaryKeys.stream().map(col -> new SqlIdentifier(col, SqlParserPos.ZERO)).toArray(SqlNode[]::new);
+            pks = new SqlBasicCall(SqlStdOperatorTable.ROW, pkNodes, SqlParserPos.ZERO);
+            final SqlNode[] valueNodes = new SqlNode[primaryKeys.size()];
+            for (int i = 0; i < valueNodes.length; ++i) {
+                valueNodes[i] = new SqlDynamicParam(nextDynamicIndex, SqlParserPos.ZERO);
+                ++nextDynamicIndex;
+            }
+            values = new SqlBasicCall(SqlStdOperatorTable.ROW, valueNodes, SqlParserPos.ZERO);
+        }
+
+        return new SqlBasicCall(SqlStdOperatorTable.EQUALS, new SqlNode[] {pks, values}, SqlParserPos.ZERO);
+    }
+
+    public Pair<SqlDelete, PhyTableOperation> buildDeleteForChangeSet(TableMeta tableMeta, List<String> primaryKeys) {
+        initParams(0);
+
+        // build target table
+        buildTargetTable();
+
+        // build where
+        final SqlNode pks;
+        if (1 == primaryKeys.size()) {
+            pks = new SqlIdentifier(primaryKeys.get(0), SqlParserPos.ZERO);
+        } else {
+            final SqlNode[] pkNodes =
+                primaryKeys.stream().map(col -> new SqlIdentifier(col, SqlParserPos.ZERO)).toArray(SqlNode[]::new);
+            pks = new SqlBasicCall(SqlStdOperatorTable.ROW, pkNodes, SqlParserPos.ZERO);
+        }
+
+        final SqlNode condition = new SqlBasicCall(SqlStdOperatorTable.IN,
+            new SqlNode[] {pks, new SqlNodeList(SqlParserPos.ZERO)},
             SqlParserPos.ZERO);
 
         final SqlDelete sqlDelete = new SqlDelete(SqlParserPos.ZERO,
@@ -1310,11 +1514,36 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             condition,
             null,
             null);
-        return buildDmlPhyTblOpTemplate(schemaName, sqlDelete, null);
+        return new Pair<>(sqlDelete, buildDmlPhyTblOpTemplate(schemaName, sqlDelete, tableMeta));
+    }
+
+    public Pair<SqlInsert, PhyTableOperation> buildReplaceForChangeSet(TableMeta tableMeta, List<String> columns) {
+        // Construct targetColumnList
+        final SqlNodeList targetColumnList = new SqlNodeList(
+            columns.stream().map(col -> new SqlIdentifier(col, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
+
+        // Construct target table
+        final SqlNode targetTableParam = BuildPlanUtils.buildTargetTable();
+
+        // Construct values
+        final SqlNode[] dynamics = new SqlNode[targetColumnList.size()];
+        for (int i = 0; i < targetColumnList.size(); i++) {
+            dynamics[i] = new SqlDynamicParam(i, SqlParserPos.ZERO);
+        }
+        final SqlNode row = new SqlBasicCall(SqlStdOperatorTable.ROW, dynamics, SqlParserPos.ZERO);
+        final SqlNode[] rowList = new SqlNode[] {row};
+        final SqlNode values = new SqlBasicCall(SqlStdOperatorTable.VALUES, rowList, SqlParserPos.ZERO);
+
+        final SqlInsert replacePlan =
+            SqlInsert.create(SqlKind.REPLACE, SqlParserPos.ZERO, new SqlNodeList(SqlParserPos.ZERO), targetTableParam,
+                values, targetColumnList, SqlNodeList.EMPTY, 0, null);
+
+        return new Pair<>(replacePlan, buildDmlPhyTblOpTemplate(schemaName, replacePlan, tableMeta));
     }
 
     private PhyTableOperation buildDmlPhyTblOpTemplate(String schemaName, SqlNode sqlNode, TableMeta primTblMeta) {
-        final RelOptCluster cluster = SqlConverter.getInstance(ec).createRelOptCluster();
+        final RelOptCluster cluster = SqlConverter.getInstance(schemaName, ec).createRelOptCluster();
         RelTraitSet traitSet = RelTraitSet.createEmpty();
         RelDataType rowType = CalciteUtils.switchRowType(Collections.emptyList(), typeFactory);
         BytesSql sql = RelUtils.toNativeBytesSql(sqlNode);
@@ -1340,14 +1569,11 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return PhyTableOperationFactory.getInstance().buildPhyTblOpTemplate(buildParams);
     }
 
-    private PhyTableOperation buildSelectPhyTblOpTemplate(SqlNode sqlNode,
-                                                          RelDataType rowType,
-                                                          TableMeta logTableMeta,
-                                                          LockMode lockMode,
-                                                          ExecutionContext ec) {
+    private PhyTableOperation buildSelectPhyTblOpTemplate(SqlNode sqlNode, RelDataType rowType, TableMeta logTableMeta,
+                                                          LockMode lockMode, ExecutionContext ec) {
 
         PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
-        final RelOptCluster cluster = SqlConverter.getInstance(ec).createRelOptCluster();
+        final RelOptCluster cluster = SqlConverter.getInstance(logTableMeta.getSchemaName(), ec).createRelOptCluster();
         RelTraitSet traitSet = RelTraitSet.createEmpty();
 
 //        PhyTableOperation operation = new PhyTableOperation(cluster, traitSet, rowType);
@@ -1393,8 +1619,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             || SqlStdOperatorTable.GREATER_THAN_OR_EQUAL == operator) {
             nonFinalOp = SqlStdOperatorTable.GREATER_THAN;
         } else {
-            throw new TddlNestableRuntimeException(MessageFormat.format("buildCondition not support SqlOperator {0}",
-                operator.toString()));
+            throw new TddlNestableRuntimeException(
+                MessageFormat.format("buildCondition not support SqlOperator {0}", operator.toString()));
         }
 
         // Gen operator tree.
@@ -1403,11 +1629,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             SqlNode item = null;
             for (int andIdx = 0; andIdx <= orIdx; ++andIdx) {
                 SqlNode comp = new SqlBasicCall(andIdx < orIdx ? SqlStdOperatorTable.EQUALS :
-                    (orIdx != columnNames.size() - 1 ? nonFinalOp : operator),
-                    new SqlNode[] {
-                        new SqlIdentifier(columnNames.get(andIdx), SqlParserPos.ZERO),
-                        new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO)},
-                    SqlParserPos.ZERO);
+                    (orIdx != columnNames.size() - 1 ? nonFinalOp : operator), new SqlNode[] {
+                    new SqlIdentifier(columnNames.get(andIdx), SqlParserPos.ZERO),
+                    new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO)}, SqlParserPos.ZERO);
                 if (null == item) {
                     item = comp;
                 } else {
@@ -1425,33 +1649,12 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         return root;
     }
 
-    private SqlNode buildExpressionCondition(List<String> columnNames, SqlOperator operator) {
-        // Keep column order
-        final SqlNode[] columnList = new SqlNode[columnNames.size()];
-        final SqlNode[] valueList = new SqlNode[columnNames.size()];
-        for (int i = 0; i < columnNames.size(); i++) {
-            final String columnName = columnNames.get(i);
-            final SqlIdentifier sqlIdentifier = new SqlIdentifier(columnName, SqlParserPos.ZERO);
-            final SqlDynamicParam dynamicParam = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
-
-            columnList[i] = sqlIdentifier;
-            valueList[i] = dynamicParam;
-        }
-
-        // Row expression
-        final SqlBasicCall left = new SqlBasicCall(TddlOperatorTable.ROW, columnList, SqlParserPos.ZERO);
-        final SqlBasicCall right = new SqlBasicCall(TddlOperatorTable.ROW, valueList, SqlParserPos.ZERO);
-
-        // Assume that column value can never be null
-        return new SqlBasicCall(operator, new SqlNode[] {left, right}, SqlParserPos.ZERO);
-    }
-
     public static ExecutionPlan buildPlanForBackfillDuplicateCheck(String schemaName, TableMeta tableMeta,
                                                                    List<String> outputColumns,
-                                                                   List<String> filterColumns,
-                                                                   boolean useHint, ExecutionContext ec) {
-        return new PhysicalPlanBuilder(schemaName, ec)
-            .buildPlanForBackfillDuplicateCheck(tableMeta, outputColumns, filterColumns, useHint);
+                                                                   List<String> filterColumns, boolean useHint,
+                                                                   ExecutionContext ec) {
+        return new PhysicalPlanBuilder(schemaName, ec).buildPlanForBackfillDuplicateCheck(tableMeta, outputColumns,
+            filterColumns, useHint);
     }
 
     /**
@@ -1463,8 +1666,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * @return Select plan
      */
     private ExecutionPlan buildPlanForBackfillDuplicateCheck(TableMeta tableMeta, List<String> outputColumns,
-                                                             List<String> filterColumns,
-                                                             boolean useHint) {
+                                                             List<String> filterColumns, boolean useHint) {
         initParams(0);
 
         // Build select list
@@ -1481,24 +1683,15 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             final SqlDynamicParam right = new SqlDynamicParam(nextDynamicIndex++, SqlParserPos.ZERO);
 
             // Null-safe comparison
-            final SqlNode compareNode = new SqlBasicCall(TddlOperatorTable.NULL_SAFE_EQUAL,
-                new SqlNode[] {left, right},
-                SqlParserPos.ZERO);
+            final SqlNode compareNode =
+                new SqlBasicCall(TddlOperatorTable.NULL_SAFE_EQUAL, new SqlNode[] {left, right}, SqlParserPos.ZERO);
 
             compareNodes.add(compareNode);
         }
         final SqlNode condition = PlannerUtils.buildAndTree(compareNodes);
 
-        SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            new SqlIdentifier(tableMeta.getTableName(), SqlParserPos.ZERO),
-            condition,
-            null,
-            null,
-            null,
-            null,
-            null,
+        SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO, null, selectList,
+            new SqlIdentifier(tableMeta.getTableName(), SqlParserPos.ZERO), condition, null, null, null, null, null,
             null);
 
         PlannerContext plannerContext = new PlannerContext(ec);
@@ -1514,15 +1707,19 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
     /**
      * @return {targetDb: {targetTb: [[index, pk]]}}
      */
-    protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(TableMeta tableMeta,
-                                                                                          List<List<Object>> values,
-                                                                                          List<String> columns) {
+    public Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResults(TableMeta tableMeta,
+                                                                                       List<List<Object>> values,
+                                                                                       List<String> columns,
+                                                                                       boolean needPrimaryKeys) {
 
         // primary key indexes and ColumnMetas, columns must be upper case
-        List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(tableMeta);
-        List<Integer> primaryKeyIndexes = primaryKeyNames.stream()
-            .map(columns::indexOf)
-            .collect(Collectors.toList());
+        List<Integer> primaryKeyIndexes = new ArrayList<>();
+        if (needPrimaryKeys) {
+            List<String> primaryKeyNames = GlobalIndexMeta.getPrimaryKeys(tableMeta);
+            primaryKeyIndexes = primaryKeyNames.stream()
+                .map(columns::indexOf)
+                .collect(Collectors.toList());
+        }
 
         // sharding key indexes and ColumnMetas
         List<String> shardingKeyNames = GlobalIndexMeta.getShardingKeys(tableMeta, schemaName);
@@ -1543,7 +1740,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      *
      * @return {targetDb: {targetTb: [[index, pk]]}}
      */
-    protected Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResultsFullTableScan(
+    public Map<String, Map<String, List<Pair<Integer, List<Object>>>>> getShardResultsFullTableScan(
         TableMeta tableMeta, Integer valuesCount) {
         String tableName = tableMeta.getTableName();
         String schemaName = tableMeta.getSchemaName();
@@ -1553,8 +1750,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         final Map<String, List<List<String>>> topology;
         if (partitionInfoManager.isNewPartDbTable(tableName)) {
-            PartitionPruneStep partitionPruneStep = PartitionPruneStepBuilder.generateFullScanPruneStepInfo(schemaName,
-                tableName, ec);
+            PartitionPruneStep partitionPruneStep =
+                PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(schemaName,
+                    tableName, ec);
             PartPrunedResult partPrunedResult =
                 PartitionPruner.doPruningByStepInfo(partitionPruneStep, ec);
             List<PartPrunedResult> resultList = new ArrayList<>();
@@ -1570,8 +1768,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                 .collect(Collectors.toList());
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> result = new HashMap<>();
 
-        topology.forEach((group, phyTablesList) -> phyTablesList.stream()
-            .map(phyTables -> phyTables.get(0))
+        topology.forEach((group, phyTablesList) -> phyTablesList.stream().map(phyTables -> phyTables.get(0))
             .forEach(phyTable -> result.computeIfAbsent(group, v -> new HashMap<>()).put(phyTable, valueList)));
 
         return result;
@@ -1585,15 +1782,15 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
      * (SELECT ((value_index, uk_index), [select_key]) FROM DUAL WHERE (key2_column1, key2_column2) IN ((?, ?)) FOR UPDATE)
      */
     public List<RelNode> buildSelectUnionAndParam(LogicalInsert insert, List<List<String>> conditionKeys,
-                                                  TableMeta tableMeta, LockMode lockMode,
-                                                  List<List<Object>> values, List<String> insertColumns,
+                                                  TableMeta tableMeta, LockMode lockMode, List<List<Object>> values,
+                                                  List<String> insertColumns,
                                                   final List<List<List<Object>>> lookUpUniqueKey,
                                                   final List<List<Pair<Integer, Integer>>> lookUpUniqueKeyIndex,
                                                   final List<String> selectKey, boolean withValueIndex,
                                                   int maxSqlUnionCount, boolean isFullTableScan) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isFullTableScan ?
             getShardResultsFullTableScan(tableMeta, values.size()) :
-            getShardResults(tableMeta, values, insertColumns);
+            getShardResults(tableMeta, values, insertColumns, true);
 
         Map<String, Set<String>> topology = new HashMap<>();
         for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult : shardResults.entrySet()) {
@@ -1618,9 +1815,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         RelDataType rowType = typeFactory.createStructType(columns);
 
         // Build condition key nodes, [(key1, key2), (key3, key4)]
-        List<SqlNode> conditionKeyNodes = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
+        List<SqlNode> conditionKeyNodes =
+            conditionKeys.stream().map(PhysicalPlanBuilder::buildKeyNameNodeForInClause).collect(Collectors.toList());
 
         List<RelNode> results = new ArrayList<>();
         for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult : shardResults.entrySet()) {
@@ -1668,17 +1864,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                         SqlNode condition = buildInCondition(ImmutableList.of(key), keyNameNode);
 
                         // SELECT (value_index, uk_index) FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?)) FOR UPDATE
-                        SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-                            null,
-                            selectList,
-                            targetTableNode,
-                            condition,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null,
-                            null);
+                        SqlSelect sqlSelect =
+                            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null,
+                                null, null, null, null);
                         sqlSelect.setLockMode(lockMode);
 
                         // (SELECT (value_index, uk_index) FROM DUAL WHERE (key1_column1, key1_column2) IN ((?, ?)) FOR UPDATE)
@@ -1740,7 +1928,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                                boolean isFullTableScan) {
         Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isFullTableScan ?
             getShardResultsFullTableScan(tableMeta, values.size()) :
-            getShardResults(tableMeta, values, insertColumns);
+            getShardResults(tableMeta, values, insertColumns, true);
 
         Map<String, Set<String>> topology = new HashMap<>();
         for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult : shardResults.entrySet()) {
@@ -1753,15 +1941,13 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
 
         for (int i = 0; i < selectKey.size(); i++) {
             ColumnMeta columnMeta = tableMeta.getColumn(selectKey.get(i));
-            columns.add(
-                new RelDataTypeFieldImpl(columnMeta.getName(), i, columnMeta.getField().getRelType()));
+            columns.add(new RelDataTypeFieldImpl(columnMeta.getName(), i, columnMeta.getField().getRelType()));
         }
         RelDataType rowType = typeFactory.createStructType(columns);
 
         // Build condition key nodes, [(key1, key2), (key3, key4)]
-        List<SqlNode> conditionKeyNodes = conditionKeys.stream()
-            .map(PhysicalPlanBuilder::buildKeyNameNodeForInClause)
-            .collect(Collectors.toList());
+        List<SqlNode> conditionKeyNodes =
+            conditionKeys.stream().map(PhysicalPlanBuilder::buildKeyNameNodeForInClause).collect(Collectors.toList());
 
         List<RelNode> results = new ArrayList<>();
         for (Map.Entry<String, Map<String, List<Pair<Integer, List<Object>>>>> dbResult : shardResults.entrySet()) {
@@ -1871,14 +2057,13 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                              List<Integer> tableParamIndexes, String sql, LockMode lockMode,
                                              TableMeta tableMeta) {
         List<RelNode> results = new ArrayList<>();
-        for (Map.Entry<String, Set<String>> entry: topology.entrySet()) {
+        for (Map.Entry<String, Set<String>> entry : topology.entrySet()) {
             String dbIndex = entry.getKey();
             for (String phyTbName : entry.getValue()) {
                 final List<String> targetTables = IntStream.range(0, sqlUnionCount).mapToObj(j -> {
                     // Replace DUAL with physical table name
                     tableParamIndexes.forEach(paramIndex -> currentParams.put(paramIndex,
-                        new ParameterContext(ParameterMethod.setTableName,
-                            new Object[] {paramIndex, phyTbName})));
+                        new ParameterContext(ParameterMethod.setTableName, new Object[] {paramIndex, phyTbName})));
                     return phyTbName;
                 }).collect(Collectors.toList());
 
@@ -1929,31 +2114,22 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
             final SqlIdentifier asNode = new SqlIdentifier("tb", SqlParserPos.ZERO);
             asNode.indexNode = new SqlNodeList(ImmutableList.of(
                 new SqlIndexHint(SqlLiteral.createCharString("FORCE INDEX", SqlParserPos.ZERO), null,
-                    new SqlNodeList(
-                        ImmutableList.of(SqlLiteral.createCharString(localIndexName, SqlParserPos.ZERO)),
+                    new SqlNodeList(ImmutableList.of(SqlLiteral.createCharString(localIndexName, SqlParserPos.ZERO)),
                         SqlParserPos.ZERO), SqlParserPos.ZERO)), SqlParserPos.ZERO);
-            from = new SqlBasicCall(SqlStdOperatorTable.AS, new SqlNode[] {targetTableNode, asNode},
-                SqlParserPos.ZERO);
+            from = new SqlBasicCall(SqlStdOperatorTable.AS, new SqlNode[] {targetTableNode, asNode}, SqlParserPos.ZERO);
         } else {
             from = null;
         }
 
         // SELECT ([select_key]) FROM DUAL WHERE (key_column1, key_column2) IN ((?, ?), ...) FOR UPDATE
-        SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            from != null ? from : targetTableNode,
-            condition,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null);
+        SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, from != null ? from : targetTableNode, condition, null,
+                null, null, null, null, null);
         sqlSelect.setLockMode(lockMode);
         return sqlSelect;
     }
 
+    // 重要：构造sample plan时，传入的主键primaryKeys必须按原表顺序！！！
     public PhyTableOperation buildSqlSelectForSample(TableMeta tableMeta, List<String> selectKeys,
                                                      List<String> primaryKeys, boolean withLowerBound,
                                                      boolean withUpperBound) {
@@ -1970,33 +2146,25 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
         SqlNode condition = null;
         if (withLowerBound) {
             // WHERE (pk0, ... , pkn) > (?, ... , ?)
-            condition = buildExpressionCondition(primaryKeys, SqlStdOperatorTable.GREATER_THAN);
+            condition = buildCondition(primaryKeys, SqlStdOperatorTable.GREATER_THAN);
         }
 
         if (withUpperBound) {
             // WHERE (pk0, ... , pkn) <= (?, ... , ?)
-            final SqlNode upperBound = buildExpressionCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
+            final SqlNode upperBound = buildCondition(primaryKeys, SqlStdOperatorTable.LESS_THAN_OR_EQUAL);
 
-            condition = null == condition ? upperBound : PlannerUtils
-                .buildAndTree(ImmutableList.of(condition, upperBound));
+            condition =
+                null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
         }
 
         // order by primary keys
-        SqlNodeList orderBy = new SqlNodeList(primaryKeys.stream()
-            .map(key -> new SqlIdentifier(key, SqlParserPos.ZERO))
-            .collect(Collectors.toList()), SqlParserPos.ZERO);
+        SqlNodeList orderBy = new SqlNodeList(
+            primaryKeys.stream().map(key -> new SqlIdentifier(key, SqlParserPos.ZERO)).collect(Collectors.toList()),
+            SqlParserPos.ZERO);
 
-        final SqlSelect sqlSelect = new SqlSelect(SqlParserPos.ZERO,
-            null,
-            selectList,
-            targetTableNode,
-            condition,
-            null,
-            null,
-            null,
-            orderBy,
-            null,
-            null);
+        final SqlSelect sqlSelect =
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, targetTableNode, condition, null, null, null, orderBy,
+                null, null);
 
         // create PhyTableOperation
         PhyTableOperation phyTableOperation =

@@ -1,0 +1,142 @@
+DROP TABLE IF EXISTS `t_order`;
+CREATE TABLE `t_order` (
+	`x` int(11) PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	GLOBAL INDEX(`seller_id`) PARTITION BY KEY (seller_id)
+)
+PARTITION BY KEY (order_id);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) COVERING (`order_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+INSERT INTO t_order (order_id, seller_id)
+VALUES ('12345', '678910'),
+	('23456', '7891011'),
+	('34567', '89101112'),
+	('45678', '910111213'),
+	('56789', '101112131415');
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+x,order_id,seller_id
+1,12345,678910
+2,23456,7891011
+3,34567,89101112
+4,45678,910111213
+5,56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(30) AFTER x;
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`seller_id` varchar(30) DEFAULT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) COVERING (`order_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+x,seller_id,order_id
+1,678910,12345
+2,7891011,23456
+3,89101112,34567
+4,910111213,45678
+5,101112131415,56789
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(30) CHARACTER SET utf8 FIRST;
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`seller_id` varchar(30) CHARACTER SET utf8 DEFAULT NULL,
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) COVERING (`order_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+seller_id,x,order_id
+678910,1,12345
+7891011,2,23456
+89101112,3,34567
+910111213,4,45678
+101112131415,5,56789
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id bigint(11) AFTER order_id;
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` bigint(11) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) COVERING (`order_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+x,order_id,seller_id
+1,12345,678910
+2,23456,7891011
+3,34567,89101112
+4,45678,910111213
+5,56789,101112131415
+SELECT *
+FROM t_order
+WHERE seller_id = 7891011;
+x,order_id,seller_id
+2,23456,7891011
+SELECT *
+FROM t_order
+WHERE seller_id = 101112131415;
+x,order_id,seller_id
+5,56789,101112131415
+ALTER TABLE `t_order`
+	MODIFY COLUMN seller_id varchar(10);
+SHOW FULL CREATE TABLE `t_order`;
+Table,Create Table
+t_order,CREATE TABLE `t_order` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(10) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	GLOBAL INDEX /* i_0_$ */ `i_0` (`seller_id`) COVERING (`order_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 3,
+	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SELECT *
+FROM t_order
+ORDER BY order_id ASC;
+x,order_id,seller_id
+1,12345,678910
+2,23456,7891011
+3,34567,89101112
+4,45678,910111213
+5,56789,1011121314

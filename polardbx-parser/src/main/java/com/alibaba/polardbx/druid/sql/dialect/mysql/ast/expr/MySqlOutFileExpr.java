@@ -24,23 +24,25 @@ import java.util.List;
 
 public class MySqlOutFileExpr extends MySqlObjectImpl implements SQLExpr {
 
-    private SQLExpr        file;
-    private String         charset;
+    private SQLExpr file;
+    private String charset;
 
-    private SQLExpr        columnsTerminatedBy;
-    private boolean        columnsEnclosedOptionally = false;
+    private SQLExpr columnsTerminatedBy;
+    private boolean columnsEnclosedOptionally = false;
     private SQLExpr columnsEnclosedBy;
     private SQLExpr columnsEscaped;
 
     private SQLExpr linesStartingBy;
     private SQLExpr linesTerminatedBy;
 
-    private SQLExpr        ignoreLinesNumber;
+    private SQLExpr ignoreLinesNumber;
 
-    public MySqlOutFileExpr(){
+    private boolean statistics = false;
+
+    public MySqlOutFileExpr() {
     }
 
-    public MySqlOutFileExpr(SQLExpr file){
+    public MySqlOutFileExpr(SQLExpr file) {
         this.file = file;
     }
 
@@ -129,6 +131,14 @@ public class MySqlOutFileExpr extends MySqlObjectImpl implements SQLExpr {
         this.ignoreLinesNumber = ignoreLinesNumber;
     }
 
+    public boolean getStatistics() {
+        return statistics;
+    }
+
+    public void setStatistics(boolean statistics) {
+        this.statistics = statistics;
+    }
+
     public SQLExpr clone() {
         MySqlOutFileExpr x = new MySqlOutFileExpr();
 
@@ -163,6 +173,8 @@ public class MySqlOutFileExpr extends MySqlObjectImpl implements SQLExpr {
         if (ignoreLinesNumber != null) {
             x.setIgnoreLinesNumber(ignoreLinesNumber.clone());
         }
+
+        x.setStatistics(statistics);
 
         return x;
     }

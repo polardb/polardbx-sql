@@ -546,9 +546,11 @@ public class TableScanClient {
                             .addAndGet(System.nanoTime() - startInitStmtEnvNano);
                     }
 
-                    // Add feedback flag if XCOnnection.
+                    // Add feedback flag if XConnection.
                     if (conn.isWrapperFor(XConnection.class)) {
                         conn.unwrap(XConnection.class).setWithFeedback(true);
+                        // set client JDBC capability
+                        conn.unwrap(XConnection.class).setCapabilities(context.getCapabilityFlags());
                     }
                 } else {
                     throw new SQLException("TGroupDataSource is null:" + jdbcSplit);

@@ -95,7 +95,7 @@ public abstract class AbstractSequenceManager extends AbstractLifecycle implemen
     }
 
     @Override
-    public boolean areAllSequencesSameType(String schemaName, Type seqType) {
+    public boolean areAllSequencesSameType(String schemaName, Type[] seqTypes) {
         throw new UnsupportedOperationException();
     }
 

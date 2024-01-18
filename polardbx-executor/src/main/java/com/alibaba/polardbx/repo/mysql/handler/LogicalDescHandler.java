@@ -193,7 +193,7 @@ public class LogicalDescHandler extends HandlerCommon {
             }
         }
 
-        rows = ResultSetHelper.filterOutHiddenColumns(schemaName, tableName, rows, ec);
+        rows = ResultSetHelper.processColumnInfos(schemaName, tableName, rows, ec);
         ResultSetHelper.reorgLogicalColumnOrder(schemaName, tableName, rows, resultCursor);
 
         return resultCursor;

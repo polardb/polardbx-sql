@@ -107,7 +107,7 @@ public class StorageInfoRecord implements SystemTableRecord {
      * </pre>
      */
     public int isVip;
-    public String extras;
+    public StorageInfoExtraFieldJSON extras;
 
     @Override
     public StorageInfoRecord fill(ResultSet rs) throws SQLException {
@@ -132,7 +132,7 @@ public class StorageInfoRecord implements SystemTableRecord {
         this.cpuCore = rs.getInt("cpu_core");
         this.memSize = rs.getInt("mem_size"); // Unit: MB
         this.isVip = rs.getInt("is_vip");
-        this.extras = rs.getString("extras");
+        this.extras = StorageInfoExtraFieldJSON.fromJson(rs.getString("extras"));
         return this;
     }
 
@@ -210,5 +210,18 @@ public class StorageInfoRecord implements SystemTableRecord {
             ", xport=" + xport +
             ", status=" + status +
             '}';
+    }
+
+    public static String getInstKind(int instKind) {
+        switch (instKind) {
+        case StorageInfoRecord.INST_KIND_MASTER:
+            return "MASTER";
+        case StorageInfoRecord.INST_KIND_SLAVE:
+            return "SLAVE";
+        case StorageInfoRecord.INST_KIND_META_DB:
+            return "META_DB";
+        default:
+            return "NA";
+        }
     }
 }

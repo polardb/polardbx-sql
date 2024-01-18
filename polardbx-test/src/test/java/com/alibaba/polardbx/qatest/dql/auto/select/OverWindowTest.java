@@ -366,7 +366,7 @@ public class OverWindowTest extends AutoReadBaseTestCase {
             return;
         }
         String sql =
-            "/*+TDDL:master())*/select *,sum(decimal_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
+            "/*+TDDL:master()*/select *,sum(decimal_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
 
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -377,7 +377,7 @@ public class OverWindowTest extends AutoReadBaseTestCase {
             return;
         }
         String sql =
-            "/*+TDDL:master())*/select *,sum(double_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
+            "/*+TDDL:master()*/select *,sum(double_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
 
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
@@ -388,7 +388,7 @@ public class OverWindowTest extends AutoReadBaseTestCase {
             return;
         }
         String sql =
-            "/*+TDDL:master())*/select *,sum(integer_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
+            "/*+TDDL:master()*/select *,sum(integer_test) over (PARTITION BY pk) from select_base_one_multi_db_one_tb t;";
 
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }

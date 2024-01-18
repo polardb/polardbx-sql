@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.ccl;
 
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -38,7 +37,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
-import org.apache.commons.lang.exception.ExceptionUtils;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -723,7 +721,7 @@ public class CclManagerTest {
     @Test
     public void test21() {
         String sql = "select ?";
-        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(dbName, sql, null, null, true, true);
+        PlanCache.CacheKey cacheKey = new PlanCache.CacheKey(dbName, sql, null, null, true, true, true);
         Assert.assertTrue(sql.hashCode() == cacheKey.getTemplateHash());
     }
 
@@ -798,7 +796,8 @@ public class CclManagerTest {
 
     static PlanCache.CacheKey newCacheKey(String originSql) {
         try {
-            PlanCache.CacheKey cacheKey = new PlanCache.CacheKey("", originSql, "", Lists.newArrayList(), true, true);
+            PlanCache.CacheKey cacheKey = new PlanCache.CacheKey("", originSql, "", Lists.newArrayList(), true, true,
+                true);
             return cacheKey;
         } catch (Exception e) {
             throw new RuntimeException(e);

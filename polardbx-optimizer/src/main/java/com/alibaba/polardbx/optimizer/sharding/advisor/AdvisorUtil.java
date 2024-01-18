@@ -91,7 +91,7 @@ public class AdvisorUtil {
             if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                 return OptimizerContext.getContext(split[0]).
                     getLatestSchemaManager().getTddlRuleManager().getPartitionInfoManager().getPartitionInfo(tableName)
-                    .getPartitionBy().getPartitions().size();
+                    .getPartitionBy().getPhysicalPartitions().size();
             }
             TableRule tableRule = OptimizerContext.getContext(split[0]).
                 getLatestSchemaManager().getTddlRuleManager().getTableRule(split[1]);
@@ -102,6 +102,7 @@ public class AdvisorUtil {
     }
 
     enum Mode {LAST, EMPTY, ALL}
+
     static public Mode PRINT_MODE = Mode.EMPTY;
 
     static public boolean USE_MAX_ACC = true;

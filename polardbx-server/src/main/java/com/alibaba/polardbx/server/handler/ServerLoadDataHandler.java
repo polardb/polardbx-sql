@@ -16,7 +16,16 @@
 
 package com.alibaba.polardbx.server.handler;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.handler.LoadDataHandler;
 import com.alibaba.polardbx.net.packet.CommandPacket;
@@ -25,10 +34,6 @@ import com.alibaba.polardbx.net.packet.OkPacket;
 import com.alibaba.polardbx.net.util.CharsetUtil;
 import com.alibaba.polardbx.server.QueryResultHandler;
 import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.druid.sql.ast.SQLExpr;
-import com.alibaba.druid.sql.ast.expr.SQLTextLiteralExpr;
-import com.alibaba.druid.sql.dialect.mysql.ast.statement.MySqlLoadDataInFileStatement;
-import com.alibaba.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
@@ -66,7 +71,6 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.sql.ResultSet;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +80,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.alibaba.polardbx.optimizer.context.LoadDataContext.END;
 
@@ -469,41 +474,59 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
 
         TableMeta tableMeta = OptimizerContext.getContext(
             serverConnection.getSchema()).getLatestSchemaManager().getTable(tableName);
-        if (loadData.isExistAutoFillColumn() && null == tableMeta.getAutoIncrementColumn()) {
-            throw new RuntimeException(
-                "[load data error] when using hint 'load_data_auto_fill_auto_increment_column', target table should have one auto increment column.");
-        }
-        List<ColumnMeta> columnMetas = new ArrayList<>();
+        List<ColumnMeta> loadColumnMetas = new ArrayList<>();
         List<String> tableColumns =
             tableMeta.getAllColumns().stream().map(t -> t.getOriginColumnName()).collect(Collectors.toList());
+
+        ParamManager paramManager = new ParamManager(cmdObjects);
+        boolean enableAutoFillIncCol =
+            paramManager.getBoolean(ConnectionParams.LOAD_DATA_AUTO_FILL_AUTO_INCREMENT_COLUMN);
+
         if (outputColumns.size() > 0) {
+            // only load data to assigned column
             for (ColumnMeta meta : tableMeta.getAllColumns()) {
                 if (containIgnoreCase(outputColumns, meta.getOriginColumnName())) {
-                    columnMetas.add(meta);
+                    loadColumnMetas.add(meta);
                 }
             }
-            if (loadData.isExistAutoFillColumn()) {
-                boolean containsAutoIncrementColumn =
-                    columnMetas.stream().map(ColumnMeta::isAutoIncrement).collect(Collectors.toList()).contains(true);
-                if (containsAutoIncrementColumn) {
-                    throw new RuntimeException(
-                        "[load data error] when using hint 'load_data_auto_fill_auto_increment_column', the auto increment column is not allowed in the column list.");
+
+            if (enableAutoFillIncCol) {
+                boolean containsAutoIncCol =
+                    loadColumnMetas.stream().map(ColumnMeta::isAutoIncrement).collect(Collectors.toList())
+                        .contains(true);
+                if (!containsAutoIncCol && tableMeta.getAutoIncrementColumn() != null) {
+                    // load column not contains auto inc column, but this table has an auto inc column
+                    // so we should auto fill it by default
+                    ColumnMeta autoIncrementColumn = tableMeta.getAutoIncrementColumn();
+                    loadColumnMetas.add(0, autoIncrementColumn);
+                    outputColumns.add(0, autoIncrementColumn.getOriginColumnName());
+                    // add this auto increment column to the head
+                    loadData.setAutoFillColumnIndex(0);
                 }
-                ColumnMeta autoIncrementColumn = tableMeta.getAutoIncrementColumn();
-                columnMetas.add(0, autoIncrementColumn);
-                outputColumns.add(0, autoIncrementColumn.getOriginColumnName());
             }
             loadData.setColumnsList(outputColumns);
             List<Integer> positions = outputColumns.stream().map(tableColumns::indexOf).collect(Collectors.toList());
             List<Integer> orderedPositions = positions.stream().sorted().collect(Collectors.toList());
             loadData.setSwapColumns(!positions.equals(orderedPositions));
         } else {
-            columnMetas = tableMeta.getAllColumns();
+            loadColumnMetas = tableMeta.getAllColumns();
             loadData.setColumnsList(tableColumns);
             loadData.setSwapColumns(false);
+            if (enableAutoFillIncCol) {
+                // implicit primary key must be auto inc column, and one table can only has one auto inc col
+                // so we should auto fill this implicit column
+                // load file should not contains this implicit column
+                boolean containsImplicitKey =
+                    loadColumnMetas.stream().map(columnMeta -> columnMeta.getName().equalsIgnoreCase(IMPLICIT_COL_NAME))
+                        .collect(Collectors.toList()).contains(true);
+                if (containsImplicitKey) {
+                    int autoColIndex = loadColumnMetas.stream().map(ColumnMeta::isAutoIncrement).collect(
+                        Collectors.toList()).indexOf(true);
+                    loadData.setAutoFillColumnIndex(autoColIndex);
+                }
+            }
         }
-
-        loadData.setColumnMetas(columnMetas);
+        loadData.setColumnMetas(loadColumnMetas);
         loadData.setLocal(statement.isLocal());
     }
 
@@ -530,7 +553,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
         return null;
     }
 
-    private String parseLoadDataSql(String originStrSql) {
+    private void parseLoadDataSql(String originStrSql) {
         ContextParameters contextParameters = new ContextParameters(false);
         int start = -1;
         if (originStrSql.indexOf(LOWER_LOAD_DATA) > 0) {
@@ -540,9 +563,8 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
         }
 
         String strSql = originStrSql;
-        String hint = "";
         if (start > 0) {
-            hint = originStrSql.substring(0, start);
+            String hint = originStrSql.substring(0, start);
             strSql = originStrSql.substring(start, strSql.length());
             try {
                 List<SQLStatement> stmtList = FastsqlUtils.parseSql(hint);
@@ -555,7 +577,6 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
                     List<HintCmdOperator> hintCmdOperators = collection.cmdHintResult;
                     HintCmdOperator.CmdBean cmdBean = new HintCmdOperator.CmdBean("", cmdObjects, "");
                     for (HintCmdOperator op : hintCmdOperators) {
-
                         op.handle(cmdBean);
                     }
                 }
@@ -567,7 +588,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
 
         MySqlLoadDataInFileStatement statement;
         try {
-            statement = (MySqlLoadDataInFileStatement) new MySqlStatementParser(strSql).parseStatement();
+            statement = (MySqlLoadDataInFileStatement) FastsqlUtils.parseSql(ByteString.from(strSql)).get(0);
             tableName = statement.getTableName().getSimpleName();
         } catch (Exception e) {
             throw new TddlNestableRuntimeException(e);
@@ -577,24 +598,15 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             throw new TddlNestableRuntimeException("File name is null !");
         }
         loadData = new LoadData(originStrSql);
-        hint = hint.toLowerCase();
-        boolean existAutoFillColumn = hint.replaceAll(" ", "").
-            contains("load_data_auto_fill_auto_increment_column=true");
-        loadData.setExistAutoFillColumn(existAutoFillColumn);
         parseLoadDataPram(statement);
-        hint = hint.replace("load_data_auto_fill_auto_increment_column=true", "");
-        hint = hint.replace("load_data_auto_fill_auto_increment_column=false", "");
-        if (hint.replace(" ", "").replace("/*+tddl:*/", "").equals("")) {
-            hint = "";
-        }
-        return hint;
     }
 
-    public void buildInsertIntoTemplate(String hint) {
+    public void buildInsertIntoTemplate(boolean pureInsert) {
         // load data 的建表语句
         StringBuilder builder = new StringBuilder();
-        builder.append(hint);
-        if (!loadData.isReplace()) {
+        if (pureInsert) {
+            builder.append("insert into ").append(tableName).append(" ");
+        } else if (!loadData.isReplace()) {
             builder.append("insert ignore into ").append(tableName).append(" ");
         } else {
             builder.append("replace into ").append(tableName).append(" ");
@@ -617,12 +629,18 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
 
     @Override
     public void open(String strSql) {
-        //parse load data sql
-        String hint = parseLoadDataSql(strSql);
+        //if database is readonly, we cannot load data
+        String schemaName = serverConnection.getSchema();
+        if (DbInfoManager.getInstance().ifDatabaseIsReadOnly(SQLUtils.normalize(schemaName))) {
+            throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_OPTIMIZER,
+                String.format("load data failed because database [%s] is read only now", schemaName));
+        }
 
-        buildInsertIntoTemplate(hint);
+        parseLoadDataSql(strSql);
 
         ParamManager paramManager = new ParamManager(cmdObjects);
+
+        buildInsertIntoTemplate(paramManager.getBoolean(ConnectionParams.LOAD_DATA_PURE_INSERT_MODE));
 
         MemoryPool memoryPool =
             MemoryManager.getInstance().createQueryMemoryPool(false, serverConnection.getTraceId(), cmdObjects);
@@ -634,12 +652,8 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             new LinkedBlockingQueue<>(), batchInsertSize, loadData.getSql(),
             loadData.getColumnMetas().stream().map(t -> SqlTypeName.get(t.getDataType().getStringSqlType())).collect(
                 Collectors.toList()), loadData.getOriginFieldTerminatedBy(),
-            Charset.forName(CharsetUtil.getJavaCharset(loadData.getCharset())), loadData.getColumnMetas(), tableName);
-        if (loadData.isExistAutoFillColumn()) {
-            dataContext
-                .setAutoFillColumnIndex(loadData.getColumnMetas().stream().map(ColumnMeta::isAutoIncrement).collect(
-                    Collectors.toList()).indexOf(true));
-        }
+            Charset.forName(CharsetUtil.getJavaCharset(loadData.getCharset())), loadData.getColumnMetas(), tableName,
+            cmdObjects, loadData.getAutoFillColumnIndex());
         dataContext.setSwapColumns(loadData.isSwapColumns());
         if (loadData.isLocal()) {
             handler.sendRequestFilePacket(strSql);
@@ -775,7 +789,8 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
         }
 
         @Override
-        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows) throws Exception {
+        public void sendSelectResult(ResultSet resultSet, AtomicLong outAffectedRows, long sqlSelectLimit)
+            throws Exception {
             throw new UnsupportedOperationException();
         }
 
@@ -810,7 +825,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             handleError(ErrorCode.ERR_HANDLE_DATA, ex, sql, fatal);
         }
 
-        public void handleError(int errCode, Throwable ex, String sql, boolean fatal) {
+        public void handleError(ErrorCode errCode, Throwable ex, String sql, boolean fatal) {
             try {
                 if (isClosed.compareAndSet(false, true)) {
                     serverConnection.setLastSqlStartTime(startTime);

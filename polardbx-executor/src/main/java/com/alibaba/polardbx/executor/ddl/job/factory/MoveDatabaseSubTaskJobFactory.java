@@ -16,15 +16,20 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropLogicalForeignKeyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabaseItemPreparedData;
@@ -47,10 +52,10 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
     @Deprecated
     protected final DDL ddl;
     protected final MoveDatabaseItemPreparedData preparedData;
-    private final List<PhyDdlTableOperation> phyDdlTableOperations;
-    private final Map<String, List<List<String>>> tableTopology;
-    private final Map<String, Set<String>> targetTableTopology;
-    private final Map<String, Set<String>> sourceTableTopology;
+    protected final List<PhyDdlTableOperation> phyDdlTableOperations;
+    protected final Map<String, List<List<String>>> tableTopology;
+    protected final Map<String, Set<String>> targetTableTopology;
+    protected final Map<String, Set<String>> sourceTableTopology;
     protected final ExecutionContext executionContext;
 
     public MoveDatabaseSubTaskJobFactory(DDL ddl, MoveDatabaseItemPreparedData preparedData,
@@ -88,6 +93,10 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
         //1. validate
         //taskList.add(validateTask);
 
+        //1. add logical foreign key
+        DdlTask addLogicalForeignKeyTask = getPushDownForeignKeysTask(schemaName, tableName, true);
+        taskList.add(addLogicalForeignKeyTask);
+
         //2. create physical table
         //2.1 insert meta to complex_task_outline
         taskList.add(addMetaTask);
@@ -116,11 +125,15 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
         //3.2 status: CREATING -> DELETE_ONLY -> WRITE_ONLY -> WRITE_REORG -> READY_TO_PUBLIC
         taskList.addAll(bringUpNewPartitions);
 
+        // drop logical foreign key
+        DdlTask dropLogicalForeignKeyTask = getPushDownForeignKeysTask(schemaName, tableName, false);
+        taskList.add(dropLogicalForeignKeyTask);
+
         //todo(ziyang) cdc ddl mark task
 
         final ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(taskList);
-        executableDdlJob.labelAsHead(addMetaTask);
+        executableDdlJob.labelAsHead(addLogicalForeignKeyTask);
         if (!stayAtCreating) {
             executableDdlJob.labelAsTail(bringUpNewPartitions.get(bringUpNewPartitions.size() - 1));
         } else {
@@ -139,5 +152,16 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
 
     @Override
     protected void sharedResources(Set<String> resources) {
+    }
+
+    DdlTask getPushDownForeignKeysTask(String schemaName, String tableName, boolean add) {
+        TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName);
+        List<ForeignKeyData> pushDownForeignKeys = new ArrayList<>(tableMeta.getForeignKeys().values());
+
+        if (add) {
+            return new AddLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
+        } else {
+            return new DropLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
+        }
     }
 }

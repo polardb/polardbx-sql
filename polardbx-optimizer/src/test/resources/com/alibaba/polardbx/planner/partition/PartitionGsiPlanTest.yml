@@ -1,6 +1,18 @@
 -
   sql: |
 
+    SELECT * FROM login_status_cache as a where a.DEVICE_TOKEN = 'x'
+
+  plan: |
+    project(id="id", user_id="user_id", device_token="device_token", user_token="user_token")
+      bkajoin(condition="id = id and user_id = user_id", type="inner")
+        indexscan(tables="glo_login_status_cache_device_token_index[p12]", sql="select `id`, `user_id`, `device_token` from `glo_login_status_cache_device_token_index` as `glo_login_status_cache_device_token_index` where (`device_token` = 'x')")
+        gather(concurrent=true)
+          logicalview(tables="login_status_cache[p1,p2,p3,...p64]", shardcount=64, sql="select `id`, `user_id`, `user_token` from `login_status_cache` as `login_status_cache` where ((`device_token` = 'x') and (((`id`, `user_id`)) in (...)))")
+
+-
+  sql: |
+
     select t_order.id,t_order.order_snapshot from t_order where t_order.seller_id = 's1';
 
   plan: |
@@ -438,13 +450,11 @@
     select * from t_order where buyer_id = 'b2' and seller_id = 's2' order by order_id;
 
   plan: |
-
-    Project(id="id", order_id="order_id", buyer_id="buyer_id", seller_id="seller_id", order_snapshot="order_snapshot", order_detail="order_detail")
-      BKAJoin(condition="id = id AND order_id <=> order_id", type="inner")
-        IndexScan(tables="g_i_seller[p1]", sql="SELECT `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` FROM `g_i_seller` AS `g_i_seller` WHERE ((`buyer_id` = 'b2') AND (`seller_id` = 's2')) ORDER BY `order_id`")
-        Gather(concurrent=true)
-          LogicalView(tables="t_order[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `order_id`, `order_detail` FROM `t_order` AS `t_order` WHERE (((`buyer_id` = 'b2') AND (`seller_id` = 's2')) AND (`id` IN (...)))")
-
+    project(id="id", order_id="order_id", buyer_id="buyer_id", seller_id="seller_id", order_snapshot="order_snapshot", order_detail="order_detail")
+      bkajoin(condition="id = id and order_id <=> order_id", type="inner")
+        indexscan(tables="g_i_seller[p1]", sql="select `id`, `order_id`, `buyer_id`, `seller_id`, `order_snapshot` from `g_i_seller` as `g_i_seller` where ((`buyer_id` = 'b2') and (`seller_id` = 's2')) order by `order_id`")
+        gather(concurrent=true)
+          logicalview(tables="t_order[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `order_id`, `order_detail` from `t_order` as `t_order` where ((`buyer_id` = 'b2') and (`seller_id` = 's2') and (`id` in (...)))")
 
 -
   sql: |
@@ -586,28 +596,28 @@
     /*+TDDL:cmd_extra(enable_post_planner=false)*/select a.*, b.k2,b.value from test_index a join test_index b on a.k1 = b.k2 where a.id = 1;
 
   plan: |
-    Project(id="id", k1="k1", k2="k2", value="value", k20="k20", value0="value0")
-      BKAJoin(condition="id0 = id", type="inner")
-        BKAJoin(condition="k2 = k1", type="inner")
-          LogicalView(tables="test_index[p6]", sql="SELECT `id`, `k1`, `k2`, `value` FROM `test_index` AS `test_index` WHERE (`id` = 1)")
-          Gather(concurrent=true)
-            IndexScan(tables="idx_k21[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `k2` FROM `idx_k21` AS `idx_k21` WHERE (`k2` IN (...))")
-        Gather(concurrent=true)
-          LogicalView(tables="test_index[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `value` FROM `test_index` AS `test_index` WHERE (`id` IN (...))")
+    bkajoin(condition="k2 = k1", type="inner")
+      logicalview(tables="test_index[p6]", sql="select `id`, `k1`, `k2`, `value` from `test_index` as `test_index` where (`id` = 1)")
+      project(k2="k2", value="value")
+        bkajoin(condition="id = id", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="idx_k21[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `k2` from `idx_k21` as `idx_k21` where (`k2` in (...))")
+          gather(concurrent=true)
+            logicalview(tables="test_index[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `value` from `test_index` as `test_index` where (`id` in (...))")
 
 - sql: |
     select * from test_index join test_index_join on test_index.k1 = test_index_join.k where test_index_join.id = 1;
 
   plan: |
-    Project(id0="id0", k1="k1", k2="k2", value="value", id="id", k="k")
-      BKAJoin(condition="id0 = id", type="inner")
-        BKAJoin(condition="k = k1", type="inner")
-          LogicalView(tables="test_index_join[p4]", sql="SELECT `id`, `k` FROM `test_index_join` AS `test_index_join` WHERE (`id` = 1)")
-          Gather(concurrent=true)
-            IndexScan(tables="idx_k1[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `k1` FROM `idx_k1` AS `idx_k1` WHERE (`k1` IN (...))")
-        Gather(concurrent=true)
-          LogicalView(tables="test_index[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `k2`, `value` FROM `test_index` AS `test_index` WHERE (`id` IN (...))")
-
+    project(id0="id0", k1="k1", k2="k2", value="value", id="id", k="k")
+      bkajoin(condition="k = k1", type="inner")
+        logicalview(tables="test_index_join[p4]", sql="select `id`, `k` from `test_index_join` as `test_index_join` where (`id` = 1)")
+        project(id="id", k1="k1", k2="k2", value="value")
+          bkajoin(condition="id = id", type="inner")
+            gather(concurrent=true)
+              indexscan(tables="idx_k1[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `k1` from `idx_k1` as `idx_k1` where (`k1` in (...))")
+            gather(concurrent=true)
+              logicalview(tables="test_index[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `k2`, `value` from `test_index` as `test_index` where (`id` in (...))")
 - sql: |
     select * from test_index_join join test_index a on a.k1 = test_index_join.k join test_index b on b.k1 = test_index_join.k where test_index_join.id = 1;
 
@@ -702,15 +712,14 @@
         WHERE test_index_join.id = 1;
 
   plan: |
-
-    Project(id="id", k="k", id0="id0", k1="k1", k2="k2", value="value")
-      BKAJoin(condition="id0 = id", type="inner")
-        BKAJoin(condition="k = k1", type="inner")
-          LogicalView(tables="test_index_join[p4]", sql="SELECT `id`, `k` FROM `test_index_join` AS `test_index_join` WHERE (`id` = 1)")
-          Gather(concurrent=true)
-            IndexScan(tables="idx_k1[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `k1` FROM `idx_k1` AS `idx_k1` WHERE (`k1` IN (...))")
-        Gather(concurrent=true)
-          LogicalView(tables="test_index[p1,p2,p3,p4,p5,p6]", shardCount=6, sql="SELECT `id`, `k2`, `value` FROM `test_index` AS `test_index` WHERE ((`value` IN('nsdafcA7NsqZHfhhqnZWnpLZWn9ipshREgHQpqWZ', 'ROpWjbnxdYLV8PRhMRPRHfPzKVy5w1gqmybzMBVU')) AND (`id` IN (...)))")
+    bkajoin(condition="k = k1", type="inner")
+      logicalview(tables="test_index_join[p4]", sql="select `id`, `k` from `test_index_join` as `test_index_join` where (`id` = 1)")
+      project(id="id", k1="k1", k2="k2", value="value")
+        bkajoin(condition="id = id", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="idx_k1[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `k1` from `idx_k1` as `idx_k1` where (`k1` in (...))")
+          gather(concurrent=true)
+            logicalview(tables="test_index[p1,p2,p3,p4,p5,p6]", shardcount=6, sql="select `id`, `k2`, `value` from `test_index` as `test_index` where ((`value` in('nsdafca7nsqzhfhhqnzwnplzwn9ipshreghqpqwz', 'ropwjbnxdylv8prhmrprhfpzkvy5w1gqmybzmbvu')) and (`id` in (...)))")
 
 -
   sql: |
@@ -739,20 +748,18 @@
     select * from customer, orders where c_custkey = o_custkey and c_name = 'Customer#000000004';
 
   plan: |
-
-    Project(c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_mktsegment="c_mktsegment", c_comment="c_comment", o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
-      bkajoin(condition="o_orderkey = o_orderkey", type="inner")
-        BKAJoin(condition="o_custkey = c_custkey", type="inner")
-          Project(c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_mktsegment="c_mktsegment", c_comment="c_comment")
-            BKAJoin(condition="c_custkey = c_custkey", type="inner")
-              IndexScan(tables="customer_idx_name[p3]", sql="SELECT `c_custkey`, `c_name` FROM `customer_idx_name` AS `customer_idx_name` WHERE (`c_name` = 'Customer#000000004')")
-              Gather(concurrent=true)
-                LogicalView(tables="customer[p1,p2,p3,p4]", shardCount=4, sql="SELECT `c_custkey`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` FROM `customer` AS `customer` WHERE ((`c_name` = 'Customer#000000004') AND (`c_custkey` IN (...)))")
-          Gather(concurrent=true)
-            IndexScan(tables="orders_idx_custkey[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_custkey` FROM `orders_idx_custkey` AS `orders_idx_custkey` WHERE (`o_custkey` IN (...))")
-        Gather(concurrent=true)
-          LogicalView(tables="orders[p1,p2,p3,p4]", shardCount=4, sql="SELECT `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` FROM `orders` AS `orders` WHERE (`o_orderkey` IN (...))")
-
+    bkajoin(condition="o_custkey = c_custkey", type="inner")
+      project(c_custkey="c_custkey", c_name="c_name", c_address="c_address", c_nationkey="c_nationkey", c_phone="c_phone", c_acctbal="c_acctbal", c_mktsegment="c_mktsegment", c_comment="c_comment")
+        bkajoin(condition="c_custkey = c_custkey", type="inner")
+          indexscan(tables="customer_idx_name[p3]", sql="select `c_custkey`, `c_name` from `customer_idx_name` as `customer_idx_name` where (`c_name` = 'customer#000000004')")
+          gather(concurrent=true)
+            logicalview(tables="customer[p1,p2,p3,p4]", shardcount=4, sql="select `c_custkey`, `c_address`, `c_nationkey`, `c_phone`, `c_acctbal`, `c_mktsegment`, `c_comment` from `customer` as `customer` where ((`c_name` = 'customer#000000004') and (`c_custkey` in (...)))")
+      project(o_orderkey="o_orderkey", o_custkey="o_custkey", o_orderstatus="o_orderstatus", o_totalprice="o_totalprice", o_orderdate="o_orderdate", o_orderpriority="o_orderpriority", o_clerk="o_clerk", o_shippriority="o_shippriority", o_comment="o_comment")
+        bkajoin(condition="o_orderkey = o_orderkey", type="inner")
+          gather(concurrent=true)
+            indexscan(tables="orders_idx_custkey[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_custkey` from `orders_idx_custkey` as `orders_idx_custkey` where (`o_custkey` in (...))")
+          gather(concurrent=true)
+            logicalview(tables="orders[p1,p2,p3,p4]", shardcount=4, sql="select `o_orderkey`, `o_orderstatus`, `o_totalprice`, `o_orderdate`, `o_orderpriority`, `o_clerk`, `o_shippriority`, `o_comment` from `orders` as `orders` where (`o_orderkey` in (...))")
 
 -
   sql: |

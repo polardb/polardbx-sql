@@ -18,8 +18,8 @@ package com.alibaba.polardbx.executor.archive.columns;
 
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.PolarDBXOrcSchema;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.BigBitType;
 import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -42,7 +42,7 @@ public class ColumnProviders {
 
     static {
         // init collation handlers for all collation names.
-        for(CollationName collationName : CollationName.values()) {
+        for (CollationName collationName : CollationName.values()) {
             VARCHAR_COLUMN_PROVIDERS.put(
                 collationName, new VarcharColumnProvider(collationName));
         }
@@ -53,6 +53,8 @@ public class ColumnProviders {
     public static final ColumnProvider<Long> UNSIGNED_LONG_COLUMN_PROVIDER = new UnsignedLongColumnProvider();
 
     public static final ColumnProvider<Integer> INTEGER_COLUMN_PROVIDER = new IntegerColumnProvider();
+
+    public static final ColumnProvider<Integer> BIT_COLUMN_PROVIDER = new BitColumnProvider();
 
     public static final ColumnProvider<Short> SHORT_COLUMN_PROVIDER = new ShortColumnProvider();
 
@@ -178,7 +180,7 @@ public class ColumnProviders {
                 return BIG_BIT_COLUMN_PROVIDER;
             } else {
                 // for bit
-                return INTEGER_COLUMN_PROVIDER;
+                return BIT_COLUMN_PROVIDER;
             }
             /* =========== Float-point Numeric ============ */
         case MYSQL_TYPE_DOUBLE:

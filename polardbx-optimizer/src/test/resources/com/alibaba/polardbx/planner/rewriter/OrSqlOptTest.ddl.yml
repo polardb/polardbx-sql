@@ -1,0 +1,20 @@
+user_log:
+  CREATE TABLE user_log(
+  userId int,
+  name varchar(30),
+  operation varchar(30),
+  actionDate varchar(30)
+  ) dbpartition by hash(userId) tbpartition by HASH(actionDate) tbpartitions 7;
+
+apple:
+  CREATE TABLE `APPLE` (
+  `id` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
+  `name` varchar(30) DEFAULT NULL,
+  `pick_date` DATE DEFAULT NULL,
+  `origin_place` varchar(30) DEFAULT NULL,
+  `price` double NOT NULL,
+  `size` double NOT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`id`)
+
+

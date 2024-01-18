@@ -16,6 +16,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlFlashbackStatement extends MySqlStatementImpl {
@@ -50,5 +51,10 @@ public class MySqlFlashbackStatement extends MySqlStatementImpl {
             x.setParent(this);
         }
         this.renameTo = x;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

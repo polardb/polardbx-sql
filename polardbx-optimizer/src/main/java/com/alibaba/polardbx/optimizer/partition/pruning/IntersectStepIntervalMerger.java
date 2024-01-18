@@ -56,7 +56,7 @@ public class IntersectStepIntervalMerger implements StepIntervalMerger {
         List<StepIntervalInfo> resultRngs = new ArrayList<>();
         StepIntervalInfo mergedRng = PartitionPruneStepIntervalAnalyzer
             .mergeIntervalsForIntersectStep(this.partInfo, context, pruningCtx, this.rangeBoundDatumCollection,
-                this.rangeStepCollection);
+                this.rangeStepCollection, this.intersectStep);
 
         resultRngs.add(mergedRng);
         if (!stopMergingIntervalList.isEmpty()) {

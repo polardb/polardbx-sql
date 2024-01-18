@@ -27,7 +27,7 @@ import com.google.common.collect.Queues;
 import java.util.Collections;
 import java.util.IllegalFormatException;
 import java.util.Iterator;
-import java.util.List;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Queue;
 
@@ -120,8 +120,8 @@ public class ModuleLogInfo implements ModuleInfo {
             return;
         }
         Queue<LogUnit> l = moduleLog.computeIfAbsent(m, k -> Queues.newConcurrentLinkedQueue());
-        if (l.size() > MAX_LOG_SIZE) {
-            l.remove(0);
+        if (l.size() >= MAX_LOG_SIZE) {
+            l.remove();
         }
         l.add(new LogUnit(System.currentTimeMillis(), lp, params, level, traceInfo));
     }
@@ -138,6 +138,8 @@ public class ModuleLogInfo implements ModuleInfo {
                              Throwable t) {
         Logger logger = getLogger(m.getLoggerName());
         String logLine = String.format(lp.getPattern(), (Object[]) params) + "#" + traceInfo;
+        // remove /n
+        logLine = logLine.replaceAll("\n", " ").trim();
         try {
             switch (level) {
             case NORMAL:
@@ -275,7 +277,7 @@ public class ModuleLogInfo implements ModuleInfo {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
         for (int i = 0; i < 100000; i++) {
             ModuleLogInfo.getInstance()
-                .logRecord(Module.STATISTIC, START_OVER, new String[] {"test", "test"}, LogLevel.NORMAL);
+                .logRecord(Module.STATISTICS, START_OVER, new String[] {"test", "test"}, LogLevel.NORMAL);
         }
     }
 }

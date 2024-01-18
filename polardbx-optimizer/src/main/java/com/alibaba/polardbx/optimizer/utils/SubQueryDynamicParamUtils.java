@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.utils;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.context.ScalarSubQueryExecContext;
@@ -60,17 +61,20 @@ public class SubQueryDynamicParamUtils {
         /**
          * Use convertToDynamicValue to process null value
          */
-        Object sbResult =  convertToDynamicValue(subQueryValue);
+        Object sbResult = convertToDynamicValue(subQueryValue);
 
         ctx.setSubQueryResult(sbResult);
         scalarSubQueryCtxMaps.put(relatedId, ctx);
         return true;
     }
 
+    // TODO Try to handle cursor value using same api with com.alibaba.polardbx.optimizer.utils.RexUtils.getValueFromRexNode
     private static Object convertToDynamicValue(Object rawValue) {
         Object dynamicFinalValue = null;
         if (rawValue == null) {
             dynamicFinalValue = RexDynamicParam.DYNAMIC_SPECIAL_VALUE.EMPTY;
+        } else if (rawValue instanceof Decimal) {
+            dynamicFinalValue = ((Decimal) rawValue).toBigDecimal();
         } else if (rawValue instanceof Slice) {
             dynamicFinalValue = ((Slice) rawValue).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
         } else if (rawValue instanceof UInt64) {
@@ -81,7 +85,8 @@ public class SubQueryDynamicParamUtils {
         return dynamicFinalValue;
     }
 
-    public static boolean tryExecAndFetchScalarSubQueryConstantValue(RexDynamicParam sbRex, ExecutionContext ec, Object[] valueResults) {
+    public static boolean tryExecAndFetchScalarSubQueryConstantValue(RexDynamicParam sbRex, ExecutionContext ec,
+                                                                     Object[] valueResults) {
         IScalarSubqueryExecHelper execHelper = SubQueryDynamicParamUtils.scalarSubQueryExecHelper;
         if (execHelper == null) {
             return false;
@@ -128,7 +133,7 @@ public class SubQueryDynamicParamUtils {
         if (valType == RexDynamicParam.DYNAMIC_TYPE_VALUE.SUBQUERY_TEMP_VAR) {
             val = sbExecCtx.nextValue();
         } else {
-            val  = sbExecCtx.getSubQueryResult();
+            val = sbExecCtx.getSubQueryResult();
         }
 
         if (val == null) {

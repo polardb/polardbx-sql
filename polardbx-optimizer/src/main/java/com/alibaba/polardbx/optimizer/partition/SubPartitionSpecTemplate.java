@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.partition;
 
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
+
 /**
  * The definition of one (sub)partition
  *

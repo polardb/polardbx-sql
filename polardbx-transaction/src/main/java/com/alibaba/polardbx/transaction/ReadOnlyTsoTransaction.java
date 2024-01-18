@@ -21,10 +21,9 @@ import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -36,26 +35,20 @@ import org.apache.commons.lang.StringUtils;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.HashMap;
-import java.util.Map;
-
-import static com.alibaba.polardbx.transaction.TransactionConnectionHolder.needReadLsn;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author zhuangtianyi
  */
 public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITsoTransaction {
     private final static Logger logger = LoggerFactory.getLogger(ReadOnlyTsoTransaction.class);
-    private final boolean consistentReplicaRead;
 
     private long snapshotTimestamp = -1;
-    private final Map<String, Long> lsnMap = new HashMap<>();
+    private final ConcurrentHashMap<String, Long> dnLsnMap = new ConcurrentHashMap<>();
 
     public ReadOnlyTsoTransaction(ExecutionContext executionContext,
                                   TransactionManager manager) {
         super(executionContext, manager);
-        this.consistentReplicaRead = executionContext.getParamManager().getBoolean(
-            ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ);
 
         final String schemaName = executionContext.getSchemaName();
         if (!StringUtils.isEmpty(schemaName)) {
@@ -67,9 +60,17 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     @Override
     public long getSnapshotSeq() {
         if (snapshotTimestamp < 0) {
-            snapshotTimestamp = nextTimestamp();
+            snapshotTimestamp = nextTimestamp(t -> stat.getTsoTime += t);
         }
         return snapshotTimestamp;
+    }
+
+    @Override
+    public void tryClose() throws SQLException {
+        //The super method will set the flag(close) true.
+        if (isClosed()) {
+            return;
+        }
     }
 
     @Override
@@ -80,80 +81,37 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     @Override
     public void updateSnapshotTimestamp() {
         if (!this.autoCommit && isolationLevel == Connection.TRANSACTION_READ_COMMITTED) {
-            snapshotTimestamp = nextTimestamp();
+            snapshotTimestamp = nextTimestamp(t -> stat.getTsoTime += t);
         }
     }
 
     @Override
     public IConnection getConnection(String schemaName, String group, IDataSource ds, RW rw, ExecutionContext ec)
         throws SQLException {
+        if (!begun) {
+            statisticSchema = schemaName;
+            recordTransaction();
+            begun = true;
+        }
 
+        MasterSlave masterSlave = ExecUtils.getMasterSlave(
+            false, rw.equals(ITransaction.RW.WRITE), executionContext);
+        IConnection conn = super.getRealConnection(schemaName, group, ds, masterSlave);
+        conn = new DeferredConnection(conn, ec.getParamManager().getBoolean(
+            ConnectionParams.USING_RDS_RESULT_SKIP));
+
+        /**
+         * Here must get TSO for slave connection before fetch the LSN!
+         */
         lock.lock();
         try {
-            MasterSlave masterSlave = ExecUtils.getMasterSlave(
-                false, rw.equals(ITransaction.RW.WRITE), executionContext);
-
-            boolean needReadLsn = needReadLsn(this, schemaName, masterSlave, consistentReplicaRead);
-            IConnection conn = super.getSelfConnection(schemaName, group, ds, masterSlave);
-
-            if (needReadLsn) {
-                TopologyHandler topology;
-                if (schemaName != null) {
-                    topology = ExecutorContext.getContext(schemaName).getTopologyExecutor().getTopology();
-                } else {
-                    topology = ((com.alibaba.polardbx.transaction.TransactionManager) manager).getTransactionExecutor()
-                        .getTopology();
-                }
-                ExecUtils.getLsn(topology, group, lsnMap);
-                Long masterLsn = lsnMap.get(group);
-                conn.executeLater("SET read_lsn = " + masterLsn.toString());
-            }
-            conn = new DeferredConnection(conn, ec.getParamManager().getBoolean(
-                ConnectionParams.USING_RDS_RESULT_SKIP));
-            sendSnapshotSeq(conn);
-            return conn;
+            getSnapshotSeq();
         } finally {
             lock.unlock();
         }
-    }
-
-    @Override
-    public void tryClose() throws SQLException {
-        if (isClosed()) {
-            return;
-        }
-
-        // TConnection 每次执行完语句会调用 tryClose
-        if (autoCommit) {
-            rollback();
-        }
-    }
-
-    @Override
-    public void tryClose(IConnection conn, String groupName) throws SQLException {
-        try {
-            if (conn.isWrapperFor(XConnection.class)) {
-                super.tryClose(conn, groupName);
-                return;
-            }
-        } catch (SQLException ignored) {
-            // Is jdbc connection
-        }
-
-        lock.lock();
-        try {
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute("ROLLBACK");
-            } catch (Throwable e) {
-                logger.error("Cleanup readonly transaction branch failed on " + groupName, e);
-                discard(groupName, conn, e);
-                return;
-            }
-
-            this.getConnectionHolder().tryClose(conn, groupName);
-        } finally {
-            lock.unlock();
-        }
+        conn = sendLsn(conn, schemaName, group, masterSlave, this::getSnapshotSeq);
+        sendSnapshotSeq(conn);
+        return conn;
     }
 
     @Override
@@ -184,4 +142,10 @@ public class ReadOnlyTsoTransaction extends AutoCommitTransaction implements ITs
     public ITransactionPolicy.TransactionClass getTransactionClass() {
         return ITransactionPolicy.TransactionClass.TSO_READONLY;
     }
+
+    @Override
+    public TransactionType getType() {
+        return TransactionType.TSO_RO;
+    }
+
 }

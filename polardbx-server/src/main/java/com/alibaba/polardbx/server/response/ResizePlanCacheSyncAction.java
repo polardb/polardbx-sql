@@ -28,6 +28,10 @@ public class ResizePlanCacheSyncAction implements ISyncAction {
 
     private int newSize;
 
+    public ResizePlanCacheSyncAction() {
+
+    }
+
     public ResizePlanCacheSyncAction(int newSize) {
         this.newSize = newSize;
     }
@@ -49,5 +53,13 @@ public class ResizePlanCacheSyncAction implements ISyncAction {
             oldInfo.getKeyCount(), oldInfo.getCapacity(),
             newInfo.getKeyCount(), newInfo.getCapacity()});
         return result;
+    }
+
+    public int getNewSize() {
+        return newSize;
+    }
+
+    public void setNewSize(int newSize) {
+        this.newSize = newSize;
     }
 }

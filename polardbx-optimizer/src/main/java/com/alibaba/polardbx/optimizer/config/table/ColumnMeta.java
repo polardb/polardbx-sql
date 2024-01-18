@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -231,4 +232,17 @@ public class ColumnMeta implements Serializable {
         return (flag & ColumnsRecord.FLAG_BINARY_DEFAULT) != 0L;
     }
 
+    public boolean isLogicalGeneratedColumn() {
+        return (flag & ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN) != 0L;
+    }
+
+    public boolean isGeneratedColumn() {
+        return field.getExtra() != null && (field.getExtra().equalsIgnoreCase("VIRTUAL GENERATED") || field.getExtra()
+            .equalsIgnoreCase("STORED GENERATED"));
+    }
+
+    public boolean isDefaultExpr() {
+        return (flag & ColumnsRecord.FLAG_DEFAULT_EXPR) != 0L && !StringUtils.isEmpty(field.getUnescapeDefault())
+            && !isGeneratedColumn();
+    }
 }

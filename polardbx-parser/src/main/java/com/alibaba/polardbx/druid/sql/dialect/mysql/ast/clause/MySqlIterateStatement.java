@@ -15,29 +15,33 @@
  */
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause;
 
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatementImpl;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
- * 
  * @author zz [455910092@qq.com]
  */
 public class MySqlIterateStatement extends MySqlStatementImpl {
-	
-	private String labelName;
-	
-	@Override
+
+    private String labelName;
+
+    @Override
     public void accept0(MySqlASTVisitor visitor) {
-		visitor.visit(this);
+        visitor.visit(this);
         visitor.endVisit(this);
     }
 
-	public String getLabelName() {
-		return labelName;
-	}
+    public String getLabelName() {
+        return labelName;
+    }
 
-	public void setLabelName(String labelName) {
-		this.labelName = labelName;
-	}
-    
+    public void setLabelName(String labelName) {
+        this.labelName = labelName;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

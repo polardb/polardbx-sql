@@ -21,17 +21,28 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 public class MySqlShowBinLogEventsStatement extends MySqlStatementImpl implements MySqlShowStatement {
 
+    private SQLExpr with;
     private SQLExpr in;
     private SQLExpr from;
     private SQLLimit limit;
 
+    @Override
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
+            acceptChild(visitor, with);
             acceptChild(visitor, in);
             acceptChild(visitor, from);
             acceptChild(visitor, limit);
         }
         visitor.endVisit(this);
+    }
+
+    public SQLExpr getWith() {
+        return with;
+    }
+
+    public void setWith(SQLExpr with) {
+        this.with = with;
     }
 
     public SQLExpr getIn() {

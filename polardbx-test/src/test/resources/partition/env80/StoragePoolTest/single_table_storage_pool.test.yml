@@ -1,0 +1,113 @@
+storageList: [$dn1, $dn2, $dn3, $dn4, $dn5, $dn6, $dn7, $dn8]
+testCases:
+  ## first pass, create database and table
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists orders_comm3;"
+      - "create database  orders_comm3 mode = 'auto'
+       LOCALITY = \"storage_pools='sp1',primary_storage_pool='sp1'\"
+      "
+      - "use orders_comm3;"
+      - "drop table if exists orders_region1;"
+      - "drop table if exists orders_region2;"
+      - "drop table if exists orders_region3;"
+      - "drop table if exists commidty;"
+      - "create table commodity(
+      commodity_id int,
+      commodity_name varchar(64)
+      ) BROADCAST;"
+      - "CREATE TABLE orders_region1(
+          order_id int AUTO_INCREMENT primary key,
+          customer_id int,
+          country varchar(64),
+          city int,
+          order_time datetime not null) single"
+      - "CREATE TABLE orders_region2(
+          order_id int AUTO_INCREMENT primary key,
+          customer_id int,
+          country varchar(64),
+          city int,
+          order_time datetime not null) single;"
+      - "CREATE TABLE orders_region3(
+          order_id int AUTO_INCREMENT primary key,
+          customer_id int,
+          country varchar(64),
+          city int,
+          order_time datetime not null) single;"
+    dbNames: [orders_comm3]
+    rejectDDls:
+      - ddl: "drop storage pool sp2;"
+        message: "The storage pool definition contains storage inst still in use!"
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7,$dn8" "$dn7"
+        - _recycle "" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+        - orders_comm3 $dn3,$dn4
+      localityValueCheck:
+      tableGroupMatchCheck:
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - orders_comm3.orders_region1 table $dn3,$dn4
+        - orders_comm3.orders_region2 table $dn3,$dn4
+        - orders_comm3.orders_region3 table $dn3,$dn4
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+  ## second pass, split partition and add partition
+  - prepareDDls:
+      - "use polardbx"
+      - "alter database orders_comm3 set locality = \"storage_pools='sp1,sp2',primary_storage_pool='sp1'\""
+      - "use orders_comm3"
+      - "ALTER TABLE orders_region1 single LOCALITY = \"storage_pools='sp2'\";"
+      - "alter table orders_region3 partition by hash(order_id) partitions 16 LOCALITY = \"storage_pools='sp2'\";"
+    dbNames: [orders_comm3]
+    rejectDDls:
+      - ddl: "alter table orders_region1 move partitions p1 to '$dn2'"
+        message: "alter tablegroup operation not compatebale with partition"
+    expectedSQLs:
+    cleanupDDls:
+      - "use polardbx;"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+    checkActions:
+      storagePoolValueCheck:
+        - sp1 "$dn3,$dn4" "$dn3"
+        - sp2 "$dn5,$dn6" "$dn5"
+        - sp3 "$dn7,$dn8" "$dn7"
+        - _recycle "" ""
+        - _default "$dn1,$dn2" $dn1
+      datasourceCheck:
+        - test_db1 $dn3,$dn4
+        - test_db2 $dn5,$dn6
+        - test_db3 $dn3,$dn4,$dn5,$dn6
+        - old_auto_database $dn1,$dn2
+        - old_auto_database2 $dn1,$dn2
+        - orders_comm3 $dn3,$dn4,$dn5,$dn6
+      localityValueCheck:
+        - orders_comm3.orders_region1 table "storage_pools='sp2',primary_storage_pool='sp2'"
+        - orders_comm3.orders_region3 table "storage_pools='sp2',primary_storage_pool='sp2'"
+      tableGroupMatchCheck:
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - orders_comm3.orders_region1 table $dn5,$dn6
+        - orders_comm3.orders_region2 table $dn3,$dn4
+        - orders_comm3.orders_region3 table $dn5,$dn6
+cleanupDDls:
+  - "use polardbx;"

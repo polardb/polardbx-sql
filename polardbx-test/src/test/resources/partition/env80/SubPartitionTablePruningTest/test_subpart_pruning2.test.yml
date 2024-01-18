@@ -1,0 +1,86 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table if not exists h_rtodays_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range (to_days(c))
+(
+partition p1
+(
+subpartition p1sp1 values less than ( to_days('2020-01-01') ),
+subpartition p1sp2 values less than ( maxvalue )
+),
+partition p2
+(
+subpartition p2sp1 values less than ( to_days('2020-01-01') ),
+subpartition p2sp2 values less than ( to_days('2021-01-01') ),
+subpartition p2sp3 values less than ( maxvalue )
+),
+partition p3
+(
+subpartition p3sp1 values less than ( to_days('2020-01-01') ),
+subpartition p3sp2 values less than ( to_days('2021-01-01') ),
+subpartition p3sp3 values less than ( maxvalue )
+),partition p4
+(
+subpartition p4sp1 values less than ( to_days('2020-01-01') ),
+subpartition p4sp2 values less than ( to_days('2021-01-01') ),
+subpartition p4sp3 values less than ( maxvalue )
+)
+);
+
+  ## route to p4sp1
+insert into h_rtodays_ntp values(0, 1, '2018-01-01', 'A', 'B');
+select part_route('','h_rtodays_ntp', 0,1,'2018-01-01') as route_rs;
+select * from h_rtodays_ntp where a=0 and b=1 and c='2018-01-01';
+select * from h_rtodays_ntp partition(p4sp1);
+
+create table if not exists h_hsubstr_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by hash (substr(d,2)) subpartitions 4;
+
+insert into h_hsubstr_ntp values(0, 1, '2018-01-01', 'A', 'B');
+select part_route('','h_hsubstr_ntp', 0,1,'A') as route_rs;
+select * from h_hsubstr_ntp where a=0 and b=1 and d='A';
+select * from h_hsubstr_ntp partition(p2sp3);
+
+create table if not exists h_rsubstr_ntp (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 2
+subpartition by range (substr(d,2))
+(
+  partition p1 (
+    subpartition p1sp1 values less than ( substr('0abc',2) ),
+    subpartition p1sp2 values less than ( maxvalue )
+  ),
+  partition p2 (
+    subpartition p2sp1 values less than ( substr('0abc', 2) ),
+    subpartition p2sp2 values less than ( substr('0efg', 2) ),
+    subpartition p2sp3 values less than ( maxvalue )
+  )
+);
+show create table h_rsubstr_ntp;
+  ## route to p2sp2
+insert into h_rsubstr_ntp values(0, 1, '2018-01-01', '0efc', 'B');
+select part_route('','h_rsubstr_ntp', 0,1,'0efc') as route_rs;
+select * from h_rsubstr_ntp where a=0 and b=1 and d='0efc';
+select * from h_rsubstr_ntp partition(p2sp2);
+
+explain select * from h_rsubstr_ntp where a=0 and b=1 and d between '0efa' and '0efd';
+select * from h_rsubstr_ntp where a=0 and b=1 and d between '0efa' and '0efd';

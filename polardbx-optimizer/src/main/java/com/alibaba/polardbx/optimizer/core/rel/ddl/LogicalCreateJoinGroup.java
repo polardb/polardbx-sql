@@ -40,6 +40,16 @@ public class LogicalCreateJoinGroup extends BaseDdlOperation {
         return ((SqlCreateJoinGroup) nativeSqlNode).getSchemaName();
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public String getTableJoinName() {
         return ((SqlCreateJoinGroup) nativeSqlNode).getTableJoinName();
     }

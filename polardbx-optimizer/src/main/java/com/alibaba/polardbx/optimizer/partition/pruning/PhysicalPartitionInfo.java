@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+
 /**
  * @author chenghui.lch
  */
@@ -24,8 +26,10 @@ public class PhysicalPartitionInfo {
     protected Long partId;
     protected Integer partBitSetIdx;
     protected String partName;
+    protected String parentPartName;
     protected String groupKey;
     protected String phyTable;
+
     public PhysicalPartitionInfo() {
     }
 
@@ -75,5 +79,13 @@ public class PhysicalPartitionInfo {
 
     public void setPhyTable(String phyTable) {
         this.phyTable = phyTable;
+    }
+
+    public String getParentPartName() {
+        return parentPartName;
+    }
+
+    public void setParentPartName(String parentPartName) {
+        this.parentPartName = parentPartName;
     }
 }

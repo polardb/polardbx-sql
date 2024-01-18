@@ -29,11 +29,11 @@ public class SQLDropFunctionStatement extends SQLStatementImpl implements SQLDro
     private boolean temporary;
 
     public SQLDropFunctionStatement() {
-        
+
     }
-    
+
     public SQLDropFunctionStatement(DbType dbType) {
-        super (dbType);
+        super(dbType);
     }
 
     @Override

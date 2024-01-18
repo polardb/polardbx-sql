@@ -25,15 +25,19 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillExecutor;
 import com.alibaba.polardbx.executor.archive.writer.OSSBackFillWriterTask;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.FileStorageAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.SchemaEvolutionAccessorDelegate;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.engine.FileSystemUtils;
+import com.alibaba.polardbx.gms.metadb.evolution.ColumnMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetaAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesAccessor;
@@ -51,29 +55,32 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Getter
 @TaskName(name = "CreateOssTableGenerateDataTask")
 public class CreateOssTableGenerateDataTask extends BaseGmsTask {
 
-    private final PhysicalPlanData physicalPlanData;
+    protected final PhysicalPlanData physicalPlanData;
 
-    private final String loadTableSchema;
+    protected final String loadTableSchema;
 
-    private final String loadTableName;
+    protected final String loadTableName;
 
-    private final Engine tableEngine;
+    protected final Engine tableEngine;
 
-    private final ArchiveMode archiveMode;
+    protected final ArchiveMode archiveMode;
 
     @JSONCreator
     public CreateOssTableGenerateDataTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData,
-                                          String loadTableSchema, String loadTableName, Engine tableEngine, ArchiveMode archiveMode) {
+                                          String loadTableSchema, String loadTableName, Engine tableEngine,
+                                          ArchiveMode archiveMode) {
         super(schemaName, logicalTableName);
         this.physicalPlanData = physicalPlanData;
         this.loadTableSchema = loadTableSchema;
@@ -90,12 +97,12 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        executionContext.setBackfillId(getTaskId());
         new FileStorageAccessorDelegate<Integer>() {
             @Override
             protected Integer invoke() {
                 // don't continue the ddl if it was paused
-                List<FilesRecord> files = filesAccessor.queryByIdAndSchemaAndTable(getTaskId(), schemaName, logicalTableName);
+                List<FilesRecord> files =
+                    filesAccessor.queryByIdAndSchemaAndTable(getTaskId(), schemaName, logicalTableName);
                 if (files != null && files.size() > 0) {
                     throw new TddlRuntimeException(ErrorCode.ERR_CANT_CONTINUE_DDL);
                 }
@@ -103,7 +110,6 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
             }
         }.execute();
 
-        // don't load table or generate data here.
         if (isLoadTable()) {
             loadTable(executionContext);
         }
@@ -122,10 +128,15 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
                 }
             }
         }
+
+        CommonMetaChanger.clearOSSFileSystemCache(
+            files.stream().map(FilesRecord::getLocalPath).collect(Collectors.toList()), schemaName);
+
         //delete table meta
         TableMetaChanger.deleteOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
 
-        List<ColumnMetasRecord> columnMetas = TableMetaChanger.lockOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
+        List<ColumnMetasRecord> columnMetas =
+            TableMetaChanger.lockOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (ColumnMetasRecord record : columnMetas) {
             FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.tableEngine);
         }
@@ -137,16 +148,32 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
         manager.deleteByBackfillId(getTaskId());
     }
 
-    private void loadTable(ExecutionContext executionContext) {
+    protected void loadTable(ExecutionContext executionContext) {
+
         Map<Pair<String, String>, OSSBackFillWriterTask> tasks = null;
         try {
+
             String sourceLogicalSchema = this.loadTableSchema;
             String sourceLogicalTable = this.loadTableName;
             String targetLogicalSchema = physicalPlanData.getSchemaName();
             String targetLogicalTable = physicalPlanData.getLogicalTableName();
 
+            // for loading table, we should read field_id from gms
+            Map<String, String> columnToFieldIdMap = new SchemaEvolutionAccessorDelegate<Map<String, String>>() {
+                @Override
+                protected Map<String, String> invoke() {
+                    Map<String, String> map = TreeMaps.caseInsensitiveMap();
+                    for (ColumnMappingRecord record :
+                        columnMappingAccessor.querySchemaTable(targetLogicalSchema, targetLogicalTable)) {
+                        map.put(record.getColumnName(), record.getFieldIdString());
+                    }
+                    return map;
+                }
+            }.execute();
+
             ExecutionContext sourceDbContext = executionContext.copy();
             sourceDbContext.setSchemaName(sourceLogicalSchema);
+            sourceDbContext.setBackfillId(getTaskId());
 
             TableMeta sourceTableMeta =
                 executionContext.getSchemaManager(sourceLogicalSchema).getTable(sourceLogicalTable);
@@ -156,7 +183,8 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
             Engine sourceEngine = sourceTableMeta.getEngine();
 
             // build orc schema
-            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta);
+            PolarDBXOrcSchema orcSchema =
+                OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta, Optional.of(columnToFieldIdMap), false);
 
             // data config
             Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);
@@ -171,7 +199,7 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
                 orcSchema,
                 conf);
 
-            Map<String, Set<String>> sourcePhyTables = sourceTableMeta.getLatestTopology();
+            Map<String, Set<String>> sourcePhyTables = OSSTaskUtils.genSourcePhyTables(tasks);
             final int parallelism =
                 executionContext.getParamManager().getInt(ConnectionParams.OSS_BACKFILL_PARALLELISM);
             final long indexStride =
@@ -188,15 +216,15 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
             // wait all async task done.
             tasks.forEach((pair, task) -> task.waitAsync());
 
-            new FileStorageAccessorDelegate<Integer>() {
-                @Override
-                protected Integer invoke() {
-                    // valid the meta files and column metas
-                    filesAccessor.ready(getTaskId(), schemaName, logicalTableName);
-                    columnMetaAccessor.ready(getTaskId(), schemaName, logicalTableName);
-                    return 0;
-                }
-            }.execute();
+//            new FileStorageAccessorDelegate<Integer>() {
+//                @Override
+//                protected Integer invoke() {
+//                    // valid the meta files and column metas
+//                    filesAccessor.ready(getTaskId(), schemaName, logicalTableName);
+//                    columnMetaAccessor.ready(getTaskId(), schemaName, logicalTableName);
+//                    return 0;
+//                }
+//            }.execute();
         } catch (Exception e) {
             if (tasks != null) {
                 tasks.forEach((pair, task) -> task.cancelAsync());
@@ -228,51 +256,56 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
         PartitionInfo sourceTablePartitionInfo =
             OSSTaskUtils.getSourcePartitionInfo(executionContext, sourceLogicalSchema, sourceLogicalTable);
 
-        Map<String, List<PhysicalPartitionInfo>> targetPartitionTopology =
-            physicalPlanData.getPhysicalPartitionTopology();
-
+        ;
         // traverse each physical partition (phy table)
-        for (Map.Entry<String, List<PhysicalPartitionInfo>> entry : targetPartitionTopology.entrySet()) {
-            for (PhysicalPartitionInfo physicalPartitionInfo : entry.getValue()) {
+        for (PhysicalPartitionInfo physicalPartitionInfo :
+            getFlattenedPartitionInfo(physicalPlanData.getPhysicalPartitionTopology())) {
 
-                String targetPhySchema = physicalPartitionInfo.getGroupKey();
-                String targetPhyTable = physicalPartitionInfo.getPhyTable();
+            String targetPhySchema = physicalPartitionInfo.getGroupKey();
+            String targetPhyTable = physicalPartitionInfo.getPhyTable();
 
-                String partName = physicalPartitionInfo.getPartName();
-                Pair<String, String> sourcePhySchemaAndTable = Optional
-                        .ofNullable(singleTopology)
-                        .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
+            String partName = physicalPartitionInfo.getPartName();
+            Pair<String, String> sourcePhySchemaAndTable = Optional
+                .ofNullable(singleTopology)
+                .orElseGet(() -> OSSTaskUtils.getSourcePhyTable(sourceTablePartitionInfo, partName));
 
-                String sourcePhyTable = sourcePhySchemaAndTable.getValue();
+            String sourcePhyTable = sourcePhySchemaAndTable.getValue();
 
-                // for each physical table, add orc write task.
-                OSSBackFillWriterTask task = new OSSBackFillWriterTask(
-                    // for target table
-                    targetLogicalSchema,
-                    targetLogicalTable,
-                    targetPhySchema,
-                    targetPhyTable,
+            // for each physical table, add orc write task.
+            OSSBackFillWriterTask task = new OSSBackFillWriterTask(
+                // for target table
+                targetLogicalSchema,
+                targetLogicalTable,
+                targetPhySchema,
+                targetPhyTable,
 
-                    // for source table
-                    sourcePhySchemaAndTable.getKey(),
-                    sourcePhyTable,
-                    sourceTableMeta,
-                    tableEngine,
-                    getTaskId(),
+                // for source table
+                sourcePhySchemaAndTable.getKey(),
+                sourcePhyTable,
+                sourceTableMeta,
+                null,
+                tableEngine,
+                getTaskId(),
 
-                    // for orc file conf
-                    conf,
-                    "",
+                // for orc file conf
+                conf,
+                "",
 
-                    // for orc schema
-                    orcSchema,
-                    maxRowsPerFile,
-                    removeTmpFiles
-                );
-                tasks.put(sourcePhySchemaAndTable, task);
-            }
+                // for orc schema
+                orcSchema,
+                maxRowsPerFile,
+                removeTmpFiles
+            );
+            tasks.put(sourcePhySchemaAndTable, task);
         }
         return tasks;
+    }
+
+    protected List<PhysicalPartitionInfo> getFlattenedPartitionInfo(
+        Map<String, List<PhysicalPartitionInfo>> partitionInfoMap) {
+        List<PhysicalPartitionInfo> partitionInfos = new ArrayList<>();
+        partitionInfoMap.values().forEach(partitionInfos::addAll);
+        return partitionInfos;
     }
 
     private boolean isLoadTable() {

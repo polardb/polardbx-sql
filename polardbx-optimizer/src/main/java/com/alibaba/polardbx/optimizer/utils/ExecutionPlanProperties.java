@@ -53,6 +53,12 @@ public final class ExecutionPlanProperties {
 
     public static final int DDL = 12;
 
+    public static final int SCALE_OUT_WRITABLE_TABLE = 13;
+
+    public static final int MODIFY_ONLINE_COLUMN_TABLE = 14;
+
+    public static final int MODIFY_FOREIGN_KEY = 15;
+
     public static final BitSet MDL_REQUIRED = BitSets
         .of(MODIFY_TABLE, MODIFY_GSI_TABLE, MODIFY_BROADCAST_TABLE, MODIFY_SHARDING_COLUMN, MODIFY_CROSS_DB,
             MODIFY_SCALE_OUT_GROUP, REPLICATE_TABLE);

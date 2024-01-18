@@ -16,26 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.base.Predicate;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
-import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.Limit;
-import com.alibaba.polardbx.optimizer.core.rel.MemSort;
-import com.alibaba.polardbx.optimizer.core.rel.NLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiNLJoin;
-import com.alibaba.polardbx.optimizer.core.rel.TopN;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.google.common.base.Predicate;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelCollations;
-import org.apache.calcite.rel.RelDistribution;
-import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
@@ -72,7 +61,7 @@ public class DrdsSortJoinTransposeRule extends RelOptRule {
                     return (join instanceof LogicalJoin || join instanceof LogicalSemiJoin)
                         && (join.getJoinType() == JoinRelType.LEFT || join.getJoinType() == JoinRelType.RIGHT)
                         && (join.getTraitSet().simplify().getCollation().isTop()
-                            && join.getTraitSet().simplify().getDistribution().isTop());
+                        && join.getTraitSet().simplify().getDistribution().isTop());
                 }
             }, any())), relBuilderFactory,
             "DrdsSortJoinTransposeRule");
@@ -132,9 +121,18 @@ public class DrdsSortJoinTransposeRule extends RelOptRule {
                         sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.SINGLETON),
                             join.getLeft(), sort.getCollation(), null, CBOUtil.calPushDownFetch(sort));
                 } else {
-                    newLeftInput = sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
-                        join.getLeft(),
-                        collationToPush, null, null);
+                    if (PlannerContext.getPlannerContext(sort).getParamManager()
+                        .getBoolean(ConnectionParams.ENABLE_SORT_OUTERJOIN_TRANSPOSE)) {
+                        newLeftInput =
+                            sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
+                                join.getLeft(),
+                                collationToPush, null, CBOUtil.calPushDownFetch(sort));
+                    } else {
+                        newLeftInput =
+                            sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
+                                join.getLeft(),
+                                collationToPush, null, null);
+                    }
                 }
             } else {
                 newLeftInput = sort.copy(sort.getTraitSet().replace(collationToPush),
@@ -164,9 +162,18 @@ public class DrdsSortJoinTransposeRule extends RelOptRule {
                         sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.SINGLETON),
                             join.getRight(), sort.getCollation(), null, CBOUtil.calPushDownFetch(sort));
                 } else {
-                    newRightInput = sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
-                        join.getRight(),
-                        collationToPush, null, null);
+                    if (PlannerContext.getPlannerContext(sort).getParamManager()
+                        .getBoolean(ConnectionParams.ENABLE_SORT_OUTERJOIN_TRANSPOSE)) {
+                        newRightInput =
+                            sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
+                                join.getRight(),
+                                collationToPush, null, CBOUtil.calPushDownFetch(sort));
+                    } else {
+                        newRightInput =
+                            sort.copy(sort.getTraitSet().replace(collationToPush).replace(RelDistributions.ANY),
+                                join.getRight(),
+                                collationToPush, null, null);
+                    }
                 }
             } else {
                 newRightInput = sort.copy(sort.getTraitSet().replace(collationToPush),

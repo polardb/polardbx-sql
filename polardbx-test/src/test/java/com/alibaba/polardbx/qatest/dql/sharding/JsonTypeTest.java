@@ -64,7 +64,6 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
             + "',2,'2',\"2016-12-1 00:00:00\",\"2016-12-1 00:00:00\",'2')";
         JdbcUtil.executeSuccess(tddlConnection, sql);
         JdbcUtil.executeSuccess(mysqlConnection, sql);
-
     }
 
     @After
@@ -162,6 +161,121 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
     @Test
     public void testJsonExtractNull() {
         String sql = "select json_extract(NULL, NULL)";
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testJsonKeysNull() {
+        String funcPattern = "SELECT JSON_KEYS(%s);";
+        String[] args = {
+            "null",
+            "null, null",
+            "null, '{\"key1\": \"abc\"}'",
+            "'[1,2]'",
+            "'{\"key1\": \"abc\"}', null"
+        };
+        for (String arg : args) {
+            selectContentSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    /**
+     * jsonDoc为NULL / path为NULL / val为NULL
+     * 共三类情况
+     */
+    @Test
+    public void testJsonInsertNull() {
+        String insertFuncPattern = "SELECT JSON_INSERT(%s);";
+        String replaceFuncPattern = "SELECT JSON_REPLACE(%s);";
+        String[] args = {
+            "null, null, null",
+            "null, null, 10",
+            "null, \"$.c\", null",
+            "null, \"$.c\", 10",
+            "'{ \"a\": 1, \"b\": [2, 3]}', null, 10",
+            "'{ \"a\": 1, \"b\": [2, 3]}', \"$.c\", 10, null, 1",
+            "'{ \"a\": 1, \"b\": [2, 3]}', \"$.c\", \"10\", \"$.c\", null",
+            "'{ \"a\": 1, \"b\": [2, 3]}', \"$.a\", 10, \"$.b\", null",
+        };
+        for (String arg : args) {
+            selectContentIgnoreJsonFormatSameAssert(String.format(insertFuncPattern, arg),
+                null, mysqlConnection, tddlConnection);
+            selectContentIgnoreJsonFormatSameAssert(String.format(replaceFuncPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    /**
+     * jsonDoc为NULL / path为NULL / val为NULL
+     * 共三类情况
+     */
+    @Test
+    public void testJsonReplaceNull() {
+        String funcPattern = "SELECT JSON_REPLACE(%s);";
+        String[] args = {
+            "null, null, null",
+            "null, null, 10",
+            "null, \"$.c\", null",
+            "null, \"$.c\", 10",
+            "'{ \"a\": 1, \"b\": [2, 3]}', null, 10",
+            "'{ \"a\": 1, \"b\": [2, 3]}', \"$.c\", 10, null, 1",
+            "'{ \"a\": 1, \"b\": [2, 3]}', \"$.c\", 10, \"$.c\", null",
+        };
+        for (String arg : args) {
+            selectContentIgnoreJsonFormatSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testJsonQuoteNull() {
+        String funcPattern = "SELECT JSON_QUOTE(%s);";
+        String[] args = {
+            "null",
+            "\"null\"",
+        };
+        for (String arg : args) {
+            selectContentSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testJsonExtractComplex() {
+        String funcPattern = "SELECT JSON_EXTRACT(%s);";
+        String[] args = {
+            "'{\"tid\": 1, \"tval\": null}', \"$.tval1\"",
+            "'{\"tid\": 1, \"tval\": null}', \"$.tval1\", \"$.tid\", null, \"$.tval1\"",
+            "'{\"tid\": 1, \"tval\": null}', \"$.tval1\", \"$.tval2\"",
+            "'{\"tid\": 1, \"tval\": null}', \"$.tval1\", \"$.tid\"",
+            "'null', \"$.tval1\""
+        };
+        for (String arg : args) {
+            selectContentSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testJsonExtractOperatorComplex() {
+        String funcPattern = "SELECT %s from " + baseOneTableName;
+        String[] args = {
+            "json_data->\"$.not_exist\"",
+            "json_data->>\"$.not_exist\"",
+        };
+        for (String arg : args) {
+            selectContentSameAssert(String.format(funcPattern, arg),
+                null, mysqlConnection, tddlConnection);
+        }
+    }
+
+    @Test
+    public void testJsonExtractOperatorComplex2() {
+        String sql = String.format("SELECT t1.json_data->>\"$.not_exist\", t2.json_data->>\"$.not_exist\", "
+            + "t1.json_data->\"$.tsbpms_originatorUserName\", t1.json_data->\"$.cost_detail\", "
+            + "t2.json_data->\"$.amount\", t2.json_data->>\"$.cost_detail\""
+            + "FROM %s t1 LEFT JOIN %s t2 ON t1.id = t2.pid", baseOneTableName, baseOneTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 
@@ -318,7 +432,9 @@ public class JsonTypeTest extends CrudBasedLockTestCase {
 
     @Test
     public void jsonInsertTest() {
-        String sql = " select json_insert('[1,2,3]', '$[0]', 4)";
+        String sql = "select json_insert('[1,2,3]', '$[0]', 4, '$[2]', \"test\")";
+        selectContentIgnoreJsonFormatSameAssert(sql, null, mysqlConnection, tddlConnection);
+        sql = "select json_insert('{ \"a\": 1, \"b\": [2, 3]}', \"$.c\", 10, \"$.d\", \"test\")";
         selectContentIgnoreJsonFormatSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 

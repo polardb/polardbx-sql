@@ -256,7 +256,7 @@ public class ResumeTableScanSortExec extends TableScanSortExec implements Resume
                 row, dataTypes, rowBuilder.getBlockBuilders(), context);
             Chunk chunk = rowBuilder.build();
             if (chunkSize == -1) {
-                chunkSize = chunk.getSizeInBytes();
+                chunkSize = chunk.estimateSize();
             }
             allocator.allocateReservedMemory(chunkSize);
             chunks.add(chunk);

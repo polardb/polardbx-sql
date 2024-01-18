@@ -25,7 +25,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Byte Array (<pre>byte[]</pre>) Block
- *
  */
 public class ByteArrayBlock extends AbstractCommonBlock {
 
@@ -38,8 +37,7 @@ public class ByteArrayBlock extends AbstractCommonBlock {
         super(DataTypes.BytesType, positionCount, valueIsNull, valueIsNull != null);
         this.offsets = offsets;
         this.data = data;
-        estimatedSize = INSTANCE_SIZE + sizeOf(offsets) + sizeOf(data) + sizeOf(valueIsNull);
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount + sizeOf(data);
+        updateSizeInfo();
     }
 
     @Override
@@ -142,6 +140,12 @@ public class ByteArrayBlock extends AbstractCommonBlock {
 
     public byte[] getData() {
         return data;
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(data) + sizeOf(offsets);
+        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(data) + Integer.BYTES * positionCount;
     }
 }
 

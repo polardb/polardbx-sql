@@ -38,16 +38,14 @@ public class ReferenceBlock<T> extends AbstractBlock {
     public ReferenceBlock(DataType<T> dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new Object[slotLen];
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = Byte.BYTES * positionCount + sizeOf(values);
+        updateSizeInfo();
     }
 
     public ReferenceBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values,
                           DataType<T> dataType) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = Byte.BYTES * positionCount + sizeOf(values);
+        updateSizeInfo();
     }
 
     public ReferenceBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values,
@@ -55,8 +53,7 @@ public class ReferenceBlock<T> extends AbstractBlock {
                           boolean hasNull) {
         super(dataType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = Byte.BYTES * positionCount + sizeOf(values);
+        updateSizeInfo();
     }
 
     @SuppressWarnings("unchecked")
@@ -138,6 +135,8 @@ public class ReferenceBlock<T> extends AbstractBlock {
     @Override
     public void setElementAt(int position, Object element) {
         super.updateElementAt(position, element, e -> values[position] = e);
+
+        //TODO updateSizeInfo() should be called when we are able to estimated the size of Object[]
     }
 
     public Object[] objectArray() {
@@ -170,5 +169,11 @@ public class ReferenceBlock<T> extends AbstractBlock {
         }
 
         return blockBuilder.build();
+    }
+
+    @Override
+    public void updateSizeInfo() {
+        estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
+        elementUsedBytes = Byte.BYTES * positionCount + sizeOf(values);
     }
 }

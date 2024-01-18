@@ -428,7 +428,8 @@ public class ShardColumnEdges {
             return true;
         }
         long cardinality =
-            StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true).getLongValue();
+            StatisticManager.getInstance().getCardinality(schemaName, tableName, columnName, true, false)
+                .getLongValue();
         if (cardinality < 0) {
             return true;
         }

@@ -53,6 +53,8 @@ public class ContextParameters {
 
     public Map<Integer, NlsString> parameterNlsStrings;
 
+    private boolean internalQuery = false;
+
     public ContextParameters() {
     }
 
@@ -97,8 +99,8 @@ public class ContextParameters {
         return null != underSet.peek() && underSet.peek();
     }
 
-    public boolean hasInExpr(){
-        return contextParameters.get(ContextParameterKey.HAS_IN_EXPR)!=null;
+    public boolean hasInExpr() {
+        return contextParameters.get(ContextParameterKey.HAS_IN_EXPR) != null;
     }
 
     public PrivilegeContext getPrivilegeContext() {
@@ -135,5 +137,13 @@ public class ContextParameters {
 
     public void setParameterNlsStrings(Map<Integer, NlsString> parameterNlsStrings) {
         this.parameterNlsStrings = parameterNlsStrings;
+    }
+
+    public boolean isInternalQuery() {
+        return internalQuery;
+    }
+
+    public void setInternalQuery(boolean internalQuery) {
+        this.internalQuery = internalQuery;
     }
 }

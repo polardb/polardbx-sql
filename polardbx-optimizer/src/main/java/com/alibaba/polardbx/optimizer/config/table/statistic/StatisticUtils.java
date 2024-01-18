@@ -16,38 +16,50 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResultSource;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
+import io.airlift.slice.Slice;
+import org.apache.calcite.rel.RelNode;
 
+import java.sql.Date;
+import java.sql.Time;
+import java.sql.Timestamp;
 import java.sql.Types;
-import java.text.ParseException;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTrace.MAX_DIGEST_SIZE;
 
 public class StatisticUtils {
 
-    private static final Logger logger = LoggerFactory.getLogger("statistics");
+    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
     public static final int DEFAULT_SAMPLE_SIZE = 100000;
     public static final int DEFAULT_SAMPLE_SIZE_ = 80000;
 
     public static DataType decodeDataType(String type) {
         DataType datatype;
         switch (type) {
+        case "unsigned_int":
+            datatype = DataTypes.ULongType;
+            break;
         case "Int":
             datatype = DataTypes.LongType;
             break;
@@ -56,6 +68,12 @@ public class StatisticUtils {
             break;
         case "String":
             datatype = DataTypes.StringType;
+            break;
+        case "Year":
+            datatype = DataTypes.YearType;
+            break;
+        case "Datetime":
+            datatype = DataTypes.DatetimeType;
             break;
         case "Date":
             datatype = DataTypes.DateType;
@@ -75,6 +93,32 @@ public class StatisticUtils {
         return datatype;
     }
 
+    /**
+     * convert date/time/timestamp type data to long
+     * used for statistic
+     * if obj convert to null, return -1
+     */
+    public static long packDateTypeToLong(DataType dataType, Object obj) {
+        if (DataTypeUtil.equalsSemantically(DataTypes.TimestampType, dataType) ||
+            DataTypeUtil.equalsSemantically(DataTypes.DatetimeType, dataType)) {
+            Timestamp timestamp = (Timestamp) dataType.convertFrom(obj);
+            return Optional.ofNullable(timestamp)
+                .map(TimeStorage::packDatetime)
+                .orElse(-1L);
+        } else if (DataTypeUtil.equalsSemantically(DataTypes.DateType, dataType)) {
+            Date date = (Date) dataType.convertFrom(obj);
+            return Optional.ofNullable(date)
+                .map(TimeStorage::packDate)
+                .orElse(-1L);
+        } else if (DataTypeUtil.equalsSemantically(DataTypes.TimeType, dataType)) {
+            Time time = (Time) dataType.convertFrom(obj);
+            return Optional.ofNullable(time)
+                .map(TimeStorage::packTime)
+                .orElse(-1L);
+        }
+        throw new IllegalStateException("Unexpected value: " + dataType);
+    }
+
     public static String encodeDataType(DataType dataType) {
         String type;
         switch (dataType.getSqlType()) {
@@ -83,8 +127,11 @@ public class StatisticUtils {
         case Types.INTEGER:
         case Types.BIGINT:
         case DataType.MEDIUMINT_SQL_TYPE:
-        case DataType.YEAR_SQL_TYPE:
-            type = "Int";
+            if (dataType.isUnsigned()) {
+                type = "unsigned_int";
+            } else {
+                type = "Int";
+            }
             break;
         case Types.FLOAT:
         case Types.REAL:
@@ -104,13 +151,18 @@ public class StatisticUtils {
         case Types.DATE:
             type = "Date";
             break;
+        case DataType.DATETIME_SQL_TYPE:
+            type = "Datetime";
+            break;
+        case DataType.YEAR_SQL_TYPE:
+            type = "Year";
+            break;
         case Types.TIME:
             type = "Time";
             break;
         case Types.TIMESTAMP:
         case Types.TIME_WITH_TIMEZONE:
         case Types.TIMESTAMP_WITH_TIMEZONE:
-        case DataType.DATETIME_SQL_TYPE:
             type = "Timestamp";
             break;
         case Types.BIT:
@@ -138,6 +190,25 @@ public class StatisticUtils {
         case Types.CLOB:
         case Types.BINARY:
         case Types.VARBINARY:
+        case Types.LONGVARBINARY:
+        case DataType.JSON_SQL_TYPE:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    public static boolean isStringColumn(ColumnMeta columnMeta) {
+        switch (columnMeta.getDataType().getSqlType()) {
+        case Types.BIT:
+        case Types.BLOB:
+        case Types.CLOB:
+        case Types.BINARY:
+        case Types.VARBINARY:
+        case Types.CHAR:
+        case Types.VARCHAR:
+        case Types.LONGVARCHAR:
+        case Types.LONGNVARCHAR:
         case Types.LONGVARBINARY:
         case DataType.JSON_SQL_TYPE:
             return true;
@@ -215,4 +286,88 @@ public class StatisticUtils {
         return (schemaName + ":" + tableName + ":" + columnNames).toLowerCase();
     }
 
+    public static PlannerContext getPlannerContextFromRelNode(RelNode rel) {
+        if (rel == null || rel.getCluster() == null || rel.getCluster().getPlanner() == null
+            || rel.getCluster().getPlanner().getContext() == null) {
+            return null;
+        }
+        PlannerContext plannerContext = rel.getCluster().getPlanner().getContext().unwrap(PlannerContext.class);
+        if (plannerContext == null) {
+            return null;
+        }
+        return plannerContext;
+    }
+
+    public static StatisticTrace buildTrace(String catalogTarget,
+                                            String action,
+                                            Object value,
+                                            StatisticResultSource source,
+                                            long modifyTime,
+                                            String desc) {
+        return new StatisticTrace(catalogTarget, action, value, desc, source, modifyTime);
+    }
+
+    public static String digestForStatisticTrace(Object o) {
+        StringBuilder sb = new StringBuilder();
+        digest(o, sb);
+        return sb.toString();
+    }
+
+    public static void digest(Object value, StringBuilder sb) {
+        if (value == null) {
+            sb.append("null");
+            return;
+        }
+        if (sb.length() > MAX_DIGEST_SIZE) {
+            return;
+        }
+        if (value instanceof Collection) {
+            digest((Collection) value, sb);
+        } else if (value instanceof Row.RowValue) {
+            digest((Row.RowValue) value, sb);
+        } else if (value instanceof Slice) {
+            sb.append(((Slice) value).toStringUtf8());
+        } else {
+            sb.append(value);
+        }
+
+        if (sb.length() > MAX_DIGEST_SIZE) {
+            sb.setLength(MAX_DIGEST_SIZE);
+            sb.append("...");
+        }
+    }
+
+    public static void digest(Collection values, StringBuilder sb) {
+        if (values == null) {
+            return;
+        }
+        if (sb.length() > MAX_DIGEST_SIZE) {
+            return;
+        }
+        for (Object o : values) {
+            digest(o, sb);
+        }
+    }
+
+    public static void digest(Row.RowValue values, StringBuilder sb) {
+        if (sb.length() > MAX_DIGEST_SIZE) {
+            return;
+        }
+        int originLength = sb.length();
+        for (Object o : values.getValues()) {
+            if (o == null) {
+                continue;
+            }
+            sb.append(o).append(",");
+
+            if (sb.length() > MAX_DIGEST_SIZE) {
+                sb.setLength(MAX_DIGEST_SIZE);
+                sb.append("...");
+                break;
+            }
+        }
+        if (sb.length() > originLength) {
+            sb.setLength(sb.length() - 1);
+        }
+    }
 }

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.server.util;
 
-import com.alibaba.polardbx.ErrorCode;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.net.packet.ErrorPacket;
 import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
@@ -57,7 +57,7 @@ public class PacketUtil {
         ErrorPacket error = new ErrorPacket();
         error.sqlState = "08S01".getBytes();
         error.packetId = 1;
-        error.errno = ErrorCode.ER_SERVER_SHUTDOWN;
+        error.errno = ErrorCode.ER_SERVER_SHUTDOWN.getCode();
         error.message = "The server has been shutdown".getBytes();
         return error;
     }
@@ -66,7 +66,7 @@ public class PacketUtil {
         ErrorPacket error = new ErrorPacket();
         error.sqlState = "08S01".getBytes();
         error.packetId = 1;
-        error.errno = ErrorCode.ER_SERVER_SHUTDOWN;
+        error.errno = ErrorCode.ER_SERVER_SHUTDOWN.getCode();
         error.message = "The server has been locked".getBytes();
         return error;
     }

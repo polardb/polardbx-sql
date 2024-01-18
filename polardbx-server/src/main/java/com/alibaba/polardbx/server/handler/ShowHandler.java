@@ -23,6 +23,11 @@ import com.alibaba.polardbx.server.response.ShowCacheStats;
 import com.alibaba.polardbx.server.response.ShowConnection;
 import com.alibaba.polardbx.server.response.ShowDatabases;
 import com.alibaba.polardbx.server.response.ShowErrors;
+import com.alibaba.polardbx.server.response.ShowFileStorage;
+import com.alibaba.polardbx.server.response.ShowFullConnection;
+import com.alibaba.polardbx.server.response.ShowFullDatabases;
+import com.alibaba.polardbx.server.response.ShowFileStorage;
+import com.alibaba.polardbx.server.response.ShowFullConnection;
 import com.alibaba.polardbx.server.response.ShowFullDatabases;
 import com.alibaba.polardbx.server.response.ShowFileStorage;
 import com.alibaba.polardbx.server.response.ShowGitCommit;
@@ -33,7 +38,6 @@ import com.alibaba.polardbx.server.response.ShowMemoryPool;
 import com.alibaba.polardbx.server.response.ShowNode;
 import com.alibaba.polardbx.server.response.ShowParametric;
 import com.alibaba.polardbx.server.response.ShowStatistic;
-import com.alibaba.polardbx.server.response.ShowStorage;
 import com.alibaba.polardbx.server.response.ShowWarnings;
 import com.alibaba.polardbx.server.response.ShowWorkload;
 import com.alibaba.polardbx.server.util.LogUtils;
@@ -44,72 +48,54 @@ import com.alibaba.polardbx.druid.sql.parser.ByteString;
  */
 public final class ShowHandler {
 
-    public static void handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
+    /**
+     * @return true:no error packet
+     */
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset, boolean hasMore) {
         int rs = ServerParseShow.parse(stmt, offset);
         boolean recordSql = true;
         Throwable sqlEx = null;
         try {
             switch (rs & 0xff) {
             case ServerParseShow.DATABASES:
-                ShowDatabases.response(c, hasMore);
-                break;
+                return ShowDatabases.response(c, hasMore);
             case ServerParseShow.NODE:
-                ShowNode.execute(c);
-                break;
+                return ShowNode.execute(c);
             case ServerParseShow.CONNECTION:
-                ShowConnection.execute(c, hasMore);
-                break;
+                return ShowConnection.execute(c, hasMore);
             case ServerParseShow.WARNINGS:
-                ShowWarnings.execute(c, hasMore);
-                break;
+                return ShowWarnings.execute(c, hasMore);
             case ServerParseShow.ERRORS:
-                ShowErrors.execute(c, hasMore);
-                break;
+                return ShowErrors.execute(c, hasMore);
             case ServerParseShow.HELP:
-                ShowHelp.execute(c);
-                break;
+                return ShowHelp.execute(c);
             case ServerParseShow.GIT_COMMIT:
-                ShowGitCommit.execute(c);
-                break;
+                return ShowGitCommit.execute(c);
             case ServerParseShow.STATISTIC:
-                ShowStatistic.execute(c);
-                break;
+                return ShowStatistic.execute(c);
             case ServerParseShow.MEMORYPOOL:
-                ShowMemoryPool.execute(c);
-                break;
-            case ServerParseShow.STORAGE_REPLICAS:
-                ShowStorage.execute(c, true);
-                break;
-            case ServerParseShow.STORAGE:
-                ShowStorage.execute(c);
-                break;
+                return ShowMemoryPool.execute(c);
             case ServerParseShow.MDL_DEADLOCK_DETECTION:
-                ShowMdlDeadlockDetectionStatus.response(c);
-                break;
+                return ShowMdlDeadlockDetectionStatus.response(c);
             case ServerParseShow.MPP:
-                ShowMpp.execute(c);
-                break;
+                return ShowMpp.execute(c);
             case ServerParseShow.WORKLOAD:
-                ShowWorkload.execute(c);
-                break;
+                return ShowWorkload.execute(c);
             case ServerParseShow.PARAMETRIC:
-                ShowParametric.response(c);
-                break;
+                return ShowParametric.response(c);
             case ServerParseShow.CACHE_STATS:
-                ShowCacheStats.execute(c);
-                break;
+                return ShowCacheStats.execute(c);
             case ServerParseShow.ARCHIVE:
-                ShowArchive.execute(c);
-                break;
+                return ShowArchive.execute(c);
             case ServerParseShow.FILE_STORAGE:
-                ShowFileStorage.execute(c);
-                break;
+                return ShowFileStorage.execute(c);
             case ServerParseShow.FULL_DATABASES:
-                ShowFullDatabases.response(c, hasMore);
-                break;
+                return ShowFullDatabases.response(c, hasMore);
+            case ServerParseShow.FULL_CONNECTION:
+                return ShowFullConnection.execute(c, hasMore);
             default:
-                c.execute(stmt, hasMore);
                 recordSql = false;
+                return c.execute(stmt, hasMore);
             }
         } catch (Throwable ex) {
             sqlEx = ex;

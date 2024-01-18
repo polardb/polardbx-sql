@@ -8,10 +8,11 @@ SQL:
             gather(concurrent=true)
               osstablescan(tables="lineitem[p1,p2,p3,...p128]", shardcount=128, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_orderkey` = ?)")
             osstablescan(tables="lineitem[p107]", sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where ((`l_suppkey` = ?) and (`l_partkey` = ?))")
+
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_OSS_INDEX_SELECTION=true)*/select l_tax from lineitem where (l_partkey = 1 and l_suppkey = 2) and l_orderkey = 1;
     plan: |
-      osstablescan(tables="lineitem[p107]", sql="select `l_tax` from `lineitem` as `lineitem` where (((`l_orderkey` = ?) and (`l_suppkey` = ?)) and (`l_partkey` = ?))")
+      osstablescan(tables="lineitem[p107]", sql="select `l_tax` from `lineitem` as `lineitem` where ((`l_orderkey` = ?) and (`l_suppkey` = ?) and (`l_partkey` = ?))")
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_OSS_INDEX_SELECTION=true)*/select l_tax from lineitem where (l_partkey = 1 and l_suppkey = 2) or (l_orderkey = 1 or l_partkey in (2,3,4));
     plan: |
@@ -41,6 +42,7 @@ SQL:
     plan: |
       gather(concurrent=true)
         osstablescan(tables="lineitem[p4,p16,p107,p128]", shardcount=4, sql="select `l_tax` from `lineitem` as `lineitem` where ((`l_orderkey` between ? and ?) and (((`l_partkey` = ?) and (`l_suppkey` = ?)) or (`l_partkey` in(?))))", isdynamicparam="true")
+
 
 DDL:
   lineitem:
@@ -222,6 +224,7 @@ CONFIG:
   CONN_POOL_MAX_WAIT_THREAD_COUNT:
     0
   CONN_POOL_XPROTO_CONFIG:
+
   CONN_POOL_XPROTO_SESSION_AGING_TIME:
     600000
   CONN_POOL_XPROTO_MAX_POOLED_SESSION_PER_INST:

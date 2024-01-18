@@ -84,7 +84,7 @@ public class BindingArchiveTableMetaTask extends BaseGmsTask {
                     throw GeneralUtil.nestedException(
                         MessageFormat.format("The table {0}.{1} already has archive table {2}.{3}, "
                                 + "please use connection param: ALLOW_REPLACE_ARCHIVE_TABLE=true to allow replace archive table.",
-                            sourceTableSchema, sourceTableName, archiveTableSchema, archiveTableName));
+                            sourceTableSchema, sourceTableName, oldArchiveTableSchema, oldArchiveTableName));
                 }
             }
             TableMetaChanger
@@ -97,7 +97,8 @@ public class BindingArchiveTableMetaTask extends BaseGmsTask {
     public void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         if (archiveMode == ArchiveMode.TTL && sourceTableSchema != null && sourceTableName != null
             && archiveTableSchema != null && archiveTableName != null) {
-            TableMetaChanger.updateArchiveTable(metaDbConnection, sourceTableSchema, sourceTableName, oldArchiveTableSchema, oldArchiveTableName);
+            TableMetaChanger.updateArchiveTable(metaDbConnection, sourceTableSchema, sourceTableName,
+                oldArchiveTableSchema, oldArchiveTableName);
         }
     }
 }

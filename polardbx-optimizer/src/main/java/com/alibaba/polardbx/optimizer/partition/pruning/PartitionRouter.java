@@ -17,7 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 
 import java.util.Comparator;
 import java.util.Set;
@@ -41,9 +41,6 @@ public abstract class PartitionRouter {
 
         // for Hash/List/List columns/Key, the route result is desc by the set of part position
         protected Set<Integer> partPosiSet = new TreeSet<>();
-
-        // Only if do one tuple routing for Hash/Key partition, the hashCodeInfo will be not null, or else are always null
-        protected Long[] hashCodeInfo;
 
         public RouterResult() {
         }
@@ -75,13 +72,12 @@ public abstract class PartitionRouter {
 
     /**
      * Route a range query ( e.g (p1,p2,p3) >= (c1,c2,c3) ) and return target partitions
-     * 
-     * @param ec
-     * @param comp
-     * @param searchVal
-     * @return
      */
     public abstract RouterResult routePartitions(ExecutionContext ec, ComparisonKind comp, Object searchVal);
+
+    public abstract int getPartitionCount();
+
+    public abstract String getDigest();
 
     // TODO(moyi) change type Object to SeaarchDatumInfo/PartitionField
     public static PartitionRouter createByHasher(PartitionStrategy strategy,
@@ -93,6 +89,8 @@ public abstract class PartitionRouter {
             return new HashPartRouter(bounds, hasher);
         case KEY:
             return new KeyPartRouter(bounds, hasher, comparator);
+        case UDF_HASH:
+            return new UdfHashPartRouter(bounds, hasher);
         default:
             throw new UnsupportedOperationException("partition strategy do not use hasher");
         }
@@ -113,11 +111,12 @@ public abstract class PartitionRouter {
 
     public static PartitionRouter createByList(PartitionStrategy strategy,
                                                TreeMap<Object, Integer> sorted,
-                                               Comparator comparator) {
+                                               Comparator comparator,
+                                               boolean containDefaultPartition) {
         switch (strategy) {
         case LIST:
         case LIST_COLUMNS:
-            return new ListPartRouter(sorted, comparator);
+            return new ListPartRouter(sorted, comparator, containDefaultPartition);
         default:
             throw new UnsupportedOperationException("partition strategy do not use sorted map");
         }

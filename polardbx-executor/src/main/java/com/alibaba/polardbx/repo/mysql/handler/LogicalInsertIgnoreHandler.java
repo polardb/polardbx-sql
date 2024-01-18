@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.TddlConstants;
-import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -25,7 +24,6 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -45,7 +43,6 @@ import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
@@ -59,11 +56,8 @@ import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
-import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartFieldAccessType;
-import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
@@ -71,7 +65,6 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyTableModifyCursor;
 import com.google.common.collect.ImmutableList;
-import com.google.common.primitives.UnsignedLongs;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -80,7 +73,6 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.calcite.util.Pair;
 
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -99,8 +91,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.alibaba.polardbx.executor.utils.ExecUtils.getTypeForNewGroupKey;
-
 /**
  * @author chenmo.cm
  */
@@ -112,6 +102,9 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
     @Override
     protected int doExecute(LogicalInsert insert, ExecutionContext executionContext,
                             LogicalInsert.HandlerParams handlerParams) {
+        // Need auto-savepoint only when auto-commit = 0.
+        executionContext.setNeedAutoSavepoint(!executionContext.isAutoCommit());
+
         final LogicalInsertIgnore insertIgnore = (LogicalInsertIgnore) insert;
         final String schemaName = insertIgnore.getSchemaName();
         final String tableName = insertIgnore.getLogicalTableName();
@@ -160,12 +153,19 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             .isAllGsi(insertIgnore.getTargetTables().get(0), executionContext, GlobalIndexMeta::canWrite);
         final boolean isColumnMultiWriting =
             TableColumnUtils.isModifying(schemaName, tableName, executionContext);
+        final boolean checkPrimaryKey =
+            executionContext.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK);
+        final boolean checkForeignKey =
+            executionContext.foreignKeyChecks() && tableMeta.hasForeignKey();
+        final boolean isModifyPartitionKey =
+            TableColumnUtils.isModifyPrimaryKey(schemaName, tableName, executionContext);
 
         // Disable returning when doing column multi-writing since we have not tested it yet
         boolean canUseReturning =
             executorContext.getStorageInfoManager().supportsReturning() && executionContext.getParamManager()
                 .getBoolean(ConnectionParams.DML_USE_RETURNING) && allDnUseXDataSource && gsiCanUseReturning
-                && !isBroadcast && !ComplexTaskPlanUtils.canWrite(tableMeta) && !isColumnMultiWriting;
+                && !isBroadcast && !ComplexTaskPlanUtils.canWrite(tableMeta) && !isColumnMultiWriting
+                && !checkPrimaryKey && !checkForeignKey && !isModifyPartitionKey;
 
         if (canUseReturning) {
             canUseReturning = noDuplicateOrNullValues(insertIgnore, insertEc);
@@ -249,6 +249,11 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         }
 
         try {
+            if (insertIgnore.isUkContainGeneratedColumn()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT,
+                    "INSERT IGNORE on table having VIRTUAL/STORED generated column in unique key");
+            }
+
             Map<String, List<List<String>>> ukGroupByTable = insertIgnore.getUkGroupByTable();
             Map<String, List<String>> localIndexPhyName = insertIgnore.getLocalIndexPhyName();
             List<Map<Integer, ParameterContext>> deduplicated;
@@ -279,6 +284,13 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
 
             if (!deduplicated.isEmpty()) {
                 insertEc.setParams(new Parameters(deduplicated));
+                if (checkForeignKey) {
+                    deduplicated = beforeInsertCheck(insertIgnore, deduplicated, insertEc);
+                    if (deduplicated.isEmpty()) {
+                        return affectRows;
+                    }
+                    insertEc.setParams(new Parameters(deduplicated));
+                }
             } else {
                 // All duplicated
                 return affectRows;
@@ -299,6 +311,30 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         // Insert batch may be split in TConnection, so we need to set executionContext's PhySqlId for next part
         executionContext.setPhySqlId(insertEc.getPhySqlId() + 1);
         return affectRows;
+    }
+
+    protected List<Map<Integer, ParameterContext>> beforeInsertCheck(LogicalInsert logicalInsert,
+                                                                     List<Map<Integer, ParameterContext>> deduplicated,
+                                                                     ExecutionContext executionContext) {
+        LogicalDynamicValues input = RelUtils.getRelInput(logicalInsert);
+        final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
+        List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
+            Collectors.toList());
+        List<List<Object>> values = deduplicated.stream().map(
+            param -> {
+                List<Object> value = new ArrayList<>();
+                for (int i = 0; i < insertColumns.size(); i++) {
+                    value.add(RexUtils.getValueFromRexNode(rexRow.get(i), executionContext, param));
+                }
+                return value;
+            }
+        ).collect(Collectors.toList());
+
+        List<Map<Integer, ParameterContext>> result = new ArrayList<>();
+        result = beforeInsertFkCheckIgnore(logicalInsert, logicalInsert.getLogicalTableName(), executionContext, values,
+            deduplicated);
+
+        return result;
     }
 
     /**
@@ -416,6 +452,7 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
     private boolean noDuplicateOrNullValues(LogicalInsertIgnore insertIgnore, ExecutionContext insertEc) {
         final List<List<ColumnMeta>> ukColumnMetas = insertIgnore.getUkColumnMetas();
         final List<List<Integer>> ukColumnsListAfterUkMapping = insertIgnore.getAfterUkMapping();
+        final List<Integer> ugsiUkIndex = insertIgnore.getAfterUgsiUkIndex();
 
         final LogicalDynamicValues input = RelUtils.getRelInput(insertIgnore);
         final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
@@ -438,7 +475,7 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
                     }
                 });
 
-            final boolean nullExists = IntStream.range(0, ukColumnMetas.size())
+            final boolean nullExists = ugsiUkIndex.stream()
                 .anyMatch(i -> Arrays.stream(insertRow.get(i).getGroupKeys()).anyMatch(Objects::isNull));
 
             if (duplicateExists || nullExists) {
@@ -563,8 +600,10 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
 
                         final List<Object> rawValues = rs.getValues();
                         final List<Object> outValues = new ArrayList<>(rawValues.size());
-                        for (Object v : rawValues) {
-                            outValues.add(DataTypeUtil.toJavaObject(v));
+                        final List<ColumnMeta> columnMetas = cursor.getReturnColumns();
+                        for (int i = 0; i < rawValues.size(); i++) {
+                            outValues.add(DataTypeUtil.toJavaObject(
+                                GeneralUtil.isNotEmpty(columnMetas) ? columnMetas.get(i) : null, rawValues.get(i)));
                         }
                         distinctValues.add(outValues);
                     }
@@ -812,56 +851,6 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         return selects;
     }
 
-    private static List<List<Object>> getInputValues(LogicalDynamicValues input,
-                                                     List<Map<Integer, ParameterContext>> currentBatchParameters) {
-        final List<List<Object>> values = new ArrayList<>();
-        final ImmutableList<RexNode> rexRow = input.getTuples().get(0);
-        currentBatchParameters.forEach(param -> values.add(RexUtils.buildRowValue(rexRow, null, param)));
-        return values;
-    }
-
-    private static Object convertValue(Object value, RexNode rex, ColumnMeta columnMeta, ExecutionContext ec) {
-        if (value == null) {
-            if (!columnMeta.isNullable()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    String.format("Can not store null value in column `%s`", columnMeta.getName()));
-            }
-            return null;
-        }
-
-        // If data is out of range, DN will throw error, so we ignore data truncation here
-        PartFieldAccessType accessType = PartFieldAccessType.DML_PRUNING;
-        PartitionField partitionField =
-            PartitionPrunerUtils.buildPartField(value, getTypeForNewGroupKey(rex, value), columnMeta.getDataType(),
-                null, ec, accessType);
-        SessionProperties sessionProperties = SessionProperties.fromExecutionContext(ec);
-        switch (partitionField.dataType().fieldType()) {
-        case MYSQL_TYPE_LONGLONG:
-            if (partitionField.dataType().isUnsigned()) {
-                return new BigInteger(UnsignedLongs.toString(partitionField.longValue()));
-            } else {
-                return partitionField.longValue();
-            }
-        case MYSQL_TYPE_LONG:
-        case MYSQL_TYPE_INT24:
-        case MYSQL_TYPE_SHORT:
-        case MYSQL_TYPE_TINY:
-            return partitionField.longValue(sessionProperties);
-        case MYSQL_TYPE_STRING:
-        case MYSQL_TYPE_VAR_STRING:
-            return partitionField.stringValue(sessionProperties).toString(CharsetName.DEFAULT_STORAGE_CHARSET_IN_CHUNK);
-        case MYSQL_TYPE_TIMESTAMP:
-        case MYSQL_TYPE_TIMESTAMP2:
-        case MYSQL_TYPE_DATETIME:
-        case MYSQL_TYPE_DATETIME2:
-        case MYSQL_TYPE_DATE:
-        case MYSQL_TYPE_NEWDATE:
-            return new OriginalTimestamp(partitionField.datetimeValue(0, sessionProperties));
-        default:
-            throw new UnsupportedOperationException("Value cast is not supported");
-        }
-    }
-
     /**
      * Get duplicate values. Used by INSERT IGNORE / UPSERT / REPLACE.
      */
@@ -887,7 +876,8 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         List<String> autoIncColumns = primaryTableMeta.getAutoIncrementColumns();
 
         final LogicalDynamicValues input = RelUtils.getRelInput(insert);
-        List<List<Object>> values = getInputValues(input, executionContext.getParams().getBatchParameters());
+        List<List<Object>> values =
+            getInputValues(input, executionContext.getParams().getBatchParameters(), executionContext);
         List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
             Collectors.toList());
 
@@ -903,9 +893,9 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
                 for (int j = 0; j < insertColumns.size(); j++) {
                     ColumnMeta columnMeta = columnMetaMap.get(insertColumns.get(j));
                     if (columnMeta != null) {
-                        value.set(j,
-                            convertValue(value.get(j), input.getTuples().get(isBatch ? 0 : i).get(j), columnMeta,
-                                executionContext));
+                        value.set(j, DataTypeUtil.toJavaObject(columnMeta,
+                            RexUtils.convertValue(value.get(j), input.getTuples().get(isBatch ? 0 : i).get(j), false,
+                                columnMeta, executionContext)));
                     }
                 }
             }
@@ -976,9 +966,11 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
 
             // If it's insert ignore, then we do not need to get full row in any case, because UK + PK is enough for
             // deduplication. Otherwise, we should get full row if it's primary table or clustered gsi.
+            // For clustered index, we should check if column counts match since we may be in adding column ddl.
             // See https://yuque.antfin.com/coronadb/design/uirwy2
-            boolean shouldGetFullRow = !isInsertIgnore &&
-                (currentTableName.equalsIgnoreCase(primaryTableName) || currentTableMeta.isClustered());
+            boolean shouldGetFullRow = !isInsertIgnore && (currentTableName.equalsIgnoreCase(primaryTableName) || (
+                currentTableMeta.isClustered()
+                    && currentTableMeta.getAllColumns().size() == primaryTableMeta.getPhysicalColumns().size()));
             if (shouldGetFullRow) {
                 primarySelects.addAll(
                     buildSelects(insert, lockMode, executionContext, currentTableName, selectColumns, insertColumns,
@@ -1076,7 +1068,8 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
                         currentUkSets.add(ukSet);
                     }
 
-                    // Add these to primary selects
+                    // Add these to primary selects, and we can not dedup look up values, otherwise we may miss out
+                    // some values with same uk in different shards in primary table
                     primarySelects.addAll(
                         buildSelects(insert, lockMode, executionContext, primaryTableName, selectColumns, insertColumns,
                             currentUkColumnList, currentUkColumnMetas, currentUkNameList, totalUk, currentUkSets,
@@ -1092,13 +1085,37 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             // We may get same rows from different table, so we need to dedup duplicateValues in the end to avoid
             // affecting row count.
             List<ColumnMeta> columnMetaList = new ArrayList<>();
+
             for (String columnName : selectColumns) {
                 columnMetaList.add(primaryTableMeta.getColumnIgnoreCase(columnName));
             }
 
+            //只比较主键、uk和分区键（分区键是因为可能主键相同，分区不同），防止包含json列，json暂时无法比较
+            boolean[] needCmp = null;
+            final Set<String> needCmpColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            if (executionContext.getParamManager()
+                .getBoolean(ConnectionParams.DML_SELECT_SAME_ROW_ONLY_COMPARE_PK_UK_SK)) {
+                needCmpColumns.addAll(primaryAndShardingKey);
+                for (Set<String> set : ukSets) {
+                    needCmpColumns.addAll(set);
+                }
+                Map<String, Integer> columnNameAndIndex = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+                for (int i = 0; i < selectColumns.size(); i++) {
+                    columnNameAndIndex.put(selectColumns.get(i), i);
+                }
+                needCmp = new boolean[selectColumns.size()];
+                for (String column : needCmpColumns) {
+                    Integer index = columnNameAndIndex.get(column);
+                    if (index != null) {
+                        needCmp[index] = true;
+                    }
+                }
+            }
+
+            final boolean[] resultNeedCmp = needCmp;
             Set<GroupKey> checker = new TreeSet<>();
             duplicateValues = duplicateValues.stream().filter(value -> {
-                GroupKey groupKey = new GroupKey(value.toArray(), columnMetaList);
+                GroupKey groupKey = new GroupKey(value.toArray(), columnMetaList, resultNeedCmp);
                 boolean duplicated = checker.contains(groupKey);
                 checker.add(groupKey);
                 return !duplicated;
@@ -1259,6 +1276,7 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
     protected static boolean identicalRow(List<Object> before, List<Object> after, List<ColumnMeta> rowColumnMetas) {
         final GroupKey beforeKey = new GroupKey(before.toArray(), rowColumnMetas);
         final GroupKey afterKey = new GroupKey(after.toArray(), rowColumnMetas);
-        return ExecUtils.duplicated(beforeKey, afterKey, true);
+        // should use equalsForUpdate or may get wrong result when different types
+        return beforeKey.equalsForUpdate(afterKey);
     }
 }

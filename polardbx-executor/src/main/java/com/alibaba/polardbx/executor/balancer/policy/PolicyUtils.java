@@ -59,6 +59,19 @@ public class PolicyUtils {
         }
     }
 
+    public static Map<String, GroupDetailInfoRecord> getGroupDetails(String schema, List<String> storageInsts) {
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor accessor = new GroupDetailInfoAccessor();
+            accessor.setConnection(conn);
+            List<GroupDetailInfoRecord> records =
+                accessor.getGroupDetailInfoByInstIdAndDbName(InstIdUtil.getInstId(), schema)
+                    .stream().filter(o -> storageInsts.contains(o.storageInstId)).collect(Collectors.toList());
+            return records.stream().collect(Collectors.toMap(GroupDetailInfoRecord::getGroupName, x -> x));
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
     public static List<LocalityDetailInfoRecord> getLocalityDetails(String schema) {
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
             List<TableGroupConfig> tableGroupConfigList = TableGroupUtils.getAllTableGroupInfoByDb(schema);

@@ -15,6 +15,14 @@
  */
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.utils.AddColumnsToRelNodeVisitor;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.collect.ImmutableSet;
@@ -23,12 +31,6 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.utils.AddColumnsToRelNodeVisitor;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptRule;
@@ -52,6 +54,7 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
@@ -694,7 +697,7 @@ public abstract class SubQueryToSemiJoinRule extends RelOptRule {
                         tNode), builder, tNode),
                     partitionKeys,
                     RexWindowBound.create(SqlWindow.createUnboundedPreceding(SqlParserPos.ZERO), null),
-                    RexWindowBound.create(SqlWindow.createUnboundedPreceding(SqlParserPos.ZERO), null));
+                    RexWindowBound.create(SqlWindow.createUnboundedFollowing(SqlParserPos.ZERO), null));
             final RexShuttle shuttle =
                 new RelOptUtil.ReplaceRexInputToCallShuttle(((LogicalAggregate) agg).getGroupCount(),
                     builder.getRexBuilder(),
@@ -910,17 +913,18 @@ public abstract class SubQueryToSemiJoinRule extends RelOptRule {
 
             boolean rexNodeBetweenTwoTable = false;
             for (RexInputRef rexInputRef : indexList) {
-                if (tableName == null) {
-                    tableName = columnOrigins.get(rexInputRef.getIndex()).getOriginTable().getQualifiedName();
+                RelColumnOrigin colOrigin = columnOrigins.get(rexInputRef.getIndex());
+                if (colOrigin == null) {
                     continue;
+                }
+                if (tableName == null) {
+                    tableName = colOrigin.getOriginTable().getQualifiedName();
                 } else {
-                    if (columnOrigins.get(rexInputRef.getIndex()) != null) {
-                        if (!tableName.equals(columnOrigins.get(rexInputRef.getIndex())
-                            .getOriginTable()
-                            .getQualifiedName())) {
-                            rexNodeBetweenTwoTable = true;
-                            break;
-                        }
+                    if (!tableName.equals(colOrigin
+                        .getOriginTable()
+                        .getQualifiedName())) {
+                        rexNodeBetweenTwoTable = true;
+                        break;
                     }
                 }
             }
@@ -1783,17 +1787,40 @@ class FieldAccessPairFinder extends RexVisitorImpl<Void> {
         }
 
         @Override
+        public RelNode visit(LogicalJoin join) {
+            FieldAccessPairFinder fieldAccessPairFinder = new FieldAccessPairFinder(correlationId,
+                rexCalls,
+                fieldAccessList,
+                loopDeep,
+                relDataTypeList,
+                anchor,
+                addMap,
+                isNeedRevertOrder);
+            int corRexCount = rexCalls.size();
+            join.getCondition().accept(fieldAccessPairFinder);
+            if (fieldAccessPairFinder.getRexCalls().size() > corRexCount) {
+                throw new TddlRuntimeException(ErrorCode.ERR_SUBQUERY_WITH_CORRELATE_CALL_IN_JOIN_CONDITION);
+            }
+            hasOr = fieldAccessPairFinder.hasOr;
+            return super.visit(join);
+        }
+
+        @Override
         protected RelNode visitChild(RelNode parent, int i, RelNode child) {
             if (i == 0) {
                 relDataTypeList.add(parent);
             }
             stack.push(parent);
             try {
-                RelNode child2 = child.accept(this);
-                if (child2 != child) {
-                    final List<RelNode> newInputs = new ArrayList<>(parent.getInputs());
-                    newInputs.set(i, child2);
-                    return parent.copy(parent.getTraitSet(), newInputs);
+                boolean bskip = PlannerContext.getPlannerContext(parent).getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_SIMPLIFY_SUBQUERY_SQL);
+                if (!bskip) {
+                    RelNode child2 = child.accept(this);
+                    if (child2 != child) {
+                        final List<RelNode> newInputs = new ArrayList<>(parent.getInputs());
+                        newInputs.set(i, child2);
+                        return parent.copy(parent.getTraitSet(), newInputs);
+                    }
                 }
                 return parent;
             } finally {

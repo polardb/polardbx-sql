@@ -16,6 +16,7 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 /**
@@ -28,13 +29,47 @@ public class SqlAddForeignKey extends SqlAddIndex {
 
     private static final SqlOperator OPERATOR = new SqlSpecialOperator("ADD FOREIGN INDEX", SqlKind.ADD_FOREIGN_KEY);
 
-    private final SqlIdentifier constraint;
+    private SqlIdentifier constraint;
     private final SqlReferenceDefinition referenceDefinition;
+    private final String schemaName;
+    private boolean pushDown = false;
+    private ForeignKeyData foreignKeyData;
 
-    public SqlAddForeignKey(SqlParserPos pos, SqlIdentifier indexName, SqlIndexDefinition indexDef, SqlIdentifier constraint, SqlReferenceDefinition referenceDefinition){
+    public SqlAddForeignKey(SqlParserPos pos, SqlIdentifier indexName, String schemaName, SqlIndexDefinition indexDef, SqlIdentifier constraint, SqlReferenceDefinition referenceDefinition){
         super(pos, indexName, indexDef);
+        this.schemaName = schemaName;
         this.constraint = constraint;
         this.referenceDefinition = referenceDefinition;
+    }
+
+    public SqlReferenceDefinition getReferenceDefinition() {
+        return referenceDefinition;
+    }
+
+    public boolean isPushDown() {
+        return pushDown;
+    }
+
+    public void setPushDown(boolean pushDown) {
+        this.pushDown = pushDown;
+    }
+
+    public ForeignKeyData getForeignKeyData() {
+        return foreignKeyData;
+    }
+
+    public void setForeignKeyData(ForeignKeyData foreignKeyData) {
+        this.foreignKeyData = foreignKeyData;
+    }
+
+    public String getSchemaName() {return schemaName;}
+
+    public void setConstraint(SqlIdentifier constraint) {
+        this.constraint = constraint;
+    }
+
+    public SqlIdentifier getConstraint() {
+        return constraint;
     }
 
     @Override
@@ -63,4 +98,7 @@ public class SqlAddForeignKey extends SqlAddIndex {
 
         writer.endList(frame);
     }
+
+    @Override
+    public boolean supportFileStorage() { return false;}
 }

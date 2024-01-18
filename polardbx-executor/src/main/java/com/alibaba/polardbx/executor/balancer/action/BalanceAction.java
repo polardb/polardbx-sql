@@ -48,4 +48,9 @@ public interface BalanceAction {
      * Which means this action could not be executed directly, but execute as a ddl-job
      */
     ExecutableDdlJob toDdlJob(ExecutionContext ec);
+
+    @JSONField(deserialize = false, serialize = false)
+    default Long getBackfillRows() {
+        return -1L;
+    }
 }

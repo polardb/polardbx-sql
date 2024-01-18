@@ -20,10 +20,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName DrdsContinueDDLJob
- * @description
- * @Author chensr
- * @Date 2021-01-06
  */
 public class DrdsContinueDDLJob extends DrdsGenericDDLJob {
 

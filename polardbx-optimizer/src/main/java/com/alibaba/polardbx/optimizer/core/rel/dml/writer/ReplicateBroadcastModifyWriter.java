@@ -29,7 +29,7 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyTableModifyBuilder;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.ReplicationWriter;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.utils.BuildPlanUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
@@ -117,12 +117,12 @@ public class ReplicateBroadcastModifyWriter extends BroadcastModifyWriter implem
 
         // targetDb: { targetTb: [{ rowIndex, [pk1, pk2] }] }
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResult = BuildPlanUtils
-            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec);
+            .buildResultForBroadcastTable(schemaName, logicalTableName, distinctRows, pkMapping, ec, true);
 
         PartitionInfo newPartitionInfo = tableMeta.getNewPartitionInfo();
         final Map<String, Map<String, List<Pair<Integer, List<Object>>>>> replicatedShardResult = new HashMap<>();
         Map<String, Set<String>> replicateDbIndexAndPhycialTables = new HashMap<>();
-        for (PartitionSpec partitionSpec : newPartitionInfo.getPartitionBy().getPartitions()) {
+        for (PartitionSpec partitionSpec : newPartitionInfo.getPartitionBy().getPhysicalPartitions()) {
             if (!partitionSpec.getLocation().isVisiable() && ComplexTaskPlanUtils
                 .canWrite(tableMeta, partitionSpec.getName())) {
                 PartitionLocation location = partitionSpec.getLocation();

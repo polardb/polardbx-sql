@@ -16,12 +16,13 @@
 
 package com.alibaba.polardbx.executor.ddl.job.meta;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
-import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
+import com.google.common.collect.Lists;
 
 import java.sql.Connection;
 import java.util.List;
@@ -61,6 +62,21 @@ public class GsiMetaChanger {
             .getGsiMetaManager()
             .updateIndexStatus(metaDbConnection, schemaName, primaryTableName, indexName, beforeIndexStatus,
                 afterIndexStatus);
+    }
+
+    public static void updateIndexVisibility(Connection metaDbConnection,
+                                             String schemaName,
+                                             String primaryTableName,
+                                             String indexName,
+                                             IndexVisibility beforeVisibility,
+                                             IndexVisibility afterVisibility) {
+        ExecutorContext
+            .getContext(schemaName)
+            .getGsiManager()
+            .getGsiMetaManager()
+            .updateIndexVisibility(metaDbConnection, schemaName, primaryTableName, indexName, beforeVisibility,
+                afterVisibility);
+
     }
 
     public static void removeIndexMeta(Connection metaDbConnection,
@@ -111,8 +127,8 @@ public class GsiMetaChanger {
                                                    String primaryTableName,
                                                    String indexName,
                                                    List<String> columns,
-                                                   TableStatus beforeIndexStatus,
-                                                   TableStatus afterIndexStatus) {
+                                                   ColumnStatus beforeIndexStatus,
+                                                   ColumnStatus afterIndexStatus) {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConnection);
         //update column status in gsi table

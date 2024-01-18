@@ -1,0 +1,57 @@
+test_hash_ta:
+  CREATE TABLE `test_hash_ta` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `school` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tb:
+  CREATE TABLE `test_hash_tb` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  FOREIGN KEY fk(`id`) REFERENCES test_hash_ta (`id`) ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_tc:
+  CREATE TABLE `test_hash_tc` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  FOREIGN KEY fk(`name`) REFERENCES test_hash_ta (`name`) ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+test_hash_compound_td:
+  CREATE TABLE `test_hash_compound_td` (
+  `id` bigint(20) NOT NULL,
+  `name` varchar(30) NOT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  FOREIGN KEY fk(`id`) REFERENCES test_hash_ta (`id`) ON UPDATE CASCADE,
+  FOREIGN KEY fk1(`name`) REFERENCES test_hash_ta (`name`) ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`) tbpartition by hash(`NAME`) tbpartitions 2;
+
+test_hash_single_1:
+  CREATE TABLE `test_hash_single_1` (
+  `id` bigint(20) NOT NULL,
+  `name` varchar(30) NOT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 single;
+
+test_hash_single_2:
+  CREATE TABLE `test_hash_single_2` (
+  `id` bigint(20) NOT NULL,
+  `name` varchar(30) NOT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  FOREIGN KEY fk(`id`) REFERENCES test_hash_single_1 (`id`) ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 single;

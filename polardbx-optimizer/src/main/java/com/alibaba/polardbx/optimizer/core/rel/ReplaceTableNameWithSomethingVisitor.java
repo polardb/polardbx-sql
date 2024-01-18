@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta.IndexType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -36,7 +37,6 @@ import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexLiteral;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlAsOfOperator;
 import org.apache.calcite.sql.SqlAsOperator;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
@@ -60,7 +60,6 @@ import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.sql.TDDLSqlSelect;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.sql2rel.SqlToRelConverter.HintBlackboard;
 import org.apache.calcite.util.Util;
@@ -98,7 +97,7 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected boolean indexScan = false;
 
-    private final String defaultSchemaName;
+    protected final String defaultSchemaName;
 
     protected final ExecutionContext ec;
 
@@ -437,12 +436,41 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             } finally {
                 this.hintBlackboard.endAlias();
             }
+        } else if (fromKind == SqlKind.AS_OF) {
+            select.setFrom(buildAsOfNode((SqlBasicCall) from));
         } else if (fromKind == SqlKind.JOIN) {
             // 多表JOIN
             select.setFrom(visit((SqlJoin) from));
         } else if (fromKind == SqlKind.SELECT) {
             select.setFrom(visit((SqlCall) from));
         }
+    }
+
+    protected SqlCall buildAsOfNode(SqlBasicCall from) {
+        final SqlNode leftNode = from.getOperandList().get(0);
+        final SqlNode rightNode = from.getOperandList().get(1);
+        if (leftNode.getKind() == SqlKind.IDENTIFIER) {
+            // Build a new AS node,
+            // e.g. "FROM tb AS OF TIMESTAMP ?" -> "FROM tb_xxx AS OF TIMESTAMP ? AS tb"
+            SqlIdentifier identifier = (SqlIdentifier) leftNode;
+            this.tableNames.add(Util.last(identifier.names));
+            SqlNode asOfNode = new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {
+                    buildSth(leftNode),
+                    rightNode,
+                }, SqlParserPos.ZERO);
+            SqlIdentifier alias = new SqlIdentifier(
+                ImmutableList.of(Util.last(identifier.names)),
+                null,
+                identifier.getParserPosition(),
+                null,
+                identifier.indexNode,
+                identifier.partitions,
+                null);
+            return SqlStdOperatorTable.AS.createCall(identifier.getParserPosition(), asOfNode, alias);
+        }
+        return from;
     }
 
     @Override
@@ -605,7 +633,7 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
         SqlNode leftNode = call.getOperandList().get(0);
         SqlNode rightNode = null;
         boolean unwrapTablename = false;
-        if (leftNode instanceof SqlCall && ((SqlCall) leftNode).getOperator() instanceof SqlAsOfOperator) {
+        if (leftNode instanceof SqlCall && ((SqlCall) leftNode).getOperator().getKind() == SqlKind.AS_OF) {
             rightNode = ((SqlCall) leftNode).getOperandList().get(1);
             leftNode = ((SqlCall) leftNode).getOperandList().get(0);
             unwrapTablename = true;
@@ -631,10 +659,12 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
             throw new TddlNestableRuntimeException("should not be here");
         }
         if (unwrapTablename) {
-            leftNode = new SqlBasicCall(SqlStdOperatorTable.AS_OF, new SqlNode[] {
-                leftNode,
-                rightNode,
-            }, SqlParserPos.ZERO);
+            leftNode = new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                new SqlNode[] {
+                    leftNode,
+                    rightNode,
+                }, SqlParserPos.ZERO);
         }
 
         return SqlStdOperatorTable.AS.createCall(SqlParserPos.ZERO, leftNode, sqlIdentifier);
@@ -781,7 +811,8 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
 
     protected SqlNode buildFlashback(SqlNode origin, SqlNode converted) {
         if (origin instanceof SqlIdentifier && ((SqlIdentifier) origin).flashback != null) {
-            return new SqlBasicCall(SqlStdOperatorTable.AS_OF,
+            return new SqlBasicCall(
+                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
                 new SqlNode[] {converted, ((SqlIdentifier) origin).flashback}, SqlParserPos.ZERO);
         }
         return converted;

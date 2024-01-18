@@ -31,7 +31,10 @@ public final class ByteString {
     private final byte[] value;
     private final int offset;
     private final int length;
-    private Charset charset;
+    private final Charset charset;
+
+    private transient String generateStr;
+    private transient boolean multiLine;
 
     public ByteString(byte[] value, int offset, int length, Charset charset) {
         assert offset >= 0 && offset <= value.length;
@@ -53,10 +56,6 @@ public final class ByteString {
 
     public Charset getCharset() {
         return charset;
-    }
-
-    public void setCharset(Charset charset) {
-        this.charset = charset;
     }
 
     public void getBytes(int startPos, int endPos, byte[] dest, int destBegin) {
@@ -137,7 +136,8 @@ public final class ByteString {
         for (int i = sourceOffset + fromIndex; i <= max; i++) {
             /* Look for first character. */
             if (source[i] != first) {
-                while (++i <= max && source[i] != first);
+                while (++i <= max && source[i] != first)
+                    ;
             }
 
             /* Found first character, now look at the rest of v2 */
@@ -145,7 +145,8 @@ public final class ByteString {
                 int j = i + 1;
                 int end = j + targetCount - 1;
                 for (int k = targetOffset + 1; j < end && source[j]
-                    == target[k]; j++, k++);
+                    == target[k]; j++, k++)
+                    ;
 
                 if (j == end) {
                     /* Found whole string. */
@@ -195,12 +196,15 @@ public final class ByteString {
     }
 
     public char charAt(int i) {
-        return (char)(value[offset + i] & 0xff);
+        return (char) (value[offset + i] & 0xff);
     }
 
     @Override
     public String toString() {
-        return new String(value, offset, length, charset);
+        if (generateStr == null) {
+            generateStr = new String(value, offset, length, charset);
+        }
+        return generateStr;
     }
 
     public boolean regionMatches(boolean ignoreCase, int toffset,
@@ -212,8 +216,8 @@ public final class ByteString {
         int po = ooffset;
         // Note: toffset, ooffset, or len might be near -1>>>1.
         if ((ooffset < 0) || (toffset < 0)
-            || (toffset > (long)value.length - len)
-            || (ooffset > (long)pa.length - len)) {
+            || (toffset > (long) value.length - len)
+            || (ooffset > (long) pa.length - len)) {
             return false;
         }
         while (len-- > 0) {
@@ -263,5 +267,13 @@ public final class ByteString {
 
     public ByteString slice(int startPos) {
         return slice(startPos, this.length);
+    }
+
+    public boolean isMultiLine() {
+        return multiLine;
+    }
+
+    public void setMultiLine(boolean multiLine) {
+        this.multiLine = multiLine;
     }
 }

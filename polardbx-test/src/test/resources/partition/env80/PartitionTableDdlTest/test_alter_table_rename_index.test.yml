@@ -1,0 +1,39 @@
+drop table if exists tbl;
+create table if not exists tbl (
+a int not null,
+b int not null,
+c int not null,
+primary key (`a`),
+global index gsi_b(b) partition by key(b),
+key idx_c(c)
+) partition by range(a) (
+partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300)
+);
+
+show create table tbl;
+
+insert into tbl values (1, 2, 3), (101, 3, 4), (102, 4, 5), (201, 5, 6), (202, 6, 7);
+
+select * from tbl order by a;
+
+alter table tbl rename index idx_c to local_index_c;
+
+show create table tbl;
+
+select * from tbl order by a;
+
+alter table tbl rename index gsi_b to global_secondary_index_b;
+
+show create table tbl;
+
+show create table global_secondary_index_b;
+
+select * from tbl order by a;
+
+rename table tbl to tbl2;
+
+show create table tbl2;
+
+select * from tbl2 order by a;

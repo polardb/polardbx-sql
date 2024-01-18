@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 
 /**
@@ -43,5 +44,12 @@ public class TableGroupNameUtil {
             tgName = String.format(TG_NAME_TEMPLATE, tgId);
         }
         return tgName;
+    }
+
+    public static boolean isOssTg(String tgName) {
+        if (StringUtils.isEmpty(tgName)) {
+            return false;
+        }
+        return tgName.startsWith("oss_tg");
     }
 }

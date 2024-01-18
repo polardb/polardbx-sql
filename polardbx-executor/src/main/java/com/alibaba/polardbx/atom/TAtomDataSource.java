@@ -21,11 +21,12 @@ import com.alibaba.polardbx.atom.config.TAtomDsConfDO;
 import com.alibaba.polardbx.atom.config.TAtomDsConfHandle;
 import com.alibaba.polardbx.atom.config.listener.AtomAppConfigChangeListener;
 import com.alibaba.polardbx.atom.config.listener.AtomDbStatusListener;
-import com.alibaba.polardbx.rpc.pool.XConnection;
+import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.logger.LoggerInit;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.rpc.pool.XConnection;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -55,18 +56,28 @@ public class TAtomDataSource extends AbstractTAtomDataSource {
 
     private String dsModeInGroupKey = null;
 
-    //这个变量是给集团mpp 集群使用，使用的时候务必小心
-    @Deprecated
-    private boolean masterDB = true;
+    /**
+     * 0 -> master db
+     * 1 -> learner db
+     * 2 -> follower db
+     */
 
-    private String dnId;
-
-    public TAtomDataSource() {
-        dsConfHandle = new TAtomDsConfHandle(this);
+    public enum AtomSourceFrom {
+        MASTER_DB,
+        LEARNER_DB,
+        FOLLOWER_DB
     }
 
-    public TAtomDataSource(boolean masterDB) {
-        this.masterDB = masterDB;
+    private AtomSourceFrom sourceFrom;
+
+    /**
+     * FIXME The TAtomDataSource maybe share the same storage ID if the XDB has multi followers.
+     */
+    private String dnId;
+
+    public TAtomDataSource(AtomSourceFrom sourceFrom, String dnId) {
+        this.sourceFrom = sourceFrom;
+        this.dnId = dnId;
         dsConfHandle = new TAtomDsConfHandle(this);
     }
 
@@ -304,17 +315,21 @@ public class TAtomDataSource extends AbstractTAtomDataSource {
     }
 
     public boolean isMasterDB() {
-        return masterDB;
+        return sourceFrom == AtomSourceFrom.MASTER_DB;
+    }
+
+    public boolean isLearnerDB() {
+        return sourceFrom == AtomSourceFrom.LEARNER_DB;
+    }
+
+    public boolean isFollowerDB() {
+        return sourceFrom == AtomSourceFrom.FOLLOWER_DB;
     }
 
     public String getDnId() {
         if (dnId == null) {
-            return "empty";
+            return IDataSource.EMPTY;
         }
         return dnId;
-    }
-
-    public void setDnId(String dnId) {
-        this.dnId = dnId;
     }
 }

@@ -1,0 +1,235 @@
+## DISABLE_FAST_SQL_PARSER
+
+create tablegroup if not exists reorg_range_tg;
+create tablegroup if not exists reorg_range_tg_1;
+create tablegroup if not exists reorg_range_tg_n;
+
+drop table if exists sp_range_range_1;
+drop table if exists sp_range_range_2;
+drop table if exists sp_range_range_n;
+drop table if exists sp_list_col_range_col_1;
+
+  ## sp_range_range_1
+create table sp_range_range_1 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) subpartition template (
+subpartition sp1 values less than (1000),
+subpartition sp2 values less than (2000),
+subpartition sp3 values less than (3000),
+subpartition sp4 values less than (4000),
+subpartition sp5 values less than (5000)
+) (
+partition p1 values less than (2011),
+partition p2 values less than (2012),
+partition p3 values less than (2013),
+partition p4 values less than (2014),
+partition p5 values less than (2015)
+) tablegroup=reorg_range_tg;
+
+  ## sp_range_range_2
+create table sp_range_range_2 (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) subpartition template (
+subpartition sp1 values less than (1000),
+subpartition sp2 values less than (2000),
+subpartition sp3 values less than (3000),
+subpartition sp4 values less than (4000),
+subpartition sp5 values less than (5000)
+) (
+partition p1 values less than (2011),
+partition p2 values less than (2012),
+partition p3 values less than (2013),
+partition p4 values less than (2014),
+partition p5 values less than (2015)
+) tablegroup=reorg_range_tg;
+
+  ## sp_range_range_n
+create table sp_range_range_n (id int not null primary key, age int, name char(32), ctime datetime, remark varchar(32))
+partition by range (year(ctime))
+subpartition by range (id) (
+partition p1 values less than (2011) (
+subpartition p1sp1 values less than (1000)
+),
+partition p2 values less than (2012) (
+subpartition p2sp1 values less than (1000),
+subpartition p2sp2 values less than (2000)
+),
+partition p3 values less than (2013) (
+subpartition p3sp1 values less than (1000),
+subpartition p3sp2 values less than (2000),
+subpartition p3sp3 values less than (3000)
+),
+partition p4 values less than (2014) (
+subpartition p4sp1 values less than (1000),
+subpartition p4sp2 values less than (2000),
+subpartition p4sp3 values less than (3000),
+subpartition p4sp4 values less than (4000)
+),
+partition p5 values less than (2015) (
+subpartition p5sp1 values less than (1000),
+subpartition p5sp2 values less than (2000),
+subpartition p5sp3 values less than (3000),
+subpartition p5sp4 values less than (4000),
+subpartition p5sp5 values less than (5000)
+)
+) tablegroup=reorg_range_tg_n;
+
+  ## sp_list_col_range_col_1
+create table `sp_list_col_range_col_1` (
+`qwzrfe8kvgk` smallint(5) unsigned zerofill not null auto_increment comment 'gbegtl1ig5n6',
+`iacy` char(23) not null comment 'fts',
+`7aej91c6nyuh` char(23) not null,
+`p2ftn6enny` datetime not null,
+`tva8meoioa9sdbb` date not null,
+`yao73zdeunkkb` datetime default null,
+`ytfp7` datetime(3) default null,
+primary key (`qwzrfe8kvgk`),
+unique key `2ilnmpjynfh` using hash (`p2ftn6enny`, `qwzrfe8kvgk`, `iacy`, `7aej91c6nyuh`)
+) engine = innodb default charset = utf8mb4
+partition by list columns(`7aej91c6nyuh`,`iacy`)
+subpartition by range columns(`ytfp7`)
+(partition `kwfh8apjk9i` values in (('f9','x'),('u9qom9oydi','tb'))
+(subpartition `yfvsac3u1szcri` values less than ('2019-07-04 00:00:00.000') engine = innodb,
+subpartition `i` values less than ('2077-06-23 00:00:00.000') engine = innodb,
+subpartition `ghb` values less than ('2100-02-28 00:00:00.000') engine = innodb),
+partition `ebaallwj` values in (('xhowmmnitgd5j9','nxbf'),('etfzpvr','1ec84ommuy'),('wprijc18yqrj','eez'))
+(subpartition `2aidlwbfw6vvbt` values less than ('2021-12-16 00:00:00.000') engine = innodb));
+
+show full create table sp_range_range_1;
+show full create table sp_range_range_2;
+show full create table sp_range_range_n;
+show full create table sp_list_col_range_col_1;
+
+insert into sp_range_range_1(id,ctime) values (999,'2010-01-01');
+insert into sp_range_range_1(id,ctime) values (1999,'2010-01-01'),(1499,'2011-01-01');
+insert into sp_range_range_1(id,ctime) values (2999,'2010-01-01'),(2499,'2011-01-01'),(2799,'2012-01-01');
+insert into sp_range_range_1(id,ctime) values (3999,'2010-01-01'),(3499,'2011-01-01'),(3299,'2012-01-01'),(3799,'2013-01-01');
+insert into sp_range_range_1(id,ctime) values (4999,'2010-01-01'),(4499,'2011-01-01'),(4299,'2012-01-01'),(4799,'2013-01-01'),(4599,'2014-01-01');
+
+insert into sp_range_range_2(id,ctime) values (999,'2010-01-01');
+insert into sp_range_range_2(id,ctime) values (1999,'2010-01-01'),(1499,'2011-01-01');
+insert into sp_range_range_2(id,ctime) values (2999,'2010-01-01'),(2499,'2011-01-01'),(2799,'2012-01-01');
+insert into sp_range_range_2(id,ctime) values (3999,'2010-01-01'),(3499,'2011-01-01'),(3299,'2012-01-01'),(3799,'2013-01-01');
+insert into sp_range_range_2(id,ctime) values (4999,'2010-01-01'),(4499,'2011-01-01'),(4299,'2012-01-01'),(4799,'2013-01-01'),(4599,'2014-01-01');
+
+insert into sp_range_range_n(id,ctime) values (999,'2010-01-01'),(949,'2011-01-01'),(929,'2012-01-01'),(979,'2013-01-01'),(959,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (1999,'2011-01-01'),(1499,'2012-01-01'),(1299,'2013-01-01'),(1799,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (2999,'2012-01-01'),(2499,'2013-01-01'),(2799,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (3999,'2013-01-01'),(3499,'2014-01-01');
+insert into sp_range_range_n(id,ctime) values (4999,'2014-01-01');
+
+insert into sp_list_col_range_col_1(7aej91c6nyuh,iacy,p2ftn6enny,tva8meoioa9sdbb,yao73zdeunkkb,ytfp7)
+values ('f9','x','1900-01-01 00:00:00.000','2016-07-01','1995-12-01 00:00:00','2019-07-01 00:00:00.000'),
+('f9','x','1900-01-01 00:00:00.000','2032-10-01','2066-07-01 00:00:00','2077-06-01 00:00:00.000'),
+('f9','x','1900-01-01 00:00:00.000','2068-10-01','2066-01-01:00:00','2100-02-01 00:00:00.000'),
+('u9qom9oydi','tb','1900-01-01 00:00:00.000','2016-07-01','1995-12-01 00:00:00','2019-01-01 00:00:00.000'),
+('u9qom9oydi','tb','1900-01-01 00:00:00.000','2032-10-01','2066-07-01 00:00:00','2077-01-01 00:00:00.000'),
+('u9qom9oydi','tb','1900-01-01 00:00:00.000','2068-10-01','2066-01-01 00:00:00','2100-01-01 00:00:00.000'),
+('xhowmmnitgd5j9','nxbf','1900-01-01 00:00:00.000','2016-07-01','1995-12-01 00:00:00','2020-01-01 00:00:00.000'),
+('etfzpvr','1ec84ommuy','1900-01-01 00:00:00.000','2032-10-01','2066-07-01 00:00:00','2021-06-01 00:00:00.000'),
+('wprijc18yqrj','eez','1900-01-01 00:00:00.000','2068-10-01','2066-01-01 00:00:00','2021-12-10 00:00:00.000');
+
+alter table sp_range_range_1 reorganize partition p3,p4,p5 into (
+partition p34 values less than (2013),
+partition p45 values less than (2015)
+);
+
+alter table sp_range_range_1 reorganize partition p1,p2 into (
+partition p11 values less than (2009),
+partition p12 values less than (2010),
+partition p21 values less than (2011),
+partition p22 values less than (2012)
+);
+
+alter table sp_range_range_1 reorganize partition p34,p45 into (
+partition p34 values less than (2014),
+partition p45 values less than (2015)
+);
+
+alter table sp_range_range_1 reorganize subpartition sp2,sp3,sp4 into (
+subpartition sp23 values less than (2500),
+subpartition sp34 values less than (4000)
+);
+
+alter table sp_range_range_1 reorganize subpartition sp1 into (
+subpartition sp11 values less than (900),
+subpartition sp12 values less than (1000)
+);
+
+alter table sp_range_range_1 reorganize subpartition sp5 into (
+subpartition sp51 values less than (4500),
+subpartition sp52 values less than (5000)
+);
+
+alter table sp_range_range_1 reorganize subpartition sp23,sp34 into (
+subpartition sp23 values less than (3000),
+subpartition sp34 values less than (4000)
+);
+
+alter table sp_range_range_n reorganize partition p3,p4,p5 into (
+partition p34 values less than (2013),
+partition p45 values less than (2015)
+);
+
+alter table sp_range_range_n reorganize partition p1,p2 into (
+partition p11 values less than (2009),
+partition p12 values less than (2010),
+partition p21 values less than (2011),
+partition p22 values less than (2012)
+);
+
+alter table sp_range_range_n reorganize partition p34,p45 into (
+partition p34 values less than (2014),
+partition p45 values less than (2015)
+);
+
+alter table sp_range_range_n reorganize subpartition p45sp1 into (
+subpartition p45sp1 values less than (1000),
+subpartition p45sp2 values less than (2000),
+subpartition p45sp3 values less than (3000),
+subpartition p45sp4 values less than (4000),
+subpartition p45sp5 values less than (MAXVALUE)
+);
+
+alter table sp_range_range_n reorganize subpartition p34sp1 into (
+subpartition p34sp1 values less than (900),
+subpartition p34sp2 values less than (1000),
+subpartition p34sp3 values less than (MAXVALUE)
+);
+
+alter table sp_range_range_n reorganize subpartition p22sp1 into (
+subpartition p22sp1 values less than (3500),
+subpartition p22sp2 values less than (MAXVALUE)
+);
+
+alter table sp_range_range_n reorganize subpartition p45sp2,p45sp3,p45sp4 into (
+subpartition p45sp3 values less than (4000)
+);
+
+alter table sp_range_range_1 set tablegroup=reorg_range_tg_1;
+
+  ## error_msg: $# Newly defined subpartitions for each reorganized partition must contain a catch-all subpartition #$
+alter table `sp_list_col_range_col_1` reorganize partition `ebaallwj`,`kwfh8apjk9i` into (
+partition `wvu77ayiuya` values in ( ('xhowmmnitgd5j9','nxbf'),('etfzpvr','1ec84ommuy') ) subpartitions 1 (
+subpartition `sp1` values less than ( '2200-12-28' )
+),
+partition `wvu77ayiuya2` values in ( ('f9','x'),('u9qom9oydi','tb'),('wprijc18yqrj','eez') ) subpartitions 1 (
+subpartition `sp2` values less than ( '2021-12-16 00:00:00.000' )
+)
+);
+
+alter table `sp_list_col_range_col_1` reorganize partition `ebaallwj`,`kwfh8apjk9i` into (
+partition `wvu77ayiuya` values in ( ('xhowmmnitgd5j9','nxbf'),('etfzpvr','1ec84ommuy') )  (
+subpartition `p1sp1` values less than ( '1975-12-28' ) ,
+subpartition `p1sp2` values less than ( maxvalue )
+),
+partition `wvu77ayiuya2` values in ( ('f9','x'),('u9qom9oydi','tb'),('wprijc18yqrj','eez') ) (
+subpartition `p2sp2` values less than ( '2021-12-16 00:00:00.000' ) ,
+subpartition `p2spm` values less than ( maxvalue )
+)
+);
+
+show full create table sp_range_range_1;
+show full create table sp_range_range_2;
+show full create table sp_range_range_n;
+show full create table sp_list_col_range_col_1;

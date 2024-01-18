@@ -55,6 +55,8 @@ public class DdlEngineStats {
     public static Metric METRIC_BACKFILL_TASK_FAILED = new Metric("BACKFILL_TASK_FAILED");
 
     public static Metric METRIC_BACKFILL_PARALLELISM = new Metric("BACKFILL_PARALLELISM");
+    public static Metric METRIC_CHANGESET_APPLY_PARALLELISM = new Metric("CHANGESET_APPLY_PARALLELISM");
+    public static Metric METRIC_CHANGESET_APPLY_ROWS_SPEED = new Metric("CHANGESET_APPLY_ROWS_SPEED");
 
     public static Metric METRIC_THROTTLE_RATE =
         new Metric.DelegatorMetric("THROTTLE_RATE", (x) -> Throttle.getTotalThrottleRate());

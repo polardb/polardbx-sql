@@ -16,14 +16,13 @@
 
 package org.apache.calcite.sql;
 
-import java.util.List;
-
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.sql.SqlWriter.Frame;
 import org.apache.calcite.sql.SqlWriter.FrameTypeEnum;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.util.ImmutableNullableList;
 
-import com.alibaba.polardbx.common.utils.GeneralUtil;
+import java.util.List;
 
 /**
  * @author chenmo.cm
@@ -93,6 +92,17 @@ public class SqlReferenceDefinition extends SqlCall {
         }
     }
 
+    public SqlIdentifier getTableName() {
+        return tableName;
+    }
+
+    public List<SqlIdentifier> getColumns() {
+        return columns;
+    }
+
+    public List<SqlReferenceOption> getreferenceOptions() {
+        return referenceOptions;
+    }
     public static enum MatchType {
         MATCH_FULL, MATCH_PARTIAL, MATCH_SIMPLE
     }

@@ -38,6 +38,7 @@ import java.util.Map;
  */
 public class DirectTableOperation extends BaseTableOperation {
 
+    private List<Map<Integer, ParameterContext>> batchParameters;
     private List<String> logicalTableNames; // log tables
     private List<String> tableNames; // phy tables
 
@@ -59,6 +60,11 @@ public class DirectTableOperation extends BaseTableOperation {
     }
 
     @Override
+    public List<Map<Integer, ParameterContext>> getBatchParameters() {
+        return batchParameters;
+    }
+
+    @Override
     public void setDbIndex(String dbIndex) {
         this.dbIndex = dbIndex;
     }
@@ -77,15 +83,19 @@ public class DirectTableOperation extends BaseTableOperation {
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,
                                                                            List<List<String>> phyTableNamesOutput,
                                                                            ExecutionContext executionContext) {
+        if (phyTableNamesOutput != null) {
+            for (String tableName : tableNames) {
+                phyTableNamesOutput.add(ImmutableList.of(tableName));
+            }
+        }
+        if (executionContext.isBatchPrepare()) {
+            this.batchParameters = executionContext.getParams().getBatchParameters();
+            return new Pair<>(dbIndex, null);
+        }
         if (MapUtils.isEmpty(param) && CollectionUtils.isNotEmpty(paramIndex)) {
             throw new OptimizerException("Param list is empty.");
         }
         Pair<String, Map<Integer, ParameterContext>> result = new Pair<>(dbIndex, buildParam(param));
-        if (phyTableNamesOutput != null) {
-            for (int i = 0; i < tableNames.size(); i++) {
-                phyTableNamesOutput.add(ImmutableList.of(tableNames.get(i)));
-            }
-        }
         return result;
     }
 

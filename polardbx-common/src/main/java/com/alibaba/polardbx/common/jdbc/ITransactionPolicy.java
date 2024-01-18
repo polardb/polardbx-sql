@@ -34,6 +34,11 @@ public interface ITransactionPolicy {
 
         AUTO_COMMIT_SINGLE_SHARD,
 
+        /**
+         * PolarDb-X 2PC 优化的 TSO 事务（省略事务日志）
+         */
+        TSO_2PC_OPT,
+
         ALLOW_READ_CROSS_DB,
 
         COBAR_STYLE,
@@ -50,32 +55,36 @@ public interface ITransactionPolicy {
             .of(TransactionClass.XA,
                 TransactionClass.TSO,
                 TransactionClass.TSO_READONLY,
-                TransactionClass.AUTO_COMMIT_SINGLE_SHARD);
+                TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
+                TSO_2PC_OPT);
 
         public static EnumSet<TransactionClass> EXPLICIT_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
                 TransactionClass.TSO,
-                TransactionClass.ALLOW_READ_CROSS_DB);
+                TransactionClass.ALLOW_READ_CROSS_DB,
+                TSO_2PC_OPT);
 
         public static EnumSet<TransactionClass> TSO_TRANSACTION = EnumSet
             .of(TransactionClass.TSO,
                 TransactionClass.TSO_READONLY,
-                TransactionClass.AUTO_COMMIT_SINGLE_SHARD);
+                TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
+                TSO_2PC_OPT);
+
+        public static EnumSet<TransactionClass> ALLOW_FOLLOW_READ_TRANSACTION = EnumSet
+            .of(TransactionClass.AUTO_COMMIT,
+                TransactionClass.TSO_READONLY,
+                TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
+                TransactionClass.MPP_READ_ONLY_TRANSACTION);
 
         public static EnumSet<TransactionClass> SUPPORT_INVENTORY_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
                 TransactionClass.ALLOW_READ_CROSS_DB,
                 TransactionClass.AUTO_COMMIT);
 
-        public static EnumSet<TransactionClass> READ_TRANSACTION = EnumSet
-            .of(TransactionClass.TSO_READONLY,
-                TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
-                TransactionClass.MPP_READ_ONLY_TRANSACTION,
-                TransactionClass.AUTO_COMMIT);
-
         public static EnumSet<TransactionClass> SUPPORT_SHARE_READVIEW_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
-                TransactionClass.TSO);
+                TransactionClass.TSO,
+                TSO_2PC_OPT);
     }
 
     Free FREE = new Free();

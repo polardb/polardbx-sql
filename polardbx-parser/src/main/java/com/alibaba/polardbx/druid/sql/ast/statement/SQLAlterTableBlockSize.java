@@ -23,7 +23,7 @@ public class SQLAlterTableBlockSize extends SQLObjectImpl implements SQLAlterTab
 
     private SQLIntegerExpr size;
 
-    public SQLAlterTableBlockSize(){
+    public SQLAlterTableBlockSize() {
 
     }
 

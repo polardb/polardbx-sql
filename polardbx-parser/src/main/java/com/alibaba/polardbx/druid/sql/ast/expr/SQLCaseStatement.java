@@ -20,6 +20,12 @@ import com.alibaba.polardbx.druid.sql.ast.SQLObject;
 import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLObject;
+import com.alibaba.polardbx.druid.sql.ast.SQLObjectImpl;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 import java.io.Serializable;
@@ -27,11 +33,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SQLCaseStatement extends SQLStatementImpl implements Serializable {
-    private final List<Item>    items            = new ArrayList<Item>();
-    private SQLExpr             valueExpr;
-    private List<SQLStatement>  elseStatements = new ArrayList<SQLStatement>();
+    private final List<Item> items = new ArrayList<Item>();
+    private SQLExpr valueExpr;
+    private List<SQLStatement> elseStatements = new ArrayList<SQLStatement>();
 
-    public SQLCaseStatement(){
+    public SQLCaseStatement() {
 
     }
 
@@ -100,14 +106,14 @@ public class SQLCaseStatement extends SQLStatementImpl implements Serializable {
     public static class Item extends SQLObjectImpl implements Serializable {
 
         private static final long serialVersionUID = 1L;
-        private SQLExpr           conditionExpr;
-        private SQLStatement      statement;
+        private SQLExpr conditionExpr;
+        private SQLStatement statement;
 
-        public Item(){
+        public Item() {
 
         }
 
-        public Item(SQLExpr conditionExpr, SQLStatement statement){
+        public Item(SQLExpr conditionExpr, SQLStatement statement) {
 
             setConditionExpr(conditionExpr);
             setStatement(statement);
@@ -159,16 +165,30 @@ public class SQLCaseStatement extends SQLStatementImpl implements Serializable {
 
         @Override
         public boolean equals(Object obj) {
-            if (this == obj) return true;
-            if (obj == null) return false;
-            if (getClass() != obj.getClass()) return false;
+            if (this == obj) {
+                return true;
+            }
+            if (obj == null) {
+                return false;
+            }
+            if (getClass() != obj.getClass()) {
+                return false;
+            }
             Item other = (Item) obj;
             if (conditionExpr == null) {
-                if (other.conditionExpr != null) return false;
-            } else if (!conditionExpr.equals(other.conditionExpr)) return false;
+                if (other.conditionExpr != null) {
+                    return false;
+                }
+            } else if (!conditionExpr.equals(other.conditionExpr)) {
+                return false;
+            }
             if (statement == null) {
-                if (other.statement != null) return false;
-            } else if (!statement.equals(other.statement)) return false;
+                if (other.statement != null) {
+                    return false;
+                }
+            } else if (!statement.equals(other.statement)) {
+                return false;
+            }
             return true;
         }
 
@@ -176,13 +196,21 @@ public class SQLCaseStatement extends SQLStatementImpl implements Serializable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLCaseStatement that = (SQLCaseStatement) o;
 
-        if (!items.equals(that.items)) return false;
-        if (valueExpr != null ? !valueExpr.equals(that.valueExpr) : that.valueExpr != null) return false;
+        if (!items.equals(that.items)) {
+            return false;
+        }
+        if (valueExpr != null ? !valueExpr.equals(that.valueExpr) : that.valueExpr != null) {
+            return false;
+        }
         return elseStatements != null ? elseStatements.equals(that.elseStatements) : that.elseStatements == null;
     }
 
@@ -192,5 +220,10 @@ public class SQLCaseStatement extends SQLStatementImpl implements Serializable {
         result = 31 * result + (valueExpr != null ? valueExpr.hashCode() : 0);
         result = 31 * result + (elseStatements != null ? elseStatements.hashCode() : 0);
         return result;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
     }
 }

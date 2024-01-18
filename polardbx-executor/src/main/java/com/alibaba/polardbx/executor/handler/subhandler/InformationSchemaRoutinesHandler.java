@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
@@ -72,7 +73,7 @@ public class InformationSchemaRoutinesHandler extends BaseVirtualViewSubClassHan
                     rs.getString("COLLATION_NAME"),
                     rs.getString("DTD_IDENTIFIER"),
                     rs.getString("ROUTINE_BODY"),
-                    getDefiniton(rs.getString("ROUTINE_TYPE"), rs.getString("ROUTINE_DEFINITION")),
+                    getDefiniton(executionContext, rs.getString("ROUTINE_TYPE"), rs.getString("ROUTINE_DEFINITION")),
                     rs.getString("EXTERNAL_NAME"),
                     rs.getString("EXTERNAL_LANGUAGE"),
                     rs.getString("PARAMETER_STYLE"),
@@ -96,7 +97,10 @@ public class InformationSchemaRoutinesHandler extends BaseVirtualViewSubClassHan
         return cursor;
     }
 
-    private String getDefiniton(String type, String content) {
+    private String getDefiniton(ExecutionContext executionContext, String type, String content) {
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.ORIGIN_CONTENT_IN_ROUTINES)) {
+            return content;
+        }
         if (PlConstants.PROCEDURE.equalsIgnoreCase(type)) {
             SQLCreateProcedureStatement statement = (SQLCreateProcedureStatement) FastsqlUtils.parseSql(content,
                 SQLParserFeature.IgnoreNameQuotes).get(0);

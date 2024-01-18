@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -34,6 +35,8 @@ import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static org.apache.calcite.sql.SqlIdentifier.surroundWithBacktick;
 
 /**
  * @author mengshi
@@ -78,14 +81,23 @@ public class LogicalShowCreateTableHandler extends HandlerCommon {
         List<SQLTableElement> newTableElements = new ArrayList<>();
 
         final MySqlCreateTableStatement createTableStmt =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(sql, JdbcConstants.MYSQL).get(0).clone();
+            (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sql, JdbcConstants.MYSQL).get(0)
+                .clone();
+
+        for (SQLTableElement tableElement : createTableStmt.getTableElementList()) {
+            if (tableElement instanceof MysqlForeignKey) {
+                if (((MysqlForeignKey) tableElement).getName() != null) {
+                    ((MysqlForeignKey) tableElement).setHasConstraint(true);
+                }
+            }
+        }
 
         for (ColumnsRecord logicalColumn : logicalColumnsInOrder) {
             for (SQLTableElement tableElement : createTableStmt.getTableElementList()) {
                 if (tableElement instanceof SQLColumnDefinition) {
-                    String physicalColumnName = ((SQLColumnDefinition) tableElement).getColumnName();
-                    if (TStringUtil
-                        .equalsIgnoreCase(physicalColumnName, TStringUtil.addBacktick(logicalColumn.columnName))) {
+                    String physicalColumnName =
+                        SQLUtils.normalize(((SQLColumnDefinition) tableElement).getColumnName());
+                    if (TStringUtil.equalsIgnoreCase(physicalColumnName, logicalColumn.columnName)) {
                         newTableElements.add(tableElement);
                         break;
                     }

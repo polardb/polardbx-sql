@@ -18,11 +18,11 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
@@ -35,24 +35,26 @@ import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectOrderByItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableElement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MysqlForeignKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlCreateTableParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -60,12 +62,14 @@ import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -75,6 +79,7 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.MysqlSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.ViewManager;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
@@ -89,6 +94,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * @author mengshi
@@ -123,8 +129,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         }
 
         ArrayResultCursor result = new ArrayResultCursor("Create Table");
-        result.addColumn("Table", DataTypes.StringType);
-        result.addColumn("Create Table", DataTypes.StringType);
+        result.addColumn("Table", DataTypes.StringType, false);
+        result.addColumn("Create Table", DataTypes.StringType, false);
         result.initMeta();
 
         String sql = fetchShowCreateTableFromPhy(schemaName, tableName, showCreateTable, show, executionContext);
@@ -138,9 +144,12 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         PartitionInfoManager partitionInfoManager = tddlRuleManager.getPartitionInfoManager();
         PartitionInfo partInfo = partitionInfoManager.getPartitionInfo(tableName);
 
-        final ParamManager pm = executionContext.getParamManager();
-        boolean needShowHashByRange =
-            pm.getBoolean(ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE) || show.isShowForTruncateTable();
+        Boolean showHashPartitionByRange = Boolean.valueOf(ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE.getDefault());
+        if (executionContext != null) {
+            showHashPartitionByRange =
+                executionContext.getParamManager().getBoolean(ConnectionParams.SHOW_HASH_PARTITIONS_BY_RANGE);
+        }
+        boolean needShowHashByRange = showHashPartitionByRange || show.isShowForTruncateTable();
         String partitionByStr = partInfo.showCreateTablePartitionDefInfo(needShowHashByRange);
         partitionStr.append("\n").append(partitionByStr);
 
@@ -150,22 +159,28 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         // handle implicit pk
         MySqlCreateTableStatement createTable =
-            (MySqlCreateTableStatement) SQLUtils.parseStatements(sql,
-                JdbcConstants.MYSQL)
-                .get(0)
+            (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sql, JdbcConstants.MYSQL).get(0)
                 .clone();
 
         createTable.setTableName(SqlIdentifier.surroundWithBacktick(tableName));
 
         List<SQLTableElement> toRemove = Lists.newArrayList();
+        List<SQLTableElement> toAdd = Lists.newArrayList();
         for (SQLTableElement sqlTableElement : createTable.getTableElementList()) {
-            // handle binary default value
             if (sqlTableElement instanceof SQLColumnDefinition) {
-                String columnName = SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getColumnName());
+                SQLColumnDefinition sqlColumnDefinition = (SQLColumnDefinition) sqlTableElement;
+                String columnName = SQLUtils.normalizeNoTrim(sqlColumnDefinition.getColumnName());
                 ColumnMeta columnMeta = tableMeta.getColumnIgnoreCase(columnName);
                 if (columnMeta != null && columnMeta.isBinaryDefault()) {
+                    // handle binary default value
                     SQLHexExpr newDefaultVal = new SQLHexExpr(columnMeta.getField().getDefault());
-                    ((SQLColumnDefinition) sqlTableElement).setDefaultExpr(newDefaultVal);
+                    sqlColumnDefinition.setDefaultExpr(newDefaultVal);
+                } else if (columnMeta != null && columnMeta.isLogicalGeneratedColumn()) {
+                    // handle generated column
+                    sqlColumnDefinition.setGeneratedAlawsAs(
+                        new MySqlExprParser(ByteString.from(columnMeta.getField().getDefault())).expr());
+                    sqlColumnDefinition.setLogical(true);
+                    sqlColumnDefinition.setDefaultExpr(null);
                 }
             }
 
@@ -175,21 +190,84 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 toRemove.add(sqlTableElement);
             }
 
-            if (sqlTableElement instanceof SQLColumnDefinition && TableColumnUtils
-                .isHiddenColumn(executionContext, schemaName, tableName,
-                    SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
-                && !showCreateTable.isFull()) {
+            if (sqlTableElement instanceof SQLColumnDefinition
+                && TableColumnUtils.isHiddenColumn(executionContext, schemaName, tableName,
+                SQLUtils.normalizeNoTrim(((SQLColumnDefinition) sqlTableElement).getNameAsString()))
+                && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
                 toRemove.add(sqlTableElement);
             }
 
             if (sqlTableElement instanceof MySqlPrimaryKey
-                && SqlValidatorImpl
-                .isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
+                && SqlValidatorImpl.isImplicitKey(((MySqlPrimaryKey) sqlTableElement).getColumns().get(0).toString())
                 && !needShowImplicitId(executionContext) && !showCreateTable.isFull()) {
                 toRemove.add(sqlTableElement);
             }
+
+            // Remove index key and add foreign key if it is logical FK.
+            if (sqlTableElement instanceof MySqlKey && ((MySqlKey) sqlTableElement).getName() != null &&
+                ((MySqlKey) sqlTableElement).getName().getSimpleName() != null) {
+                final ForeignKeyData foreignKeyData =
+                    tableMeta.getForeignKeys()
+                        .get(SQLUtils.normalizeNoTrim(((MySqlKey) sqlTableElement).getName().getSimpleName()));
+                if (foreignKeyData != null && !foreignKeyData.isPushDown()) {
+                    toRemove.add(sqlTableElement);
+                    final MysqlForeignKey mysqlForeignKey = new MysqlForeignKey();
+                    mysqlForeignKey.setName(
+                        new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(foreignKeyData.constraint)));
+                    mysqlForeignKey.setHasConstraint(true);
+                    // do not show fk index name
+//                    mysqlForeignKey.setIndexName(
+//                        new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(foreignKeyData.indexName)));
+                    mysqlForeignKey.setReferencedTable(
+                        new SQLExprTableSource(foreignKeyData.refSchema.equals(schemaName) ?
+                            SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName) :
+                            SqlIdentifier.surroundWithBacktick(foreignKeyData.refSchema) + "."
+                                + SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName)));
+                    mysqlForeignKey.getReferencingColumns().addAll(foreignKeyData.columns.stream()
+                        .map(col -> new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(col)))
+                        .collect(Collectors.toList()));
+                    mysqlForeignKey.getReferencedColumns().addAll(foreignKeyData.refColumns.stream()
+                        .map(col -> new SQLIdentifierExpr(SqlIdentifier.surroundWithBacktick(col)))
+                        .collect(Collectors.toList()));
+                    if (foreignKeyData.onDelete != null && !foreignKeyData.onDelete.equals(
+                        ForeignKeyData.ReferenceOptionType.NO_ACTION)) {
+                        mysqlForeignKey.setOnDelete(
+                            MysqlForeignKey.Option.fromString(foreignKeyData.onDelete.getText()));
+                    }
+                    if (foreignKeyData.onUpdate != null && !foreignKeyData.onUpdate.equals(
+                        ForeignKeyData.ReferenceOptionType.NO_ACTION)) {
+                        mysqlForeignKey.setOnUpdate(
+                            MysqlForeignKey.Option.fromString(foreignKeyData.onUpdate.getText()));
+                    }
+                    if (showCreateTable.isFull()) {
+                        mysqlForeignKey.setPushDown(MysqlForeignKey.PushDown.fromBoolean(foreignKeyData.isPushDown()));
+                    }
+                    toAdd.add(mysqlForeignKey);
+                }
+            }
+
+            // Remove duplicate foreign key if it is identical with logical one.
+            if (sqlTableElement instanceof MysqlForeignKey) {
+                // Remove the physical table suffix anyway.
+                final ForeignKeyData foreignKeyData =
+                    tableMeta.getForeignKeys()
+                        .get(SQLUtils.normalizeNoTrim(((MysqlForeignKey) sqlTableElement).getName().getSimpleName()));
+                ((MysqlForeignKey) sqlTableElement).setReferencedTableName(new SQLIdentifierExpr(
+                    SqlIdentifier.surroundWithBacktick(foreignKeyData.refTableName)));
+                ((MysqlForeignKey) sqlTableElement).setName(new SQLIdentifierExpr(
+                    SqlIdentifier.surroundWithBacktick(foreignKeyData.constraint)));
+                // Enable constraint name by default.
+                if (((MysqlForeignKey) sqlTableElement).getName() != null) {
+                    ((MysqlForeignKey) sqlTableElement).setHasConstraint(true);
+                }
+                if (showCreateTable.isFull()) {
+                    ((MysqlForeignKey) sqlTableElement).setPushDown(
+                        MysqlForeignKey.PushDown.fromBoolean(foreignKeyData.isPushDown()));
+                }
+            }
         }
         createTable.getTableElementList().removeAll(toRemove);
+        createTable.getTableElementList().addAll(toAdd);
         List<SQLTableElement> localIndexes = Lists.newArrayList();
 
         for (SQLTableElement element : createTable.getTableElementList()) {
@@ -199,14 +277,15 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             }
         }
         createTable.getTableElementList().removeAll(localIndexes);
-        if(createTable.getOptionHints() != null){
+        if (createTable.getOptionHints() != null) {
             createTable.getOptionHints().removeIf(
-                e-> StringUtils.contains(e.getText(), "PARTITION BY")
+                e -> StringUtils.contains(e.getText(), "PARTITION BY")
             );
         }
 
         List<SQLTableElement> indexDefs =
-            buildIndexDefs(schemaName, gsiMeta, tableName, tableMeta, localIndexes, showCreateTable.isFull());
+            buildIndexDefs(schemaName, gsiMeta, tableName, tableMeta, localIndexes, showCreateTable.isFull(),
+                needShowHashByRange);
         createTable.getTableElementList().addAll(indexDefs);
 
         if (tableMeta.isAutoPartition() && showCreateTable.isFull()) {
@@ -217,24 +296,26 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         Engine engine = tableMeta.getEngine();
         for (SQLAssignItem tableOption : createTable.getTableOptions()) {
             if (tableOption.getTarget().toString().equalsIgnoreCase("ENGINE")) {
-                if (tableOption.getValue() == null || !tableOption.getValue().toString().equalsIgnoreCase(engine.name())) {
+                if (tableOption.getValue() == null || !tableOption.getValue().toString()
+                    .equalsIgnoreCase(engine.name())) {
                     tableOption.setValue(new SQLCharExpr(engine.name()));
                 }
             }
         }
 
-        sql = createTable.toString();
+        //sql = createTable.toString();
+        sql = createTable.toSqlString(needShowHashByRange);
 
         String tableLocality = partitionInfoManager.getPartitionInfo(tableName).getLocality();
-        LocalityDesc localityDesc = LocalityDesc.parse(tableLocality);
-        if(!localityDesc.holdEmptyDnList()) {
+        LocalityDesc localityDesc = LocalityInfoUtils.parse(tableLocality);
+        if (!localityDesc.isEmpty()) {
             sql += "\n" + localityDesc.showCreate();
         }
 
         if (!tableMeta.isAutoPartition() || showCreateTable.isFull()) {
             sql = sql + partitionStr;
         }
-        if(tableMeta.getLocalPartitionDefinitionInfo() != null){
+        if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
             sql += "\n" + tableMeta.getLocalPartitionDefinitionInfo().toString();
         }
 
@@ -281,10 +362,10 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         if (row != null) {
             ArrayResultCursor resultCursor = new ArrayResultCursor(tableName);
             // | View | Create View | character_set_client | collation_connection |
-            resultCursor.addColumn("View", DataTypes.StringType);
-            resultCursor.addColumn("Create View", DataTypes.StringType);
-            resultCursor.addColumn("character_set_client", DataTypes.StringType);
-            resultCursor.addColumn("collation_connection", DataTypes.StringType);
+            resultCursor.addColumn("View", DataTypes.StringType, false);
+            resultCursor.addColumn("Create View", DataTypes.StringType, false);
+            resultCursor.addColumn("character_set_client", DataTypes.StringType, false);
+            resultCursor.addColumn("collation_connection", DataTypes.StringType, false);
             resultCursor.initMeta();
             String createView = row.isVirtual() ? "[VIRTUAL_VIEW] " + row.getViewDefinition() :
                 "CREATE VIEW `" + tableName + "` AS " + row.getViewDefinition();
@@ -343,7 +424,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                                                 String mainTableName,
                                                 TableMeta meta,
                                                 List<SQLTableElement> localIndexes,
-                                                boolean full) {
+                                                boolean full,
+                                                boolean needShowHashByRange) {
         Set<String> ignoredLocalIndexNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         List<SQLTableElement> indexDefs = new ArrayList<>();
         if (meta.withGsi()) {
@@ -362,7 +444,7 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 SQLCharExpr comment =
                     TStringUtil.isEmpty(indexMeta.indexComment) ? null : new SQLCharExpr(indexMeta.indexComment);
 
-                SQLPartitionBy sqlPartitionBy = buildSqlPartitionBy(indexTableMeta);
+                SQLPartitionBy sqlPartitionBy = buildSqlPartitionBy(indexTableMeta, needShowHashByRange);
 
                 for (GsiMetaManager.GsiIndexColumnMetaBean indexColumn : indexMeta.indexColumns) {
                     SQLSelectOrderByItem orderByItem = new SQLSelectOrderByItem();
@@ -415,6 +497,11 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 indeDef.getIndexDefinition().getOptions().setIndexType(indexMeta.indexType);
                 indeDef.setName(showName);
                 indeDef.setComment(comment);
+                if (indexMeta.visibility == IndexVisibility.VISIBLE) {
+                    indeDef.getIndexDefinition().setVisible(true);
+                } else {
+                    indeDef.getIndexDefinition().setVisible(false);
+                }
                 if (full || !meta.isAutoPartition()) {
                     indeDef.setPartitioning(sqlPartitionBy);
                 }
@@ -461,16 +548,20 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
         return indexDefs;
     }
 
-    public SQLPartitionBy buildSqlPartitionBy(GsiMetaManager.GsiTableMetaBean indexTableMeta) {
+    public SQLPartitionBy buildSqlPartitionBy(GsiMetaManager.GsiTableMetaBean indexTableMeta,
+                                              boolean needShowHashByRange) {
         String indexName = indexTableMeta.gsiMetaBean.indexName;
         String schemaName = indexTableMeta.gsiMetaBean.indexSchema;
         PartitionInfoManager partitionInfoManager =
             OptimizerContext.getContext(schemaName).getPartitionInfoManager();
         PartitionInfo partitionInfo = partitionInfoManager.getPartitionInfo(indexName);
         if (partitionInfo != null) {
-            final MySqlCreateTableParser createParser =
-                new MySqlCreateTableParser(new MySqlExprParser(partitionInfo.getPartitionBy().toString()));
+            boolean usePartitionBy = partitionInfo.isGsi() || partitionInfo.isPartitionedTable();
+            ByteString byteString = ByteString.from(
+                usePartitionBy ? partitionInfo.showCreateTablePartitionDefInfo(needShowHashByRange, "\t\t") : "");
+            final MySqlCreateTableParser createParser = new MySqlCreateTableParser(byteString);
             final SQLPartitionBy partitionBy = createParser.parsePartitionBy();
+            partitionBy.setSourceSql(byteString);
             return partitionBy;
         }
         return null;

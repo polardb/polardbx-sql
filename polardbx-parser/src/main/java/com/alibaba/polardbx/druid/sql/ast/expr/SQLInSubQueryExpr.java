@@ -32,23 +32,23 @@ import java.util.List;
 public class SQLInSubQueryExpr extends SQLExprImpl implements Serializable, SQLReplaceable {
 
     private static final long serialVersionUID = 1L;
-    private boolean           not              = false;
-    private SQLExpr           expr;
+    private boolean not = false;
+    private SQLExpr expr;
 
-    public SQLSelect          subQuery;
+    public SQLSelect subQuery;
 
     // for ads query hint
     public SQLCommentHint hint;
 
-    public SQLInSubQueryExpr(){
+    public SQLInSubQueryExpr() {
 
     }
 
-    public SQLInSubQueryExpr(SQLSelect select){
+    public SQLInSubQueryExpr(SQLSelect select) {
         setSubQuery(select);
     }
 
-    public SQLInSubQueryExpr(SQLExpr expr, SQLSelectQueryBlock queryBlock){
+    public SQLInSubQueryExpr(SQLExpr expr, SQLSelectQueryBlock queryBlock) {
         setExpr(expr);
         setSubQuery(new SQLSelect(queryBlock));
     }
@@ -83,7 +83,6 @@ public class SQLInSubQueryExpr extends SQLExprImpl implements Serializable, SQLR
         }
         this.expr = expr;
     }
-
 
     public SQLSelect getSubQuery() {
         return this.subQuery;

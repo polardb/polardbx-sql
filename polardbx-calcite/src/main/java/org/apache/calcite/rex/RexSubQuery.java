@@ -159,6 +159,10 @@ public class RexSubQuery extends RexCall {
     this.hasOptimized = hasOptimized;
     return this;
   }
+
+  public RelNode getRel(){
+    return rel;
+  }
 }
 
 // End RexSubQuery.java

@@ -22,10 +22,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 /**
  * @version 1.0
- * @ClassName MySqlAlterTableValidation
- * @description
- * @Author zzy
- * @Date 2019-06-03 16:22
  */
 public class MySqlAlterTableValidation extends MySqlObjectImpl implements SQLAlterTableItem {
 

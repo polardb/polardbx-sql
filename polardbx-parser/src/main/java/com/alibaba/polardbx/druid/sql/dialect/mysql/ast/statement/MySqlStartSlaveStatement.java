@@ -18,16 +18,16 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 /**
- * @Author ShuGuang
- * @Description
- * @Date 2020/12/25 2:14 下午
+ * @author mario
  */
 public class MySqlStartSlaveStatement extends SQLStatementImpl {
     private SQLCharExpr channel;
+    private SQLCharExpr subChannel;
 
     @Override
     protected void accept0(SQLASTVisitor v) {
@@ -41,5 +41,18 @@ public class MySqlStartSlaveStatement extends SQLStatementImpl {
 
     public void setChannel(SQLCharExpr channel) {
         this.channel = channel;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
+
+    public SQLCharExpr getSubChannel() {
+        return subChannel;
+    }
+
+    public void setSubChannel(SQLCharExpr subChannel) {
+        this.subChannel = subChannel;
     }
 }

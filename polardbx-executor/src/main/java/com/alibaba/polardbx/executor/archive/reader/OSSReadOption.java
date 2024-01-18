@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.archive.reader;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
-import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.sarg.SearchArgument;
@@ -29,7 +28,7 @@ import java.util.List;
 public class OSSReadOption {
     private TypeDescription readSchema;
 
-    private List<ColumnMeta> columnMetas;
+    private OSSColumnTransformer ossColumnTransformer;
 
     private SearchArgument searchArgument;
 
@@ -43,12 +42,13 @@ public class OSSReadOption {
 
     private long maxMergeDistance;
 
-    public OSSReadOption(TypeDescription readSchema, List<ColumnMeta> columnMetas,
+    public OSSReadOption(TypeDescription readSchema, OSSColumnTransformer ossColumnMapping,
                          SearchArgument searchArgument, String[] columns, String tableName, Engine engine,
-                         List<String> tableFileList, List<FileMeta> phyTableFileMetas, List<PruningResult> pruningResultList,
+                         List<String> tableFileList, List<FileMeta> phyTableFileMetas,
+                         List<PruningResult> pruningResultList,
                          long maxMergeDistance) {
         this.readSchema = readSchema;
-        this.columnMetas = columnMetas;
+        this.ossColumnTransformer = ossColumnMapping;
         this.searchArgument = searchArgument;
         this.columns = columns;
         this.physicalTableName = tableName;
@@ -115,8 +115,8 @@ public class OSSReadOption {
         this.phyTableFileMetas = phyTableFileMetas;
     }
 
-    public List<ColumnMeta> getColumnMetas() {
-        return columnMetas;
+    public OSSColumnTransformer getOssColumnTransformer() {
+        return ossColumnTransformer;
     }
 
     public List<PruningResult> getPruningResultList() {
@@ -130,11 +130,11 @@ public class OSSReadOption {
     @Override
     public String toString() {
         return String.format(
-                "[fields: %s, searchArg: %s, columns: %s, table: %s]",
-                readSchema.toString(),
-                searchArgument.toString(),
-                Arrays.toString(columns),
-                physicalTableName
+            "[fields: %s, searchArg: %s, columns: %s, table: %s]",
+            readSchema.toString(),
+            searchArgument.toString(),
+            Arrays.toString(columns),
+            physicalTableName
         );
     }
 }

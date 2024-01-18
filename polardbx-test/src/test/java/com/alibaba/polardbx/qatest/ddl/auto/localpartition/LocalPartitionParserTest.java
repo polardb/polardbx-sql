@@ -23,7 +23,7 @@ import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import org.junit.Test;
 
 import java.time.LocalDate;
@@ -109,7 +109,7 @@ public class LocalPartitionParserTest {
             System.out.println(
                 "sqlPartitionByRange.get().getPartitions().size() :" + sqlPartitionByRange.get().getPartitions()
                     .size());
-            org.junit.Assert.assertEquals(32, sqlPartitionByRange.get().getPartitions().size());
+            org.junit.Assert.assertEquals(33, sqlPartitionByRange.get().getPartitions().size());
         }
 
         {
@@ -125,7 +125,7 @@ public class LocalPartitionParserTest {
             System.out.println(
                 "sqlPartitionByRange.get().getPartitions().size() :" + sqlPartitionByRange.get().getPartitions()
                     .size());
-            org.junit.Assert.assertEquals(32, sqlPartitionByRange.get().getPartitions().size());
+            org.junit.Assert.assertEquals(33, sqlPartitionByRange.get().getPartitions().size());
         }
 
         {
@@ -141,7 +141,7 @@ public class LocalPartitionParserTest {
             System.out.println(
                 "sqlPartitionByRange.get().getPartitions().size() :" + sqlPartitionByRange.get().getPartitions()
                     .size());
-            org.junit.Assert.assertEquals(32, sqlPartitionByRange.get().getPartitions().size());
+            org.junit.Assert.assertEquals(33, sqlPartitionByRange.get().getPartitions().size());
         }
 
         {

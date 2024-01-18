@@ -20,8 +20,6 @@ import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -104,7 +102,6 @@ import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlUpdate;
-import org.apache.calcite.sql.fun.SqlAlterTypeOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
@@ -112,6 +109,7 @@ import org.apache.calcite.util.BitSets;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
+import org.apache.commons.collections.ListUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -740,7 +738,7 @@ public class WriterFactory {
                                                       List<Integer> updateSourceMapping, TableMeta gsiMeta,
                                                       boolean isGsi, String primaryTableName,
                                                       Set<String> addedAutoUpdateColumns, PlannerContext plannerContext,
-                                                      ExecutionContext ec) {
+                                                      ExecutionContext ec, boolean forceGsiRelocate) {
         final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
         final OptimizerContext oc = OptimizerContext.getContext(qn.left);
         assert oc != null;
@@ -793,6 +791,7 @@ public class WriterFactory {
             updateWriter,
             gsiMeta,
             isGsi,
+            forceGsiRelocate,
             addedAutoUpdateColumns,
             plannerContext,
             ec);
@@ -873,7 +872,7 @@ public class WriterFactory {
                                                        DistinctWriter insertWriter,
                                                        DistinctWriter updateWriter,
                                                        TableMeta gsiMeta,
-                                                       boolean isGsi,
+                                                       boolean isGsi, boolean forceGsiRelocate,
                                                        Set<String> addedAutoUpdateColumns,
                                                        PlannerContext plannerContext,
                                                        ExecutionContext ec) {
@@ -950,7 +949,8 @@ public class WriterFactory {
                 identifierKeyMetas,
                 modifySkOnly.get(),
                 usePartFieldChecker,
-                gsiMeta);
+                gsiMeta,
+                forceGsiRelocate);
         }
     }
 
@@ -1135,9 +1135,12 @@ public class WriterFactory {
         TableColumnMeta tableColumnMeta = primaryTableMeta.getTableColumnMeta();
         Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
 
+        // During drop column, we drop gsi column first, so it is possible that gsi contain column that does not exist
+        // on primary table
         List<String> fieldNames =
             targetFields.stream().map(RelDataTypeField::getName)
-                .filter(name -> !(columnMapping != null && name.equalsIgnoreCase(columnMapping.right)))
+                .filter(name -> !(columnMapping != null && name.equalsIgnoreCase(columnMapping.right))
+                    && primaryTableMeta.getColumnIgnoreCase(name) != null)
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Replace insert value reference, expressions in SET are at the end of row
@@ -1234,6 +1237,7 @@ public class WriterFactory {
                                                                   List<Integer> updateSourceMapping,
                                                                   List<Integer> tarPermute,
                                                                   List<String> selectListForDuplicateCheck,
+                                                                  List<String> primaryUpdateColumnList,
                                                                   TableMeta gsiMeta,
                                                                   boolean isGsi,
                                                                   boolean isBroadcast,
@@ -1294,16 +1298,28 @@ public class WriterFactory {
         final List<ColumnMeta> identifierKeyMetas =
             identifierKeyNames.stream().map(targetTableMeta::getColumn).collect(Collectors.toList());
 
-        final int offset = selectListForDuplicateCheck.size();
-        final MappingBuilder updateMappingBuilder = MappingBuilder.create(updateColumnList);
+        final MappingBuilder updateMappingBuilder =
+            MappingBuilder.create(ListUtils.union(selectListForDuplicateCheck, primaryUpdateColumnList));
 
-        final Mapping skTargetMapping =
-            updateMappingBuilder.targetOrderedSource(identifierKeyNames).buildMapping(offset);
-        final Mapping skSourceMapping =
-            mappingBuilder.targetOrderedSource(identifierKeyNames).buildMapping();
-        final List<ColumnMeta> indentifierMetas =
-            mappingBuilder.targetOrderedSource(identifierKeyNames).getSource().stream()
-                .map(targetTableMeta::getColumn)
+        /*
+         * skSourceMapping 和 skTargetMapping 用来获取修改前后的拆分键在 updateSource 中的位置
+         * （代码位置 {@link com.alibaba.polardbx.optimizer.core.rel.dml.util.DuplicateCheckResult.updateSource}）
+         * updateSource 是由 selectListForDuplicateCheck + primaryUpdateColumnList 组成的
+         *
+         * skSourceMapping：修改前的拆分键的位置，只包含 selectListForDuplicateCheck
+         * skTargetMapping：修改后的拆分键的位置，包含 selectListForDuplicateCheck + primaryUpdateColumnList；如果出现了多次，取
+         * 最后一次出现的位置。这里需要注意当有多个分区键时，可能只有部分分区键出现在 UPDATE 中的情况。
+         *
+         * 最后使用 identicalPartitionKeyChecker 比较的时候，修改前后的拆分键都是按照 identifierKeyNameList 中的顺序排列的
+         * 这里的两个 mapping 只是用来拆分键是否发生变更的，不会影响 updateWriter
+         */
+
+        List<String> identifierKeyNameList = new ArrayList<>(identifierKeyNames);
+
+        final Mapping skTargetMapping = updateMappingBuilder.source(identifierKeyNameList).buildMapping();
+        final Mapping skSourceMapping = mappingBuilder.source(identifierKeyNameList).buildMapping();
+        final List<ColumnMeta> identifierMetas =
+            mappingBuilder.source(identifierKeyNameList).getSource().stream().map(targetTableMeta::getColumn)
                 .collect(Collectors.toList());
         final boolean modifySkOnly = identifierKeyNames.containsAll(updateColumnList);
 
@@ -1316,7 +1332,7 @@ public class WriterFactory {
                 distinctWriterWrapper,
                 relocateDeleteWriter, relocateInsertWriter, updateWriter, skTargetMapping,
                 skSourceMapping,
-                indentifierMetas,
+                identifierMetas,
                 modifySkOnly,
                 usePartFieldChecker);
         } else {
@@ -1325,7 +1341,7 @@ public class WriterFactory {
                 distinctWriterWrapper,
                 relocateDeleteWriter, relocateInsertWriter, updateWriter, skTargetMapping,
                 skSourceMapping,
-                indentifierMetas,
+                identifierMetas,
                 modifySkOnly,
                 usePartFieldChecker,
                 gsiMeta);
@@ -1417,8 +1433,7 @@ public class WriterFactory {
     /**
      * Create InsertWriter from LogicalDynamicValues
      */
-    public static InsertWriter createInsertOrReplaceWriter(LogicalInsert parent, RelOptTable
-        targetTable,
+    public static InsertWriter createInsertOrReplaceWriter(LogicalInsert parent, RelOptTable targetTable,
                                                            RelDataType sourceRowType, List<Integer> valuePermute,
                                                            TableMeta tableMeta, List<String> keyWords,
                                                            List<RexNode> duplicateKeyUpdateList, boolean isReplace,
@@ -1516,8 +1531,26 @@ public class WriterFactory {
         }
 
         if (isValueSource) {
-            final LogicalDynamicValues input = RelUtils.getRelInput(parent);
             targetFieldNames = valuePermute.stream().map(targetFieldNames::get).collect(Collectors.toList());
+        } else {
+            targetFieldNames = new ArrayList<>(targetFieldNames);
+        }
+
+        // Filter out generated columns
+        List<Integer> toRemove = new ArrayList<>();
+        for (int i = 0; i < targetFieldNames.size(); i++) {
+            if (primaryTableMeta.getColumnIgnoreCase(targetFieldNames.get(i)).isGeneratedColumn()) {
+                toRemove.add(i);
+            }
+        }
+
+        for (int i = 0; i < toRemove.size(); i++) {
+            valuePermute.remove(toRemove.get(i) - i);
+            targetFieldNames.remove(toRemove.get(i) - i);
+        }
+
+        if (isValueSource) {
+            final LogicalDynamicValues input = RelUtils.getRelInput(parent);
 
             // Build dynamic params
             values = input.getTuples().stream().map(
@@ -1541,8 +1574,6 @@ public class WriterFactory {
             insertRowType =
                 RexUtil.createOriginalStructType(parent.getCluster().getTypeFactory(), values.get(0), targetFieldNames);
         } else {
-            targetFieldNames = new ArrayList<>(targetFieldNames);
-
             // Build dynamic params
             final List<RexNode> dynamicParams =
                 valuePermute.stream()
@@ -1602,7 +1633,6 @@ public class WriterFactory {
      * Get index columns of primary key or unique key(if pk not exists)
      *
      * @param targetMeta Table meta
-     * @param ec
      * @return Primary/Unique keys
      */
     public static String getUniqueConditionColumns(TableMeta targetMeta, List<String> outColumnNames,

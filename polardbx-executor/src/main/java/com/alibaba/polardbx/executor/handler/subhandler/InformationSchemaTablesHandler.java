@@ -20,6 +20,7 @@ import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.jdbc.MasterSlave;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -30,7 +31,6 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.gms.util.StatisticUtils;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -45,6 +45,7 @@ import com.alibaba.polardbx.optimizer.view.InformationSchemaTables;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexLiteral;
+import org.apache.commons.lang.StringUtils;
 
 import java.math.BigInteger;
 import java.sql.Connection;
@@ -151,6 +152,9 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
 
         boolean once = true;
 
+        boolean enableLowerCase =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
+
         for (String schemaName : schemaNames) {
             SchemaManager schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
 
@@ -227,7 +231,7 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
                                 physicalTableToLogicalTable.get(rs.getString("TABLE_NAME"));
                             tableSchema = schemaName;
                             StatisticResult statisticResult =
-                                StatisticManager.getInstance().getRowCount(schemaName, logicalTableName);
+                                StatisticManager.getInstance().getRowCount(schemaName, logicalTableName, false);
                             tableRows = statisticResult.getLongValue();
                             if (!CanAccessTable.verifyPrivileges(schemaName, logicalTableName, executionContext)) {
                                 continue;
@@ -276,8 +280,8 @@ public class InformationSchemaTablesHandler extends BaseVirtualViewSubClassHandl
 
                         cursor.addRow(new Object[] {
                             rs.getObject("TABLE_CATALOG"),
-                            tableSchema,
-                            logicalTableName,
+                            enableLowerCase ? StringUtils.lowerCase(tableSchema) : tableSchema,
+                            enableLowerCase ? StringUtils.lowerCase(logicalTableName) : logicalTableName,
                             rs.getObject("TABLE_TYPE"),
                             rs.getObject("ENGINE"),
                             rs.getObject("VERSION"),

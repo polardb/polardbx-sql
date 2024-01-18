@@ -18,19 +18,41 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
+import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSetLocalityPreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
+import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetLocality;
+import org.apache.calcite.util.PrecedenceClimbingParser;
+import org.apache.commons.lang3.StringUtils;
 
+import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
@@ -41,11 +63,21 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
         super(ddl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void preparedData() {
         AlterTableGroupSetLocality alterTableGroupSetLocality = (AlterTableGroupSetLocality) relDdl;
         String tableGroupName = alterTableGroupSetLocality.getTableGroupName();
         String targetLocality = alterTableGroupSetLocality.getTargetLocality();
-        LocalityDesc targetLocalityDesc = LocalityDesc.parse(targetLocality);
+        LocalityDesc targetLocalityDesc = LocalityInfoUtils.parse(targetLocality);
 
         TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
@@ -60,7 +92,7 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
                     tableGroupName));
         }
         if (tgType == TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG) {
-            if (targetLocalityDesc.getDnList().size() != 1) {
+            if (targetLocalityDesc.getDnList().size() > 1) {
                 throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
                     String.format(
                         "invalid alter locality action for single table group! you can only set one dn as locality for single table group [%s]",
@@ -68,40 +100,38 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
 
             }
         }
+
         LocalityDesc originalLocalityDesc = tableGroupConfig.getLocalityDesc();
+        originalLocalityDesc = LocalityInfoUtils.parse(originalLocalityDesc.toString());
 
         List<String> schemaDnList =
             TableGroupLocation.getOrderedGroupList(schemaName).stream().map(group -> group.getStorageInstId())
                 .collect(Collectors.toList());
-        List<String> partitionGroupDnList =
-            tableGroupConfig.getPartitionGroupRecords().stream().map(group -> group.getLocality())
-                .collect(Collectors.toList());
+        Set<String> dnList = new HashSet<>();
+        if (tableGroupConfig.getTableCount() > 0) {
+            PartitionInfo partitionInfo = OptimizerContext.getContext(schemaName).getPartitionInfoManager()
+                .getPartitionInfo(tableGroupConfig.getTables().get(0).getTableName());
+            List<ShowTopologyResult> topologyResults = getTopologyResults(partitionInfo);
+            dnList = topologyResults.stream().map(o -> o.dnId).collect(Collectors.toSet());
+        }
 
-        List<String> targetDnList = targetLocalityDesc.getDnList();
-        List<String> orignialDnList = originalLocalityDesc.getDnList();
-        List<String> drainDnList = new ArrayList<>();
+        Set<String> targetDnList = targetLocalityDesc.getDnSet();
+        Set<String> fullTargetDnList = targetLocalityDesc.getFullDnSet();
+
+        Set<String> orignialDnList = originalLocalityDesc.getDnSet();
         Boolean withRebalance;
         String rebalanceSql = "";
         // validate locality
         // generate drain node list
         // generate metadb task
-        if (schemaDnList.containsAll(targetDnList)) {
-            for (PartitionGroupRecord partitionGroupRecord : tableGroupConfig.getPartitionGroupRecords()) {
-                LocalityDesc localityDesc = LocalityDesc.parse(partitionGroupRecord.getLocality());
-                //support override
-//                if (!localityDesc.isEmpty() && !targetLocalityDesc.compactiableWith(localityDesc)) {
-//                    throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
-//                        String.format("invalid locality: \"%s\", incompactible with locality \"%s\" of partition %s!",
-//                            targetLocality, partitionGroupRecord.locality, partitionGroupRecord.partition_name);
-//                }
-            }
-            if (targetDnList.isEmpty() || (targetDnList.containsAll(orignialDnList) && !orignialDnList.isEmpty())) {
+        if (schemaDnList.containsAll(fullTargetDnList) && schemaDnList.containsAll(targetDnList)) {
+            if (targetDnList.isEmpty() || (targetDnList.containsAll(orignialDnList) && !orignialDnList.isEmpty())
+                || targetDnList.containsAll(dnList)) {
                 withRebalance = false;
             } else {
-                schemaDnList.removeAll(targetDnList);
-                drainDnList = schemaDnList;
                 withRebalance = true;
-                rebalanceSql = String.format("rebalance tablegroup %s", tableGroupName);
+                rebalanceSql =
+                    String.format("schedule rebalance tablegroup %s policy = 'data_balance'", tableGroupName);
             }
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
@@ -111,9 +141,9 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
         preparedData.setTargetLocality(targetLocality);
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setSchemaName(schemaName);
-        preparedData.setDrainNodeList(drainDnList);
         preparedData.setWithRebalance(withRebalance);
         preparedData.setRebalanceSql(rebalanceSql);
+        preparedData.setSourceSql(constructSourceSql());
     }
 
     public AlterTableGroupSetLocalityPreparedData getPreparedData() {
@@ -121,7 +151,118 @@ public class LogicalAlterTableGroupSetLocality extends BaseDdlOperation {
     }
 
     public static LogicalAlterTableGroupSetLocality create(DDL ddl) {
-        return new LogicalAlterTableGroupSetLocality(ddl);
+        return new LogicalAlterTableGroupSetLocality(AlterTablePartitionHelper.fixAlterTableGroupDdlIfNeed(ddl));
     }
 
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupSetLocality alterTableGroupSetLocality = (AlterTableGroupSetLocality) relDdl;
+        String tableGroupName = alterTableGroupSetLocality.getTableGroupName();
+        return TableGroupNameUtil.isOssTg(tableGroupName);
+    }
+
+    @Override
+    public boolean checkIfBindFileStorage(ExecutionContext executionContext) {
+        AlterTableGroupSetLocality alterTableGroupSetLocality = (AlterTableGroupSetLocality) relDdl;
+        String tableGroupName = alterTableGroupSetLocality.getTableGroupName();
+        return !CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroupName);
+    }
+
+    private String constructSourceSql() {
+        String stmt = "ALTER TABLEGROUP `%s` SET LOCALITY = '%s'";
+        AlterTableGroupSetLocality alterTableGroupSetLocality = (AlterTableGroupSetLocality) relDdl;
+        String tableGroupName = alterTableGroupSetLocality.getTableGroupName();
+        String targetLocality = alterTableGroupSetLocality.getTargetLocality();
+        return String.format(stmt, tableGroupName, targetLocality);
+    }
+
+    public List<ShowTopologyResult> getTopologyResults(PartitionInfo partitionInfo) {
+        int index = 0;
+        Map<String, List<PhysicalPartitionInfo>> physicalPartitionInfos =
+            partitionInfo.getPhysicalPartitionTopology(new ArrayList<>());
+
+        Map<String, GroupDetailInfoExRecord> groupDnMap = fetchGrpInfo();
+        boolean useSubPart = partitionInfo.getPartitionBy().getSubPartitionBy() != null;
+        List<ShowTopologyResult> showTopologyResults = new ArrayList<>();
+        for (Map.Entry<String, List<PhysicalPartitionInfo>> phyPartItem : physicalPartitionInfos.entrySet()) {
+            String grpGroupKey = phyPartItem.getKey();
+            List<PhysicalPartitionInfo> phyPartList = phyPartItem.getValue();
+            for (int i = 0; i < phyPartList.size(); i++) {
+                PhysicalPartitionInfo phyPartInfo = phyPartList.get(i);
+                String grpName = phyPartInfo.getGroupKey();
+                GroupDetailInfoExRecord grpInfo = groupDnMap.get(grpName);
+                String dnId = "NA";
+                String phyDb = "NA";
+                if (grpInfo != null) {
+                    dnId = grpInfo.getStorageInstId();
+                    phyDb = grpInfo.getPhyDbName();
+                }
+                String pName = "";
+                String spName = "";
+                if (useSubPart) {
+                    spName = phyPartInfo.getPartName();
+                    pName = phyPartInfo.getParentPartName();
+                } else {
+                    pName = phyPartInfo.getPartName();
+                }
+
+                ShowTopologyResult showTopologyResult = new ShowTopologyResult(
+                    index++,
+                    grpGroupKey,
+                    phyPartList.get(i).getPhyTable(),
+                    pName,
+                    spName,
+                    phyDb,
+                    dnId
+                );
+                showTopologyResults.add(showTopologyResult);
+            }
+        }
+        return showTopologyResults;
+    }
+
+    private Map<String, GroupDetailInfoExRecord> fetchGrpInfo() {
+        Map<String, GroupDetailInfoExRecord> groupDnMap = new HashMap<>();
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+            groupDetailInfoAccessor.setConnection(metaDbConn);
+            List<GroupDetailInfoExRecord> completedGroupInfos =
+                groupDetailInfoAccessor.getCompletedGroupInfosByInstId(InstIdUtil.getInstId());
+            for (int i = 0; i < completedGroupInfos.size(); i++) {
+                GroupDetailInfoExRecord grpInfo = completedGroupInfos.get(i);
+                groupDnMap.put(grpInfo.getGroupName(), grpInfo);
+            }
+        } catch (Throwable ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, ex);
+        }
+        return groupDnMap;
+    }
+
+    private class ShowTopologyResult {
+        int id;
+        String groupName;
+        String tableName;
+        String partitionName;
+        String subpartitionName;
+        String phyDbName;
+        String dnId;
+
+        public ShowTopologyResult(
+            int id,
+            String groupName,
+            String tableName,
+            String partitionName,
+            String subpartitionName,
+            String phyDbName,
+            String dnId
+        ) {
+            this.id = id;
+            this.groupName = groupName;
+            this.tableName = tableName;
+            this.partitionName = partitionName;
+            this.subpartitionName = subpartitionName;
+            this.phyDbName = phyDbName;
+            this.dnId = dnId;
+        }
+    }
 }

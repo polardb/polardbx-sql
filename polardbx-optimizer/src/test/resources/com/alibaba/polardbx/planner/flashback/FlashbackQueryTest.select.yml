@@ -28,6 +28,14 @@
     logicalview(tables="optest_0000.test_single", sql="select `a`.`id`, `a`.`name`, `a`.`create_time` from `test_single` as of timestamp ? as `a` where (`a`.`id` = ?)", params="2022-02-17 14:40:40,1")
 
 - sql: |
+    select * from test_single as of timestamp "2022-02-17 14:40:40";
+
+  plan: |
+
+    logicalview(tables="optest_0000.test_single", sql="select `test_single`.`id`, `test_single`.`name`, `test_single`.`create_time` from `test_single` as of timestamp ? as `test_single`", params="2022-02-17 14:40:40")
+
+
+- sql: |
     select a.* from test_broadcast a as of timestamp "2022-02-17 14:40:40" where a.id = 1;
 
   plan: |

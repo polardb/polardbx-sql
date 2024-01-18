@@ -65,6 +65,11 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
         validateLocalPartition(tddlConnection, primaryTableName);
 
         String showCreateTableInfo = showCreateTable(tddlConnection, primaryTableName);
+        if (isMySQL80()) {
+            showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
+        }
         Assert.assertEquals(
             "CREATE TABLE `" + primaryTableName + "` (\n"
                 + "\t`c1` bigint(20) DEFAULT NULL,\n"
@@ -102,8 +107,59 @@ public class LocalPartitionShowCreateTest extends LocalPartitionBaseTest {
         validateLocalPartition(tddlConnection, primaryTableName);
 
         String showCreateTableInfo = showCreateTable(tddlConnection, primaryTableName);
+        if (isMySQL80()) {
+            showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
+        }
         Assert.assertEquals(
             "CREATE TABLE `" + primaryTableName + "` (\n"
+                + "\t`c1` bigint(20) DEFAULT NULL,\n"
+                + "\t`c2` bigint(20) DEFAULT NULL,\n"
+                + "\t`c3` bigint(20) DEFAULT NULL,\n"
+                + "\t`gmt_modified` datetime NOT NULL,\n"
+                + "\tPRIMARY KEY (`gmt_modified`),\n"
+                + "\tKEY `auto_shard_key_c1` USING BTREE (`c1`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+                + "PARTITION BY KEY(`c1`)\n"
+                + "PARTITIONS 4\n"
+                + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+                + "INTERVAL 1 MONTH\n"
+                + "EXPIRE AFTER -1\n"
+                + "PRE ALLOCATE 3\n"
+                + "PIVOTDATE NOW()\n",
+            showCreateTableInfo
+        );
+    }
+
+    @Test
+    public void testShowCreateLocalPartition3() {
+        String createTableSql = String.format("CREATE TABLE %s (\n"
+            + "    c1 bigint,\n"
+            + "    c2 bigint,\n"
+            + "    c3 bigint,\n"
+            + "    gmt_modified DATETIME PRIMARY KEY NOT NULL\n"
+            + ")\n"
+            + "PARTITION BY HASH(c1)\n"
+            + "PARTITIONS 4\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "INTERVAL 1 MONTH\n"
+            + ";", primaryTableName);
+        JdbcUtil.executeSuccess(tddlConnection, createTableSql);
+        validateLocalPartition(tddlConnection, primaryTableName);
+
+        String newName = primaryTableName + "_wumu";
+        String sql = String.format("rename table %s to %s", primaryTableName, newName);
+        JdbcUtil.executeSuccess(tddlConnection, sql);
+
+        String showCreateTableInfo = showCreateTable(tddlConnection, newName);
+        if (isMySQL80()) {
+            showCreateTableInfo = showCreateTableInfo.replace(" DEFAULT COLLATE = utf8mb4_general_ci", "");
+            // for 8032
+            showCreateTableInfo = showCreateTableInfo.replace("bigint(11)", "bigint(20)");
+        }
+        Assert.assertEquals(
+            "CREATE TABLE `" + newName + "` (\n"
                 + "\t`c1` bigint(20) DEFAULT NULL,\n"
                 + "\t`c2` bigint(20) DEFAULT NULL,\n"
                 + "\t`c3` bigint(20) DEFAULT NULL,\n"

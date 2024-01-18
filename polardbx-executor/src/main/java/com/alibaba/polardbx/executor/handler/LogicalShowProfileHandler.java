@@ -33,6 +33,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNumericLiteral;
 import org.apache.calcite.sql.SqlShowProfile;
+import org.apache.calcite.sql.SqlShowProfiles;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,6 +71,7 @@ public class LogicalShowProfileHandler extends HandlerCommon {
     public static final String PROFILE_TOTAL = "Total";
     public static final String PROFILE_INDENTS_UNIT = "  ";
     public static final String PROFILE_TABLE_NAME = "SQL_PROFILE";
+    public static final String PROFILES_TABLE_NAME = "SQL_PROFILES";
     public static final String PROFILE_VALUE_COMPUTING = "computing";
     public static final String PROFILE_NO_VALUE = "--";
     public static final String PROFILE_ZEOR_VALUE = "0";
@@ -98,6 +100,20 @@ public class LogicalShowProfileHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+
+        if (((LogicalShow) logicalPlan).getNativeSqlNode() instanceof SqlShowProfiles) {
+            /**
+             * Unsupported to handle show show profiles,
+             * so ignore and return empty result directly
+             *
+             */
+            ArrayResultCursor result = new ArrayResultCursor(PROFILES_TABLE_NAME);
+            result.addColumn("Query_ID", DataTypes.LongType);
+            result.addColumn("Duration", DataTypes.DoubleType);
+            result.addColumn("Query", DataTypes.StringType);
+            result.initMeta();
+            return result;
+        }
 
         if (showProfileSyncActionClass == null) {
             throw new NotSupportException();

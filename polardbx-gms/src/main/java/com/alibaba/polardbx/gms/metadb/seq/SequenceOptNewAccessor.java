@@ -28,6 +28,8 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.CYCLE;
+import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ;
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.NEW_SEQ_PREFIX;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.UNDERSCORE;
 
@@ -35,7 +37,8 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SequenceOptNewAccessor.class);
 
-    private static final String CREATE_NEW_SEQ = "create sequence %s start with %s cache %s";
+    private static final String CREATE_NEW_SEQ =
+        "create sequence %s start with %s increment by %s minvalue %s maxvalue %s cache %s %s";
 
     private static final String SHOW_NEXTVAL = "select nextval_show(%s)";
 
@@ -47,7 +50,9 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
 
     public void create(SequenceOptRecord record, long cacheSize) {
         String seqName = genNameForNewSequence(record);
-        execute(String.format(CREATE_NEW_SEQ, seqName, record.startWith, cacheSize));
+        String cycle = (record.cycle & CYCLE) == CYCLE ? "cycle" : "nocycle";
+        execute(String.format(CREATE_NEW_SEQ, seqName, record.value, record.incrementBy, record.startWith,
+            record.maxValue, cacheSize, cycle));
     }
 
     public long show(String schemaName, String name) {
@@ -67,19 +72,28 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
 
     public void change(SequenceOptRecord record) {
         String seqName = genNameForNewSequence(record);
-        execute(String.format(CHANGE_START_WITH, seqName, record.startWith - 1));
+        execute(String.format(CHANGE_START_WITH, seqName, record.startWith - 1), false);
     }
 
     @Override
-    protected String buildUpdateSql(SequenceOptRecord record) {
-        return String.format(UPDATE_SEQ_OPT_TABLE + "`start_with` = %s" + WHERE_SCHEMA_SEQ, record.startWith);
+    protected String buildCycle(SequenceOptRecord record) {
+        StringBuilder sql = new StringBuilder();
+
+        int newCycle = record.cycle & CYCLE;
+
+        buildCycle(newCycle, record.cycleReset, sql);
+
+        sql.append(")  | ").append(NEW_SEQ);
+
+        return sql.toString();
     }
 
     @Override
     public int rename(SequenceOptRecord record) {
         String oldName = genNameForNewSequence(record);
         String newName = genNameForNewSequence(record.schemaName, record.newName);
-        return execute(String.format(RENAME_NEW_SEQ, oldName, newName));
+        execute(String.format(RENAME_NEW_SEQ, oldName, newName));
+        return 0;
     }
 
     public void drop(SequenceOptRecord record) {
@@ -87,17 +101,25 @@ public class SequenceOptNewAccessor extends SequenceOptAccessor {
         execute(String.format(DROP_NEW_SEQ, seqName));
     }
 
-    private int execute(String sql) {
+    private void execute(String sql) {
+        execute(sql, true);
+    }
+
+    private void execute(String sql, boolean isDDL) {
         try {
             DdlMetaLogUtil.logSql(sql);
-            return MetaDbUtil.executeDDL(sql, connection);
+            if (isDDL) {
+                MetaDbUtil.executeDDL(sql, connection);
+            } else {
+                MetaDbUtil.execute(sql, connection);
+            }
         } catch (SQLException e) {
             LOGGER.error(String.format("Failed to execute sequence operation '%s'", sql), e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_NEW_SEQUENCE, e, sql, e.getMessage());
         }
     }
 
-    private String genNameForNewSequence(SequenceOptRecord record) {
+    public String genNameForNewSequence(SequenceOptRecord record) {
         return genNameForNewSequence(record.schemaName, record.name);
     }
 

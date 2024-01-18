@@ -31,6 +31,7 @@ import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -85,7 +86,7 @@ public class PhysicalPlanData {
             this.logicalTableName, this.sqlTemplate.replace("\n", ""), this.tableTopology);
     }
 
-    public PhysicalPlanData clone(){
+    public PhysicalPlanData clone() {
         PhysicalPlanData clone = new PhysicalPlanData();
         clone.schemaName = this.schemaName;
         clone.logicalTableName = this.logicalTableName;
@@ -94,7 +95,9 @@ public class PhysicalPlanData {
         clone.defaultDbIndex = this.defaultDbIndex;
         clone.defaultPhyTableName = this.defaultPhyTableName;
         clone.tablesExtRecord = this.tablesExtRecord;
-        clone.tableTopology = new HashMap<>(this.tableTopology);
+        clone.tableTopology = tableTopology == null ? null : new LinkedHashMap<>(this.tableTopology);
+        clone.physicalPartitionTopology =
+            this.physicalPartitionTopology == null ? null : new LinkedHashMap<>(this.physicalPartitionTopology);
         clone.kind = this.kind;
         clone.sqlTemplate = this.sqlTemplate;
         clone.paramsList = new ArrayList<>(this.paramsList);
@@ -114,25 +117,25 @@ public class PhysicalPlanData {
         return clone;
     }
 
-    public List<List<Map<Integer, ParameterContext>>> partitionParamsList(int count){
+    public List<List<Map<Integer, ParameterContext>>> partitionParamsList(int count) {
         return Lists.partition(paramsList, count);
     }
 
-    public List<Map<String, List<List<String>>>> partitionTableTopology(int count){
+    public List<Map<String, List<List<String>>>> partitionTableTopology(int count) {
         List<Pair<String, List<String>>> flatTopology = new ArrayList<>();
         for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
-            for(List<String> item: entry.getValue()){
+            for (List<String> item : entry.getValue()) {
                 flatTopology.add(Pair.of(entry.getKey(), item));
             }
         }
         List<List<Pair<String, List<String>>>> partitionedFlatTopology = Lists.partition(flatTopology, count);
 
         List<Map<String, List<List<String>>>> result = new ArrayList<>();
-        for (List<Pair<String, List<String>>> itemsInOneMap: partitionedFlatTopology){
+        for (List<Pair<String, List<String>>> itemsInOneMap : partitionedFlatTopology) {
             Map<String, List<List<String>>> map = new HashMap<>();
-            for(Pair<String, List<String>> item: itemsInOneMap){
+            for (Pair<String, List<String>> item : itemsInOneMap) {
                 map.compute(item.getKey(), (s, lists) -> {
-                    if(lists==null){
+                    if (lists == null) {
                         lists = new ArrayList<>();
                     }
                     lists.add(item.getValue());
@@ -144,4 +147,18 @@ public class PhysicalPlanData {
         return result;
     }
 
+    public List<String> explainInfo() {
+        String explainStringTemplate = "%s( tables=\"%s\", shardCount=%d, sql=\"%s\" )";
+        int shardCount = this.tableTopology.keySet().stream().mapToInt(o -> this.tableTopology.get(o).size()).sum();
+        String formatSql = this.sqlTemplate.replace("?\n\t", "? ").
+            replace("  ", " ").replace("?  ", "? ").replace("\t", "  ");
+        String explainString = String.format(explainStringTemplate,
+            this.getKind(),
+            this.getLogicalTableName(),
+            shardCount,
+            formatSql);
+        List<String> result = new ArrayList<>();
+        result.add(explainString);
+        return result;
+    }
 }

@@ -16,15 +16,18 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiIndexMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiTableMetaBean;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
 import org.apache.calcite.rel.ddl.DropIndex;
@@ -32,12 +35,14 @@ import org.apache.calcite.sql.SqlDropIndex;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapGsiName;
+import static org.apache.calcite.sql.SqlCreateTable.buildUnifyIndexName;
 
 public class LogicalDropIndex extends LogicalTableOperation {
 
@@ -46,6 +51,7 @@ public class LogicalDropIndex extends LogicalTableOperation {
     private final GsiMetaBean gsiMetaBean;
 
     private DropIndexWithGsiPreparedData dropIndexWithGsiPreparedData;
+    private RenameLocalIndexPreparedData renameLocalIndexPreparedData;
 
     public LogicalDropIndex(DropIndex dropIndex) {
         super(dropIndex);
@@ -71,6 +77,15 @@ public class LogicalDropIndex extends LogicalTableOperation {
         return dropIndexWithGsiPreparedData;
     }
 
+    public void setRenameLocalIndexPreparedData(
+        RenameLocalIndexPreparedData renameLocalIndexPreparedData) {
+        this.renameLocalIndexPreparedData = renameLocalIndexPreparedData;
+    }
+
+    public RenameLocalIndexPreparedData getRenameLocalIndexPreparedData() {
+        return renameLocalIndexPreparedData;
+    }
+
     public void prepareData() {
         if (isGsi()) {
             prepareLocalIndexWithGsiData();
@@ -81,6 +96,17 @@ public class LogicalDropIndex extends LogicalTableOperation {
 
     private boolean isAutoPartition() {
         return OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(tableName).isAutoPartition();
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        CheckOSSArchiveUtil.checkTTLSource(schemaName, tableName);
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     private void prepareLocalIndexWithGsiData() {
@@ -121,6 +147,23 @@ public class LogicalDropIndex extends LogicalTableOperation {
         dropIndexWithGsiPreparedData = new DropIndexWithGsiPreparedData();
         dropIndexWithGsiPreparedData.addLocalIndexPreparedData(preparedData);
 
+        // file storage table local index.
+        Optional<Pair<String, String>> archive = CheckOSSArchiveUtil.getArchive(schemaName, tableName);
+        if (archive.isPresent()) {
+            String fileStoreSchema = archive.get().getKey();
+            String fileStoreTable = archive.get().getValue();
+            SchemaManager fileStoreSM = OptimizerContext.getContext(fileStoreSchema).getLatestSchemaManager();
+            TableMeta fileStoreTableMeta = fileStoreSM.getTable(fileStoreTable);
+            if (fileStoreTableMeta.getIndexes().stream()
+                .anyMatch(x -> x.getPhysicalIndexName().equalsIgnoreCase(indexName))) {
+                DropLocalIndexPreparedData fileStorePreparedData =
+                    prepareDropLocalIndexData(fileStoreTable, indexName, false, false);
+                fileStorePreparedData.setSchemaName(fileStoreSchema);
+                fileStorePreparedData.setTableVersion(fileStoreTableMeta.getVersion());
+                dropIndexWithGsiPreparedData.addLocalIndexPreparedData(fileStorePreparedData);
+            }
+        }
+
         // Also drop local index on clustered index table.
         prepareIndexOnClusteredTable(false);
     }
@@ -128,22 +171,43 @@ public class LogicalDropIndex extends LogicalTableOperation {
     /**
      * Drop local index on clustered-index table
      */
-    private void prepareIndexOnClusteredTable(boolean onGsi) {
+    private void prepareIndexOnClusteredTable(boolean isDropGsi) {
         if (gsiMetaBean.withGsi(tableName)) {
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
                 if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexName)) {
                     // Add all clustered index except which is dropping.
                     final String clusteredTableName = gsiEntry.getKey();
-                    Set<String> indexes =
-                        OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(clusteredTableName)
-                            .getLocalIndexNames();
+                    TableMeta tableMeta =
+                        OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(clusteredTableName);
+                    Set<String> indexes = tableMeta.getLocalIndexNames();
 
                     if (!dropIndexWithGsiPreparedData.hasLocalIndexOnClustered(clusteredTableName)) {
-                        if ((indexes.contains(AUTO_LOCAL_INDEX_PREFIX + unwrapGsiName(indexName)) && onGsi)
-                            || (indexes.contains(indexName) && !onGsi)) {
+                        String targetLocalIndexName;
+                        if (isDropGsi) {
+                            targetLocalIndexName = AUTO_LOCAL_INDEX_PREFIX + unwrapGsiName(indexName);
+                        } else {
+                            targetLocalIndexName = indexName;
+                        }
+
+                        if (indexes.contains(targetLocalIndexName)) {
+                            if (tableMeta.isLastShardIndex(targetLocalIndexName)) {
+                                Set<String> orderedIndexColumnNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                                orderedIndexColumnNames.addAll(
+                                    tableMeta.getPartitionInfo().getActualPartitionColumnsNotReorder());
+                                final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
+                                final String newName = TddlConstants.AUTO_SHARD_KEY_PREFIX + suffix;
+                                if (renameLocalIndexPreparedData == null) {
+                                    renameLocalIndexPreparedData = new RenameLocalIndexPreparedData();
+                                }
+                                renameLocalIndexPreparedData.setSchemaName(schemaName);
+                                renameLocalIndexPreparedData.setTableName(clusteredTableName);
+                                renameLocalIndexPreparedData.setOrgIndexName(targetLocalIndexName);
+                                renameLocalIndexPreparedData.setNewIndexName(newName);
+                                continue;
+                            }
                             dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
-                                prepareDropLocalIndexData(clusteredTableName, indexName, true, onGsi));
+                                prepareDropLocalIndexData(clusteredTableName, indexName, true, isDropGsi));
                         }
                     }
                 }

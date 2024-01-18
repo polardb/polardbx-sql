@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.model.privilege.DbInfo;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
@@ -32,6 +33,7 @@ import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -73,6 +75,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_PARTITION;
+
 /**
  * Created by luoyanxin.
  *
@@ -83,9 +87,11 @@ public class PartitionUtils {
     public static SqlNode getSqlTemplate(String schemaName, String logicalTableName, String primaryTableDefinition,
                                          ExecutionContext ec) {
         TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(logicalTableName);
-        if (tableMeta.isGsi() && !tableMeta.isClustered() && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName) && tableMeta.isGsi() && !tableMeta.isClustered()
+            && !tableMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique) {
             final MySqlCreateTableStatement tableStatement =
-                (MySqlCreateTableStatement) SQLUtils.parseStatements(primaryTableDefinition, JdbcConstants.MYSQL)
+                (MySqlCreateTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(primaryTableDefinition,
+                        JdbcConstants.MYSQL)
                     .get(0)
                     .clone();
 
@@ -148,7 +154,10 @@ public class PartitionUtils {
                     oldColDef.getAutoIncrementType(),
                     oldColDef.getUnitCount(),
                     oldColDef.getUnitIndex(),
-                    oldColDef.getInnerStep());
+                    oldColDef.getInnerStep(),
+                    oldColDef.isGeneratedAlways(),
+                    oldColDef.isGeneratedAlwaysLogical(),
+                    oldColDef.getGeneratedAlwaysExpr());
                 newColDefs.add(new Pair<>(colDef.getKey(), newColDef));
             } else {
                 newColDefs.add(colDef);
@@ -239,9 +248,10 @@ public class PartitionUtils {
                 (SqlAlterTableGroupMovePartition) sqlNode;
 
             Set<String> partitionsToBeMoved = new TreeSet<>(String::compareToIgnoreCase);
-            for (Map.Entry<SqlNode, List<SqlNode>> entry : sqlAlterTableGroupMovePartition.getInstPartitions()
+
+            for (Map.Entry<String, Set<String>> entry : sqlAlterTableGroupMovePartition.getTargetPartitions()
                 .entrySet()) {
-                entry.getValue().stream().forEach(o -> partitionsToBeMoved.add(Util.last(((SqlIdentifier) (o)).names)));
+                partitionsToBeMoved.addAll(entry.getValue());
             }
 
             List<PartitionGroupRecord> moveRecords = tableGroupConfig.getPartitionGroupRecords().stream()
@@ -261,7 +271,8 @@ public class PartitionUtils {
         } else if (sqlNode instanceof SqlAlterTableGroupExtractPartition) {
             final SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
                 (SqlAlterTableGroupExtractPartition) sqlNode;
-            Map<SqlNode, RexNode> rexInfoCtx = sqlAlterTableGroupExtractPartition.getParent().getPartRexInfoCtx();
+            Map<SqlNode, RexNode> rexInfoCtx = sqlAlterTableGroupExtractPartition.getParent().getPartRexInfoCtxByLevel()
+                .get(PARTITION_LEVEL_PARTITION);
             List<RexNode> hotkeyExpress = new ArrayList<>();
             sqlAlterTableGroupExtractPartition.getHotKeys().forEach(o -> hotkeyExpress.add(rexInfoCtx.get(o)));
 

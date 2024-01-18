@@ -26,8 +26,8 @@ import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandAccessor;
-import com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandAccessor;
+import com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoAccessor;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoRecord;
@@ -41,6 +41,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -50,10 +51,10 @@ import java.util.stream.Collectors;
 import static com.alibaba.polardbx.cdc.CdcDbLock.acquireCdcDbLockByForUpdate;
 import static com.alibaba.polardbx.cdc.CdcDbLock.releaseCdcDbLockByCommit;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_FAILURE_TO_CDC_AFTER_REMOVE_GROUP;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_FAIL;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_INITIAL;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_STATUS_SUCCESS;
-import static com.alibaba.polardbx.gms.metadb.cdc.PolarxCommandRecord.COMMAND_TYPE.REMOVE_STORAGE;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.FAIL;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.INITIAL;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_STATUS.SUCCESS;
+import static com.alibaba.polardbx.gms.metadb.cdc.BinlogCommandRecord.COMMAND_TYPE.REMOVE_STORAGE;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.CDC_DB_NAME;
 
 /**
@@ -61,8 +62,20 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.CDC_DB_NAME;
  **/
 @Slf4j
 public class CdcStorageUtil {
-    private static final String STORAGE_HISTORY_QUERY_SQL =
+    private static final String SELECT_STORAGE_HISTORY =
         "select status from `binlog_storage_history` where instruction_id='%s'";
+    private static final String SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID =
+        "select status from `binlog_storage_history` where instruction_id='%s' and cluster_id = '%s'";
+    private static final String SELECT_STORAGE_HISTORY_DETAIL =
+        "select stream_name from `binlog_storage_history_detail` where instruction_id='%s' and cluster_id = '%s' and status = 0";
+    private static final String SELECT_STREAM_GROUP_FROM_STORAGE_HISTORY =
+        "select group_name from `binlog_storage_history` where instruction_id= '%s' and cluster_id = '%s'";
+    private static final String SELECT_STREAM_BY_GROUP_NAME =
+        "select stream_name from `binlog_x_stream` where group_name = '%s'";
+    private static final String SELECT_BINLOG_CLUSTER_ID =
+        "select distinct cluster_id from `binlog_node_info` where cluster_type='BINLOG'";
+    private static final String SELECT_BINLOG_X_CLUSTER_ID =
+        "select distinct cluster_id from `binlog_node_info` where cluster_type='BINLOG_X'";
 
     // 要保证幂等
     public static void checkCdcBeforeStorageRemove(Set<String> storageInstIds, String identifier) {
@@ -71,20 +84,19 @@ public class CdcStorageUtil {
         }
 
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
-            PolarxCommandAccessor commandAccessor = new PolarxCommandAccessor();
+            BinlogCommandAccessor commandAccessor = new BinlogCommandAccessor();
             commandAccessor.setConnection(connection);
 
             //1.command已经存在，状态为COMMAND_STATUS_INITIAL，继续checkCommand
             //2.command已经存在，状态为COMMAND_STATUS_SUCCESS，继续checkStorageHistory
             //3.command已经存在，状态为COMMAND_STATUS_FAIL，抛异常
-            Optional<PolarxCommandRecord> commandRecordOptional =
-                getCommandIfPresent(commandAccessor, storageInstIds, identifier);
+            Optional<BinlogCommandRecord> commandRecordOptional = getCommandIfPresent(commandAccessor, identifier);
             if (commandRecordOptional.isPresent()) {
                 log.warn("command record for {} has already exist, will recover.", storageInstIds);
-                PolarxCommandRecord commandRecord = commandRecordOptional.get();
+                BinlogCommandRecord commandRecord = commandRecordOptional.get();
                 checkAndProcess(commandAccessor, commandRecord, storageInstIds);
             } else {
-                PolarxCommandRecord commandRecord = sendCommand(storageInstIds, commandAccessor, identifier);
+                BinlogCommandRecord commandRecord = sendCommand(storageInstIds, commandAccessor, identifier);
                 checkAndProcess(commandAccessor, commandRecord, storageInstIds);
             }
         } catch (SQLException ex) {
@@ -101,10 +113,9 @@ public class CdcStorageUtil {
             .map(g -> g.storageInstId).anyMatch(g -> g.equals(storageInstId));
     }
 
-    private static Optional<PolarxCommandRecord> getCommandIfPresent(PolarxCommandAccessor commandAccessor,
-                                                                     Set<String> storageInstIds,
+    private static Optional<BinlogCommandRecord> getCommandIfPresent(BinlogCommandAccessor commandAccessor,
                                                                      String identifier) {
-        List<PolarxCommandRecord> commands =
+        List<BinlogCommandRecord> commands =
             commandAccessor.getBinlogCommandRecordByType(REMOVE_STORAGE.getValue());
         return commands.stream().filter(c -> {
             String requestStr = c.cmdRequest;
@@ -113,14 +124,14 @@ public class CdcStorageUtil {
         }).findFirst();
     }
 
-    private static PolarxCommandRecord sendCommand(Set<String> storageInstIds, PolarxCommandAccessor commandAccessor,
+    private static BinlogCommandRecord sendCommand(Set<String> storageInstIds, BinlogCommandAccessor commandAccessor,
                                                    String identifier) {
         String uuid = UUID.randomUUID().toString();
         StorageRemoveRequest request = new StorageRemoveRequest();
         request.setToRemoveStorageInstIds(storageInstIds);
         request.setIdentifier(identifier);
 
-        PolarxCommandRecord commandRecord = new PolarxCommandRecord();
+        BinlogCommandRecord commandRecord = new BinlogCommandRecord();
         commandRecord.cmdRequest = JSONObject.toJSONString(request);
         commandRecord.cmdId = uuid;
         commandRecord.cmdType = REMOVE_STORAGE.getValue();
@@ -128,7 +139,7 @@ public class CdcStorageUtil {
         return commandRecord;
     }
 
-    private static void checkAndProcess(PolarxCommandAccessor commandAccessor, PolarxCommandRecord commandRecord,
+    private static void checkAndProcess(BinlogCommandAccessor commandAccessor, BinlogCommandRecord commandRecord,
                                         Set<String> storageInstIds) {
         checkCommandStatus(commandAccessor, commandRecord);
         checkStorageStatus(commandAccessor.getConnection(), commandRecord.cmdId);
@@ -141,7 +152,7 @@ public class CdcStorageUtil {
                 return true;
             }
         } catch (SQLException ex) {
-            if (ex.getErrorCode() == com.alibaba.polardbx.ErrorCode.ER_NO_SUCH_TABLE) {
+            if (ex.getErrorCode() == ErrorCode.ER_NO_SUCH_TABLE.getCode()) {
                 return false;
             } else {
                 throw new TddlNestableRuntimeException("", ex);
@@ -149,7 +160,21 @@ public class CdcStorageUtil {
         }
     }
 
-    private static void checkCommandStatus(PolarxCommandAccessor commandAccessor, PolarxCommandRecord commandRecord) {
+    private static boolean isCdcStreamGroupExists(Connection connection) {
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery("SHOW COLUMNS FROM binlog_x_stream_group")) {
+                return true;
+            }
+        } catch (SQLException ex) {
+            if (ex.getErrorCode() == ErrorCode.ER_NO_SUCH_TABLE.getCode()) {
+                return false;
+            } else {
+                throw new TddlNestableRuntimeException("", ex);
+            }
+        }
+    }
+
+    private static void checkCommandStatus(BinlogCommandAccessor commandAccessor, BinlogCommandRecord commandRecord) {
         long startTime = System.currentTimeMillis();
         while (true) {
             if (System.currentTimeMillis() - startTime > 60 * 1000) {
@@ -157,13 +182,13 @@ public class CdcStorageUtil {
                     "Wait for the command to complete time out, command info :" + commandRecord);
             }
 
-            PolarxCommandRecord latestRecord =
+            BinlogCommandRecord latestRecord =
                 commandAccessor.getBinlogCommandRecordByTypeAndCmdId(commandRecord.cmdType, commandRecord.cmdId).get(0);
-            if (latestRecord.cmdStatus == COMMAND_STATUS_INITIAL) {
+            if (latestRecord.cmdStatus == INITIAL.getValue()) {
                 sleep();
-            } else if (latestRecord.cmdStatus == COMMAND_STATUS_FAIL) {
+            } else if (latestRecord.cmdStatus == FAIL.getValue()) {
                 processFailedCommand(latestRecord);
-            } else if (latestRecord.cmdStatus == COMMAND_STATUS_SUCCESS) {
+            } else if (latestRecord.cmdStatus == SUCCESS.getValue()) {
                 log.warn("command record is ready, detail info is " + commandRecord);
                 break;
             } else {
@@ -178,15 +203,151 @@ public class CdcStorageUtil {
             return;
         }
 
+        boolean supportBinlogX = isCdcStreamGroupExists(connection);
+        check4GlobalBinlog(connection, instructionId, supportBinlogX);
+        if (supportBinlogX) {
+            check4BinlogX(connection, instructionId);
+        }
+    }
+
+    private static void check4GlobalBinlog(Connection connection, String instructionId, boolean supportBinlogX) {
+        Set<String> clusterIds = new HashSet<>();
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(SELECT_BINLOG_CLUSTER_ID)) {
+                while (rs.next()) {
+                    clusterIds.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("select binlog cluster id failed. ", e);
+        }
+        log.info("binlog cluster ids : " + clusterIds);
+
+        for (String clusterId : clusterIds) {
+            String checkSql;
+            if (supportBinlogX) {
+                try (Statement stmt = connection.createStatement()) {
+                    try (ResultSet rs = stmt.executeQuery(SELECT_BINLOG_CLUSTER_ID)) {
+                        if (rs.next()) {
+                            clusterId = rs.getString(1);
+                        }
+                    }
+                } catch (SQLException e) {
+                    throw new TddlNestableRuntimeException("select binlog cluster id failed. ", e);
+                }
+
+                //开通多流的情况下，单流有可能是不存在的
+                if (StringUtils.isNotBlank(clusterId)) {
+                    checkSql = String.format(SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID, instructionId, clusterId);
+                } else {
+                    log.warn("Global binlog cluster is not existing, skip checking storage history.");
+                    return;
+                }
+            } else {
+                //cdc未支持多流的情况下，binlog_storage_history表中没有cluster_id列，仍然使用之前的判断方式
+                checkSql = String.format(SELECT_STORAGE_HISTORY, instructionId);
+            }
+
+            waitAndCheckStorageHistory(connection, instructionId, checkSql);
+        }
+    }
+
+    private static void check4BinlogX(Connection connection, String instructionId) {
+        Set<String> clusters = new HashSet<>();
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(SELECT_BINLOG_X_CLUSTER_ID)) {
+                while (rs.next()) {
+                    clusters.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+
+        for (String clusterId : clusters) {
+            String checkSql = String.format(SELECT_STORAGE_HISTORY_WITH_CLUSTER_ID, instructionId, clusterId);
+            waitAndCheckStorageHistory(connection, instructionId, checkSql);
+            waitAndCheckStorageHistoryDetail(connection, instructionId, clusterId);
+        }
+    }
+
+    private static String getStreamGroup(Connection connection, String instructionId, String clusterId) {
+        String queryStreamGroupSql = String.format(SELECT_STREAM_GROUP_FROM_STORAGE_HISTORY, instructionId, clusterId);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(queryStreamGroupSql)) {
+                if (rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+        return null;
+    }
+
+    private static Set<String> getStreamSetByGroup(Connection connection, String groupName) {
+        Set<String> streams = new HashSet<>();
+        String querySql = String.format(SELECT_STREAM_BY_GROUP_NAME, groupName);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(querySql)) {
+                while (rs.next()) {
+                    streams.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("SQL Error", e);
+        }
+        return streams;
+    }
+
+    private static Set<String> getStreamSetFromStorageHistoryDetail(Connection connection, String instructionId,
+                                                                    String clusterId) {
+        Set<String> streams = new HashSet<>();
+        String querySql = String.format(SELECT_STORAGE_HISTORY_DETAIL, instructionId, clusterId);
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery(querySql)) {
+                while (rs.next()) {
+                    streams.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlNestableRuntimeException("get streams from storage history detail failed. ", e);
+        }
+        return streams;
+    }
+
+    private static void waitAndCheckStorageHistoryDetail(Connection connection, String instructionId,
+                                                         String clusterId) {
+        String streamGroup = getStreamGroup(connection, instructionId, clusterId);
+        Set<String> expectedStreams = getStreamSetByGroup(connection, streamGroup);
+
         long startTime = System.currentTimeMillis();
         while (true) {
             if (System.currentTimeMillis() - startTime > 60 * 1000) {
                 throw new TddlNestableRuntimeException(
-                    "Wait for storage instruction to complete time out, instruction id :" + instructionId);
+                    "[Time out] Wait for storage instruction to complete by storage history detail , "
+                        + "instruction id :" + instructionId);
+            }
+            Set<String> storageStreams = getStreamSetFromStorageHistoryDetail(connection, instructionId, clusterId);
+            if (expectedStreams.equals(storageStreams)) {
+                return;
+            }
+
+            sleep();
+        }
+    }
+
+    private static void waitAndCheckStorageHistory(Connection connection, String instructionId, String checkSql) {
+        long startTime = System.currentTimeMillis();
+        while (true) {
+            if (System.currentTimeMillis() - startTime > 60 * 1000) {
+                throw new TddlNestableRuntimeException(
+                    "[Time out] Wait for storage instruction to complete by storage history , instruction id :"
+                        + instructionId);
             }
 
             try (Statement stmt = connection.createStatement()) {
-                try (ResultSet rs = stmt.executeQuery(String.format(STORAGE_HISTORY_QUERY_SQL, instructionId))) {
+                try (ResultSet rs = stmt.executeQuery(checkSql)) {
                     while (rs.next()) {
                         long status = rs.getLong(1);
                         if (status == 0) {
@@ -198,7 +359,7 @@ public class CdcStorageUtil {
                     }
                 }
             } catch (SQLException e) {
-                throw new TddlNestableRuntimeException("wait ");
+                throw new TddlNestableRuntimeException("wait and check storage history failed.", e);
             }
 
             sleep();
@@ -245,7 +406,7 @@ public class CdcStorageUtil {
                 groupsForDelete =
                     detailInfoAccessor.getGroupDetailInfoByDbNameAndStorageInstId(dbName, storageInstId).stream()
                         .map(d -> d.groupName).collect(
-                        Collectors.toList());
+                            Collectors.toList());
 
             } catch (Throwable ex) {
                 throw GeneralUtil.nestedException(ex);
@@ -294,7 +455,7 @@ public class CdcStorageUtil {
         return actualProcessedInsts;
     }
 
-    private static void processFailedCommand(PolarxCommandRecord commandRecord) {
+    private static void processFailedCommand(BinlogCommandRecord commandRecord) {
         throw new TddlNestableRuntimeException("Removing storage failed in cdc stage,"
             + " detail info is :" + commandRecord);
     }

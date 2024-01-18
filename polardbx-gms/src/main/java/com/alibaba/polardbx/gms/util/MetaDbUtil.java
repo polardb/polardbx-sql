@@ -63,6 +63,13 @@ public class MetaDbUtil {
         }
     }
 
+    public static boolean execute(String sql, Connection connection) throws SQLException {
+        validate(sql);
+        try (Statement statement = connection.createStatement()) {
+            return statement.execute(sql);
+        }
+    }
+
     public static int executeDDL(String ddl, Connection connection) throws SQLException {
         validate(ddl);
         try (Statement statement = connection.createStatement()) {
@@ -337,12 +344,18 @@ public class MetaDbUtil {
 
         if (metaDbConn == null) {
             try (Connection conn = getConnection()) {
-                conn.setAutoCommit(false);
-                conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                int iso = conn.getTransactionIsolation();
+                try {
+                    conn.setAutoCommit(false);
+                    conn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
 
-                result = func.apply(conn);
+                    result = func.apply(conn);
 
-                conn.setAutoCommit(true);
+                } finally {
+                    conn.setTransactionIsolation(iso);
+                    conn.setAutoCommit(true);
+                }
+
                 return result;
             } catch (Throwable ex) {
                 MetaDbLogUtil.META_DB_LOG.error(ex);
@@ -356,6 +369,39 @@ public class MetaDbUtil {
                 MetaDbLogUtil.META_DB_LOG.error(ex);
                 throw GeneralUtil.nestedException(ex);
             }
+        }
+    }
+
+    public static String getGmsPolardbVersion() {
+        try (Connection metaDbConn = MetaDbUtil.getConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery("SELECT @@polardb_version")) {
+            String version = null;
+            if (rs.next()) {
+                version = rs.getString(1);
+            }
+            return version;
+        } catch (SQLException e) {
+            MetaDbLogUtil.META_DB_LOG.error(e);
+            // ignore
+            return null;
+        }
+    }
+
+    public static boolean hasColumn(String tableName, String columnName) throws SQLException {
+        try (Connection metaDbConn = MetaDbUtil.getConnection();
+            Statement stmt = metaDbConn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW COLUMNS FROM " + tableName)) {
+            while (rs.next()) {
+                String field = rs.getString(1);
+                if (field.equalsIgnoreCase(columnName)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (SQLException ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw ex;
         }
     }
 }

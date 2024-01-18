@@ -42,6 +42,7 @@ public class CollationCompareTest extends CharsetTestBase {
     private static final ImmutableMultimap<String, String> MAP = ImmutableMultimap.<String, String>builder()
         .put("utf8mb4", "utf8mb4_general_ci")
         .put("utf8mb4", "utf8mb4_unicode_ci")
+        .put("utf8mb4", "utf8mb4_unicode_520_ci")
         .put("utf8mb4", "utf8mb4_bin")
         .put("ascii", "ascii_bin")
         .put("ascii", "ascii_general_ci")
@@ -55,6 +56,11 @@ public class CollationCompareTest extends CharsetTestBase {
         .put("latin1", "latin1_general_ci")
         .put("latin1", "latin1_general_cs")
         .put("latin1", "latin1_spanish_ci")
+        .put("gbk", "gbk_chinese_ci")
+        .put("gbk", "gbk_bin")
+        .put("gb18030", "gb18030_chinese_ci")
+        .put("gb18030", "gb18030_bin")
+        .put("gb18030", "gb18030_unicode_520_ci")
         .build();
 
     @Test

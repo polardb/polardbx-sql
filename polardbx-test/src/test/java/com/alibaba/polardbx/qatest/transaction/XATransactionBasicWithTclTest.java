@@ -42,7 +42,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  *
  * @see XATransactionBasicTest
  */
-@RunWith(Parameterized.class)
+
 public class XATransactionBasicWithTclTest extends CrudBasedLockTestCase {
 
     private static final int MAX_DATA_SIZE = 20;

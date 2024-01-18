@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.sql.Connection;
+import java.util.List;
 
 public interface DdlTask {
 
@@ -57,6 +58,11 @@ public interface DdlTask {
      * Rollback the DDL task.
      */
     void rollback(ExecutionContext executionContext);
+
+    /**
+     * handle error after DDL task execute failed
+     */
+    void handleError(ExecutionContext executionContext);
 
     /**
      * Get the exception action that DDL Engine should do after an exception occurs.
@@ -105,6 +111,8 @@ public interface DdlTask {
      * for visualization
      */
     String nodeInfo();
+
+    List<String> explainInfo();
 
     String executionInfo();
 

@@ -35,6 +35,8 @@ public class SqlShowPartitions extends SqlShow {
 
     private static final SqlSpecialOperator OPERATOR = new SqlShowPartitionsOperator();
 
+    private boolean showIndexPartMeta = false;
+    private SqlNode indexName = null;
 
     public SqlShowPartitions(SqlParserPos pos,
                              List<SqlSpecialIdentifier> specialIdentifiers, List<SqlNode> operands,
@@ -55,6 +57,22 @@ public class SqlShowPartitions extends SqlShow {
     @Override
     public SqlKind getShowKind() {
         return SqlKind.SHOW_PARTITIONS;
+    }
+
+    public boolean isShowIndexPartMeta() {
+        return showIndexPartMeta;
+    }
+
+    public void setShowIndexPartMeta(boolean showIndexPartMeta) {
+        this.showIndexPartMeta = showIndexPartMeta;
+    }
+
+    public SqlNode getIndexName() {
+        return indexName;
+    }
+
+    public void setIndexName(SqlNode indexName) {
+        this.indexName = indexName;
     }
 
     public static class SqlShowPartitionsOperator extends SqlSpecialOperator {

@@ -117,7 +117,7 @@ public class LogicalShowTableStatusHandler extends LogicalInfoSchemaQueryHandler
                 dataType = DataTypes.StringType;
                 break;
             }
-            result.addColumn(SqlShowTableStatus.COLUMN_NAMES.get(i), dataType);
+            result.addColumn(SqlShowTableStatus.COLUMN_NAMES.get(i), dataType, false);
         }
     }
 

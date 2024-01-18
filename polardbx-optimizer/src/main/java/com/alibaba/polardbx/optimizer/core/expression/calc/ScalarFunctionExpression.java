@@ -56,14 +56,6 @@ public class ScalarFunctionExpression extends AbstractExpression {
         return eval(row, contextHolder.getContext());
     }
 
-    public void setInFilter() {
-
-        ExecutionContext executionContext = contextHolder.getContext();
-        // Avoid polluting the original ec;
-        executionContext = executionContext.copy();
-        executionContext.setIsInFilter(true);
-    }
-
     public static IExpression getScalarFunctionExp(List<IExpression> args, IScalarFunction function,
                                                    ExecutionContext executionContext) {
         ScalarFunctionExpression scalarFunctionExpression = new ScalarFunctionExpression();

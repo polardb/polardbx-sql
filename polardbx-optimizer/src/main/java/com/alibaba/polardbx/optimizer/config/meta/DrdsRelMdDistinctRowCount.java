@@ -16,10 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticResult;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
@@ -32,6 +36,7 @@ import org.apache.calcite.rel.core.GroupJoin;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.TableLookup;
+import org.apache.calcite.rel.core.Window;
 import org.apache.calcite.rel.logical.LogicalExpand;
 import org.apache.calcite.rel.logical.LogicalTableScan;
 import org.apache.calcite.rel.logical.RuntimeFilterBuilder;
@@ -87,15 +92,26 @@ public class DrdsRelMdDistinctRowCount extends RelMdDistinctRowCount {
 
         TableMeta tableMeta = CBOUtil.getTableMeta(rel.getTable());
         if (tableMeta != null) {
+            PlannerContext pc = StatisticUtils.getPlannerContextFromRelNode(rel);
+            boolean isNeedTrace = pc != null && pc.isNeedStatisticTrace();
             StatisticResult statisticResult =
-                StatisticManager.getInstance().getRowCount(tableMeta.getSchemaName(), tableMeta.getTableName());
+                StatisticManager.getInstance().getRowCount(tableMeta.getSchemaName(), tableMeta.getTableName(),
+                    isNeedTrace);
+            if (isNeedTrace) {
+                pc.recordStatisticTrace(statisticResult.getTrace());
+            }
+
             final long tableRowCount = Math.max(statisticResult.getLongValue(), 1);
 
             double n = 1.0;
             for (Integer index : groupKey) {
                 final ColumnMeta columnMeta = tableMeta.getAllColumns().get(index);
                 StatisticResult statisticResult1 = StatisticManager.getInstance()
-                    .getCardinality(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(), true);
+                    .getCardinality(tableMeta.getSchemaName(), tableMeta.getTableName(), columnMeta.getName(), true,
+                        isNeedTrace);
+                if (isNeedTrace) {
+                    pc.recordStatisticTrace(statisticResult1.getTrace());
+                }
                 long cardinality = statisticResult1.getLongValue();
                 if (cardinality >= 0) {
                     // pass
@@ -307,5 +323,37 @@ public class DrdsRelMdDistinctRowCount extends RelMdDistinctRowCount {
                 RexUtil.composeConjunction(rexBuilder, notPushable, true);
             return distinctRowCount * RelMdUtil.guessSelectivity(preds);
         }
+    }
+
+    public Double getDistinctRowCount(Window rel, RelMetadataQuery mq,
+                                      ImmutableBitSet groupKey, RexNode predicate) {
+        if (groupKey.isEmpty()) {
+            return 1D;
+        }
+
+        if (rel.groups.size() != 1) {
+            LoggerFactory.getLogger(Window.class)
+                .warn(String.format("group within each window should be 1, but was %s", rel));
+            return null;
+        }
+
+        // determine which predicates can be applied on the child of the
+        // aggregate
+        final List<RexNode> notPushable = new ArrayList<>();
+        final List<RexNode> pushable = new ArrayList<>();
+        RelOptUtil.splitFilters(
+            rel.groups.get(0).keys,
+            predicate,
+            pushable,
+            notPushable);
+        final RexBuilder rexBuilder = rel.getCluster().getRexBuilder();
+        RexNode childPreds =
+            RexUtil.composeConjunction(rexBuilder, pushable, true);
+
+        /** difference from calcite we use this aggregate groupSet instead of childKey */
+        Double distinctRowCount =
+            mq.getDistinctRowCount(rel.getInput(), rel.groups.get(0).keys, childPreds);
+
+        return distinctRowCount;
     }
 }

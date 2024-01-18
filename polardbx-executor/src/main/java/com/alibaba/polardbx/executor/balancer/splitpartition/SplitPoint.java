@@ -54,6 +54,12 @@ public class SplitPoint {
         this.value = value;
     }
 
+    public SplitPoint(SearchDatumInfo value, String leftPartition, String rightPartition) {
+        this.value = value;
+        this.leftPartition = leftPartition;
+        this.rightPartition = rightPartition;
+    }
+
     public SearchDatumInfo getValue() {
         return this.value;
     }

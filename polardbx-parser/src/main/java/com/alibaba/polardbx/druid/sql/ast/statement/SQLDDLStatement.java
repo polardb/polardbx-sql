@@ -17,7 +17,5 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 
-
 public interface SQLDDLStatement extends SQLStatement {
-
 }

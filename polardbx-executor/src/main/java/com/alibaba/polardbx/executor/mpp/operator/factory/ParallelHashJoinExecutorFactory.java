@@ -81,7 +81,8 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
                 alreadyUseRuntimeFilter = ((HashJoin) join).isRuntimeFilterPushedDown();
             }
             ParallelHashJoinExec.Synchronizer synchronizer =
-                new ParallelHashJoinExec.Synchronizer(numPartitions, alreadyUseRuntimeFilter, context.getParamManager().getBoolean(
+                new ParallelHashJoinExec.Synchronizer(numPartitions, alreadyUseRuntimeFilter,
+                    context.getParamManager().getBoolean(
                     ConnectionParams.ENABLE_HASH_TABLE_BLOOM_FILTER));
             for (int i = 0; i < probeParallelism; i++) {
                 Executor inner;
@@ -96,8 +97,7 @@ public class ParallelHashJoinExecutorFactory extends ExecutorFactory {
                 IExpression otherCondition = convertExpression(otherCond, context);
 
                 List<EquiJoinKey> joinKeys = EquiJoinUtils
-                    .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType(),
-                        true);
+                    .buildEquiJoinKeys(join, join.getOuter(), join.getInner(), (RexCall) equalCond, join.getJoinType());
                 List<IExpression> antiJoinOperands = null;
                 if (operands != null && join.getJoinType() == JoinRelType.ANTI && !operands.isEmpty()) {
                     antiJoinOperands =

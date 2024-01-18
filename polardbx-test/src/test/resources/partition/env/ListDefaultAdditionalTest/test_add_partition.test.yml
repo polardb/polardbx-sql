@@ -1,0 +1,238 @@
+## DISABLE_FAST_SQL_PARSER
+
+# test alter tablegroup
+
+# list, algorithm=default
+create tablegroup tg1;
+create table tb1(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg1";
+insert into tb1 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg1 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb1 order by a;
+select a from tb1 partition(p1) order by a;
+select a from tb1 partition(p2) order by a;
+select a from tb1 partition(p3) order by a;
+select a from tb1 partition(pd) order by a;
+show create table tb1;
+  
+# list, algorithm=instant
+create tablegroup tg2;
+create table tb2(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg2";
+insert into tb2 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg2 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb2 order by a;
+select a from tb2 partition(p1) order by a;
+select a from tb2 partition(p2) order by a;
+select a from tb2 partition(p3) order by a;
+select a from tb2 partition(pd) order by a;
+show create table tb2;
+  
+# list columns, algorithm=default
+create tablegroup tg3;
+create table tb3(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+) tablegroup="tg3";
+insert into tb3 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg3 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=default;
+select a from tb3 order by a;
+select a from tb3 partition(p1) order by a;
+select a from tb3 partition(p2) order by a;
+select a from tb3 partition(p3) order by a;
+select a from tb3 partition(pd) order by a;
+show create table tb3;
+  
+# list columns, algorithm=instant
+create tablegroup tg4;
+create table tb4(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+) tablegroup="tg4";
+insert into tb4 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg4 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=instant;
+select a from tb4 order by a;
+select a from tb4 partition(p1) order by a;
+select a from tb4 partition(p2) order by a;
+select a from tb4 partition(p3) order by a;
+select a from tb4 partition(pd) order by a;
+show create table tb4;
+  
+# list columns(single), algorithm=default
+create tablegroup tg5;
+create table tb5(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg5";
+insert into tb5 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg5 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb5 order by a;
+select a from tb5 partition(p1) order by a;
+select a from tb5 partition(p2) order by a;
+select a from tb5 partition(p3) order by a;
+select a from tb5 partition(pd) order by a;
+show create table tb5;
+  
+# list columns(single), algorithm=instant
+create tablegroup tg6;
+create table tb6(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg6";
+insert into tb6 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter tablegroup tg6 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb6 order by a;
+select a from tb6 partition(p1) order by a;
+select a from tb6 partition(p2) order by a;
+select a from tb6 partition(p3) order by a;
+select a from tb6 partition(pd) order by a;
+show create table tb6;
+
+# test alter table
+# list, algorithm=default
+create table tb7(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb7 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb7 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb7 order by a;
+select a from tb7 partition(p1) order by a;
+select a from tb7 partition(p2) order by a;
+select a from tb7 partition(p3) order by a;
+select a from tb7 partition(pd) order by a;
+show create table tb7;
+  
+# list, algorithm=instant
+create table tb8(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb8 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb8 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb8 order by a;
+select a from tb8 partition(p1) order by a;
+select a from tb8 partition(p2) order by a;
+select a from tb8 partition(p3) order by a;
+select a from tb8 partition(pd) order by a;
+show create table tb8;
+  
+# list columns, algorithm=default
+create table tb9(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+);
+insert into tb9 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb9 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=default;
+select a from tb9 order by a;
+select a from tb9 partition(p1) order by a;
+select a from tb9 partition(p2) order by a;
+select a from tb9 partition(p3) order by a;
+select a from tb9 partition(pd) order by a;
+show create table tb9;
+  
+# list columns, algorithm=instant
+create table tb10(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2")),
+partition p2 values in((3,"3"),(4, "4")),
+partition pd values in(default)
+);
+insert into tb10 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb10 add partition (partition p3 values in((5,"5"),(6,"6"))) algorithm=instant;
+select a from tb10 order by a;
+select a from tb10 partition(p1) order by a;
+select a from tb10 partition(p2) order by a;
+select a from tb10 partition(p3) order by a;
+select a from tb10 partition(pd) order by a;
+show create table tb10;
+  
+# list columns(single), algorithm=default
+create table tb11(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb11 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb11 add partition (partition p3 values in(5,6)) algorithm=default;
+select a from tb11 order by a;
+select a from tb11 partition(p1) order by a;
+select a from tb11 partition(p2) order by a;
+select a from tb11 partition(p3) order by a;
+select a from tb11 partition(pd) order by a;
+show create table tb11;
+  
+# list columns(single), algorithm=instant
+create table tb12(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+);
+insert into tb12 values(1, '1'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8');
+
+alter table tb12 add partition (partition p3 values in(5,6)) algorithm=instant;
+select a from tb12 order by a;
+select a from tb12 partition(p1) order by a;
+select a from tb12 partition(p2) order by a;
+select a from tb12 partition(p3) order by a;
+select a from tb12 partition(pd) order by a;
+show create table tb12;

@@ -30,6 +30,8 @@ public class InstanceVersion {
     private String VERSION_PREFIX_8 = "8.0.3";
     private String VERSION_PREFIX = VERSION_PREFIX_5;
 
+    private static boolean MYSQL80 = false;
+
     public InstanceVersion() {
         initialVersion();
     }
@@ -87,6 +89,14 @@ public class InstanceVersion {
 
     public static String getFullVersion() {
         return instanceVersion.VERSION_PREFIX + VERSION_POSTFIX;
+    }
+
+    public static boolean isMYSQL80() {
+        return MYSQL80;
+    }
+
+    public static void setMYSQL80(boolean MYSQL80) {
+        InstanceVersion.MYSQL80 = MYSQL80;
     }
 
 }

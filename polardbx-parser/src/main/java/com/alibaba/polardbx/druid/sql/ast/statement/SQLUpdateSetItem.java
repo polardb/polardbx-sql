@@ -31,7 +31,7 @@ public class SQLUpdateSetItem extends SQLObjectImpl implements SQLReplaceable {
     private SQLExpr column;
     private SQLExpr value;
 
-    public SQLUpdateSetItem(){
+    public SQLUpdateSetItem() {
 
     }
 
@@ -56,7 +56,6 @@ public class SQLUpdateSetItem extends SQLObjectImpl implements SQLReplaceable {
         cloneTo(x);
         return x;
     }
-
 
     public void setColumn(SQLExpr x) {
         if (x != null) {
@@ -134,12 +133,18 @@ public class SQLUpdateSetItem extends SQLObjectImpl implements SQLReplaceable {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
 
         SQLUpdateSetItem that = (SQLUpdateSetItem) o;
 
-        if (column != null ? !column.equals(that.column) : that.column != null) return false;
+        if (column != null ? !column.equals(that.column) : that.column != null) {
+            return false;
+        }
         return value != null ? value.equals(that.value) : that.value == null;
     }
 

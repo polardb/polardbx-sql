@@ -58,6 +58,7 @@ public class InformationSchemaKeyColumnUsageHandler extends BaseVirtualViewSubCl
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
 
         Map<TableKey, List<ColumnInfo>> tableKeyListMap = new HashMap<>();
+        Map<TableForeignKey, List<FkColumnInfo>> tableFkKeyListMap = new HashMap<>();
 
         try (Connection connection = MetaDbUtil.getConnection()) {
             Statement stmt = connection.createStatement();
@@ -85,8 +86,30 @@ public class InformationSchemaKeyColumnUsageHandler extends BaseVirtualViewSubCl
                 } else {
                     //ignore
                 }
-
             }
+
+            rs = stmt.executeQuery(
+                "select a.SCHEMA_NAME, a.TABLE_NAME, CONSTRAINT_NAME, FOR_COL_NAME, POS, REF_SCHEMA_NAME, REF_TABLE_NAME, REF_COL_NAME "
+                    + "from foreign_key as a join foreign_key_cols as b "
+                    + "on a.SCHEMA_NAME = b.SCHEMA_NAME and a.TABLE_NAME = b.TABLE_NAME and a.INDEX_NAME = b.INDEX_NAME");
+            while (rs.next()) {
+                String schema = rs.getString("schema_name");
+                String tableName = rs.getString("table_name");
+                String constraintName = rs.getString("constraint_name");
+                String refSchema = rs.getString("ref_schema_name");
+                String refTableName = rs.getString("ref_table_name");
+                String forColName = rs.getString("for_col_name");
+                String refColName = rs.getString("ref_col_name");
+                TableForeignKey tableForeignKey =
+                    new TableForeignKey(schema, tableName, constraintName, refSchema, refTableName);
+                if (!tableFkKeyListMap.containsKey(tableForeignKey)) {
+                    tableFkKeyListMap.put(tableForeignKey, new ArrayList<>());
+                }
+                List<FkColumnInfo> columnInfos = tableFkKeyListMap.get(tableForeignKey);
+                int position = rs.getInt("pos") + 1;
+                columnInfos.add(new FkColumnInfo(forColName, refColName, position));
+            }
+
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -97,22 +120,37 @@ public class InformationSchemaKeyColumnUsageHandler extends BaseVirtualViewSubCl
             List<ColumnInfo> columnInfos = entry.getValue();
             for (ColumnInfo columnInfo : columnInfos) {
                 cursor.addRow(new Object[] {
-                    "def", tableKey.schema, tableKey.constraitName, "def", tableKey.schema,
-                    tableKey.tableName, columnInfo.colunName, columnInfo.position, null, null, null, null});
+                    "def", tableKey.schema, tableKey.constraintName, "def", tableKey.schema,
+                    tableKey.tableName, columnInfo.columnName, columnInfo.position, null, null, null, null});
             }
         }
+
+        Iterator<Map.Entry<TableForeignKey, List<FkColumnInfo>>> fkIterator =
+            tableFkKeyListMap.entrySet().stream().iterator();
+        while (fkIterator.hasNext()) {
+            Map.Entry<TableForeignKey, List<FkColumnInfo>> entry = fkIterator.next();
+            TableForeignKey tableKey = entry.getKey();
+            List<FkColumnInfo> columnInfos = entry.getValue();
+            for (FkColumnInfo columnInfo : columnInfos) {
+                cursor.addRow(new Object[] {
+                    "def", tableKey.schema, tableKey.constraintName, "def", tableKey.schema,
+                    tableKey.tableName, columnInfo.forColumnName, columnInfo.position, columnInfo.position,
+                    tableKey.refSchema, tableKey.refTableName, columnInfo.refColumnName});
+            }
+        }
+
         return cursor;
     }
 
     public class TableKey {
         private String schema;
         private String tableName;
-        private String constraitName;
+        private String constraintName;
 
-        public TableKey(String schema, String tableName, String constraitName) {
+        public TableKey(String schema, String tableName, String constraintName) {
             this.schema = schema;
             this.tableName = tableName;
-            this.constraitName = constraitName;
+            this.constraintName = constraintName;
         }
 
         @Override
@@ -126,21 +164,71 @@ public class InformationSchemaKeyColumnUsageHandler extends BaseVirtualViewSubCl
             TableKey tableKey = (TableKey) o;
             return schema.equals(tableKey.schema) &&
                 tableName.equals(tableKey.tableName) &&
-                constraitName.equals(tableKey.constraitName);
+                constraintName.equals(tableKey.constraintName);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(schema, tableName, constraitName);
+            return Objects.hash(schema, tableName, constraintName);
         }
     }
 
     public class ColumnInfo {
-        private String colunName;
+        private String columnName;
         private int position;
 
-        public ColumnInfo(String colunName, int position) {
-            this.colunName = colunName;
+        public ColumnInfo(String columnName, int position) {
+            this.columnName = columnName;
+            this.position = position;
+        }
+    }
+
+    public class TableForeignKey {
+        private String schema;
+        private String tableName;
+        private String constraintName;
+        private String refSchema;
+        private String refTableName;
+
+        public TableForeignKey(String schema, String tableName, String constraintName, String refSchema,
+                               String refTableName) {
+            this.schema = schema;
+            this.tableName = tableName;
+            this.constraintName = constraintName;
+            this.refSchema = refSchema;
+            this.refTableName = refTableName;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof TableForeignKey)) {
+                return false;
+            }
+            TableForeignKey tableForeignKey = (TableForeignKey) o;
+            return schema.equals(tableForeignKey.schema) &&
+                tableName.equals(tableForeignKey.tableName) &&
+                constraintName.equals(tableForeignKey.constraintName) &&
+                refSchema.equals(tableForeignKey.refSchema) &&
+                refTableName.equals(tableForeignKey.refTableName);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(schema, tableName, constraintName, refSchema, refTableName);
+        }
+    }
+
+    public class FkColumnInfo {
+        private String forColumnName;
+        private String refColumnName;
+        private int position;
+
+        public FkColumnInfo(String forColumnName, String refColumnName, int position) {
+            this.forColumnName = forColumnName;
+            this.refColumnName = refColumnName;
             this.position = position;
         }
     }

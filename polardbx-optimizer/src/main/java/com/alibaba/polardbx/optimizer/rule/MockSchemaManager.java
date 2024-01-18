@@ -28,12 +28,16 @@ import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
+import com.alibaba.polardbx.rule.TableRule;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class MockSchemaManager extends AbstractLifecycle implements SchemaManager {
 
@@ -46,6 +50,16 @@ public class MockSchemaManager extends AbstractLifecycle implements SchemaManage
         if (tableName.equalsIgnoreCase(DUAL)) {
             return buildDualTable();
         }
+        tableName = tableName.toUpperCase(Locale.ROOT);
+
+        // try find logical table by physical tablename
+        for (String logicalTableName : tableMetaMap.keySet()) {
+            if (tableName.startsWith(logicalTableName)) {
+                if (isPhysicalTableNameMatch(tableName, logicalTableName)) {
+                    return tableMetaMap.get(logicalTableName);
+                }
+            }
+        }
 
         if (tableMetaMap.containsKey(tableName.toUpperCase())) {
             return tableMetaMap.get(tableName.toUpperCase());
@@ -56,6 +70,25 @@ public class MockSchemaManager extends AbstractLifecycle implements SchemaManage
                 this.hashCode());
             throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, error);
         }
+    }
+
+    private boolean isPhysicalTableNameMatch(String tableName, String logicalTableName) {
+        TableRule tr = tddlRule.getTableRule(logicalTableName);
+        Map<String, Set<String>> topology = tr.getActualTopology();
+
+        for (Set<String> phyTblInOneGroup : topology.values()) {
+            for (String phyTbl : phyTblInOneGroup) {
+                if (phyTbl.equalsIgnoreCase(tableName)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public Collection<TableMeta> getAllTables() {
+        return tableMetaMap.values();
     }
 
     public TableMeta buildDualTable() {

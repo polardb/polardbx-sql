@@ -99,7 +99,8 @@ public class LogicalAlterTableSetTableGroupHandler extends LogicalCommonDdlHandl
             assert tableGroupConfig != null;
             final boolean onlyManualTableGroupAllowed =
                 executionContext.getParamManager().getBoolean(ConnectionParams.ONLY_MANUAL_TABLEGROUP_ALLOW);
-            if (!tableGroupConfig.isManuallyCreated() && onlyManualTableGroupAllowed) {
+            if (!tableGroupConfig.isManuallyCreated() && onlyManualTableGroupAllowed
+                && !tableGroupConfig.getLocalityDesc().getBalanceSingleTable()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_AUTO_CREATED,
                     String.format(
                         "only the tablegroup create by user manually could by use explicitly, the table group[%s] is created internally",
@@ -115,6 +116,6 @@ public class LogicalAlterTableSetTableGroupHandler extends LogicalCommonDdlHandl
             preparedData.getTableName(), preparedData.getTableGroupName());
         JoinGroupValidator.validateJoinGroupInfo(preparedData.getSchemaName(), preparedData.getTableGroupName(),
             preparedData.getOriginalJoinGroup(), errMsg, executionContext, null);
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 }

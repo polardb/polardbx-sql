@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.repo.mysql.handler.ddl.newengine;
 
-import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -27,7 +26,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
-import com.alibaba.polardbx.gms.node.NodeInfo;
+import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -62,7 +61,7 @@ public class DdlEngineInspectCacheHandler extends DdlEngineJobsHandler {
         IGmsSyncAction syncAction = new DdlCacheCollectionSyncAction(schemaName);
         GmsSyncManagerHelper.sync(syncAction, schemaName, results -> {
             if (results != null) {
-                for (Pair<NodeInfo, List<Map<String, Object>>> result : results) {
+                for (Pair<GmsNode, List<Map<String, Object>>> result : results) {
                     if (result != null && result.getValue() != null) {
                         for (Map<String, Object> row : result.getValue()) {
                             if (row != null) {

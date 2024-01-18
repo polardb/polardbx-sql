@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLTextLiteralExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLValuableExpr;
@@ -33,7 +34,7 @@ import java.util.List;
  */
 public class MysqlCreateFullTextTokenFilterStatement extends MySqlStatementImpl {
 
-    private SQLName            name;
+    private SQLName name;
     private SQLTextLiteralExpr typeName;
     protected final List<SQLAssignItem> options = new ArrayList<SQLAssignItem>();
 
@@ -104,5 +105,10 @@ public class MysqlCreateFullTextTokenFilterStatement extends MySqlStatementImpl 
         }
 
         return null;
+    }
+
+    @Override
+    public SqlType getSqlType() {
+        return SqlType.CREATE;
     }
 }

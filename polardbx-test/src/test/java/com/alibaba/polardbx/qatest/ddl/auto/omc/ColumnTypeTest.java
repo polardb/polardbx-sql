@@ -29,6 +29,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 
 import static com.alibaba.polardbx.qatest.constant.GsiConstant.COLUMN_DEF_MAP;
+import static com.alibaba.polardbx.qatest.constant.GsiConstant.SK_DEF_MAP;
 import static org.junit.Assert.assertTrue;
 
 public class ColumnTypeTest extends DDLBaseNewDBTestCase {
@@ -60,6 +61,10 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
         new String[] {"gbk", "gbk_chinese_ci"},
         new String[] {"gbk", "gbk_bin"},
 
+        new String[] {"gb18030", "gb18030_chinese_ci"},
+        new String[] {"gb18030", "gb18030_bin"},
+        new String[] {"gb18030", "gb18030_unicode_520_ci"},
+
         new String[] {"utf8", "utf8_general_ci"},
         new String[] {"utf8", "utf8_bin"},
         new String[] {"utf8", "utf8_unicode_ci"},
@@ -80,6 +85,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
         new String[] {"utf32", "utf32_general_ci"},
         new String[] {"utf32", "utf32_bin"},
         new String[] {"utf32", "utf32_unicode_ci"},
+        // utf16 and utf32 may not support on mysql5.7
     };
 
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC ";
@@ -112,7 +118,7 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
                 String.format("alter table %s modify column b varchar(20) character set %s collate %s", tableName,
                     CHARSET_PARAMS[i][0], CHARSET_PARAMS[i][1]);
             System.out.println(CHARSET_PARAMS[i][0] + " " + CHARSET_PARAMS[i][1]);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql + USE_OMC_ALGORITHM, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }
@@ -138,7 +144,64 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
 
             System.out.println(columnType);
             String alterSql = String.format("alter table %s modify column b %s", tableName, columnType);
-            JdbcUtil.executeUpdateSuccess(tddlConnection, hint + alterSql + USE_OMC_ALGORITHM);
+            execDdlWithRetry(tddlDatabase1, tableName, hint + alterSql + USE_OMC_ALGORITHM, tddlConnection);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
+            assertTrue(assertSameTypeInfo(selectColumnType));
+        }
+    }
+
+    @Test
+    public void testModifyPartitionKeyCharset() throws SQLException {
+        String tableName = "omc_modify_charset";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTableSql = String.format("create table %s (a int primary key, b varchar(20))", tableName);
+        String partitionDef = " partition by hash(`b`) partitions 3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTableSql + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableSql);
+
+        final String insertValue = String.format("insert into %s values(1, 'wumu.stt')", tableName);
+        final String selectValue = String.format("select * from %s where b = 'wumu.stt'", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, insertValue);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, insertValue);
+
+        final String selectColumnType = String.format(SELECT_COLUMN_TYPE, tableName, "b");
+        for (int i = 0; i < CHARSET_PARAMS.length; i++) {
+            if (CHARSET_PARAMS[i][0].contains("utf16") || CHARSET_PARAMS[i][0].contains("utf32")) {
+                continue;
+            }
+
+            String alterSql =
+                String.format("alter table %s modify column b varchar(20) character set %s collate %s", tableName,
+                    CHARSET_PARAMS[i][0], CHARSET_PARAMS[i][1]);
+            System.out.println(CHARSET_PARAMS[i][0] + " " + CHARSET_PARAMS[i][1]);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
+            JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
+            assertTrue(assertSameTypeInfo(selectColumnType));
+            assertTrue(assertSameTypeInfo(selectValue));
+        }
+    }
+
+    @Test
+    public void testModifyPartitionKeyAllType() throws SQLException {
+        String tableName = "sk_modify_all_type";
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTableSql = String.format("create table %s (a int primary key, b int) charset=utf8mb4", tableName);
+        String partitionDef = " partition by hash(`b`) partitions 3";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTableSql + partitionDef);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableSql);
+
+        final String selectColumnType = String.format(SELECT_COLUMN_TYPE, tableName, "b");
+        for (String columnDef : SK_DEF_MAP.values()) {
+            String columnType = columnDef.substring(columnDef.lastIndexOf('`') + 1);
+            columnType = columnType.substring(0, columnType.length() - 2);
+
+            System.out.println(columnType);
+            String alterSql = String.format("alter table %s modify column b %s", tableName, columnType);
+            execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             assertTrue(assertSameTypeInfo(selectColumnType));
         }

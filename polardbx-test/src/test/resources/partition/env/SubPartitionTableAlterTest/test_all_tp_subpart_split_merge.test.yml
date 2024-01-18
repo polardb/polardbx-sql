@@ -1,0 +1,1915 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup if not exists my_tp_tg_1;
+  ## h_h_tp
+create table if not exists h_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+create table if not exists h_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+alter table h_h_tp1 split partition p1 into partitions 3;
+alter table h_h_tp2 split partition p1 into partitions 3;
+alter table h_h_tp1 split subpartition sp1 into subpartitions 2;
+alter table h_h_tp2 split subpartition sp1 into subpartitions 2;
+alter table h_h_tp1 merge partitions p3,p4 to p34;
+alter table h_h_tp2 merge partitions p3,p4 to p34;
+alter table h_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table h_h_tp2 merge subpartitions sp3,sp4 to sp34;
+
+alter table h_h_tp1 set tablegroup=my_tp_tg_1;
+alter table h_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 merge partitions p2,p34 to p234;
+alter tablegroup my_tp_tg_1 merge subpartitions sp2,sp34 to sp234;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_h_tp2;
+drop table h_h_tp1;
+drop table h_h_tp2;
+
+  ## h_k_tp
+create table if not exists h_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+create table if not exists h_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+alter table h_k_tp1 split partition p1 into partitions 3;
+alter table h_k_tp2 split partition p1 into partitions 3;
+alter table h_k_tp1 split subpartition sp1 into subpartitions 2;
+alter table h_k_tp2 split subpartition sp1 into subpartitions 2;
+alter table h_k_tp1 merge partitions p3,p4 to p34;
+alter table h_k_tp2 merge partitions p3,p4 to p34;
+alter table h_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table h_k_tp2 merge subpartitions sp3,sp4 to sp34;
+
+alter table h_k_tp1 set tablegroup=my_tp_tg_1;
+alter table h_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 3;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_k_tp2;
+drop table h_k_tp1;
+drop table h_k_tp2;
+
+  ## h_r_tp
+create table if not exists h_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range (to_days(c)) (
+subpartition sp1 values less than ( to_days('2020-01-01') ),
+subpartition sp2 values less than ( maxvalue )
+);
+
+create table if not exists h_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range (to_days(c)) (
+subpartition sp1 values less than ( to_days('2020-01-01') ),
+subpartition sp2 values less than ( maxvalue )
+);
+
+alter table h_r_tp1 split partition p1 into partitions 3;
+alter table h_r_tp2 split partition p1 into partitions 3;
+alter table h_r_tp1 split subpartition sp2 at(1000000) into (subpartition sp20,subpartition sp21);
+alter table h_r_tp2 split subpartition sp2 at(1000000) into (subpartition sp20,subpartition sp21);
+alter table h_r_tp1 merge partitions p3,p4 to p34;
+alter table h_r_tp2 merge partitions p3,p4 to p34;
+alter table h_r_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table h_r_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table h_r_tp1 set tablegroup=my_tp_tg_1;
+alter table h_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 3;
+alter tablegroup my_tp_tg_1 split subpartition sp1 at(1000) into (subpartition sp10,subpartition sp11);
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_r_tp2;
+drop table h_r_tp1;
+drop table h_r_tp2;
+
+  ## h_rc_tp
+create table if not exists h_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists h_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+alter table h_rc_tp1 split partition p1 into partitions 3;
+alter table h_rc_tp2 split partition p1 into partitions 3;
+alter table h_rc_tp1 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter table h_rc_tp2 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter table h_rc_tp1 merge partitions p3,p4 to p34;
+alter table h_rc_tp2 merge partitions p3,p4 to p34;
+alter table h_rc_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table h_rc_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table h_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table h_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_rc_tp2;
+drop table h_rc_tp1;
+drop table h_rc_tp2;
+
+  ## h_l_tp
+create table if not exists h_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+create table if not exists h_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+alter table h_l_tp1 split partition p1 into partitions 3;
+alter table h_l_tp2 split partition p1 into partitions 3;
+alter table h_l_tp1 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4), subpartition sp21 values in(5，6)， subpartition sp22 values in ( default ));
+alter table h_l_tp2 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4), subpartition sp21 values in(5，6)， subpartition sp22 values in ( default ));
+alter table h_l_tp1 merge partitions p3,p4 to p34;
+alter table h_l_tp2 merge partitions p3,p4 to p34;
+alter table h_l_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table h_l_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table h_l_tp1 set tablegroup=my_tp_tg_1;
+alter table h_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4),subpartition sp21 values in(5，6));
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_l_tp2;
+drop table h_l_tp1;
+drop table h_l_tp2;
+
+  ## h_lc_tp
+create table if not exists h_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+create table if not exists h_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by hash (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+alter table h_lc_tp1 split partition p1 into partitions 3;
+alter table h_lc_tp2 split partition p1 into partitions 3;
+alter table h_lc_tp1 split subpartition sp2 into (subpartition sp20 values in(('2020-01-02','abc'),('2020-01-04','abc')),subpartition sp21 values in(('2020-01-03','abc'),('2020-01-05','abc')), subpartition sp22 values in ( default ));
+alter table h_lc_tp2 split subpartition sp2 into (subpartition sp20 values in(('2020-01-02','abc'),('2020-01-04','abc')),subpartition sp21 values in(('2020-01-03','abc'),('2020-01-05','abc')), subpartition sp22 values in ( default ));
+alter table h_lc_tp1 merge partitions p3,p4 to p34;
+alter table h_lc_tp2 merge partitions p3,p4 to p34;
+alter table h_lc_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table h_lc_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table h_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table h_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in(('2020-01-02','abc'),('2020-01-04','abc')),subpartition sp21 values in(('2020-01-03','abc'),('2020-01-05','abc')));
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table h_lc_tp2;
+drop table h_lc_tp1;
+drop table h_lc_tp2;
+  
+  #########
+
+  ## k_h_tp
+create table if not exists k_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+create table if not exists k_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by hash (a,b) subpartitions 4;
+
+alter table k_h_tp1 split partition p1 into partitions 3;
+alter table k_h_tp2 split partition p1 into partitions 3;
+alter table k_h_tp1 split subpartition sp1 into subpartitions 2;
+alter table k_h_tp2 split subpartition sp1 into subpartitions 2;
+alter table k_h_tp1 merge partitions p3,p4 to p34;
+alter table k_h_tp2 merge partitions p3,p4 to p34;
+alter table k_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table k_h_tp2 merge subpartitions sp3,sp4 to sp34;
+
+alter table k_h_tp1 set tablegroup=my_tp_tg_1;
+alter table k_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp2,sp34 to sp234;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_h_tp2;
+drop table k_h_tp1;
+drop table k_h_tp2;
+
+  ## k_k_tp
+create table if not exists k_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+create table if not exists k_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (c,d) partitions 4
+subpartition by key (a,b) subpartitions 4;
+
+alter table k_k_tp1 split partition p1 into partitions 3;
+alter table k_k_tp2 split partition p1 into partitions 3;
+alter table k_k_tp1 split subpartition sp1 into subpartitions 2;
+alter table k_k_tp2 split subpartition sp1 into subpartitions 2;
+alter table k_k_tp1 merge partitions p3,p4 to p34;
+alter table k_k_tp2 merge partitions p3,p4 to p34;
+alter table k_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table k_k_tp2 merge subpartitions sp3,sp4 to sp34;
+
+alter table k_k_tp1 set tablegroup=my_tp_tg_1;
+alter table k_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 3;
+alter tablegroup my_tp_tg_1 merge partitions p2,p34 to p234;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_k_tp2;
+drop table k_k_tp1;
+drop table k_k_tp2;
+
+  ## k_r_tp
+create table if not exists k_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range (to_days(c)) (
+subpartition sp1 values less than ( to_days('2020-01-01') ),
+subpartition sp2 values less than ( maxvalue )
+);
+
+create table if not exists k_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range (to_days(c)) (
+subpartition sp1 values less than ( to_days('2020-01-01') ),
+subpartition sp2 values less than ( maxvalue )
+);
+
+alter table k_r_tp1 split partition p1 into partitions 3;
+alter table k_r_tp2 split partition p1 into partitions 3;
+alter table k_r_tp1 split subpartition sp2 at(1000000) into (subpartition sp20,subpartition sp21);
+alter table k_r_tp2 split subpartition sp2 at(1000000) into (subpartition sp20,subpartition sp21);
+alter table k_r_tp1 merge partitions p3,p4 to p34;
+alter table k_r_tp2 merge partitions p3,p4 to p34;
+alter table k_r_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table k_r_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table k_r_tp1 set tablegroup=my_tp_tg_1;
+alter table k_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp1 at(1000) into (subpartition sp10,subpartition sp11);
+alter tablegroup my_tp_tg_1 merge partitions p2,p34 to p234;
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_r_tp2;
+drop table k_r_tp1;
+drop table k_r_tp2;
+
+  ## k_rc_tp
+create table if not exists k_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists k_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by range columns (c,d) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+
+alter table k_rc_tp1 split partition p1 into partitions 3;
+alter table k_rc_tp2 split partition p1 into partitions 3;
+alter table k_rc_tp1 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter table k_rc_tp2 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter table k_rc_tp1 merge partitions p3,p4 to p34;
+alter table k_rc_tp2 merge partitions p3,p4 to p34;
+alter table k_rc_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table k_rc_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table k_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table k_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp1 into (subpartition sp10 values less than('2020-01-01 00:00:00','aaa'), subpartition sp11 values less than('2020-01-01 00:00:00','abc'));
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_rc_tp2;
+drop table k_rc_tp1;
+drop table k_rc_tp2;
+
+  ## k_l_tp
+create table if not exists k_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+create table if not exists k_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list (to_days(c)) (
+subpartition sp1 values in ( to_days('2020-01-01') ),
+subpartition sp2 values in ( default )
+);
+
+alter table k_l_tp1 split partition p1 into partitions 3;
+alter table k_l_tp2 split partition p1 into partitions 3;
+alter table k_l_tp1 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4),subpartition sp21 values in ( 5,6 ),subpartition sp22 values in ( default ));
+alter table k_l_tp2 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4),subpartition sp21 values in ( 5,6 ),subpartition sp22 values in ( default ));
+alter table k_l_tp1 merge partitions p3,p4 to p34;
+alter table k_l_tp2 merge partitions p3,p4 to p34;
+alter table k_l_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table k_l_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table k_l_tp1 set tablegroup=my_tp_tg_1;
+alter table k_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in(1,2,3,4),subpartition sp21 values in ( 5,6 ));
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_l_tp2;
+drop table k_l_tp1;
+drop table k_l_tp2;
+
+  ## k_lc_tp
+create table if not exists k_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+create table if not exists k_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by key (a,b) partitions 4
+subpartition by list columns (c,d) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+
+alter table k_lc_tp1 split partition p1 into partitions 3;
+alter table k_lc_tp2 split partition p1 into partitions 3;
+alter table k_lc_tp1 split subpartition sp2 into (subpartition sp20 values in(('2020-01-01','abcd'),('2020-01-01','abce')), subpartition sp21 values in(('2020-01-01','abcf')),subpartition sp22 values in ( default ));
+alter table k_lc_tp2 split subpartition sp2 into (subpartition sp20 values in(('2020-01-01','abcd'),('2020-01-01','abce')), subpartition sp21 values in(('2020-01-01','abcf')),subpartition sp22 values in ( default ));
+alter table k_lc_tp1 merge partitions p3,p4 to p34;
+alter table k_lc_tp2 merge partitions p3,p4 to p34;
+alter table k_lc_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table k_lc_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table k_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table k_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into partitions 2;
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in(('2020-01-01','abcd'),('2020-01-01','abce')), subpartition sp21 values in(('2020-01-01','abcf')));
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table k_lc_tp2;
+drop table k_lc_tp1;
+drop table k_lc_tp2;
+  
+  #########
+
+  ## r_h_tp
+create table if not exists r_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_h_tp1 split subpartition sp1 into subpartitions 3;
+alter table r_h_tp2 split subpartition sp1 into subpartitions 3;
+alter table r_h_tp1 split partition p2 at(1000000) into (partition p20,partition p21);
+alter table r_h_tp2 split partition p2 at(1000000) into (partition p20,partition p21);
+alter table r_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table r_h_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table r_h_tp1 merge partitions p20,p21 to p2;
+alter table r_h_tp2 merge partitions p20,p21 to p2;
+
+alter table r_h_tp1 set tablegroup=my_tp_tg_1;
+alter table r_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p1 at(1000) into (partition p10,partition p11);
+alter tablegroup my_tp_tg_1 merge partitions p10,p11 to p1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_h_tp2;
+drop table r_h_tp1;
+drop table r_h_tp2;
+
+  ## r_k_tp
+create table if not exists r_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_k_tp1 split subpartition sp1 into subpartitions 3;
+alter table r_k_tp2 split subpartition sp1 into subpartitions 3;
+alter table r_k_tp1 split partition p2 at(1000000) into (partition p20,partition p21);
+alter table r_k_tp2 split partition p2 at(1000000) into (partition p20,partition p21);
+alter table r_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table r_k_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table r_k_tp1 merge partitions p20,p21 to p2;
+alter table r_k_tp2 merge partitions p20,p21 to p2;
+
+alter table r_k_tp1 set tablegroup=my_tp_tg_1;
+alter table r_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p2 at(1000000) into (partition p20,partition p21);
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_k_tp2;
+drop table r_k_tp1;
+drop table r_k_tp2;
+
+  ## r_r_tp
+create table if not exists r_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_r_tp1 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_r_tp2 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_r_tp1 split subpartition sp1 at(600) into (subpartition sp10,subpartition sp11);
+alter table r_r_tp2 split subpartition sp1 at(600) into (subpartition sp10,subpartition sp11);
+alter table r_r_tp1 merge partitions p10,p11 to p1;
+alter table r_r_tp2 merge partitions p10,p11 to p1;
+alter table r_r_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table r_r_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table r_r_tp1 set tablegroup=my_tp_tg_1;
+alter table r_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 at(10000000) into (partition p20,partition p21);
+alter tablegroup my_tp_tg_1 split subpartition sp2 at(70000) into (subpartition sp20,subpartition sp21);
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_r_tp2;
+drop table r_r_tp1;
+drop table r_r_tp2;
+
+  ## r_rc_tp
+create table if not exists r_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_rc_tp1 merge partitions p1,p2 to p12;
+alter table r_rc_tp2 merge partitions p1,p2 to p12;
+alter table r_rc_tp1 merge subpartitions sp1,sp2 to sp12;
+alter table r_rc_tp2 merge subpartitions sp1,sp2 to sp12;
+
+alter table r_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table r_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p12 into (
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+alter tablegroup my_tp_tg_1 split subpartition sp12 into (
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+alter tablegroup my_tp_tg_1 merge partitions p1,p2 to p12;
+alter tablegroup my_tp_tg_1 merge subpartitions sp1,sp2 to sp12;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_rc_tp2;
+drop table r_rc_tp1;
+drop table r_rc_tp2;
+
+  ## r_l_tp
+create table if not exists r_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_l_tp1 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_l_tp2 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_l_tp1 split subpartition sp1 into (subpartition sp10 values in ( 1000),subpartition sp11 values in ( 2000));
+alter table r_l_tp2 split subpartition sp1 into (subpartition sp10 values in ( 1000),subpartition sp11 values in ( 2000));
+alter table r_l_tp1 merge partitions p10,p11 to p1;
+alter table r_l_tp2 merge partitions p10,p11 to p1;
+alter table r_l_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table r_l_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table r_l_tp1 set tablegroup=my_tp_tg_1;
+alter table r_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 at(500000000) into (partition p20,partition p21);
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in ( 100000),subpartition sp21 values in ( 200000),subpartition sp22 values in ( default));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_l_tp2;
+drop table r_l_tp1;
+drop table r_l_tp2;
+
+  ## r_lc_tp
+create table if not exists r_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+create table if not exists r_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( to_days('2020-01-01') ),
+partition p2 values less than ( maxvalue )
+);
+
+alter table r_lc_tp1 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_lc_tp2 split partition p1 at(1000) into (partition p10,partition p11);
+alter table r_lc_tp1 split subpartition sp2 into (subpartition sp20 values in ((1000,1000)),subpartition sp21 values in ((2000,1000)),subpartition sp22 values in ( default));
+alter table r_lc_tp2 split subpartition sp2 into (subpartition sp20 values in ((1000,1000)),subpartition sp21 values in ((2000,1000)),subpartition sp22 values in ( default));
+alter table r_lc_tp1 merge partitions p10,p11 to p1;
+alter table r_lc_tp2 merge partitions p10,p11 to p1;
+alter table r_lc_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table r_lc_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table r_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table r_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 at(500000000) into (partition p20,partition p21);
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in ((1000,1000)),subpartition sp21 values in ((2000,1000)));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table r_lc_tp2;
+drop table r_lc_tp1;
+drop table r_lc_tp2;
+
+  #########
+
+  ## rc_h_tp
+create table if not exists rc_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_h_tp1 split subpartition sp1 into subpartitions 3;
+alter table rc_h_tp2 split subpartition sp1 into subpartitions 3;
+alter table rc_h_tp1 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter table rc_h_tp2 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter table rc_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table rc_h_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table rc_h_tp1 merge partitions p10,p11 to p1;
+alter table rc_h_tp2 merge partitions p10,p11 to p1;
+
+alter table rc_h_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter tablegroup my_tp_tg_1 merge partitions p10,p11 to p1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_h_tp2;
+drop table rc_h_tp1;
+drop table rc_h_tp2;
+
+  ## rc_k_tp
+create table if not exists rc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_k_tp1 split subpartition sp1 into subpartitions 3;
+alter table rc_k_tp2 split subpartition sp1 into subpartitions 3;
+alter table rc_k_tp1 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter table rc_k_tp2 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter table rc_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table rc_k_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table rc_k_tp1 merge partitions p10,p11 to p1;
+alter table rc_k_tp2 merge partitions p10,p11 to p1;
+
+alter table rc_k_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p1 into (partition p10 values less than('2020-01-01','aaa'), partition p11 values less than('2020-01-01','abc'));
+alter tablegroup my_tp_tg_1 merge partitions p10,p11 to p1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_k_tp2;
+drop table rc_k_tp1;
+drop table rc_k_tp2;
+
+  ## rc_r_tp
+create table if not exists rc_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_r_tp1 merge partitions p1,p2 to p12;
+alter table rc_r_tp2 merge partitions p1,p2 to p12;
+alter table rc_r_tp1 merge subpartitions sp1,sp2 to sp12;
+alter table rc_r_tp2 merge subpartitions sp1,sp2 to sp12;
+
+alter table rc_r_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp12 into (
+subpartition sp1 values less than ( 1000 ),
+subpartition sp2 values less than ( maxvalue )
+);
+alter tablegroup my_tp_tg_1 split partition p12 into (
+partition p1 values less than ( '2020-01-01','abc'),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+alter tablegroup my_tp_tg_1 merge partitions p1,p2 to p12;
+alter tablegroup my_tp_tg_1 merge subpartitions sp1,sp2 to sp12;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_r_tp2;
+drop table rc_r_tp1;
+drop table rc_r_tp2;
+
+  ## rc_rc_tp
+create table if not exists rc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 2000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 2000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_rc_tp1 merge partitions p1,p2 to p12;
+alter table rc_rc_tp2 merge partitions p1,p2 to p12;
+alter table rc_rc_tp1 merge subpartitions sp1,sp2 to sp12;
+alter table rc_rc_tp2 merge subpartitions sp1,sp2 to sp12;
+
+alter table rc_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp12 into (
+subpartition sp1 values less than ( 1000, 2000 ),
+subpartition sp2 values less than ( maxvalue,maxvalue )
+);
+alter tablegroup my_tp_tg_1 split partition p12 into (
+partition p1 values less than ( '2020-01-01','abc'),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+alter tablegroup my_tp_tg_1 merge partitions p1,p2 to p12;
+alter tablegroup my_tp_tg_1 merge subpartitions sp1,sp2 to sp12;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_rc_tp2;
+drop table rc_rc_tp1;
+drop table rc_rc_tp2;
+
+  ## rc_l_tp
+create table if not exists rc_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( 3000, 4000 ),
+subpartition sp3 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( 3000, 4000 ),
+subpartition sp3 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_l_tp1 merge partitions p1,p2 to p12;
+alter table rc_l_tp2 merge partitions p1,p2 to p12;
+alter table rc_l_tp1 merge subpartitions sp1,sp2 to sp12;
+alter table rc_l_tp2 merge subpartitions sp1,sp2 to sp12;
+
+alter table rc_l_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp12 into (
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( 3000, 4000 )
+);
+alter tablegroup my_tp_tg_1 split partition p12 into (
+partition p1 values less than ( '2020-01-01','abc'),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+alter tablegroup my_tp_tg_1 merge partitions p1,p2 to p12;
+alter tablegroup my_tp_tg_1 merge subpartitions sp1,sp2 to sp12;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_l_tp2;
+drop table rc_l_tp1;
+drop table rc_l_tp2;
+
+  ## rc_lc_tp
+create table if not exists rc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( (2000, 2000)),
+subpartition sp3 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+create table if not exists rc_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by range columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( (2000, 2000)),
+subpartition sp3 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+
+alter table rc_lc_tp1 merge partitions p1,p2 to p12;
+alter table rc_lc_tp2 merge partitions p1,p2 to p12;
+alter table rc_lc_tp1 merge subpartitions sp1,sp2 to sp12;
+alter table rc_lc_tp2 merge subpartitions sp1,sp2 to sp12;
+
+alter table rc_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table rc_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp12 into (
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( (2000, 2000))
+);
+alter tablegroup my_tp_tg_1 split partition p12 into (
+partition p1 values less than ( '2020-01-01','abc'),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+alter tablegroup my_tp_tg_1 merge partitions p1,p2 to p12;
+alter tablegroup my_tp_tg_1 merge subpartitions sp1,sp2 to sp12;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table rc_lc_tp2;
+drop table rc_lc_tp1;
+drop table rc_lc_tp2;
+  
+  #########
+
+  ## l_h_tp
+create table if not exists l_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_h_tp1 split subpartition sp1 into subpartitions 3;
+alter table l_h_tp2 split subpartition sp1 into subpartitions 3;
+alter table l_h_tp1 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8),partition p22 values in ( default ));
+alter table l_h_tp2 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8),partition p22 values in ( default ));
+alter table l_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table l_h_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table l_h_tp1 merge partitions p20,p21 to p2;
+alter table l_h_tp2 merge partitions p20,p21 to p2;
+
+alter table l_h_tp1 set tablegroup=my_tp_tg_1;
+alter table l_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_h_tp2;
+drop table l_h_tp1;
+drop table l_h_tp2;
+
+  ## l_k_tp
+create table if not exists l_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_k_tp1 split subpartition sp1 into subpartitions 3;
+alter table l_k_tp2 split subpartition sp1 into subpartitions 3;
+alter table l_k_tp1 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8),subpartition p22 values in ( default ));
+alter table l_k_tp2 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8),subpartition p22 values in ( default ));
+alter table l_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table l_k_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table l_k_tp1 merge partitions p20,p21 to p2;
+alter table l_k_tp2 merge partitions p20,p21 to p2;
+
+alter table l_k_tp1 set tablegroup=my_tp_tg_1;
+alter table l_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in(1,2,3,4),partition p21 values in(7,8));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_k_tp2;
+drop table l_k_tp1;
+drop table l_k_tp2;
+
+  ## l_r_tp
+create table if not exists l_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_r_tp1 split subpartition sp1 at(600) into (subpartition sp10,subpartition sp11);
+alter table l_r_tp2 split subpartition sp1 at(600) into (subpartition sp10,subpartition sp11);
+alter table l_r_tp1 split partition p2 into (partition p20 values in ( 1000000),partition p21 values in ( 3000000),partition p22 values in ( default));
+alter table l_r_tp2 split partition p2 into (partition p20 values in ( 1000000),partition p21 values in ( 3000000),partition p22 values in ( default));
+alter table l_r_tp1 merge partitions p20,p21 to p2;
+alter table l_r_tp2 merge partitions p20,p21 to p2;
+alter table l_r_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table l_r_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table l_r_tp1 set tablegroup=my_tp_tg_1;
+alter table l_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp1 at(600) into (subpartition sp10,subpartition sp11);
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( 1000000),partition p21 values in ( 3000000));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_r_tp2;
+drop table l_r_tp1;
+drop table l_r_tp2;
+
+  ## l_rc_tp
+create table if not exists l_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_rc_tp1 split subpartition sp1 into (subpartition sp10 values less than ( 100, 10000),subpartition sp11 values less than ( 1000, 10000));
+alter table l_rc_tp2 split subpartition sp1 into (subpartition sp10 values less than ( 100, 10000),subpartition sp11 values less than ( 1000, 10000));
+alter table l_rc_tp1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 11000),partition p22 values in ( default));
+alter table l_rc_tp2 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 11000),partition p22 values in ( default));
+alter table l_rc_tp1 merge partitions p20,p21 to p2;
+alter table l_rc_tp2 merge partitions p20,p21 to p2;
+alter table l_rc_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table l_rc_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table l_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table l_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp1 into (subpartition sp10 values less than ( 100, 10000),subpartition sp11 values less than ( 1000, 10000));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 11000));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_rc_tp2;
+drop table l_rc_tp1;
+drop table l_rc_tp2;
+
+  ## l_l_tp
+create table if not exists l_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_l_tp1 split subpartition sp1 into (subpartition sp10 values in ( 1000),subpartition sp11 values in ( 2000));
+alter table l_l_tp2 split subpartition sp1 into (subpartition sp10 values in ( 1000),subpartition sp11 values in ( 2000));
+alter table l_l_tp1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400),partition p22 values in ( default));
+alter table l_l_tp2 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400),partition p22 values in ( default));
+alter table l_l_tp1 merge partitions p20,p21 to p2;
+alter table l_l_tp2 merge partitions p20,p21 to p2;
+alter table l_l_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table l_l_tp2 merge subpartitions sp10,sp11 to sp1;
+
+alter table l_l_tp1 set tablegroup=my_tp_tg_1;
+alter table l_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp1 into (subpartition sp10 values in ( 1000),subpartition sp11 values in ( 2000));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp10,sp11 to sp1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_l_tp2;
+drop table l_l_tp1;
+drop table l_l_tp2;
+
+  ## l_lc_tp
+create table if not exists l_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+create table if not exists l_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (to_days(c))
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( to_days('2020-01-01') ),
+partition p2 values in ( default )
+);
+
+alter table l_lc_tp1 split subpartition sp2 into (subpartition sp20 values in ( (1000,4000)),subpartition sp21 values in ( (1000,5000)),subpartition sp22 values in ( default));
+alter table l_lc_tp2 split subpartition sp2 into (subpartition sp20 values in ( (1000,4000)),subpartition sp21 values in ( (1000,5000)),subpartition sp22 values in ( default));
+alter table l_lc_tp1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400),partition p22 values in ( default));
+alter table l_lc_tp2 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400),partition p22 values in ( default));
+alter table l_lc_tp1 merge partitions p20,p21 to p2;
+alter table l_lc_tp2 merge partitions p20,p21 to p2;
+alter table l_lc_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table l_lc_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table l_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table l_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in ( (1000,4000)),subpartition sp21 values in ( (1000,5000)));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( 1000),partition p21 values in ( 1400));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table l_lc_tp2;
+drop table l_lc_tp1;
+drop table l_lc_tp2;
+  
+  #########
+
+  ## lc_h_tp
+create table if not exists lc_h_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_h_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by hash (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_h_tp1 split subpartition sp1 into subpartitions 3;
+alter table lc_h_tp2 split subpartition sp1 into subpartitions 3;
+alter table lc_h_tp1 split partition p2 into (partition p20 values in(('2020-01-01','abcd'),('2020-01-01','abce')),partition p21 values in(('2020-01-01','abcf'),('2020-01-02','abcg')),partition p22 values in ( default ));
+alter table lc_h_tp2 split partition p2 into (partition p20 values in(('2020-01-01','abcd'),('2020-01-01','abce')),partition p21 values in(('2020-01-01','abcf'),('2020-01-02','abcg')),partition p22 values in ( default ));
+alter table lc_h_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table lc_h_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table lc_h_tp1 merge partitions p20,p21 to p2;
+alter table lc_h_tp2 merge partitions p20,p21 to p2;
+
+alter table lc_h_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_h_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in(('2020-01-01','abcd'),('2020-01-01','abce')),partition p21 values in(('2020-01-01','abcf'),('2020-01-02','abcg')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_h_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_h_tp2;
+drop table lc_h_tp1;
+drop table lc_h_tp2;
+
+  ## lc_k_tp
+create table if not exists lc_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by key (a,b) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_k_tp1 split subpartition sp1 into subpartitions 3;
+alter table lc_k_tp2 split subpartition sp1 into subpartitions 3;
+alter table lc_k_tp1 split partition p2 into (partition p20 values in(('2020-01-06','abc'),('2020-01-05','abc')),partition p21 values in(('2020-01-02','abc'),('2020-01-03','abc')),partition p22 values in ( default ));
+alter table lc_k_tp2 split partition p2 into (partition p20 values in(('2020-01-06','abc'),('2020-01-05','abc')),partition p21 values in(('2020-01-02','abc'),('2020-01-03','abc')),partition p22 values in ( default ));
+alter table lc_k_tp1 merge subpartitions sp3,sp4 to sp34;
+alter table lc_k_tp2 merge subpartitions sp3,sp4 to sp34;
+alter table lc_k_tp1 merge partitions p20,p21 to p2;
+alter table lc_k_tp2 merge partitions p20,p21 to p2;
+
+alter table lc_k_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_k_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into subpartitions 2;
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in(('2020-01-06','abc'),('2020-01-05','abc')),partition p21 values in(('2020-01-02','abc'),('2020-01-03','abc')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_k_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_k_tp2;
+drop table lc_k_tp1;
+drop table lc_k_tp2;
+
+  ## lc_r_tp
+create table if not exists lc_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_r_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range (a)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_r_tp1 split subpartition sp1 at(300) into (subpartition sp10,subpartition sp11);
+alter table lc_r_tp2 split subpartition sp1 at(300) into (subpartition sp10,subpartition sp11);
+alter table lc_r_tp1 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-02','1000')),partition p22 values in ( default));
+alter table lc_r_tp2 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-02','1000')),partition p22 values in ( default));
+alter table lc_r_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table lc_r_tp2 merge subpartitions sp10,sp11 to sp1;
+alter table lc_r_tp1 merge partitions p20,p21 to p2;
+alter table lc_r_tp2 merge partitions p20,p21 to p2;
+
+alter table lc_r_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_r_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 at(500000000) into (subpartition sp20, subpartition sp21);
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-02','1000')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_r_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_r_tp2;
+drop table lc_r_tp1;
+drop table lc_r_tp2;
+
+  ## lc_rc_tp
+create table if not exists lc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_rc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by range columns (a,b)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_rc_tp1 split subpartition sp1 into (subpartition sp10 values less than(200,10000),subpartition sp11 values less than(1000,10000));
+alter table lc_rc_tp2 split subpartition sp1 into (subpartition sp10 values less than(200,10000),subpartition sp11 values less than(1000,10000));
+alter table lc_rc_tp1 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-01','3000')),partition p22 values in ( default));
+alter table lc_rc_tp2 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-01','3000')),partition p22 values in ( default));
+alter table lc_rc_tp1 merge subpartitions sp10,sp11 to sp1;
+alter table lc_rc_tp2 merge subpartitions sp10,sp11 to sp1;
+alter table lc_rc_tp1 merge partitions p20,p21 to p2;
+alter table lc_rc_tp2 merge partitions p20,p21 to p2;
+
+alter table lc_rc_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_rc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values less than(2000,10000),subpartition sp21 values less than(maxvalue,maxvalue));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in (('2020-01-01','1000')),partition p21 values in (('2020-01-01','3000')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_rc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_rc_tp2;
+drop table lc_rc_tp1;
+drop table lc_rc_tp2;
+
+  ## lc_l_tp
+create table if not exists lc_l_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_l_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list (a)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_l_tp1 split partition p2 into (partition p20 values in ( ('2020-01-01','1000')),partition p21 values in ( ('2020-01-01','4000')),partition p22 values in ( default));
+alter table lc_l_tp2 split partition p2 into (partition p20 values in ( ('2020-01-01','1000')),partition p21 values in ( ('2020-01-01','4000')),partition p22 values in ( default));
+alter table lc_l_tp1 split subpartition sp2 into (subpartition sp20 values in ( 9000),subpartition sp21 values in ( 8000),subpartition sp22 values in ( default));
+alter table lc_l_tp2 split subpartition sp2 into (subpartition sp20 values in ( 9000),subpartition sp21 values in ( 8000),subpartition sp22 values in ( default));
+alter table lc_l_tp1 merge partitions p20,p21 to p2;
+alter table lc_l_tp2 merge partitions p20,p21 to p2;
+alter table lc_l_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table lc_l_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table lc_l_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_l_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in ( 9000),subpartition sp21 values in ( 8000));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( ('2020-01-01','1000')),partition p21 values in ( ('2020-01-01','4000')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_l_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_l_tp2;
+drop table lc_l_tp1;
+drop table lc_l_tp2;
+
+  ## lc_lc_tp
+create table if not exists lc_lc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+create table if not exists lc_lc_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (c,d)
+subpartition by list columns (a,b)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+
+alter table lc_lc_tp1 split partition p2 into (partition p20 values in ( ('2020-01-01','4000')),partition p21 values in ( ('2020-01-02','4000')),partition p22 values in ( default));
+alter table lc_lc_tp2 split partition p2 into (partition p20 values in ( ('2020-01-01','4000')),partition p21 values in ( ('2020-01-02','4000')),partition p22 values in ( default));
+alter table lc_lc_tp1 split subpartition sp2 into (subpartition sp20 values in ( (900,9000)),subpartition sp21 values in ( (9800,9000)),subpartition sp22 values in ( default));
+alter table lc_lc_tp2 split subpartition sp2 into (subpartition sp20 values in ( (900,9000)),subpartition sp21 values in ( (9800,9000)),subpartition sp22 values in ( default));
+alter table lc_lc_tp1 merge partitions p20,p21 to p2;
+alter table lc_lc_tp2 merge partitions p20,p21 to p2;
+alter table lc_lc_tp1 merge subpartitions sp20,sp21 to sp2;
+alter table lc_lc_tp2 merge subpartitions sp20,sp21 to sp2;
+
+alter table lc_lc_tp1 set tablegroup=my_tp_tg_1;
+alter table lc_lc_tp2 set tablegroup=my_tp_tg_1;
+
+alter tablegroup my_tp_tg_1 split subpartition sp2 into (subpartition sp20 values in ( (900,9000)),subpartition sp21 values in ( (9800,9000)));
+alter tablegroup my_tp_tg_1 split partition p2 into (partition p20 values in ( ('2020-01-01','4000')),partition p21 values in ( ('2020-01-02','4000')));
+alter tablegroup my_tp_tg_1 merge partitions p20,p21 to p2;
+alter tablegroup my_tp_tg_1 merge subpartitions sp20,sp21 to sp2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_lc_tp1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table lc_lc_tp2;
+drop table lc_lc_tp1;
+drop table lc_lc_tp2;

@@ -30,8 +30,12 @@ import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.common.utils.time.parser.TimeParserFlags;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
+import com.alibaba.polardbx.executor.archive.reader.TypeComparison;
+import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformer;
+import com.alibaba.polardbx.executor.archive.reader.OSSColumnTransformerUtil;
 import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
 import com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -71,13 +75,20 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
     Map<Integer, BloomFilterInfo> bloomFilterInfoMap;
     List<RelDataTypeField> runtimeFilterFields;
     TableMeta tableMeta;
-    Map<String, ColumnMeta> columnsWithSortKey;
     SessionProperties sessionProperties;
+
+    OSSColumnTransformer ossColumnTransformer;
+
+    boolean enableAggPruner;
+
+    OSSOrcFileMeta fileMeta;
 
     public OSSPredicateBuilder(Parameters parameters, List<RelDataTypeField> filterFields,
                                Map<Integer, BloomFilterInfo> bloomFilterInfoMap,
                                List<RelDataTypeField> runtimeFilterFields, TableMeta tableMeta,
-                               SessionProperties sessionProperties) {
+                               SessionProperties sessionProperties,
+                               OSSColumnTransformer ossColumnTransformer,
+                               OSSOrcFileMeta fileMeta) {
         super(false);
         this.builder = SearchArgumentFactory.newBuilder();
         this.parameters = parameters;
@@ -88,12 +99,31 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         this.tableMeta = tableMeta;
         this.sessionProperties = sessionProperties;
 
-        // get varchar key columns for sort key column info
-        this.columnsWithSortKey = tableMeta.getIndexes().stream()
-            .map(indexMeta -> indexMeta.getKeyColumns())
-            .flatMap(List::stream)
-            .filter(columnMeta -> columnMeta.getDataType() instanceof SliceType)
-            .collect(Collectors.toMap(columnMeta -> columnMeta.getOriginColumnName(), columnMeta -> columnMeta));
+        this.ossColumnTransformer = ossColumnTransformer;
+        this.enableAggPruner = true;
+        this.fileMeta = fileMeta;
+    }
+
+    String getFieldId(String targetColumn) {
+        TypeComparison result = ossColumnTransformer.compare(targetColumn);
+
+        if (result == TypeComparison.IS_EQUAL_YES) {
+            return tableMeta.getColumnFieldId(targetColumn);
+        }
+
+        // Todo: support filter for different type!
+        if (result == TypeComparison.IS_EQUAL_NO) {
+            this.enableAggPruner = false;
+            return null;
+        }
+
+        // new column after orc file
+        if (TypeComparison.isMissing(result)) {
+            this.enableAggPruner = false;
+            return null;
+        }
+
+        return null;
     }
 
     public String[] columns() {
@@ -170,17 +200,25 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
 
         String columnName = filterFields.get(field.getIndex()).getName();
         SqlTypeName typeName = field.getType().getSqlTypeName();
+        DataType dataType = tableMeta.getColumn(columnName).getDataType();
+        columnName = getFieldId(columnName);
+        if (columnName == null) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
+
         columns.add(columnName);
 
         // should we prune the sort key column instead of original col
         String redundantColumn = null;
         // precise data type info from table meta
         DataType preciseDataType = null;
-        if (columnsWithSortKey.containsKey(columnName)) {
+        if (fileMeta.getColumnNameToIdx(OrcMetaUtils.redundantColumnOf(columnName)) != null) {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
+            Integer rank = ossColumnTransformer.getTargetColumnRank(filterFields.get(field.getIndex()).getName());
+            preciseDataType = ossColumnTransformer.getSourceColumnMeta(rank).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
@@ -231,7 +269,6 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             return true;
         case DECIMAL:
             if (value instanceof Number) {
-                DataType dataType = tableMeta.getColumn(columnName).getDataType();
                 byte[] bytes = OssOrcFilePruner.decimalToBin(Decimal.fromString(value.toString()).getDecimalStructure(),
                     dataType.getPrecision(), dataType.getScale());
                 applier.apply(columnName, PredicateLeaf.Type.STRING,
@@ -307,17 +344,24 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
 
         String columnName = filterFields.get(field.getIndex()).getName();
         SqlTypeName typeName = field.getType().getSqlTypeName();
+        DataType dataType = tableMeta.getColumn(columnName).getDataType();
+        columnName = getFieldId(columnName);
+        if (columnName == null) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
         columns.add(columnName);
 
         // should we prune the sort key column instead of original col
         String redundantColumn = null;
         // precise data type info from table meta
         DataType preciseDataType = null;
-        if (columnsWithSortKey.containsKey(columnName)) {
+        if (fileMeta.getColumnNameToIdx(OrcMetaUtils.redundantColumnOf(columnName)) != null) {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
+            Integer rank = ossColumnTransformer.getTargetColumnRank(filterFields.get(field.getIndex()).getName());
+            preciseDataType = ossColumnTransformer.getSourceColumnMeta(rank).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
@@ -374,7 +418,6 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             return true;
         case DECIMAL:
             if (value1 instanceof Number && value2 instanceof Number) {
-                DataType dataType = tableMeta.getColumn(columnName).getDataType();
                 byte[] bytes1 =
                     OssOrcFilePruner.decimalToBin(Decimal.fromString(value1.toString()).getDecimalStructure(),
                         dataType.getPrecision(), dataType.getScale());
@@ -513,18 +556,25 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         }
 
         String columnName = filterFields.get(field.getIndex()).getName();
+        DataType dataType = tableMeta.getColumn(columnName).getDataType();
         SqlTypeName typeName = field.getType().getSqlTypeName();
+        columnName = getFieldId(columnName);
+        if (columnName == null) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
         columns.add(columnName);
 
         // should we prune the sort key column instead of original col
         String redundantColumn = null;
         // precise data type info from table meta
         DataType preciseDataType = null;
-        if (columnsWithSortKey.containsKey(columnName)) {
+        if (fileMeta.getColumnNameToIdx(OrcMetaUtils.redundantColumnOf(columnName)) != null) {
             redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
             columns.add(redundantColumn);
 
-            preciseDataType = columnsWithSortKey.get(columnName).getDataType();
+            Integer rank = ossColumnTransformer.getTargetColumnRank(filterFields.get(field.getIndex()).getName());
+            preciseDataType = ossColumnTransformer.getSourceColumnMeta(rank).getDataType();
             if (!(preciseDataType instanceof SliceType)) {
                 // sort key unsupported
                 return false;
@@ -589,7 +639,6 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         case DECIMAL:
             if (checkInClass(paramList, Number.class)) {
                 List<Object> newPara = Lists.newArrayList();
-                DataType dataType = tableMeta.getColumn(columnName).getDataType();
                 for (Object obj : paramList) {
                     byte[] bytes =
                         OssOrcFilePruner.decimalToBin(Decimal.fromString(obj.toString()).getDecimalStructure(),
@@ -761,6 +810,11 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
 
         String columnName = filterFields.get(rexInputRef.getIndex()).getName();
 
+        columnName = getFieldId(columnName);
+        if (columnName == null) {
+            builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+            return true;
+        }
         builder.isNull(columnName, PredicateLeaf.Type.BOOLEAN);
 
         return true;
@@ -783,18 +837,25 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
             RexInputRef field = (RexInputRef) call.getOperands().get(i);
 
             String columnName = runtimeFilterFields.get(field.getIndex()).getName();
+            DataType dataType = tableMeta.getColumn(columnName).getDataType();
             SqlTypeName typeName = field.getType().getSqlTypeName();
+            columnName = getFieldId(columnName);
+            if (columnName == null) {
+                builder.literal(SearchArgument.TruthValue.YES_NO_NULL);
+                return true;
+            }
             columns.add(columnName);
 
             // should we prune the sort key column instead of original col
             String redundantColumn = null;
             // precise data type info from table meta
             DataType preciseDataType = null;
-            if (columnsWithSortKey.containsKey(columnName)) {
+            if (fileMeta.getColumnNameToIdx(OrcMetaUtils.redundantColumnOf(columnName)) != null) {
                 redundantColumn = OrcMetaUtils.redundantColumnOf(columnName);
                 columns.add(redundantColumn);
 
-                preciseDataType = columnsWithSortKey.get(columnName).getDataType();
+                Integer rank = ossColumnTransformer.getTargetColumnRank(filterFields.get(field.getIndex()).getName());
+                preciseDataType = ossColumnTransformer.getSourceColumnMeta(rank).getDataType();
                 if (!(preciseDataType instanceof SliceType)) {
                     // sort key unsupported
                     return false;
@@ -892,7 +953,6 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
                 String minDecimalString = minMaxFilter.getMinString();
                 String maxDecimalString = minMaxFilter.getMaxString();
                 if (minDecimalString != null && maxDecimalString != null) {
-                    DataType dataType = tableMeta.getColumn(columnName).getDataType();
                     byte[] bytes1 =
                         OssOrcFilePruner.decimalToBin(Decimal.fromString(minDecimalString).getDecimalStructure(),
                             dataType.getPrecision(), dataType.getScale());
@@ -922,6 +982,10 @@ public class OSSPredicateBuilder extends RexVisitorImpl<Boolean> {
         SortKey sortKey = preciseDataType.makeSortKey(value, preciseDataType.length());
         byte[] utf8Bytes = (byte[]) MySQLUnicodeUtils.latin1ToUtf8(sortKey.keys).getBase();
         return new String(utf8Bytes);
+    }
+
+    public boolean isEnableAggPruner() {
+        return enableAggPruner;
     }
 
     public interface TriFunction<T, U, V, R> {

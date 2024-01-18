@@ -28,9 +28,9 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnionQuery;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesQuery;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesTableSource;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.util.SpParameter;
-import com.alibaba.polardbx.optimizer.planmanager.Statement;
 import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
 
 import java.util.ArrayList;
@@ -61,7 +61,7 @@ public class SpParameterizedStmt {
             params.add(new Pair<>(index, new ParameterContext(ParameterMethod.setObject1,
                 new Object[] {
                     index,
-                    spParameters.get(paramIndex).getValue().getCurrentValue()})));
+                    DataTypeUtil.toJavaObject(null, spParameters.get(paramIndex).getValue().getCurrentValue())})));
         }
         return params;
     }
@@ -73,7 +73,8 @@ public class SpParameterizedStmt {
             int index = paramIndex + 1;
             params.put(index, new ParameterContext(ParameterMethod.setObject1,
                 new Object[] {
-                    index, spParameters.get(paramIndex).getValue().getCurrentValue()}));
+                    index,
+                    DataTypeUtil.toJavaObject(null, spParameters.get(paramIndex).getValue().getCurrentValue())}));
         }
         return params;
     }

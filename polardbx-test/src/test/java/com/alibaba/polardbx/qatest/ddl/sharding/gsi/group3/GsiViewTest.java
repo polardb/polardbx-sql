@@ -72,7 +72,7 @@ public class GsiViewTest extends DDLBaseNewDBTestCase {
                 builder.append(rs.getMetaData().getColumnName(i)).append(',');
             }
             Assert.assertEquals(
-                "SCHEMA,TABLE,NON_UNIQUE,KEY_NAME,INDEX_NAMES,COVERING_NAMES,INDEX_TYPE,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT,STATUS,SIZE_IN_MB,",
+                "SCHEMA,TABLE,NON_UNIQUE,KEY_NAME,INDEX_NAMES,COVERING_NAMES,INDEX_TYPE,DB_PARTITION_KEY,DB_PARTITION_POLICY,DB_PARTITION_COUNT,TB_PARTITION_KEY,TB_PARTITION_POLICY,TB_PARTITION_COUNT,STATUS,SIZE_IN_MB,USE_COUNT,LAST_ACCESS_TIME,CARDINALITY,ROW_COUNT,",
                 builder.toString());
 
             List<List<String>> result = JdbcUtil.getStringResult(rs, false);

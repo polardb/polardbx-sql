@@ -30,20 +30,18 @@ public class DateSub extends DateAdd {
 
     @Override
     protected MySQLInterval getInterval(MySQLIntervalType intervalType, Object valueObj) {
-        if (cachedInterval == null) {
+        try {
             String intervalValue = DataTypes.StringType.convertFrom(valueObj);
-            try {
-                cachedInterval = MySQLIntervalType.parseInterval(intervalValue, intervalType);
-                if (cachedInterval != null) {
-                    boolean isNeg = cachedInterval.isNeg();
-                    cachedInterval.setNeg(!isNeg);
-                }
-            } catch (Throwable t) {
-                // for invalid interval value
-                return null;
+            MySQLInterval interval = MySQLIntervalType.parseInterval(intervalValue, intervalType);
+            if (interval != null) {
+                boolean isNeg = interval.isNeg();
+                interval.setNeg(!isNeg);
             }
+            return interval;
+        } catch (Throwable t) {
+            // for invalid interval value
+            return null;
         }
-        return cachedInterval;
     }
 
     @Override

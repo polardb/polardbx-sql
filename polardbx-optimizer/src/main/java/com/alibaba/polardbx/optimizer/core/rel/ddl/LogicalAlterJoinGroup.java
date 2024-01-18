@@ -57,6 +57,16 @@ public class LogicalAlterJoinGroup extends BaseDdlOperation {
         super(ddl);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
+
     public void preparedData(ExecutionContext executionContext) {
         String schemaName = getSchemaName();
         AlterJoinGroup alterJoinGroup = (AlterJoinGroup) relDdl;

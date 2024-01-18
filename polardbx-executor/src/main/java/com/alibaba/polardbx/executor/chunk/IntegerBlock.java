@@ -21,6 +21,8 @@ import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
@@ -28,7 +30,6 @@ import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
 
 /**
  * Integer Block
- *
  */
 public class IntegerBlock extends AbstractBlock {
     private static final int NULL_VALUE = 0;
@@ -40,30 +41,27 @@ public class IntegerBlock extends AbstractBlock {
     public IntegerBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new int[slotLen];
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
-    public IntegerBlock(DataType dataType, int[] values, boolean[] nulls, boolean hasNull, int length, int[] selection) {
+    public IntegerBlock(DataType dataType, int[] values, boolean[] nulls, boolean hasNull, int length,
+                        int[] selection) {
         super(dataType, length, nulls, hasNull);
         this.values = values;
         this.selection = selection;
-        estimatedSize = INSTANCE_SIZE + Byte.BYTES * positionCount + sizeOf(values);
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     IntegerBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     IntegerBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] values, boolean hasNull) {
         super(DataTypes.IntegerType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
-        estimatedSize = INSTANCE_SIZE + sizeOf(valueIsNull) + sizeOf(values);
-        sizeInBytes = (Integer.BYTES + Byte.BYTES) * positionCount;
+        updateSizeInfo();
     }
 
     private int realPositionOf(int position) {
@@ -153,6 +151,11 @@ public class IntegerBlock extends AbstractBlock {
         return new IntegerBlock(0, values.length, null, values);
     }
 
+    @VisibleForTesting
+    public static IntegerBlock wrapWithNull(int[] values, boolean[] nulls) {
+        return new IntegerBlock(0, values.length, nulls, values);
+    }
+
     @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
@@ -233,8 +236,13 @@ public class IntegerBlock extends AbstractBlock {
         this.positionCount = compactedSize;
 
         // re-compute the size
+        updateSizeInfo();
+    }
+
+    @Override
+    public void updateSizeInfo() {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
-        sizeInBytes = (Long.BYTES + Byte.BYTES) * positionCount;
+        elementUsedBytes = Byte.BYTES * positionCount + Integer.BYTES * positionCount;
     }
 
     public int[] getSelection() {

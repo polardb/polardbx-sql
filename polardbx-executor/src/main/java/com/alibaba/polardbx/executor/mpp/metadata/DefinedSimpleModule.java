@@ -17,17 +17,20 @@
 package com.alibaba.polardbx.executor.mpp.metadata;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.PruneRawString;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 
 import javax.inject.Inject;
 
-public class DefinedSimpleModule extends SimpleModule  {
+public class DefinedSimpleModule extends SimpleModule {
     @Inject
     public DefinedSimpleModule() {
         addSerializer(ParameterContext.class, new DefinedJsonSerde.ParameterContextSerializer());
         addDeserializer(ParameterContext.class, new DefinedJsonSerde.ParameterContextDeserializer());
         addSerializer(RawString.class, new DefinedJsonSerde.RawStringSerializer());
         addDeserializer(RawString.class, new DefinedJsonSerde.RawStringDeserializer());
+        addSerializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringSerializer());
+        addDeserializer(PruneRawString.class, new DefinedJsonSerde.PruneRawStringDeserializer());
     }
 }

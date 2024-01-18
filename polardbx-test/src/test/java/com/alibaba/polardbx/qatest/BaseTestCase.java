@@ -17,22 +17,18 @@
 package com.alibaba.polardbx.qatest;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.utils.ClassFinder;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlExprParser;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.Lexer;
 import com.alibaba.polardbx.druid.sql.parser.Token;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
 import com.alibaba.polardbx.qatest.entity.ColumnEntity;
-import com.alibaba.polardbx.qatest.oss.FileStorageTest;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.logging.Log;
@@ -42,7 +38,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 
-import java.lang.reflect.Modifier;
+import javax.net.ssl.SSLException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
@@ -58,6 +54,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertWithDiffSql;
 
 @RunWith(CommonCaseRunner.class)
 public class BaseTestCase implements BaseTestMode {
@@ -67,42 +64,11 @@ public class BaseTestCase implements BaseTestMode {
 
     private static Cache<Engine, Object> engines = CacheBuilder.newBuilder().build();
 
-    private static ImmutableList<Class> fileStorageTestCases;
-
-    public static final String PACKAGE_NAME = "com.alibaba.polardbx.qatest";
-
-    static {
-        // Scan all class in this package and register the unit case on file storage.
-        ClassFinder.ClassFilter filter = new ClassFinder.ClassFilter() {
-            @Override
-            public boolean filter(Class klass) {
-                int mod = klass.getModifiers();
-                return !Modifier.isAbstract(mod)
-                    && !Modifier.isInterface(mod)
-                    && BaseTestCase.class.isAssignableFrom(klass)
-                    && (klass.getAnnotation(TestFileStorage.class) != null
-                    || AutoReadBaseTestCase.class.isAssignableFrom(klass));
-            }
-
-            @Override
-            public boolean preFilter(String classFulName) {
-                return classFulName.endsWith("Test");
-            }
-        };
-
-        List<Class> filtered = ClassFinder.findClassesInPackage(PACKAGE_NAME, filter);
-        fileStorageTestCases = ImmutableList.<Class>builder().addAll(filtered).build();
-    }
-
     private List<ConnectionWrap> polardbxConnections = new ArrayList<>();
     private List<ConnectionWrap> mysqlConnections = new ArrayList<>();
     private List<ConnectionWrap> mysqlConnectionsSecond = new ArrayList<>();
     private List<ConnectionWrap> metaDBConnections = new ArrayList<>();
     protected String hint;
-
-    public BaseTestCase() {
-        ConfigDataMode.setMode(ConfigDataMode.Mode.MOCK);
-    }
 
     @Before
     public void initializeFileStorage() {
@@ -152,14 +118,6 @@ public class BaseTestCase implements BaseTestMode {
 
     private Object prepareArchivedData() {
         Engine engine = PropertiesUtil.engine();
-
-        if (engine == Engine.LOCAL_DISK) {
-            try (Connection connection = getMetaConnection()) {
-                FileStorageTest.initLocalDisk(connection);
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
-            }
-        }
 
         String fileStorageDB1 = PropertiesUtil.polardbXAutoDBName1();
         String fileStorageDB2 = PropertiesUtil.polardbXAutoDBName2();
@@ -268,6 +226,19 @@ public class BaseTestCase implements BaseTestMode {
         return getPolardbxConnection(PropertiesUtil.polardbXDBName1(usingNewPartDb()));
     }
 
+    /**
+     * This returned connection is not automatically closed,
+     * and must be closed by calling connection.close() manually.
+     * <p>
+     * Unless you HAVE TO use a static method to get connection, do not call this method.
+     * Instead, calling getPolardbxConnection() to get connection is preferred.
+     *
+     * @return PolarDB-X connection using mode=drds
+     */
+    static public synchronized Connection getPolardbxConnection0() {
+        return getPolardbxConnection0(PropertiesUtil.polardbXDBName1(false));
+    }
+
     public synchronized Connection getPolardbxConnection(String db) {
         try {
             Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection();
@@ -275,6 +246,18 @@ public class BaseTestCase implements BaseTestMode {
             this.polardbxConnections.add(connectionWrap);
             useDb(connectionWrap, db);
             setSqlMode(ConnectionManager.getInstance().getPolardbxMode(), connectionWrap);
+            return connectionWrap;
+        } catch (SQLException t) {
+            log.error("get PolardbxConnection error!", t);
+            throw new RuntimeException(t);
+        }
+    }
+
+    public static synchronized Connection getPolardbxConnection0(String db) {
+        try {
+            Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection();
+            ConnectionWrap connectionWrap = new ConnectionWrap(connection);
+            useDb(connectionWrap, db);
             return connectionWrap;
         } catch (SQLException t) {
             log.error("get PolardbxConnection error!", t);
@@ -379,6 +362,25 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
+    public synchronized Connection getMysqlConnectionByAddress(String fullAddress) {
+        return getMysqlConnectionByAddress(fullAddress, PropertiesUtil.mysqlDBName1());
+    }
+
+    public synchronized Connection getMysqlConnectionByAddress(String fullAddress, String db) {
+        String mysqlFullAddress = String.format("%s:%s", ConnectionManager.getInstance().getMysqlAddress(),
+            ConnectionManager.getInstance().getMysqlPort());
+        String mysqlFullAddressSecond = String.format("%s:%s", ConnectionManager.getInstance().getMysqlAddressSecond(),
+            ConnectionManager.getInstance().getMysqlPortSecond());
+
+        if (StringUtils.equals(fullAddress, mysqlFullAddress)) {
+            return getMysqlConnection(db);
+        } else if (StringUtils.equals(fullAddress, mysqlFullAddressSecond)) {
+            return getMysqlConnectionSecond(db);
+        } else {
+            throw new RuntimeException("fullAddress mismatched : " + fullAddress);
+        }
+    }
+
     public synchronized Connection getMysqlDirectConnection() {
         return getMysqlDirectConnection(PropertiesUtil.mysqlDBName1());
     }
@@ -423,7 +425,7 @@ public class BaseTestCase implements BaseTestMode {
             this.metaDBConnections.add(connectionWrap);
             return connectionWrap;
         } catch (SQLException t) {
-            log.error("getPolardbxConnection error!", t);
+            log.error("getMetaDBConnection error!", t);
             throw new RuntimeException(t);
         }
     }
@@ -468,6 +470,21 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
+    public boolean useXproto(Connection connection) {
+        return JdbcUtil.getStringResult(JdbcUtil.executeQuery("show datasources", connection), false)
+            .stream().noneMatch(l -> l.stream().anyMatch(s -> s.contains("jdbc:mysql://")));
+    }
+
+    public Map<String, String> getStorageProperties(Connection connection) {
+        final Map<String, String> storageProperties = new HashMap<>();
+        JdbcUtil
+            .getStringResult(
+                JdbcUtil.executeQuery("SELECT * FROM INFORMATION_SCHEMA.STORAGE_PROPERTIES", connection),
+                false)
+            .forEach(row -> storageProperties.put(row.get(0), row.get(1)));
+        return storageProperties;
+    }
+
     @After
     public void afterBaseTestCase() {
         Throwable throwable = null;
@@ -497,9 +514,16 @@ public class BaseTestCase implements BaseTestMode {
                 try {
                     connection.close();
                 } catch (Throwable t) {
-                    log.error("close the Connection!", t);
-                    if (throwable == null) {
-                        throwable = t;
+                    // using ssl with jdk 11 has a known issue, ignore this error
+                    // detail: https://bugs.mysql.com/bug.php?id=93590
+                    final boolean ignoredSslException =
+                        t instanceof SSLException && StringUtils.containsIgnoreCase(t.getMessage(),
+                            "closing inbound before receiving peer's close_notify");
+                    if (!ignoredSslException) {
+                        log.error("close the Connection!", t);
+                        if (throwable == null) {
+                            throwable = t;
+                        }
                     }
                 }
             }
@@ -642,7 +666,7 @@ public class BaseTestCase implements BaseTestMode {
         }
     }
 
-    public void useDb(Connection connection, String db) {
+    public static void useDb(Connection connection, String db) {
         JdbcUtil.executeQuery("use " + db, connection);
     }
 
@@ -669,5 +693,88 @@ public class BaseTestCase implements BaseTestMode {
         values.append(")");
 
         return insert.append(values).toString();
+    }
+
+    public static boolean isInIgnoreExceptionList(Exception e) {
+        return ConfigConstant.IGNORE_ERROR_LIST.stream().anyMatch(str -> e.getMessage().contains(str));
+    }
+
+    public static int getNodeNum(Connection conn) {
+        int count = 0;
+        try (ResultSet rs = JdbcUtil.executeQuery("show node", conn)) {
+            while (rs.next()) {
+                count++;
+            }
+        } catch (Throwable e) {
+            com.alibaba.polardbx.common.utils.Assert.fail();
+        }
+        return count;
+    }
+
+    public static void assertBroadcastTableSame(String tableName, Connection tddlConnection,
+                                                Connection mysqlConnection) {
+        ResultSet resultSet =
+            JdbcUtil.executeQuerySuccess(tddlConnection, "show topology from " + tableName);
+        String physicalTableName = tableName;
+        // 分库分表获取的行数并不是node个数
+        try {
+            resultSet.next();
+            physicalTableName = (String) JdbcUtil.getObject(resultSet, 3);
+            resultSet.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        String mysqlSql = "select * from " + tableName;
+        String tddlSql = "select * from " + physicalTableName;
+
+        int nodeCount = getNodeNum(tddlConnection);
+
+        if (tableName.contains("broadcast")) {
+            for (int i = 0; i < nodeCount; i++) {
+                String hint = String.format("/*TDDL:node=%s*/", i);
+                selectContentSameAssertWithDiffSql(
+                    hint + tddlSql,
+                    hint + mysqlSql,
+                    null,
+                    mysqlConnection,
+                    tddlConnection,
+                    true,
+                    false,
+                    true
+                );
+            }
+        }
+    }
+
+    public static void assertBroadcastTableSelfSame(String tableName, Connection tddlConnection) {
+        ResultSet resultSet =
+            JdbcUtil.executeQuerySuccess(tddlConnection, "show topology from " + tableName);
+        String physicalTableName = tableName;
+        //分库分表获取的行数并不是node个数
+        try {
+            resultSet.next();
+            physicalTableName = (String) JdbcUtil.getObject(resultSet, 3);
+            resultSet.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        String firstSql = "/*TDDL:node=0*/ select * from " + physicalTableName;
+        int nodeCount = getNodeNum(tddlConnection);
+
+        if (tableName.contains("broadcast")) {
+            for (int i = 1; i < nodeCount; i++) {
+                String secondSql = String.format("/*TDDL:node=%s*/ select * from %s", i, physicalTableName);
+                selectContentSameAssertWithDiffSql(
+                    firstSql,
+                    secondSql,
+                    null,
+                    tddlConnection,
+                    tddlConnection,
+                    true,
+                    false,
+                    true
+                );
+            }
+        }
     }
 }

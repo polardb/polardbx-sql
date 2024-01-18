@@ -586,13 +586,17 @@ public class FullTypeTestUtil {
     public static final String C_GEOMETRYCOLLECTION = "c_geometrycollection";
 
     static public long count(Connection conn, String tableName) throws SQLException {
-        Statement statement = conn.createStatement();
-        ResultSet resultSet = statement.executeQuery("select count(*) from " + tableName);
-        resultSet.next();
-        return resultSet.getLong(1);
+        try (ResultSet resultSet = JdbcUtil.executeQuery("select count(*) from " + tableName, conn)) {
+            resultSet.next();
+            return resultSet.getLong(1);
+        }
     }
 
     static public void prepareInnoTable(Connection conn, String innodbTestTableName, int size) {
+        prepareInnoTable(conn, innodbTestTableName, 300, size);
+    }
+
+    static public void prepareInnoTable(Connection conn, String innodbTestTableName, int limit, int size) {
         LocalDate now = LocalDate.now();
         LocalDate startWithDate = now.minusMonths(12L);
         String createTableSql = String.format("CREATE TABLE %s (\n"
@@ -613,13 +617,12 @@ public class FullTypeTestUtil {
             + "PRE ALLOCATE 3\n"
             + ";", innodbTestTableName, startWithDate);
         JdbcUtil.executeSuccess(conn, createTableSql);
-        LocalDate dateIterator = startWithDate;
+        LocalDate dateIterator = startWithDate.minusMonths(1);
         int i = 0;
         Random r1 = new Random();
         String insertSql = "INSERT INTO " + innodbTestTableName +
             " (c1, c2, c3, gmt_modified) VALUES (?, ?, ?, ?)";
 
-        int limit = 300;
         while (dateIterator.isBefore(now) || dateIterator.equals(now)) {
             for (int j = 0; j < size; j = j + limit) {
                 List<List<Object>> params = new ArrayList<>();
@@ -642,10 +645,11 @@ public class FullTypeTestUtil {
         String findTTL = String.format("select schedule_id from metadb.scheduled_jobs where table_schema = '%s' "
                 + "and table_name = '%s' and executor_type = '%s' "
             , schema, innodbTestTableName, "LOCAL_PARTITION");
-        ResultSet resultSet = JdbcUtil.executeQuery(findTTL, conn);
-        Assert.assertTrue(resultSet.next());
-        long id = resultSet.getLong(1);
-        JdbcUtil.executeQuery("pause schedule " + id, conn);
+        try (ResultSet resultSet = JdbcUtil.executeQuery(findTTL, conn)) {
+            Assert.assertTrue(resultSet.next());
+            long id = resultSet.getLong(1);
+            JdbcUtil.executeQuery("pause schedule " + id, conn).close();
+        }
     }
 
     public static void continueSchedule(Connection conn, String schema, String innodbTestTableName)
@@ -654,10 +658,11 @@ public class FullTypeTestUtil {
         String findTTL = String.format("select schedule_id from metadb.scheduled_jobs where table_schema = '%s' "
                 + "and table_name = '%s' and executor_type = '%s' "
             , schema, innodbTestTableName, "LOCAL_PARTITION");
-        ResultSet resultSet = JdbcUtil.executeQuery(findTTL, conn);
-        Assert.assertTrue(resultSet.next());
-        long id = resultSet.getLong(1);
-        JdbcUtil.executeQuery("continue schedule " + id, conn);
+        try (ResultSet resultSet = JdbcUtil.executeQuery(findTTL, conn)) {
+            Assert.assertTrue(resultSet.next());
+            long id = resultSet.getLong(1);
+            JdbcUtil.executeQuery("continue schedule " + id, conn).close();
+        }
     }
 
     /**
@@ -692,6 +697,7 @@ public class FullTypeTestUtil {
                 table), conn);
         Assert.assertTrue(resultSet.next());
         long id = resultSet.getLong(1);
+        resultSet.close();
         return id;
     }
 }

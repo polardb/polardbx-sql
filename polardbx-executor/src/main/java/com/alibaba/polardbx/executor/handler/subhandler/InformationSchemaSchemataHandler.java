@@ -16,17 +16,19 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.gms.metadb.table.SchemataAccessor;
 import com.alibaba.polardbx.gms.metadb.table.SchemataRecord;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaSchemata;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.List;
 import java.util.Set;
@@ -48,13 +50,31 @@ public class InformationSchemaSchemataHandler extends BaseVirtualViewSubClassHan
      */
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        List<SchemataRecord> allSchemata = SchemataAccessor.getAllSchemata();
-        for (SchemataRecord schemata : allSchemata) {
-            boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemata.schemaName);
-            String mode = isNewPart ? "auto" : "drds";
-            cursor.addRow(new Object[] {
-                "def", schemata.schemaName, schemata.defaultCharSetName, schemata.defaultCollationName,
-                null, "NO", mode});
+        boolean enableLowerCase =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
+        if (ConfigDataMode.isPolarDbX()) {
+            List<SchemataRecord> allSchemata = SchemataAccessor.getAllSchemata();
+            for (SchemataRecord schemata : allSchemata) {
+                if (schemata.schemaName.equalsIgnoreCase(SystemDbHelper.CDC_DB_NAME)) {
+                    continue;
+                }
+                cursor.addRow(new Object[] {
+                    "def",
+                    enableLowerCase ? StringUtils.lowerCase(schemata.schemaName) : schemata.schemaName,
+                    schemata.defaultCharSetName,
+                    schemata.defaultCollationName,
+                    null, "NO"});
+            }
+        } else {
+            Set<String> activeSchemaNames = OptimizerContext.getActiveSchemaNames();
+            for (String schemaName : activeSchemaNames) {
+                cursor.addRow(new Object[] {
+                    "def",
+                    enableLowerCase ? StringUtils.lowerCase(schemaName) : schemaName,
+                    "utf8",
+                    "utf8_general_ci",
+                    null, "NO"});
+            }
         }
         return cursor;
     }

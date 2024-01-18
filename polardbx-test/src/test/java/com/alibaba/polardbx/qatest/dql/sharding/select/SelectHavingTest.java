@@ -68,7 +68,8 @@ public class SelectHavingTest extends ReadBaseTestCase {
         if (usingNewPartDb()) {
             return;
         }
-        String sql = "select pk, integer_test from " + baseOneTableName + " group by integer_test having pk>50";
+        String sql = "select min(pk) as min_pk, integer_test from " + baseOneTableName
+            + " group by integer_test having min_pk>50";
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 }

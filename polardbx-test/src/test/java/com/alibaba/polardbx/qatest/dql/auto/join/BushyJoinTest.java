@@ -39,6 +39,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @since 5.3.5
  */
 
+
 public class BushyJoinTest extends AutoReadBaseTestCase {
 
     private static final Log log = LogFactory.getLog(BushyJoinTest.class);

@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableGroupSplitPartiti
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.MoveDatabasesJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.RefreshTopologyFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;

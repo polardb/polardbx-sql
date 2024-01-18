@@ -19,6 +19,7 @@ package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group2;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.List;
@@ -49,6 +50,7 @@ public class GsiFenceTest extends DDLBaseNewDBTestCase {
     }
 
     @Test
+    @Ignore("新DDL引擎会自动回滚")
     public void testFenceOnDropCreating() {
         final String primaryTable = "gsi_fence";
         final String indexTable = "g_i_fence";

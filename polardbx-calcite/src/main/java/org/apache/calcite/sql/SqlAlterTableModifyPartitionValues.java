@@ -18,7 +18,10 @@ package org.apache.calcite.sql;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.validate.SqlValidator;
+import org.apache.calcite.sql.validate.SqlValidatorScope;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -28,19 +31,25 @@ import java.util.List;
  */
 public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
-    private static final SqlOperator OPERATOR = new SqlSpecialOperator("MODIFY PARTITION VALUES", SqlKind.MODIFY_PARTITION);
+    private static final SqlOperator OPERATOR =
+        new SqlSpecialOperator("MODIFY PARTITION VALUES", SqlKind.MODIFY_PARTITION);
 
     protected final SqlPartition partition;
     protected final boolean isAdd;
     protected final boolean isDrop;
+    protected final boolean isSubPartition;
 
     protected SqlNode parent;
 
-    public SqlAlterTableModifyPartitionValues(SqlParserPos pos, SqlPartition partitionDef, boolean isAdd){
+    protected String algorithm;
+
+    public SqlAlterTableModifyPartitionValues(SqlParserPos pos, SqlPartition partitionDef, boolean isAdd,
+                                              boolean isSubPartition) {
         super(pos);
         this.partition = partitionDef;
         this.isAdd = isAdd;
         this.isDrop = !isAdd;
+        this.isSubPartition = isSubPartition;
     }
 
     @Override
@@ -55,7 +64,7 @@ public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, isAdd?"ADD":"DROP", "");
+        final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, isAdd ? "ADD" : "DROP", "");
 
         partition.unparse(writer, leftPrec, rightPrec);
 
@@ -70,6 +79,10 @@ public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
         return isDrop;
     }
 
+    public boolean isSubPartition() {
+        return isSubPartition;
+    }
+
     public SqlPartition getPartition() {
         return partition;
     }
@@ -80,5 +93,30 @@ public class SqlAlterTableModifyPartitionValues extends SqlAlterSpecification {
 
     public void setParent(SqlNode parent) {
         this.parent = parent;
+    }
+
+    public String getAlgorithm() {
+        return algorithm;
+    }
+
+    public void setAlgorithm(String algorithm) {
+        this.algorithm = algorithm;
+    }
+
+    @Override
+    public void validate(SqlValidator validator, SqlValidatorScope scope) {
+        validator.setColumnReferenceExpansion(false);
+
+        List<SqlNode> partDefs = new ArrayList<>();
+        partDefs.add(partition);
+        int partColCnt = -1;
+        SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, -1, true, false);
+
+//        if (GeneralUtil.(partitions)) {
+//            List<SqlNode> partDefs = new ArrayList<>();
+//            partDefs.addAll(partitions);
+//            int partColCnt = -1;
+//            SqlPartitionBy.validatePartitionDefs(validator, scope, partDefs, partColCnt, true);
+//        }
     }
 }

@@ -39,14 +39,17 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
 import java.sql.Connection;
 import java.text.MessageFormat;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 @Getter
@@ -108,8 +111,13 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
 
         long tableGroupId = tableGroupConfig.getTableGroupRecord().id;
 
+        /**
+         * Fetch all pg that are to be deleted from partition_group_delta and
+         * remove these partitions from table_partitions by id
+         */
         List<PartitionGroupRecord> outDatedPartRecords =
             partitionGroupAccessor.getOutDatedPartitionGroupsByTableGroupIdFromDelta(tableGroupId);
+        Set<Long> outDatedPartGroupIds = new HashSet<>();
         for (PartitionGroupRecord record : outDatedPartRecords) {
 
             // 1、delete the outdated partition group
@@ -121,8 +129,12 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
             for (TablePartitionRecord partitionRecord : partitionRecords) {
                 tablePartitionAccessor.deleteTablePartitionsById(partitionRecord.id);
             }
+            outDatedPartGroupIds.add(record.id);
         }
 
+        /**
+         * Fetch new pg from partition_group_delta and put them into the partition_group as final result
+         */
         List<PartitionGroupRecord> newPartitionGroups = partitionGroupAccessor
             .getPartitionGroupsByTableGroupId(tableGroupId, true);
         Map<String, Long> newPartitionGroupsInfo = new TreeMap(String.CASE_INSENSITIVE_ORDER);
@@ -136,6 +148,7 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
                 newPartitionGroupsInfo.putIfAbsent(record.partition_name, partitionGroupId);
             }
         }
+
         for (TablePartRecordInfoContext infoContext : tableGroupConfig.getAllTables()) {
             String tableName = infoContext.getLogTbRec().tableName;
             schemaName = infoContext.getLogTbRec().tableSchema;
@@ -149,11 +162,11 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
              * At this time, the old partInfo and the new partInfo has been switched,
              * so the new partInfo should be got from tableMeta.getPartitionInfo()
              */
-
             PartitionInfo newPartitionInfo = tableMeta.getPartitionInfo();
-            if (newPartitionInfo == null) {
+            PartitionInfo partitionInfo = tableMeta.getNewPartitionInfo();
+            if (newPartitionInfo == null || partitionInfo == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    String.format("Failed to get new partition info for table[%s]", tableName));
+                    String.format("Failed to get partition info for table[%s]", tableName));
             }
 
             SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
@@ -165,6 +178,25 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
                     "AlterTableGroupRefreshMetaBaseTask-newPartitionInfo:{0}",
                     tableMeta.getNewPartitionInfo().getDigest(tableMeta.getVersion())));
             }
+
+            /**
+             *
+             */
+            if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+                for (PartitionSpec partitionSpec : partitionInfo.getPartitionBy().getPartitions()) {
+                    boolean deleteLogicalPart = true;
+                    for (PartitionSpec subPartSpec : partitionSpec.getSubPartitions()) {
+                        if (!outDatedPartGroupIds.contains(subPartSpec.getLocation().getPartitionGroupId())) {
+                            deleteLogicalPart = false;
+                            break;
+                        }
+                    }
+                    if (deleteLogicalPart) {
+                        tablePartitionAccessor.deleteTablePartitionsById(partitionSpec.getId());
+                    }
+                }
+            }
+
             /**
              * Use the partition Info of table_partitions_delta to replace the partitionInfo of
              * table_partitions
@@ -197,6 +229,9 @@ public class AlterTableGroupRefreshMetaBaseTask extends BaseDdlTask {
             tablePartRecordInfoContext.setLogTbRec(logTableRec);
             tablePartRecordInfoContext.setPartitionRecList(partRecList);
             tablePartRecordInfoContext.setSubPartitionRecMap(subPartRecInfos);
+            tablePartRecordInfoContext.setSubPartitionRecList(
+                TablePartRecordInfoContext.buildAllSubPartitionRecList(subPartRecInfos));
+
             List<TablePartRecordInfoContext> tablePartRecordInfoContexts = new ArrayList<>();
             tablePartRecordInfoContexts.add(tablePartRecordInfoContext);
 

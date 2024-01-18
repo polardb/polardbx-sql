@@ -104,14 +104,11 @@ public class InformationSchemaInnodbLockWaitsHandler extends BaseVirtualViewSubC
 
                     Long requestingTranId = lookupSet.getTransactionId(groupNameList, requesting_mysql_thread_id);
                     Long blockingTranId = lookupSet.getTransactionId(groupNameList, blocking_mysql_thread_id);
-                    if (requestingTranId == null || blockingTranId == null) {
-                        continue;
-                    }
 
                     cursor.addRow(new Object[] {
-                        Long.toHexString(requestingTranId),
+                        requestingTranId == null ? "unknown" : Long.toHexString(requestingTranId),
                         requested_lock_id,
-                        Long.toHexString(blockingTranId),
+                        blockingTranId == null ? "unknown" : Long.toHexString(blockingTranId),
                         blocking_lock_id
                     });
                 }

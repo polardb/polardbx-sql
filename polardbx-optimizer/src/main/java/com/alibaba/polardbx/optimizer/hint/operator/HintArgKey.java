@@ -62,6 +62,9 @@ public class HintArgKey {
         HintArgKey.of("condition", 2),
         HintArgKey.of("real_table", 3),
         HintArgKey.of(PARAM_INDEX_MAP_KEY, 4));
+    public static final List<HintArgKey> RANDOM_NODE_HINT = ImmutableList.of(HintArgKey.of("lst", 0),
+        HintArgKey.of("num", 1),
+        HintArgKey.of(PARAM_INDEX_MAP_KEY, 4));
     public static final List<HintArgKey> CORONADB_JSON_HINT = ImmutableList.of(HintArgKey.of("json", 0));
     public static final List<HintArgKey> MPP_HINT = ImmutableList.of(HintArgKey.of("rule_set", 0));
     public static final List<HintArgKey> QUERY_BLOCK_NAME_HINT = ImmutableList.of(HintArgKey.of("name", 0));

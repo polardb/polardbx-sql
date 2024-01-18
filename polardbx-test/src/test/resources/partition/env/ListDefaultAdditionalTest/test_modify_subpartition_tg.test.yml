@@ -1,0 +1,474 @@
+## DISABLE_FAST_SQL_PARSER
+# template: list, algorithm=default
+create tablegroup tg_modify_1;
+create table tb1(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_1";
+insert into tb1 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb1 values(3, '9'),(4,'10');
+insert into tb1 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_1 modify subpartition sp1 drop values("1");
+select b from tb1 order by b;
+select b from tb1 partition(p1) order by b;
+select b from tb1 partition(p1sp1) order by b;
+select b from tb1 partition(p1sp2) order by b;
+select b from tb1 partition(p1spd) order by b;
+
+alter tablegroup tg_modify_1 modify subpartition sp2 add values("5", "6");
+select b from tb1 order by b;
+select b from tb1 partition(p1) order by b;
+select b from tb1 partition(p1sp1) order by b;
+select b from tb1 partition(p1sp2) order by b;
+select b from tb1 partition(p1spd) order by b;
+
+select b from tb1 partition(p2) order by b;
+select b from tb1 partition(pd) order by b;
+show create table tb1;
+
+# template: list, algorithm=instant
+create tablegroup tg_modify_2;
+create table tb2(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_2";
+insert into tb2 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb2 values(3, '9'),(4,'10');
+insert into tb2 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_2 modify subpartition sp2 add values("5", "6") algorithm=instant;
+select b from tb2 order by b;
+select b from tb2 partition(p1) order by b;
+select b from tb2 partition(p1sp1) order by b;
+select b from tb2 partition(p1sp2) order by b;
+select b from tb2 partition(p1spd) order by b;
+
+select b from tb2 partition(p2) order by b;
+select b from tb2 partition(pd) order by b;
+show create table tb2;
+  
+# template: list columns, algorithm=default
+create tablegroup tg_modify_3;
+create table tb3(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(a, b)
+subpartitions template(
+subpartition sp1 values in((1, "1"),(2, "2")),
+subpartition sp2 values in((1, "3"),(2, "4")),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_3";
+insert into tb3 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb3 values(3, '9'),(4,'10');
+insert into tb3 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_3 modify subpartition sp1 drop values((1, "1")) algorithm=default;
+select b from tb3 order by b;
+select b from tb3 partition(p1) order by b;
+select b from tb3 partition(p1sp1) order by b;
+select b from tb3 partition(p1sp2) order by b;
+select b from tb3 partition(p1spd) order by b;
+
+alter tablegroup tg_modify_3 modify subpartition sp2 add values((1, "5"), (2, "6"));
+select b from tb3 order by b;
+select b from tb3 partition(p1) order by b;
+select b from tb3 partition(p1sp1) order by b;
+select b from tb3 partition(p1sp2) order by b;
+select b from tb3 partition(p1spd) order by b;
+
+select b from tb3 partition(p2) order by b;
+select b from tb3 partition(pd) order by b;
+show create table tb3;
+  
+# template: list columns, algorithm=instant
+create tablegroup tg_modify_4;
+create table tb4(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(a, b)
+subpartitions template(
+subpartition sp1 values in((1, "1"),(2, "2")),
+subpartition sp2 values in((1, "3"),(2, "4")),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_4";
+insert into tb4 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb4 values(3, '9'),(4,'10');
+insert into tb4 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_4 modify subpartition sp2 add values((1, "5"), (2, "6")) algorithm=instant;
+select b from tb4 order by b;
+select b from tb4 partition(p1) order by b;
+select b from tb4 partition(p1sp1) order by b;
+select b from tb4 partition(p1sp2) order by b;
+select b from tb4 partition(p1spd) order by b;
+
+select b from tb4 partition(p2) order by b;
+select b from tb4 partition(pd) order by b;
+show create table tb4;
+  
+# template: list columns(single), algorithm=default
+create tablegroup tg_modify_5;
+create table tb5(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_5";
+insert into tb5 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb5 values(3, '9'),(4,'10');
+insert into tb5 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_5 modify subpartition sp1 drop values("1");
+select b from tb5 order by b;
+select b from tb5 partition(p1) order by b;
+select b from tb5 partition(p1sp1) order by b;
+select b from tb5 partition(p1sp2) order by b;
+select b from tb5 partition(p1spd) order by b;
+
+alter tablegroup tg_modify_5 modify subpartition sp2 add values("5", "6");
+select b from tb5 order by b;
+select b from tb5 partition(p1) order by b;
+select b from tb5 partition(p1sp1) order by b;
+select b from tb5 partition(p1sp2) order by b;
+select b from tb5 partition(p1spd) order by b;
+
+select b from tb5 partition(p2) order by b;
+select b from tb5 partition(pd) order by b;
+show create table tb5;
+  
+# template: list columns(single), algorithm=instant
+create tablegroup tg_modify_6;
+create table tb6(
+a int,
+b varchar(20)
+)partition by list(a) subpartition by list columns(b)
+subpartitions template(
+subpartition sp1 values in("1","2"),
+subpartition sp2 values in("3","4"),
+subpartition spd values in(default)
+)
+(partition p1 values in(1,2),
+partition p2 values in(3,4),
+partition pd values in(default)
+) tablegroup="tg_modify_6";
+insert into tb6 values(1, '1'),(2,'2'),(1,'3'),(2,'4'),(1,'5'),(2,'6'),(1,'7'),(2,'8');
+insert into tb6 values(3, '9'),(4,'10');
+insert into tb6 values(5, '11'),(6,'12');
+
+alter tablegroup tg_modify_6 modify subpartition sp2 add values("5", "6") algorithm=instant;
+select b from tb6 order by b;
+select b from tb6 partition(p1) order by b;
+select b from tb6 partition(p1sp1) order by b;
+select b from tb6 partition(p1sp2) order by b;
+select b from tb6 partition(p1spd) order by b;
+
+select b from tb6 partition(p2) order by b;
+select b from tb6 partition(pd) order by b;
+show create table tb6;
+
+# non-template: list, algorithm=default
+create tablegroup tg_modify_7;
+create table tb7(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_7";
+insert into tb7 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6');
+
+alter tablegroup tg_modify_7 modify subpartition p2sp1 drop values("1");
+select b from tb7 partition(p2) order by b;
+select b from tb7 partition(p2sp1) order by b;
+select b from tb7 partition(p2sp2) order by b;
+select b from tb7 partition(p2sp3) order by b;
+
+alter tablegroup tg_modify_7 modify subpartition p2sp2 add values("5", "6");
+select b from tb7 partition(p2) order by b;
+select b from tb7 partition(p2sp1) order by b;
+select b from tb7 partition(p2sp2) order by b;
+select b from tb7 partition(p2sp3) order by b;
+show create table tb7;
+  
+# non-template: list, algorithm=instant
+create tablegroup tg_modify_8;
+create table tb8(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST (a) SUBPARTITION BY LIST (b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_8";
+insert into tb8 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6');
+
+alter tablegroup tg_modify_8 modify subpartition p2sp2 add values("5", "6") algorithm=instant;
+select b from tb8 partition(p2) order by b;
+select b from tb8 partition(p2sp1) order by b;
+select b from tb8 partition(p2sp2) order by b;
+select b from tb8 partition(p2sp3) order by b;
+show create table tb8;
+  
+# non-template: list columns, algorithm=default
+create tablegroup tg_modify_9;
+create table tb9(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_9";
+insert into tb9 values(1, '1', 2),(2,'2', 2),(3,'3', 2),(4,'4', 2),(5,'5', 2),(6,'6', 2);
+
+alter tablegroup tg_modify_9 modify subpartition p2sp1 drop values((1,"1")) algorithm=default;
+select b from tb9 partition(p2) order by b;
+select b from tb9 partition(p2sp1) order by b;
+select b from tb9 partition(p2sp2) order by b;
+select b from tb9 partition(p2sp3) order by b;
+
+alter tablegroup tg_modify_9 modify subpartition p2sp2 add values((5,"5"), (6,"6")) algorithm=default;
+select b from tb9 partition(p2) order by b;
+select b from tb9 partition(p2sp1) order by b;
+select b from tb9 partition(p2sp2) order by b;
+select b from tb9 partition(p2sp3) order by b;
+show create table tb9;
+  
+# non-template: list columns, algorithm=instant
+create tablegroup tg_modify_10;
+create table tb10(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_10";
+insert into tb10 values(1, '1', 2),(2,'2', 2),(3,'3', 2),(4,'4', 2),(5,'5', 2),(6,'6', 2);
+
+alter tablegroup tg_modify_10 modify subpartition p2sp2 add values((5,"5"), (6,"6")) algorithm=instant;
+select b from tb10 partition(p2) order by b;
+select b from tb10 partition(p2sp1) order by b;
+select b from tb10 partition(p2sp2) order by b;
+select b from tb10 partition(p2sp3) order by b;
+show create table tb10;
+  
+# non-template: list columns(single), algorithm=default
+create tablegroup tg_modify_11;
+create table tb11(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST(a) SUBPARTITION BY LIST columns(b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_11";
+insert into tb11 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6');
+
+alter tablegroup tg_modify_11 modify subpartition p2sp1 drop values("1");
+select b from tb11 partition(p2) order by b;
+select b from tb11 partition(p2sp1) order by b;
+select b from tb11 partition(p2sp2) order by b;
+select b from tb11 partition(p2sp3) order by b;
+
+alter tablegroup tg_modify_11 modify subpartition p2sp2 add values("5", "6");
+select b from tb11 partition(p2) order by b;
+select b from tb11 partition(p2sp1) order by b;
+select b from tb11 partition(p2sp2) order by b;
+select b from tb11 partition(p2sp3) order by b;
+show create table tb11;
+  
+# non-template: list columns(single), algorithm=instant
+create tablegroup tg_modify_12;
+create table tb12(
+a int,
+b varchar(20)
+)
+PARTITION BY LIST(a) SUBPARTITION BY LIST columns(b) (
+PARTITION p1 VALUES IN (1) (
+SUBPARTITION p1sp1 VALUES IN ("1","2"),
+SUBPARTITION p1sp2 VALUES IN ("3","4"),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (2) (
+SUBPARTITION p2sp1 VALUES IN ("1","2"),
+SUBPARTITION p2sp2 VALUES IN ("3","4"),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION p3 VALUES IN (3) (
+SUBPARTITION p3sp1 VALUES IN ("1","2"),
+SUBPARTITION p3sp2 VALUES IN ("3","4"),
+SUBPARTITION p3sp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_12";
+insert into tb12 values(2, '1'),(2,'2'),(2,'3'),(2,'4'),(2,'5'),(2,'6');
+
+alter tablegroup tg_modify_12 modify subpartition p2sp2 add values("5", "6") algorithm=instant;
+select b from tb12 partition(p2) order by b;
+select b from tb12 partition(p2sp1) order by b;
+select b from tb12 partition(p2sp2) order by b;
+select b from tb12 partition(p2sp3) order by b;
+show create table tb12;
+
+# logical partition: list, algorithm=default
+create tablegroup tg_modify_13;
+create table tb13(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1,2) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (3,4) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION pdsp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION pdsp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION pdsp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_13";
+insert into tb13 values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4),(5,'5', 5),(6,'6', 6);
+
+alter tablegroup tg_modify_13 modify partition p1 drop values(1) algorithm=default;
+select b from tb13 partition(p1) order by b;
+select b from tb13 partition(p2) order by b;
+select b from tb13 partition(pd) order by b;
+
+alter tablegroup tg_modify_13 modify partition p2 add values(5,6);
+select b from tb13 partition(p1) order by b;
+select b from tb13 partition(p2) order by b;
+select b from tb13 partition(pd) order by b;
+show create table tb13;
+
+# logical partition: list, algorithm=default
+create tablegroup tg_modify_14;
+create table tb14(
+a int,
+b varchar(20),
+c int
+)
+PARTITION BY LIST (c) SUBPARTITION BY LIST columns(a, b) (
+PARTITION p1 VALUES IN (1,2) (
+SUBPARTITION p1sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p1sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p1sp3 VALUES IN (default)
+),
+PARTITION p2 VALUES IN (3,4) (
+SUBPARTITION p2sp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION p2sp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION p2sp3 VALUES IN (default)
+),
+PARTITION pd VALUES IN (default) (
+SUBPARTITION pdsp1 VALUES IN ((1,"1"),(2,"2")),
+SUBPARTITION pdsp2 VALUES IN ((3,"3"),(4,"4")),
+SUBPARTITION pdsp3 VALUES IN (default)
+)
+) tablegroup="tg_modify_14";
+insert into tb14 values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4);
+
+alter tablegroup tg_modify_14 modify partition p2 add values(5,6) algorithm=instant;
+select b from tb14 partition(p1) order by b;
+select b from tb14 partition(p2) order by b;
+select b from tb14 partition(pd) order by b;
+show create table tb14;
+
+

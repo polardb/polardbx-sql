@@ -28,4 +28,13 @@ public class LogicalAlterRule extends BaseDdlOperation {
         return new LogicalAlterRule(alterRule);
     }
 
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
+    }
 }

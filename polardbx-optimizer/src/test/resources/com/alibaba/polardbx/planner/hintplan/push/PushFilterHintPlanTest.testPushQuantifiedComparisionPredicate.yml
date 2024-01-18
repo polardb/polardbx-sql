@@ -35,8 +35,7 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = SOME (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")
+    err-code: [pxc-4528][err_table_empty_with_hint] sql with hint is not used correctly, no physical table will execute sql.
 
 - sql: |
     select /* +TDDL: construct()
@@ -115,5 +114,4 @@
 
   plan: |
 
-    Gather(concurrent=true)
-      LogicalView(tables="test_table_a,test_table_b", sql="SELECT `pk`, `bigint_test`, `varchar_test_p255`, `datetime_test`, `text_test`, `timestamp_test` FROM `test_table_a` AS `test_table_a` WHERE (`pk` = ALL (SELECT `b`.`pk` FROM `test_table_b` AS `b` WHERE (`b`.`pk` = 100001)))")
+    err-code: [pxc-4528][err_table_empty_with_hint] sql with hint is not used correctly, no physical table will execute sql.

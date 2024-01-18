@@ -15,7 +15,6 @@
  */
 package com.alibaba.polardbx.druid.sql.ast;
 
-
 public interface SQLHint extends SQLObject {
     SQLHint clone();
 }

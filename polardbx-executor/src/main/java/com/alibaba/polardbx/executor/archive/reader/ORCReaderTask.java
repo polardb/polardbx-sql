@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProvider;
 import com.alibaba.polardbx.executor.archive.columns.ColumnProviders;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
+import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
@@ -30,12 +31,13 @@ import com.alibaba.polardbx.gms.engine.FileSystemUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.config.table.OSSOrcFileMeta;
-import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Range;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
@@ -58,7 +60,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
 public class ORCReaderTask {
 
@@ -129,13 +130,8 @@ public class ORCReaderTask {
             startTime = System.nanoTime() / 1000_000;
 
             if (context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_BUFFER_POOL)) {
-                String[] columns = new String[ossReadOption.getColumnMetas().size()];
-                for (int i = 0; i < columns.length; i++) {
-                    columns[i] = ossReadOption.getColumnMetas().get(i).getName();
-                }
-                if (withAgg() && pruningResult.pass()) {
-                    return;
-                }
+
+                String[] columns = ossReadOption.getOssColumnTransformer().getTargetColumns();
                 List<Chunk> chunkList = BufferPoolManager.getInstance().get(fileMeta, columns, ossReadOption, context);
                 chunkIterator = chunkList.iterator();
                 return;
@@ -145,10 +141,6 @@ public class ORCReaderTask {
             this.reader = OrcFile.createReader(new Path(ossFileUri),
                 OrcFile.readerOptions(configuration).filesystem(fileSystem).orcTail(fileMeta.getOrcTail()));
 
-            if (withAgg() && pruningResult.pass()) {
-                closeRecordReader();
-                return;
-            }
             // reader filter options
             Reader.Options readerOptions = createOption();
 
@@ -156,34 +148,19 @@ public class ORCReaderTask {
                 this.recordReader = reader.rows(readerOptions);
             }
             if (pruningResult.part()) {
-                if (withAgg()) {
-                    indexIterator = pruningResult.getStripeMap().keySet().stream().sorted(Long::compareTo)
-                        .collect(Collectors.toList())
-                        .listIterator();
-                    index = indexIterator.next();
-                    if (!pruningResult.stat(index)) {
-                        StripeColumnMeta stripeColumnMeta = pruningResult.getStripeMap().get(index);
-                        readerOptions =
-                            readerOptions.range(stripeColumnMeta.getStripeOffset(), stripeColumnMeta.getStripeLength());
-                        this.recordReader = reader.rows(readerOptions);
-                    } else {
-                        closeRecordReader();
-                    }
-                } else {
-                    Iterator<Range<Long>> descendingIterator =
-                        pruningResult.getRangeSet().asDescendingSetOfRanges().iterator();
-                    List<Range<Long>> rangeList = new ArrayList<>();
-                    while (descendingIterator.hasNext()) {
-                        rangeList.add(descendingIterator.next());
-                    }
-
-                    // sequential access file
-                    listIterator = rangeList.listIterator(rangeList.size());
-                    Range<Long> range = listIterator.previous();
-                    readerOptions =
-                        readerOptions.range(range.lowerEndpoint(), range.upperEndpoint() - range.lowerEndpoint());
-                    this.recordReader = reader.rows(readerOptions);
+                Iterator<Range<Long>> descendingIterator =
+                    pruningResult.getRangeSet().asDescendingSetOfRanges().iterator();
+                List<Range<Long>> rangeList = new ArrayList<>();
+                while (descendingIterator.hasNext()) {
+                    rangeList.add(descendingIterator.next());
                 }
+
+                // sequential access file
+                listIterator = rangeList.listIterator(rangeList.size());
+                Range<Long> range = listIterator.previous();
+                readerOptions =
+                    readerOptions.range(range.lowerEndpoint(), range.upperEndpoint() - range.lowerEndpoint());
+                this.recordReader = reader.rows(readerOptions);
             }
 
         } catch (Throwable t) {
@@ -193,9 +170,6 @@ public class ORCReaderTask {
     }
 
     public Chunk nextFromBufferPool(SessionProperties sessionProperties) {
-        if (chunkIterator == null) {
-            return fetchStatistics(sessionProperties).getChunk();
-        }
         if (chunkIterator.hasNext()) {
             return chunkIterator.next();
         } else {
@@ -213,6 +187,7 @@ public class ORCReaderTask {
         return chunkIterator != null;
     }
 
+    @Deprecated
     private void fetchStatistics(BlockBuilder[] blockBuilders, SessionProperties sessionProperties, int colIndex,
                                  SqlKind kind) {
         if (kind == SqlKind.COUNT) {
@@ -224,7 +199,11 @@ public class ORCReaderTask {
             RelColumnOrigin columnOrigin = aggColumns.get(colIndex);
 
             // prepare the block builder (precise data type)
-            ColumnMeta columnMeta = fileMeta.getColumnMetaMap().get(columnOrigin.getColumnName());
+            TableMeta tm = fileMeta.getTableMeta(context);
+            String fieldId = tm.getColumnFieldId(columnOrigin.getColumnName());
+            Preconditions.checkArgument(fieldId != null, "fix the case");
+            ColumnMeta columnMeta = OrcColumnManager.getHistory(fieldId, fileMeta);
+
             DataType aggResultType = DataTypeUtil.aggResultTypeOf(columnMeta.getDataType(), kind);
             blockBuilders[colIndex] = BlockBuilders.create(aggResultType, context, 1);
 
@@ -282,10 +261,6 @@ public class ORCReaderTask {
 
     public ORCReadResult next(VectorizedRowBatch buffer, SessionProperties sessionProperties) {
         try {
-            // use statistics
-            if (recordReader == null) {
-                return fetchStatistics(sessionProperties);
-            }
 
             // read orc file
             buffer.size = 0;
@@ -330,36 +305,17 @@ public class ORCReaderTask {
             index = -1L;
             return false;
         }
-        if (withAgg()) {
-            index = indexIterator.hasNext() ? indexIterator.next() : -1;
-            // end of stripes
-            if (index == -1) {
-                return false;
-            }
-            if (!pruningResult.stat(index)) {
-                StripeColumnMeta stripeColumnMeta = pruningResult.getStripeMap().get(index);
-                Reader.Options readerOptions = createOption();
-                readerOptions.range(stripeColumnMeta.getStripeOffset(), stripeColumnMeta.getStripeLength());
-                try {
-                    this.recordReader = reader.rows(readerOptions);
-                } catch (Throwable e) {
-                    throw GeneralUtil.nestedException(e);
-                }
+        if (listIterator.hasPrevious()) {
+            Range<Long> range = listIterator.previous();
+            // reader filter options
+            Reader.Options readerOptions = createOption()
+                .range(range.lowerEndpoint(), range.upperEndpoint() - range.lowerEndpoint());
+            try {
+                this.recordReader = reader.rows(readerOptions);
+            } catch (Throwable e) {
+                throw GeneralUtil.nestedException(e);
             }
             return true;
-        } else {
-            if (listIterator.hasPrevious()) {
-                Range<Long> range = listIterator.previous();
-                // reader filter options
-                Reader.Options readerOptions = createOption()
-                    .range(range.lowerEndpoint(), range.upperEndpoint() - range.lowerEndpoint());
-                try {
-                    this.recordReader = reader.rows(readerOptions);
-                } catch (Throwable e) {
-                    throw GeneralUtil.nestedException(e);
-                }
-                return true;
-            }
         }
         return false;
     }
@@ -411,10 +367,6 @@ public class ORCReaderTask {
      */
     public boolean pass() {
         return recordReader == null;
-    }
-
-    private boolean withAgg() {
-        return aggCalls != null;
     }
 
     private void closeRecordReader() {

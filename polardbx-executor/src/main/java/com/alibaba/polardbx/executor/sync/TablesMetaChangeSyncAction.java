@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.sync;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
@@ -33,6 +34,8 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
     private String schemaName;
     private List<String> logicalTables;
 
+    private Long connId;
+
     public TablesMetaChangeSyncAction() {
 
     }
@@ -40,12 +43,20 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
     public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables) {
         this.schemaName = schemaName;
         this.logicalTables = logicalTables;
+        this.connId = -1L;
+    }
+
+    @JSONCreator
+    public TablesMetaChangeSyncAction(String schemaName, List<String> logicalTables, Long connId) {
+        this.schemaName = schemaName;
+        this.logicalTables = logicalTables;
+        this.connId = connId;
     }
 
     @Override
     public ResultCursor sync() {
         SchemaManager oldSchemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        oldSchemaManager.toNewVersionInTrx(logicalTables, true);
+        oldSchemaManager.toNewVersionInTrx(logicalTables, connId, true);
         return null;
     }
 
@@ -63,5 +74,13 @@ public class TablesMetaChangeSyncAction implements ISyncAction {
 
     public void setLogicalTables(List<String> logicalTables) {
         this.logicalTables = logicalTables;
+    }
+
+    public Long getConnId() {
+        return connId;
+    }
+
+    public void setConnId(Long connId) {
+        this.connId = connId;
     }
 }

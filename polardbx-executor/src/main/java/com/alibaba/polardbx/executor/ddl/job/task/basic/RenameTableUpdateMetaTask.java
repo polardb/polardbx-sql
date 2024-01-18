@@ -17,10 +17,13 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -31,7 +34,7 @@ import java.sql.Connection;
 @TaskName(name = "RenameTableUpdateMetaTask")
 public class RenameTableUpdateMetaTask extends BaseGmsTask {
 
-    private String newLogicalTableName;
+    protected String newLogicalTableName;
 
     @JSONCreator
     public RenameTableUpdateMetaTask(String schemaName, String logicalTableName, String newLogicalTableName) {
@@ -52,10 +55,20 @@ public class RenameTableUpdateMetaTask extends BaseGmsTask {
             TableMetaChanger
                 .renameTableMeta(metaDbConnection, schemaName, logicalTableName, newLogicalTableName, executionContext);
         }
+        CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, logicalTableName, newLogicalTableName);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
         TableMetaChanger.afterRenamingTableMeta(schemaName, newLogicalTableName);
+    }
+
+    @Override
+    protected void updateTableVersion(Connection metaDbConnection) {
+        try {
+            TableInfoManager.updateTableVersion(schemaName, newLogicalTableName, metaDbConnection);
+        } catch (Exception e) {
+            throw GeneralUtil.nestedException(e);
+        }
     }
 }

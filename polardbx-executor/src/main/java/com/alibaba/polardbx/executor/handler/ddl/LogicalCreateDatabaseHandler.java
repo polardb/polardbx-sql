@@ -19,15 +19,20 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.charset.CharsetName;
-import com.alibaba.polardbx.common.charset.MySQLCharsetDDLValidator;
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.config.ConfigDataMode.Mode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
+import com.alibaba.polardbx.executor.mpp.planner.PartitionHandle;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.topology.CreateDbInfo;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -38,15 +43,18 @@ import com.alibaba.polardbx.gms.util.DbEventUtil;
 import com.alibaba.polardbx.gms.util.DbNameUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
+import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
+import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.KeyWordsUtil;
 import com.google.common.base.Predicate;
 import com.google.common.base.Strings;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.commons.lang.StringUtils;
-
-import java.util.Optional;
+import org.jetbrains.annotations.NotNull;
 
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
@@ -80,44 +88,10 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
                     maxDbCnt));
         }
 
-        String charset = Optional.ofNullable(sqlCreateDatabase.getCharSet())
-            .orElse(DbTopologyManager.defaultCharacterSetForCreatingDb);
-        String collate = Optional.ofNullable(sqlCreateDatabase.getCollate())
-            .orElse(CharsetName.getDefaultCollationName(charset));
-
-        if (!MySQLCharsetDDLValidator.checkCharsetSupported(charset, collate)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                String.format(
-                    "Failed to create database because the charset[%s] or collate[%s] is not supported",
-                    charset, collate));
-        }
+        DdlCharsetInfo createDbCharInfo = fetchCreateDbCharsetInfo(executionContext, sqlCreateDatabase);
+        Boolean encryption = sqlCreateDatabase.isEncryption();
 
         String locality = Strings.nullToEmpty(sqlCreateDatabase.getLocality());
-
-        if (!MySQLCharsetDDLValidator.checkCharset(charset)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                String.format(
-                    "Unknown character set: %s",
-                    charset));
-        }
-
-        if (!StringUtils.isEmpty(collate)) {
-
-            if (!MySQLCharsetDDLValidator.checkCollation(collate)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    String.format(
-                        "Unknown collation: %s",
-                        collate));
-            }
-
-            if (!MySQLCharsetDDLValidator.checkCharsetCollation(charset, collate)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                    String.format(
-                        "Unknown character set and collation: %s %s",
-                        charset, collate));
-            }
-        }
-
         String partitionMode = Strings.nullToEmpty(sqlCreateDatabase.getPartitionMode());
         boolean isCreateIfNotExists = sqlCreateDatabase.isIfNotExists();
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
@@ -132,17 +106,41 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
         }
 
         // choose dn by locality
-        LocalityDesc localityDesc = LocalityDesc.parse(locality);
-        if (!localityDesc.holdEmptyDnList() && !localityDesc.getDnList()
-            .contains(DbTopologyManager.singleGroupStorageInstList.get(0))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                String.format("Failed to create database because the locality[%s] is invalid, storage 0 is required",
-                    localityDesc.toString()));
+        LocalityDesc localityDesc = LocalityInfoUtils.parse(locality);
+//        if (!localityDesc.holdEmptyDnList() && !localityDesc.getDnList()
+//            .contains(DbTopologyManager.singleGroupStorageInstList.get(0))) {
+//            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+//                String.format("Failed to create database because the locality[%s] is invalid, storage 0 is required",
+//                    localityDesc.toString()));
+//        }
+        final LocalityDesc finalLocalityDesc;
+        if (StoragePoolManager.getInstance().isTriggered() && localityDesc.holdEmptyDnList()) {
+            finalLocalityDesc = StoragePoolManager.getInstance().getDefaultStoragePoolLocalityDesc();
+        } else {
+            finalLocalityDesc = localityDesc;
         }
-        Predicate<StorageInfoRecord> predLocality = (x -> localityDesc.matchStorageInstance(x.getInstanceId()));
+        Predicate<StorageInfoRecord> predLocality =
+            (x -> finalLocalityDesc.fullMatchStorageInstance(x.getInstanceId()));
         int dbType = decideDbType(partitionMode, executionContext);
+
+        Boolean defaultSingle = sqlCreateDatabase.isDefaultSingle();
+        boolean databaseDefaultSingle =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DATABASE_DEFAULT_SINGLE);
+        if (dbType == DbInfoRecord.DB_TYPE_NEW_PART_DB) {
+            if (defaultSingle == null) {
+                if (databaseDefaultSingle) {
+                    defaultSingle = new Boolean(true);
+                }
+            }
+        } else {
+            defaultSingle = false;
+        }
+
         CreateDbInfo createDbInfo = DbTopologyManager.initCreateDbInfo(
-            dbName, charset, collate, locality, predLocality, dbType,
+            dbName, createDbCharInfo.finalCharset, createDbCharInfo.finalCollate, encryption, defaultSingle,
+            finalLocalityDesc,
+            predLocality,
+            dbType,
             isCreateIfNotExists, socketTimeoutVal, shardDbCountEachStorageInst);
         long dbId = DbTopologyManager.createLogicalDb(createDbInfo);
         DbEventUtil.logFirstAutoDbCreationEvent(createDbInfo);
@@ -150,8 +148,22 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
             .notifyDdl(dbName, null, sqlCreateDatabase.getKind().name(), executionContext.getOriginSql(),
                 DdlVisibility.Public, buildExtendParameter(executionContext));
 
-        lm.setLocalityOfDb(dbId, locality);
+        if (!finalLocalityDesc.holdEmptyDnList()) {
+            lm.setLocalityOfDb(dbId, finalLocalityDesc.toString());
+        }
         return new AffectRowCursor(new int[] {1});
+    }
+
+    @NotNull
+    private DdlCharsetInfo fetchCreateDbCharsetInfo(ExecutionContext executionContext,
+                                                    SqlCreateDatabase sqlCreateDatabase) {
+        boolean useMySql80 = ExecUtils.isMysql80Version();
+        DdlCharsetInfo serverCharInfo = DdlCharsetInfoUtil.fetchServerDefaultCharsetInfo(executionContext, useMySql80);
+        DdlCharsetInfo createDbCharInfo =
+            DdlCharsetInfoUtil.decideDdlCharsetInfo(executionContext, serverCharInfo.finalCharset,
+                serverCharInfo.finalCollate, sqlCreateDatabase.getCharSet(), sqlCreateDatabase.getCollate(),
+                useMySql80);
+        return createDbCharInfo;
     }
 
     protected int decideDbType(String partitionMode, ExecutionContext executionContext) {

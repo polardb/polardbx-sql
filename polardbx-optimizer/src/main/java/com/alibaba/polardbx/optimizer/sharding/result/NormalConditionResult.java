@@ -31,6 +31,7 @@ import com.alibaba.polardbx.optimizer.sharding.label.TableScanLabel;
 import com.alibaba.polardbx.optimizer.sharding.utils.ExtractorContext;
 import com.alibaba.polardbx.optimizer.sharding.utils.PredicateUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
@@ -38,12 +39,16 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.Util;
 
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * @author chenmo.cm
@@ -51,6 +56,7 @@ import java.util.Map;
 public class NormalConditionResult extends ColumnEqualityConditionResult {
 
     protected List<RexNode> predicates;
+    protected boolean withRexCallParam;
 
     static NormalConditionResult create(ExtractorContext context, Label label, Collection<RexNode> predicates) {
         return new NormalConditionResult(context, label, predicates);
@@ -211,6 +217,33 @@ public class NormalConditionResult extends ColumnEqualityConditionResult {
             }
         }
         return result;
+    }
+
+    @Override
+    public ConditionResult convertScalarFunction2RexCallParam(AtomicInteger maxParamIndex,
+                                                              ExecutionContext executionContext) {
+
+        final RexUtils.ColumnRefFinder columnRefFinder = new RexUtils.ColumnRefFinder();
+
+        final AtomicBoolean replaced = new AtomicBoolean(false);
+        final List<RexNode> retPredicates = predicates.stream().map(
+            rex -> {
+                final RexUtils.ReplaceScalarFunctionWithRexCallParamVisitor replacer =
+                    new RexUtils.ReplaceScalarFunctionWithRexCallParamVisitor(
+                        maxParamIndex,
+                        (r) -> !columnRefFinder.analyze(r) && !r.isA(SqlKind.ROW),
+                        (r) -> replaced.set(true));
+                return rex.accept(replacer);
+            }
+        ).collect(Collectors.toList());
+
+        return NormalConditionResult.create(context, label, retPredicates)
+            .setWithRexCallParam(replaced.get());
+    }
+
+    public NormalConditionResult setWithRexCallParam(boolean withRexCallParam) {
+        this.withRexCallParam = withRexCallParam;
+        return this;
     }
 
 }

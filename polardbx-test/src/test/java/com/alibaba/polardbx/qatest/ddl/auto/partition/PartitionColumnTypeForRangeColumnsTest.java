@@ -34,12 +34,14 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
 
     public PartitionColumnTypeForRangeColumnsTest(TestParameter parameter) {
         super(parameter);
+        this.testDbName = this.testDbName + "_r1";
     }
 
     @Parameterized.Parameters(name = "{index}: partColTypeTestCase {0}")
     public static List<TestParameter> parameters() {
         // partition strategy: range/list/hash/range column/list column/key
         // data type: numeric/string/time
+        boolean isMySql80 = isMySQL80();
         return Arrays.asList(
 
             /**
@@ -675,12 +677,16 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
                 "('184467440737095516150')"}/*rnqQuerySortValues*/
             )
 
-            /* TINYINT */
-            //# TINYINT: 0 to 255
+            /**
+             * Ignore cases for rds80
+             */
+
+//            /* TINYINT */
+//            //# TINYINT: 0 to 255
 //            , new PartitionColumnTypeTestBase.TestParameter(
 //                "rc_utinyint",
 //                new String[] {"c1"}/*col*/,
-//                new String[] {"tinyint unsigned default null"}/*data types*/,
+//                    new String[] {"tinyint unsigned default null"}/*data types*/,
 //                new String[] {"set sql_mode='';set names utf8;", "", ""}/*prepStmts*/,
 //                "range columns"/*strategy*/,
 //                new String[] {
@@ -692,8 +698,7 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
 //                    "(maxvalue)"
 //                }/*bndVal*/,
 //                new String[] {
-//                    "(null)", "(0)", "(255)", "('255')", "('184467440737095516150')", "('-184467440737095516150')",
-//                    "('-184467440737095516150')",
+//                    "(null)", "(0)", "(255)", "('255')", "('184467440737095516150')",
 //                    "('-184467440737095516148')",
 //                    "('-9223372036854775813')",
 //                    "(-9223372036854775808)",
@@ -877,13 +882,21 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
                 "('世界人民')"}/*rngSortValues*/
             )
 
-            /* fix by ??? */
-            /* varchar */
+            /**
+             * Ignore case for rds80
+             */
+
+//            /* varchar */
 //            , new PartitionColumnTypeTestBase.TestParameter(
 //                "rc_varchar8_gbk",
 //                new String[] {"c1"}/*col*/,
-//                new String[] {"varchar(8) CHARACTER SET gbk default null "}/*data types*/,
-//                new String[] {"set sql_mode='';set names gbk;", "set names gbk;", "set names utf8;"}/*prepStmts*/,
+//                isMySql80 ? new String[] {"varchar(32) CHARACTER SET utf8 default null "}/*data types*/ :
+//                    new String[] {"varchar(8) CHARACTER SET gbk default null "}/*data types*/,
+//
+//                isMySql80 ? new String[] {
+//                    "set sql_mode='';set names utf8;", "set names utf8;", "set names utf8;"}/*prepStmts*/ :
+//                    new String[] {"set sql_mode='';set names gbk;", "set names gbk;", "set names utf8;"}/*prepStmts*/
+//                ,
 //                "range columns"/*strategy*/,
 //                new String[] {
 //                    "('')",
@@ -1209,15 +1222,24 @@ public class PartitionColumnTypeForRangeColumnsTest extends PartitionColumnTypeT
 //                "('世界人民')"}/*rngSortValues*/
 //            )
 
-            /* fix by ??? */
-            /* rc_char16_gbk_utf8 */
+            /**
+             * Ignore cases for rds80
+             */
+//            /* rc_char16_gbk_utf8 */
 //            , new PartitionColumnTypeTestBase.TestParameter(
 //                "rc_char16_gbk_utf8",
 //                new String[] {"c1", "c2"}/*col*/,
-//                new String[] {
-//                    "char(16) CHARACTER SET gbk default null",
-//                    "char(16) CHARACTER SET utf8 default null"}/*data types*/,
-//                new String[] {"set sql_mode='';set names gbk;", "set names gbk;", "set names gbk;"}/*prepStmts*/,
+//
+//                isMySql80 ? new String[] {
+//                    "char(32) CHARACTER SET utf8 default null",
+//                    "char(32) CHARACTER SET utf8 default null"}/*data types*/ :
+//                    new String[] {
+//                        "char(16) CHARACTER SET gbk default null",
+//                        "char(16) CHARACTER SET utf8 default null"}/*data types*/
+//                ,
+//                isMySql80 ? new String[] {
+//                    "set sql_mode='';set names utf8;", "set names utf8;", "set names utf8;"}/*prepStmts*/ :
+//                    new String[] {"set sql_mode='';set names gbk;", "set names gbk;", "set names gbk;"}/*prepStmts*/,
 //                "range columns"/*strategy*/,
 //                new String[] {
 //                    String.format("(%s,%s)", genStringHexBinaryByCharset("世界", "gbk", false, false),

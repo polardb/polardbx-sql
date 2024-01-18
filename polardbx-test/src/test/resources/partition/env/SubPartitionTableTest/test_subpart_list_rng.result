@@ -1,0 +1,533 @@
+## DISABLE_FAST_SQL_PARSER
+##======== lc-rc ===========
+# lc_rc_tp1
+drop table if exists lc_rc_tp1;
+create table if not exists lc_rc_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+(
+subpartition sp0 values less than ('2020-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in ((7,7),(8,8))
+);
+show create table lc_rc_tp1;
+Table,Create Table
+lc_rc_tp1,CREATE TABLE `lc_rc_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+(SUBPARTITION sp0 VALUES LESS THAN ('2020-01-01 00:00:00','a'),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN ((7,7),(8,8)))
+# lc_rc_tp2
+drop table if exists lc_rc_tp2st;
+create table if not exists lc_rc_tp2st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+subpartition template
+(
+subpartition sp0 values less than ('2020-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_rc_tp2st;
+Table,Create Table
+lc_rc_tp2st,CREATE TABLE `lc_rc_tp2st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+(SUBPARTITION sp0 VALUES LESS THAN ('2020-01-01 00:00:00','a'),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+# lc_rc_ntp1
+drop table if exists lc_rc_ntp1;
+create table if not exists lc_rc_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by range columns (c,d)
+(
+partition p0 values in ((5,5),(6,6)) (
+subpartition sp0 values less than ('2020-01-01','a'),
+subpartition sp1 values less than (maxvalue,maxvalue)
+),
+partition p1 values in (default) (
+subpartition sp2 values less than ('2020-01-01','b'),
+subpartition sp3 values less than (maxvalue,maxvalue)
+)
+);
+show create table lc_rc_ntp1;
+Table,Create Table
+lc_rc_ntp1,CREATE TABLE `lc_rc_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY RANGE COLUMNS(`c`,`d`)
+(PARTITION p0 VALUES IN ((5,5),(6,6))
+ (SUBPARTITION sp0 VALUES LESS THAN ('2020-01-01 00:00:00','a') ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 VALUES LESS THAN ('2020-01-01 00:00:00','b') ENGINE = InnoDB,
+  SUBPARTITION sp3 VALUES LESS THAN (MAXVALUE,MAXVALUE) ENGINE = InnoDB))
+##======== l-r ===========
+  # l_r_tp1
+drop table if exists l_r_tp1;
+create table if not exists l_r_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by range (year(c))
+(
+subpartition sp0 values less than (2020),
+subpartition sp1 values less than (maxvalue)
+)
+(
+partition p0 values in (2020,2021),
+partition p1 values in (default)
+);
+show create table l_r_tp1;
+Table,Create Table
+l_r_tp1,CREATE TABLE `l_r_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY RANGE(YEAR(`c`))
+(SUBPARTITION sp0 VALUES LESS THAN (2020),
+ SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE))
+(PARTITION p0 VALUES IN (2020,2021),
+ PARTITION p1 VALUES IN (DEFAULT))
+# l_r_ntp1
+drop table if exists l_r_ntp1;
+create table if not exists l_r_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by range (year(c))
+(
+partition p0 values in (2020,2021) (
+subpartition sp0 values less than (2020),
+subpartition sp1 values less than (maxvalue)
+),
+partition p1 values in (default) (
+subpartition sp2 values less than (2021),
+subpartition sp3 values less than (maxvalue)
+)
+);
+show create table l_r_ntp1;
+Table,Create Table
+l_r_ntp1,CREATE TABLE `l_r_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c` USING BTREE (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY RANGE(YEAR(`c`))
+(PARTITION p0 VALUES IN (2020,2021)
+ (SUBPARTITION sp0 VALUES LESS THAN (2020) ENGINE = InnoDB,
+  SUBPARTITION sp1 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 VALUES LESS THAN (2021) ENGINE = InnoDB,
+  SUBPARTITION sp3 VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB))
+# lc_k_tp3
+drop table if exists lc_k_tp3st;
+create table if not exists lc_k_tp3st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table lc_k_tp3st;
+Table,Create Table
+lc_k_tp3st,CREATE TABLE `lc_k_tp3st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(SUBPARTITION sp0 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp1 VALUES LESS THAN (3,9223372036854775807))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+# lc_k_ntp1
+drop table if exists lc_k_ntp1;
+create table if not exists lc_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d)
+(
+partition p0 values in ((5,5),(6,6)) subpartitions 2,
+partition p1 values in ((7,7),(8,8)) subpartitions 1
+);
+show create table lc_k_ntp1;
+Table,Create Table
+lc_k_ntp1,CREATE TABLE `lc_k_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+(PARTITION p0 VALUES IN ((5,5),(6,6))
+ (SUBPARTITION p0sp1 ENGINE = InnoDB,
+  SUBPARTITION p0sp2 ENGINE = InnoDB),
+ PARTITION p1 VALUES IN ((7,7),(8,8))
+ (SUBPARTITION p1sp1 ENGINE = InnoDB))
+# lc_k_ntp2
+drop table if exists lc_k_ntp2;
+create table if not exists lc_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d)
+(
+partition p0 values in ((5,5),(6,6)) subpartitions 2 (
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+),
+partition p1 values in (default) subpartitions 1 (
+subpartition sp2 values less than (9223372036854775807,9223372036854775807))
+);
+show create table lc_k_ntp2;
+Table,Create Table
+lc_k_ntp2,CREATE TABLE `lc_k_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+(PARTITION p0 VALUES IN ((5,5),(6,6))
+ (SUBPARTITION sp0 ENGINE = InnoDB,
+  SUBPARTITION sp1 ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 ENGINE = InnoDB))
+# lc_k_tp2
+drop table if exists lc_k_tp2;
+create table if not exists lc_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+show create table lc_k_tp2;
+Table,Create Table
+lc_k_tp2,CREATE TABLE `lc_k_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+# lc_k_tp3
+drop table if exists lc_k_tp3st;
+create table if not exists lc_k_tp3st (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list columns (a,b)
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in ((5,5),(6,6)),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table lc_k_tp3st;
+Table,Create Table
+lc_k_tp3st,CREATE TABLE `lc_k_tp3st` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`),
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(SUBPARTITION sp0 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp1 VALUES LESS THAN (3,9223372036854775807))
+(PARTITION p0 VALUES IN ((5,5),(6,6)),
+ PARTITION p1 VALUES IN (DEFAULT))
+##======== l-key ===========
+  # l_k_tp1
+drop table if exists l_k_tp1;
+create table if not exists l_k_tp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in (2020,2021),
+partition p1 values in (2022,2023)
+);
+show create table l_k_tp1;
+Table,Create Table
+l_k_tp1,CREATE TABLE `l_k_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN (2020,2021),
+ PARTITION p1 VALUES IN (2022,2023))
+# l_k_tp2
+drop table if exists l_k_tp2;
+create table if not exists l_k_tp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+(
+partition p0 values in (2020,2021),
+partition p1 values in (default)
+);
+show create table l_k_tp2;
+Table,Create Table
+l_k_tp2,CREATE TABLE `l_k_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(PARTITION p0 VALUES IN (2020,2021),
+ PARTITION p1 VALUES IN (DEFAULT))
+# l_k_tp3
+drop table if exists l_k_tp3;
+create table if not exists l_k_tp3 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d) subpartitions 2
+subpartition template
+(
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+)
+(
+partition p0 values in (2022,2020,2023),
+partition p1 values in (default)
+);
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table l_k_tp3;
+Table,Create Table
+l_k_tp3,CREATE TABLE `l_k_tp3` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY KEY(`c`,`d`)
+SUBPARTITIONS 2
+(SUBPARTITION sp0 VALUES LESS THAN (0,9223372036854775807),
+ SUBPARTITION sp1 VALUES LESS THAN (3,9223372036854775807))
+(PARTITION p0 VALUES IN (2020,2022,2023),
+ PARTITION p1 VALUES IN (DEFAULT))
+# l_k_ntp1
+drop table if exists l_k_ntp1;
+create table if not exists l_k_ntp1 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d)
+(
+partition p0 values in (2020,2021) subpartitions 2,
+partition p1 values in (default) subpartitions 1
+);
+show create table l_k_ntp1;
+Table,Create Table
+l_k_ntp1,CREATE TABLE `l_k_ntp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY KEY(`c`,`d`)
+(PARTITION p0 VALUES IN (2020,2021)
+ (SUBPARTITION p0sp1 ENGINE = InnoDB,
+  SUBPARTITION p0sp2 ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION p1sp1 ENGINE = InnoDB))
+# l_k_ntp2
+drop table if exists l_k_ntp2;
+create table if not exists l_k_ntp2 (
+a bigint unsigned not null,
+b bigint unsigned not null,
+c datetime NOT NULL,
+d varchar(16) NOT NULL,
+e varchar(16) NOT NULL
+)
+partition by list (year(c))
+subpartition by key (c,d)
+(
+partition p0 values in (2020,2021) subpartitions 2 (
+subpartition sp0 values less than (0,9223372036854775807),
+subpartition sp1 values less than (3,9223372036854775807)
+),
+partition p1 values in (default) subpartitions 1 (
+subpartition sp2 values less than (9223372036854775807,9223372036854775807))
+);
+show create table l_k_ntp2;
+Table,Create Table
+l_k_ntp2,CREATE TABLE `l_k_ntp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`c`))
+SUBPARTITION BY KEY(`c`,`d`)
+(PARTITION p0 VALUES IN (2020,2021)
+ (SUBPARTITION sp0 ENGINE = InnoDB,
+  SUBPARTITION sp1 ENGINE = InnoDB),
+ PARTITION p1 VALUES IN (DEFAULT)
+ (SUBPARTITION sp2 ENGINE = InnoDB))

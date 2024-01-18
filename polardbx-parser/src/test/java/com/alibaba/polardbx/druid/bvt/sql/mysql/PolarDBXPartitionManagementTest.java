@@ -60,7 +60,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateTableWithGsi() {
-        String sql="CREATE TABLE t_order (\n"
+        String sql = "CREATE TABLE t_order (\n"
             + " `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
             + " `order_id` bigint DEFAULT NULL,\n"
             + " `buyer_id` varchar(20) DEFAULT NULL,\n"
@@ -77,7 +77,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateTableWithUGsi() {
-        String sql="CREATE TABLE t_order (\n"
+        String sql = "CREATE TABLE t_order (\n"
             + " `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
             + " `order_id` bigint DEFAULT NULL,\n"
             + " `buyer_id` varchar(20) DEFAULT NULL,\n"
@@ -94,7 +94,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableAddGsi() {
-        String sql="ALTER TABLE t_order ADD GLOBAL INDEX `g_i_buyer` (`buyer_id`) COVERING (`order_snapshot`) partition by hash(`buyer_id`) partitions 4;";
+        String sql =
+            "ALTER TABLE t_order ADD GLOBAL INDEX `g_i_buyer` (`buyer_id`) COVERING (`order_snapshot`) partition by hash(`buyer_id`) partitions 4;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -102,7 +103,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableAddUGsi() {
-        String sql="ALTER TABLE t_order ADD UNIQUE GLOBAL INDEX `g_i_buyer` (`buyer_id`) COVERING (`order_snapshot`) partition by hash(`buyer_id`) partitions 4;";
+        String sql =
+            "ALTER TABLE t_order ADD UNIQUE GLOBAL INDEX `g_i_buyer` (`buyer_id`) COVERING (`order_snapshot`) partition by hash(`buyer_id`) partitions 4;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -110,7 +112,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateGsi() {
-        String sql="CREATE GLOBAL INDEX `g_i_seller` ON t_order (`seller_id`) partition by hash(`buyer_id`) partitions 4;";
+        String sql =
+            "CREATE GLOBAL INDEX `g_i_seller` ON t_order (`seller_id`) partition by hash(`buyer_id`) partitions 4;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -118,7 +121,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateUGsi() {
-        String sql="CREATE UNIQUE GLOBAL INDEX `g_i_seller` ON t_order (`seller_id`) partition by hash(`buyer_id`) partitions 4;";
+        String sql =
+            "CREATE UNIQUE GLOBAL INDEX `g_i_seller` ON t_order (`seller_id`) partition by hash(`buyer_id`) partitions 4;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -126,7 +130,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateRangeGsi() {
-        String sql="CREATE TABLE t_order4 (  `id` bigint(11) NOT NULL AUTO_INCREMENT,  `order_id` bigint DEFAULT NULL,  `buyer_id` varchar(20) DEFAULT NULL,  `seller_id` bigint DEFAULT NULL,  `order_snapshot` longtext DEFAULT NULL,  `order_detail` longtext DEFAULT NULL,  PRIMARY KEY (`id`),  UNIQUE GLOBAL INDEX `g_i_seller4`(`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`)  PARTITION BY range(seller_id) (partition p1 values less than(200)) ) partition by hash(`id`) partitions 4;\n";
+        String sql =
+            "CREATE TABLE t_order4 (  `id` bigint(11) NOT NULL AUTO_INCREMENT,  `order_id` bigint DEFAULT NULL,  `buyer_id` varchar(20) DEFAULT NULL,  `seller_id` bigint DEFAULT NULL,  `order_snapshot` longtext DEFAULT NULL,  `order_detail` longtext DEFAULT NULL,  PRIMARY KEY (`id`),  UNIQUE GLOBAL INDEX `g_i_seller4`(`seller_id`) COVERING (`id`, `order_id`, `buyer_id`, `order_snapshot`)  PARTITION BY range(seller_id) (partition p1 values less than(200)) ) partition by hash(`id`) partitions 4;\n";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -134,7 +139,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testCreateTable() {
-        String sql="CREATE TABLE t_order (\n"
+        String sql = "CREATE TABLE t_order (\n"
             + " `id` bigint(11) NOT NULL AUTO_INCREMENT,\n"
             + " `order_id` bigint DEFAULT NULL,\n"
             + " `buyer_id` varchar(20) DEFAULT NULL,\n"
@@ -178,23 +183,23 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
 
     public void testShowTableGroup() {
         String sql = "show tablegroup order by SCHEMA_NAME limit 1";
-        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql),SQLParserFeature.DrdsMisc);
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement result = statementList.get(0);
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
     }
 
     public void testAlterTableAddPartitionVal1() {
-        String sql="ALTER TABLE T_PART_LIST MODIFY PARTITION \n\t(P2 ADD VALUES ('USERS'))";
-        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql),SQLParserFeature.DrdsMisc);
+        String sql = "ALTER TABLE T_PART_LIST\n\tMODIFY PARTITION P2 ADD VALUES ('USERS')";
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement result = statementList.get(0);
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
     }
 
     public void testAlterTableAddPartitionVal2() {
-        String sql="ALTER TABLE T_PART_LIST MODIFY PARTITION \n\t(P2 ADD VALUES ('USERS'),\n\tP3 DROP VALUES ('A'))";
-        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql),SQLParserFeature.DrdsMisc);
+        String sql = "ALTER TABLE T_PART_LIST\n\tMODIFY PARTITION P3 DROP VALUES ('A')";
+        MySqlStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> statementList = parser.parseStatementList();
         SQLStatement result = statementList.get(0);
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
@@ -219,7 +224,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupSplitListPartition() {
-        String sql = "ALTER TABLEGROUP grp1 split PARTITION p0 into (partition p10 VALUES IN (1, 2, 3), partition p11 VALUES IN (4, 5, 6), partition p12 VALUES IN (7, 8, 9))";
+        String sql =
+            "ALTER TABLEGROUP grp1 split PARTITION p0 into (partition p10 VALUES IN (1, 2, 3), partition p11 VALUES IN (4, 5, 6), partition p12 VALUES IN (7, 8, 9))";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -228,7 +234,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupSplitRangePartition() {
-        String sql = "ALTER TABLEGROUP grp1 split PARTITION p0 into (partition p10 VALUES LESS THAN (1000), partition p11 VALUES LESS THAN (2000), partition p12 VALUES LESS THAN (3000))";
+        String sql =
+            "ALTER TABLEGROUP grp1 split PARTITION p0 into (partition p10 VALUES LESS THAN (1000), partition p11 VALUES LESS THAN (2000), partition p12 VALUES LESS THAN (3000))";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -274,6 +281,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
             Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
         }
     }
+
     public void testTruncateTable() {
         String sql = "ALTER table t1\n\ttruncate PARTITION p0, p1";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
@@ -284,7 +292,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupReorgListPartition() {
-        String sql = "ALTER TABLEGROUP grp1 REORGANIZE PARTITION p0, p1 into (partition p10 VALUES IN (1, 2, 3), partition p11 VALUES IN (4, 5, 6), partition p12 VALUES IN (7, 8, 9))";
+        String sql =
+            "ALTER TABLEGROUP grp1 REORGANIZE PARTITION p0, p1 into (partition p10 VALUES IN (1, 2, 3), partition p11 VALUES IN (4, 5, 6), partition p12 VALUES IN (7, 8, 9))";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -293,13 +302,15 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupReorgRangePartition() {
-        String sql = "ALTER TABLEGROUP grp1 REORGANIZE PARTITION p0, p2 into (partition p10 VALUES LESS THAN (1000), partition p11 VALUES LESS THAN (2000), partition p12 VALUES LESS THAN (3000))";
+        String sql =
+            "ALTER TABLEGROUP grp1 REORGANIZE PARTITION p0, p2 into (partition p10 VALUES LESS THAN (1000), partition p11 VALUES LESS THAN (2000), partition p12 VALUES LESS THAN (3000))";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
     }
+
     public void testAlterTableGroupRenamePartition() {
         String sql = "ALTER TABLEGROUP grp1 rename partition p0 to p00, p1 to p10";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
@@ -310,7 +321,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableAddGSI() {
-        String sql = "alter table t_order1\n\tadd global index g_i_seller1 (order_id) COVERING (`id`, `order_id`, `seller_id`) PARTITION BY HASH (order_id) PARTITIONS 4;";
+        String sql =
+            "alter table t_order1\n\tadd global index g_i_seller1 (order_id) COVERING (`id`, `order_id`, `seller_id`) PARTITION BY HASH (order_id) PARTITIONS 4;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -319,7 +331,8 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupAddPartition() {
-        String sql = "alter tablegroup tg34 add partition (partition p2 values less than (30), partition p3 values less than (30)) ;";
+        String sql =
+            "alter tablegroup tg34 add partition (partition p2 values less than (30), partition p3 values less than (30)) ;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -328,7 +341,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testAlterTableGroupDropPartition() {
-        String sql = "alter tablegroup tg34 drop partition p1,p2 ;";
+        String sql = "alter tablegroup tg34 drop partition p1, p2 ;";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 

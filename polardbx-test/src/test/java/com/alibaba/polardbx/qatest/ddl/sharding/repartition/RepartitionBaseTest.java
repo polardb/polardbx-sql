@@ -33,6 +33,7 @@ import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlNumericLiteral;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
@@ -387,7 +388,7 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         }
 
         String createTableSql;
-        if (StringUtils.equals(MULTI_PK_PRIMARY_TABLE_NAME, primaryTableName)) {
+        if (StringUtils.containsIgnoreCase(primaryTableName, MULTI_PK_PRIMARY_TABLE_NAME)) {
             createTableSql = ExecuteTableSelect.getFullTypeMultiPkTableDef(primaryTableName, partitionRule);
         } else {
             createTableSql = ExecuteTableSelect.getFullTypeTableDef(primaryTableName, partitionRule);
@@ -455,7 +456,20 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
             stmt = tddlConnection.createStatement();
             resultSet = stmt.executeQuery(sql);
             resultSet.next();
-            createTableString = resultSet.getString("Create Table");
+            if (isMySQL80()) {
+                createTableString =
+                    resultSet.getString("Create Table").replaceAll(" CHARACTER SET \\w+", "")
+                        .replaceAll(" COLLATE \\w+", "")
+                        .replaceAll(" DEFAULT COLLATE = \\w+", "")
+                        .replaceAll(" int ", " int(11) ")
+                        .replaceAll(" bigint ", " bigint(11) ")
+                        .replaceAll(" int,", " int(11),")
+                        .replaceAll(" bigint,", " bigint(11),")
+                        .replaceAll(" int\n", " int(11)\n")
+                        .replaceAll(" bigint\n", " bigint(11)\n");
+            } else {
+                createTableString = resultSet.getString("Create Table");
+            }
         } finally {
             // close(stmt);
             JdbcUtil.close(resultSet);
@@ -539,10 +553,10 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         SqlBasicCall tbPartitionBy = (SqlBasicCall) ddl.getTablePartitionBy();
 
         if (dbPartitionBy != null) {
-            dbPartitionBy.equalsDeep(newAst.getDbpartitionBy(), Litmus.THROW);
+            dbPartitionBy.equalsDeep(newAst.getDbpartitionBy(), Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
         if (tbPartitionBy != null) {
-            tbPartitionBy.equalsDeep(newAst.getTbpartitionBy(), Litmus.THROW);
+            tbPartitionBy.equalsDeep(newAst.getTbpartitionBy(), Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
     }
 
@@ -554,10 +568,10 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         SqlBasicCall tbPartitionBy = (SqlBasicCall) originAst.getTbpartitionBy();
 
         if (dbPartitionBy != null) {
-            dbPartitionBy.equalsDeep(gsiAst.getDbPartitionBy(), Litmus.THROW);
+            dbPartitionBy.equalsDeep(gsiAst.getDbPartitionBy(), Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
         if (tbPartitionBy != null) {
-            tbPartitionBy.equalsDeep(gsiAst.getTbPartitionBy(), Litmus.THROW);
+            tbPartitionBy.equalsDeep(gsiAst.getTbPartitionBy(), Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
     }
 
@@ -566,7 +580,7 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
         SqlNumericLiteral newTbCount = (SqlNumericLiteral) newAst.getTbpartitions();
 
         if (ddlTbCount != null) {
-            ddlTbCount.equalsDeep(newTbCount, Litmus.THROW);
+            ddlTbCount.equalsDeep(newTbCount, Litmus.THROW, EqualsContext.DEFAULT_EQUALS_CONTEXT);
         }
     }
 
@@ -603,8 +617,8 @@ public abstract class RepartitionBaseTest extends DDLBaseNewDBTestCase {
      */
     protected boolean identicalColumnDef(Pair<SqlIdentifier, SqlColumnDeclaration> expected,
                                          Pair<SqlIdentifier, SqlColumnDeclaration> actual) {
-        return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE)
-            && expected.getValue().equalsDeep(actual.getValue(), Litmus.IGNORE);
+        return expected.getKey().equalsDeep(actual.getKey(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)
+            && expected.getValue().equalsDeep(actual.getValue(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT);
     }
 
     protected static final PartitionParam ruleOf(String dbOperator, String dbOperand, String tbOperator,

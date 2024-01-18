@@ -23,18 +23,27 @@ public interface RequestOrBuilder extends
     // @@protoc_insertion_point(interface_extends:dumper.Request)
     com.google.protobuf.MessageOrBuilder {
 
-    /**
-     * <code>string req = 1;</code>
-     *
-     * @return The req.
-     */
-    java.lang.String getReq();
+  /**
+   * <code>string req = 1;</code>
+   * @return The req.
+   */
+  java.lang.String getReq();
+  /**
+   * <code>string req = 1;</code>
+   * @return The bytes for req.
+   */
+  com.google.protobuf.ByteString
+      getReqBytes();
 
-    /**
-     * <code>string req = 1;</code>
-     *
-     * @return The bytes for req.
-     */
-    com.google.protobuf.ByteString
-    getReqBytes();
+  /**
+   * <code>string streamName = 2;</code>
+   * @return The streamName.
+   */
+  java.lang.String getStreamName();
+  /**
+   * <code>string streamName = 2;</code>
+   * @return The bytes for streamName.
+   */
+  com.google.protobuf.ByteString
+      getStreamNameBytes();
 }

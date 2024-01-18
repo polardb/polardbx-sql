@@ -33,6 +33,7 @@ public class PartitionTableTest extends PartitionAutoLoadSqlTestBase {
 
     @Parameterized.Parameters(name = "{index}: SubTestCase {0}")
     public static List<AutoLoadSqlTestCaseParams> parameters() {
+
         return getParameters(PartitionTableTest.class, 0, false);
     }
 

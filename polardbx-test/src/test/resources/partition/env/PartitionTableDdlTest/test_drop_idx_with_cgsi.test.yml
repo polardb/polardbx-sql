@@ -1,0 +1,42 @@
+drop table if exists t1;
+
+create table t1 (a int, b int, c int, d int) partition by key(a,b);
+
+alter table t1 add local index idx(b,c,d);
+
+alter table t1 add local index idx2(b,c);
+
+alter table t1 add local index idx_cd(c,d);
+
+alter table t1 add local index idx_abc(a,b,c);
+
+alter table t1 add clustered index cidx(b,c) partition by key(b,c);
+
+show create table t1;
+
+show create table cidx;
+
+alter table t1 drop index idx;
+
+show create table t1;
+
+show create table cidx;
+
+alter table t1 drop index idx_cd;
+
+show create table t1;
+
+show create table cidx;
+
+alter table t1 drop index idx2;
+
+show create table t1;
+
+show create table cidx;
+
+alter table t1 drop index idx_abc;
+
+show create table t1;
+
+show create table cidx;
+

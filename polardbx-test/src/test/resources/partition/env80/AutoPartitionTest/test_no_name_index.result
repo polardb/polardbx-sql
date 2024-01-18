@@ -1,0 +1,42 @@
+DROP TABLE IF EXISTS `t1`;
+CREATE TABLE `t1` (
+	`a` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	INDEX(b),
+	KEY (b, c),
+	KEY (`c`)
+);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `b` (`b`),
+	INDEX `b_2` (`b`, `c`),
+	INDEX `c` (`c`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+ALTER TABLE t1
+	DROP INDEX b;
+ALTER TABLE t1
+	DROP INDEX b_2;
+ALTER TABLE t1
+	ADD INDEX (b);
+ALTER TABLE t1
+	ADD INDEX (b, c);
+ALTER TABLE t1
+	ADD KEY (c, a);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL AUTO_INCREMENT,
+	`b` varchar(20) DEFAULT NULL,
+	`c` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`a`),
+	INDEX `b` (`b`),
+	INDEX `b_2` (`b`, `c`),
+	INDEX `c` (`c`),
+	INDEX `c_2` (`c`, `a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

@@ -32,7 +32,7 @@ import java.sql.Statement;
 public class ProcedurePacketTest extends BaseTestCase {
     protected Connection tddlConnection;
 
-    private String procedure1 = "create procedure procedure1() \n"
+    private final String procedure1 = "create procedure procedure1() \n"
         + "begin\n"
         + "declare x int default 1;\n"
         + "select 1 + x;\n"
@@ -40,7 +40,7 @@ public class ProcedurePacketTest extends BaseTestCase {
         + "select 'te?st?' + x;\n"
         + "end";
 
-    private String procedure2 = "create procedure procedure2() \n"
+    private final String procedure2 = "create procedure procedure2() \n"
         + "begin\n"
         + "declare x int default 1;\n"
         + "select 1 + x;\n"
@@ -48,6 +48,25 @@ public class ProcedurePacketTest extends BaseTestCase {
         + "select '?' + `?` + x + \"?\";\n"
         + "select 'te?st?' + x;\n"
         + "end";
+
+    private final String procedure3 = "create procedure procedure3() \n"
+        + "drop table if exists procedure_row_count_test;\n"
+        + "create table procedure_row_count_test(a int, b int);\n"
+        + "insert into procedure_row_count_test values (1,1), (2,2);\n"
+        + "select row_count();\n"
+        + "select row_count();\n"
+        + "select * from procedure_row_count_test order by a;\n"
+        + "select found_rows();\n"
+        + "select found_rows();\n"
+        + "insert into procedure_row_count_test select * from procedure_row_count_test;\n"
+        + "select row_count();\n"
+        + "select row_count();\n"
+        + "select * from procedure_row_count_test order by a;\n"
+        + "select found_rows();\n"
+        + "select found_rows();\n"
+        + "update procedure_row_count_test set b = b + 1 where a = 1;\n"
+        + "select row_count();\n"
+        + "select row_count();\n";
 
     @Before
     public void getConnection() throws SQLException {
@@ -92,8 +111,40 @@ public class ProcedurePacketTest extends BaseTestCase {
             if (rs.getInt(1) != 2) {
                 Assert.fail("select result not matched!");
             }
-            ResultSet child1 = checkChildRs(rs);
-            checkChildRs(child1);
+            ResultSet child1 = checkChildRs(rs, 1);
+            checkChildRs(child1, 1);
+        }
+    }
+
+    @Test
+    public void testFoundRowsInProcedure() throws SQLException {
+        JdbcUtils.execute(tddlConnection, procedure3);
+        try (Statement statement = tddlConnection.createStatement();
+            ResultSet rs = statement.executeQuery("call procedure3")) {
+            if (!rs.next()) {
+                Assert.fail("no result found!");
+            }
+            // test row_count() after insert
+            if (rs.getInt(1) != 2) {
+                Assert.fail("select result not matched!");
+            }
+            ResultSet child1 = checkChildRs(rs, -1);
+            // test select result
+            child1 = checkChildRs(child1, 1);
+            // test found_rows() after select
+            child1 = checkChildRs(child1, 2);
+            child1 = checkChildRs(child1, 1);
+            // test row_count() after insert select
+            child1 = checkChildRs(child1, 2);
+            child1 = checkChildRs(child1, -1);
+            // test select result
+            child1 = checkChildRs(child1, 1);
+            // test found_rows()
+            child1 = checkChildRs(child1, 4);
+            child1 = checkChildRs(child1, 1);
+            // test row_count() after update
+            child1 = checkChildRs(child1, 2);
+            child1 = checkChildRs(child1, -1);
         }
     }
 
@@ -101,9 +152,10 @@ public class ProcedurePacketTest extends BaseTestCase {
     public void dropProcedure() throws SQLException {
         JdbcUtils.execute(tddlConnection, "drop procedure if exists procedure1");
         JdbcUtils.execute(tddlConnection, "drop procedure if exists procedure2");
+        JdbcUtils.execute(tddlConnection, "drop procedure if exists procedure3");
     }
 
-    private ResultSet checkChildRs(ResultSet rs) throws SQLException {
+    private ResultSet checkChildRs(ResultSet rs, int expectValue) throws SQLException {
         if (!(rs instanceof JDBC42ResultSet)) {
             Assert.fail("expect jdbc result set");
         }
@@ -111,8 +163,9 @@ public class ProcedurePacketTest extends BaseTestCase {
         if (!childRs.next()) {
             Assert.fail("no result found");
         }
-        if (childRs.getInt(1) != 1) {
-            Assert.fail("select result not matched!");
+        if (childRs.getInt(1) != expectValue) {
+            Assert.fail(
+                String.format("select result not matched, expect %s, but found %s!", expectValue, childRs.getInt(1)));
         }
         return childRs;
     }

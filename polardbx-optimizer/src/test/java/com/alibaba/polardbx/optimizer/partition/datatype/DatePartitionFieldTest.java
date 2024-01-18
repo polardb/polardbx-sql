@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateType;
+import com.alibaba.polardbx.optimizer.core.datatype.LongType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
@@ -72,7 +73,8 @@ public class DatePartitionFieldTest {
         Arrays.stream(dateStr).forEach(
             s -> {
                 TypeConversionStatus conversionStatus = partitionField.store(s, resultType, sessionProperties);
-                MysqlDateTime t = partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, SessionProperties.empty());
+                MysqlDateTime t =
+                    partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, SessionProperties.empty());
                 System.out.println(t.toDateString());
             }
         );
@@ -121,7 +123,8 @@ public class DatePartitionFieldTest {
             .forEach(
                 s -> {
                     TypeConversionStatus conversionStatus = partitionField.store(s, resultType, sessionProperties);
-                    MysqlDateTime t = partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, SessionProperties.empty());
+                    MysqlDateTime t =
+                        partitionField.datetimeValue(TimeParserFlags.FLAG_TIME_FUZZY_DATE, SessionProperties.empty());
 
                     String date1 = t.toDateString();
                     String date2 = ((OriginalTemporalValue) fieldType.convertFrom(s)).getMysqlDateTime().toDateString();
@@ -160,5 +163,31 @@ public class DatePartitionFieldTest {
             = partitionField.store(Timestamp.valueOf(timestampStr), new TimestampType(), SessionProperties.empty());
         String res = partitionField.stringValue().toStringUtf8();
         Assert.assertEquals("2022-05-02", res);
+    }
+
+    @Test
+    public void testBadValue() {
+        DateType dateType = new DateType();
+        partitionField = PartitionFieldBuilder.createField(dateType);
+
+        long badValue = 232;
+        TypeConversionStatus status
+            = partitionField.store(badValue, new LongType(), SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals("0000-00-00", res);
+        Assert.assertEquals(status, TypeConversionStatus.TYPE_ERR_BAD_VALUE);
+    }
+
+    @Test
+    public void testOutOfRange() {
+        DateType dateType = new DateType();
+        partitionField = PartitionFieldBuilder.createField(dateType);
+
+        long badValue = -9999;
+        TypeConversionStatus status
+            = partitionField.store(badValue, new LongType(), SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals("0000-00-00", res);
+        Assert.assertEquals(status, TypeConversionStatus.TYPE_WARN_OUT_OF_RANGE);
     }
 }

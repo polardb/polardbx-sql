@@ -70,10 +70,10 @@ public class LogicalShowTablesMyHandler extends LogicalInfoSchemaQueryHandler {
         ArrayResultCursor result = new ArrayResultCursor("TABLES");
 
         boolean full = show.isFull();
-        result.addColumn("Tables_in_" + showNode.getSchemaName(), DataTypes.StringType);
+        result.addColumn("Tables_in_" + showNode.getSchemaName(), DataTypes.StringType, false);
         if (full) {
-            result.addColumn("Table_type", DataTypes.StringType);
-            result.addColumn("Auto_partition", DataTypes.StringType);
+            result.addColumn("Table_type", DataTypes.StringType, false);
+            result.addColumn("Auto_partition", DataTypes.StringType, false);
         }
         result.initMeta();
         List<Object[]> tables;

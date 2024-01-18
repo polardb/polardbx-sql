@@ -1,0 +1,30 @@
+## test range/one col, year/datetime
+# test monotonicity for year
+drop table if exists tbl;
+create table if not exists tbl (a datetime not null)
+partition by range(year(a))
+(   partition p0 values less than (1999),
+	partition p1 values less than (2000),
+	partition p2 values less than (2001),
+	partition p3 values less than (2002)
+);
+
+# a>'2000-12-31 22:59:59' => Year(a)>=Year('2000-12-31 22:59:59')
+# excepted pruned partitions: p2,p3
+explain select * from tbl where a>'2000-12-31 22:59:59';
+
+# a>'2000-12-31 23:59:59' => Year(a)> Year('2000-12-31 23:59:59') => Year(a)>= Year('2000-12-31 23:59:59')
+# excepted partitions: p2,p3
+explain select * from tbl where a>'2000-12-31 23:59:59';
+
+# # a<'2000-01-01 00:00:00' => Year(a)<Year('2000-01-01 00:00:00')
+# excepted partitions: p0,p1
+explain select * from tbl where a<'2000-01-01 00:00:00';
+
+# # a<='2000-01-01 00:00:00' => Year(a)<=Year('2000-01-01 00:00:00')
+# excepted partitions: p0,p1,p2
+explain select * from tbl where a<='2000-01-01 00:00:00';
+
+# # a<'2000-01-01 10:00:00' => Year(a)<=Year('2000-01-01 10:00:00')
+# excepted partitions: p0,p1,p2
+explain select * from tbl where a<'2000-01-01 10:00:00';

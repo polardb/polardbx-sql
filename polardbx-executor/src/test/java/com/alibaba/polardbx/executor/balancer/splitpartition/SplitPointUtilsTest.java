@@ -20,12 +20,12 @@ import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
+import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
@@ -104,7 +104,7 @@ public class SplitPointUtilsTest {
         // multi column
         SearchDatumInfo tuple2 = SearchDatumInfo.createFromFields(Arrays.asList(field, field));
 
-        PartitionIntFunction yearFunc = PartitionIntFunction.create(TddlOperatorTable.YEAR);
+        PartitionIntFunction yearFunc = PartitionFunctionBuilder.create(TddlOperatorTable.YEAR, null);
 
         SearchDatumHasher hasher = new SearchDatumHasher();
         PartitionByDefinition partitionBy = new PartitionByDefinition();

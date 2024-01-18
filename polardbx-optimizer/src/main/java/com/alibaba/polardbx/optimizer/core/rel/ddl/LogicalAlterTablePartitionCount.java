@@ -16,10 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import org.apache.calcite.rel.ddl.AlterTablePartitionCount;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +41,12 @@ public class LogicalAlterTablePartitionCount extends LogicalAlterTableRepartitio
 
     public static LogicalAlterTablePartitionCount create(AlterTablePartitionCount alterTableRepartition) {
         return new LogicalAlterTablePartitionCount(alterTableRepartition);
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        throw new TddlRuntimeException(ErrorCode.ERR_UNARCHIVE_FIRST,
+            "unarchive table " + schemaName + "." + tableName);
     }
 
     @Override

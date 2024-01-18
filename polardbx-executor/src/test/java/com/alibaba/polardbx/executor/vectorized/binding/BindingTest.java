@@ -38,33 +38,33 @@ public class BindingTest extends BindingTestBase {
 
         // select case when a > b then a + b when c < d then c - d else e end from test_case_when
         testProject("select case when a > b then a + b when c < d then c - d else e end from test_case_when")
-            .tree("CaseVectorizedExpression, { DoubleType, 6 }\n"
-                + "   └ FilterGTDoubleColDoubleColVectorizedExpression, { [Filter], -1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 2 }\n"
-                + "   └ AddDoubleColDoubleColVectorizedExpression, { DoubleType, 7 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 2 }\n"
-                + "   └ FilterLTDoubleColDoubleColVectorizedExpression, { [Filter], -1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 3 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 4 }\n"
-                + "   └ SubtractDoubleColDoubleColVectorizedExpression, { DoubleType, 8 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 3 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 4 }\n"
-                + "   └ InputRefVectorizedExpression, { DoubleType, 5 }\n");
+            .tree("CaseVectorizedExpression, { DoubleType, 8 }\n" +
+                    "   └ FilterGTDoubleColDoubleColVectorizedExpression, { [Filter], -1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 2 }\n" +
+                    "   └ AddDoubleColDoubleColVectorizedExpression, { DoubleType, 6 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 2 }\n" +
+                    "   └ FilterLTDoubleColDoubleColVectorizedExpression, { [Filter], -1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 3 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 4 }\n" +
+                    "   └ SubtractDoubleColDoubleColVectorizedExpression, { DoubleType, 7 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 3 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 4 }\n" +
+                    "   └ InputRefVectorizedExpression, { DoubleType, 5 }\n");
 
         // select case a when 1 then b when 2 then c else d end from test_case_when
         testProject("select case a when 1 then b when 2 then c else d end from test_case_when")
-            .tree("CaseVectorizedExpression, { DoubleType, 6 }\n"
-                + "   └ FilterEQDoubleColLongConstVectorizedExpression, { [Filter], -1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n"
-                + "      └ LiteralVectorizedExpression, { LongType, 7 }\n"
-                + "   └ InputRefVectorizedExpression, { DoubleType, 2 }\n"
-                + "   └ FilterEQDoubleColLongConstVectorizedExpression, { [Filter], -1 }\n"
-                + "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n"
-                + "      └ LiteralVectorizedExpression, { LongType, 8 }\n"
-                + "   └ InputRefVectorizedExpression, { DoubleType, 3 }\n"
-                + "   └ InputRefVectorizedExpression, { DoubleType, 4 }\n");
+            .tree("CaseVectorizedExpression, { DoubleType, 8 }\n" +
+                    "   └ FilterEQDoubleColLongConstVectorizedExpression, { [Filter], -1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n" +
+                    "      └ LiteralVectorizedExpression, { LongType, 6 }\n" +
+                    "   └ InputRefVectorizedExpression, { DoubleType, 2 }\n" +
+                    "   └ FilterEQDoubleColLongConstVectorizedExpression, { [Filter], -1 }\n" +
+                    "      └ InputRefVectorizedExpression, { DoubleType, 1 }\n" +
+                    "      └ LiteralVectorizedExpression, { LongType, 7 }\n" +
+                    "   └ InputRefVectorizedExpression, { DoubleType, 3 }\n" +
+                    "   └ InputRefVectorizedExpression, { DoubleType, 4 }\n");
 
         // select case when a then a when b then b else c end from test_case_when
         testProject("select case when a then a when b then b else c end from test_case_when")

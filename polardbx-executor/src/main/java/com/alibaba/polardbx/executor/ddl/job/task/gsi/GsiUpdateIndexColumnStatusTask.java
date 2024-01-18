@@ -25,7 +25,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.gms.metadb.table.TableStatus;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -47,16 +47,16 @@ public class GsiUpdateIndexColumnStatusTask extends BaseGmsTask {
 
     final String indexName;
     final List<String> columns;
-    final TableStatus beforeTableStatus;
-    final TableStatus afterTableStatus;
+    final ColumnStatus beforeTableStatus;
+    final ColumnStatus afterTableStatus;
 
     @JSONCreator
     public GsiUpdateIndexColumnStatusTask(String schemaName,
                                           String logicalTableName,
                                           String indexName,
                                           List<String> columns,
-                                          TableStatus beforeTableStatus,
-                                          TableStatus afterTableStatus) {
+                                          ColumnStatus beforeTableStatus,
+                                          ColumnStatus afterTableStatus) {
         super(schemaName, logicalTableName);
         this.logicalTableName = logicalTableName;
         this.indexName = indexName;

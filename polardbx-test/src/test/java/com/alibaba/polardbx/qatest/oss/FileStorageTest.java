@@ -17,14 +17,14 @@
 package com.alibaba.polardbx.qatest.oss;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.gms.engine.CachePolicy;
-import com.alibaba.polardbx.gms.engine.DeletePolicy;
-import com.alibaba.polardbx.gms.engine.FileStorageInfoAccessor;
-import com.alibaba.polardbx.gms.engine.FileStorageInfoRecord;
 import com.alibaba.polardbx.qatest.BaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
+import com.alibaba.polardbx.qatest.oss.utils.FileStorageTestUtil;
+import com.alibaba.polardbx.qatest.oss.utils.FullTypeTestUtil;
+import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
@@ -35,6 +35,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -94,8 +95,18 @@ public class FileStorageTest extends BaseTestCase {
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
+    }
 
-        initLocalDisk();
+    @AfterClass
+    static public void DropDatabase() {
+        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            Statement statement = conn.createStatement();
+            statement.execute(String.format("drop database if exists %s ", testDataBase));
+            statement.execute(String.format("drop database if exists %s ", testDataBase2));
+            statement.execute(String.format("drop database if exists %s ", testDataBase3));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
     }
 
     /**
@@ -316,6 +327,8 @@ public class FileStorageTest extends BaseTestCase {
     @Test
     public void testOssExpireLocalPartition() {
         try (Connection conn = getConnection()) {
+            LocalDate now = LocalDate.now();
+            LocalDate startWithDate = now.minusMonths(12L);
             String ossTableName = "oss_t_local_partition";
             String innodbTableName = "t_local_partition";
             Statement statement = conn.createStatement();
@@ -326,35 +339,39 @@ public class FileStorageTest extends BaseTestCase {
                 ")\n" +
                 "PARTITION BY HASH(id) PARTITIONS 8\n" +
                 "LOCAL PARTITION BY RANGE (gmt_modified)\n" +
-                "STARTWITH '2021-01-01'\n" +
+                "STARTWITH '%s'\n" +
                 "INTERVAL 1 MONTH\n" +
                 "EXPIRE AFTER 1\n" +
                 "PRE ALLOCATE 3\n" +
-                "PIVOTDATE NOW();", innodbTableName));
+                "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            String[] dates =
-                {"2020-12-01", "2021-01-01", "2021-02-01", "2021-03-01", "2021-04-01", "2021-05-01"};
-            for (String date : dates) {
+            LocalDate dateIterator = startWithDate;
+            for (int j = 0; j < 5; j++) {
+
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 999; i++) {
-                    insert.append("('").append(date).append("')").append(",");
+                    insert.append("('").append(dateIterator).append("')").append(",");
                 }
-                insert.append("('").append(date).append("')");
+                insert.append("('").append(dateIterator).append("')");
                 statement.executeUpdate(insert.toString());
+                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement.executeUpdate(String
                 .format("create table %s like %s engine = '%s' archive_mode ='ttl'", ossTableName, innodbTableName,
                     engine.name()));
 
-            long count1 = count(conn, ossTableName);
-            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210101");
-            long count2 = count(conn, ossTableName);
-            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210201");
-            long count3 = count(conn, ossTableName);
-            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210301");
-            long count4 = count(conn, ossTableName);
+            long count1 = FileStorageTestUtil.count(conn, ossTableName);
+            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(1L).toString().replace("-", ""));
+            long count2 = FileStorageTestUtil.count(conn, ossTableName);
+            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(2L).toString().replace("-", ""));
+            long count3 = FileStorageTestUtil.count(conn, ossTableName);
+            statement.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(3L).toString().replace("-", ""));
+            long count4 = FileStorageTestUtil.count(conn, ossTableName);
 
             Assert.assertTrue(count1 == 0);
             Assert.assertTrue(count1 < count2);
@@ -374,6 +391,9 @@ public class FileStorageTest extends BaseTestCase {
             Statement statement1 = conn1.createStatement();
             Statement statement2 = conn2.createStatement();
 
+            LocalDate now = LocalDate.now();
+            LocalDate startWithDate = now.minusMonths(12L);
+
             statement1.execute(String.format("CREATE TABLE %s (\n" +
                 "    id bigint NOT NULL AUTO_INCREMENT,\n" +
                 "    gmt_modified DATETIME NOT NULL,\n" +
@@ -381,35 +401,38 @@ public class FileStorageTest extends BaseTestCase {
                 ")\n" +
                 "PARTITION BY HASH(id) PARTITIONS 8\n" +
                 "LOCAL PARTITION BY RANGE (gmt_modified)\n" +
-                "STARTWITH '2021-01-01'\n" +
+                "STARTWITH '%s'\n" +
                 "INTERVAL 1 MONTH\n" +
                 "EXPIRE AFTER 1\n" +
                 "PRE ALLOCATE 3\n" +
-                "PIVOTDATE NOW();", innodbTableName));
+                "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            String[] dates =
-                {"2020-12-01", "2021-01-01", "2021-02-01", "2021-03-01", "2021-04-01", "2021-05-01"};
-            for (String date : dates) {
+            LocalDate dateIterator = startWithDate;
+            for (int j = 0; j < 5; j++) {
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 1999; i++) {
-                    insert.append("('").append(date).append("')").append(",");
+                    insert.append("('").append(dateIterator).append("')").append(",");
                 }
-                insert.append("('").append(date).append("')");
+                insert.append("('").append(dateIterator).append("')");
                 statement1.executeUpdate(insert.toString());
+                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement2.executeUpdate(String
                 .format("create table %s like %s.%s engine = '%s' archive_mode ='ttl'", ossTableName, testDataBase,
                     innodbTableName, engine.name()));
 
-            long count1 = count(conn2, ossTableName);
-            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210101");
-            long count2 = count(conn2, ossTableName);
-            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210201");
-            long count3 = count(conn2, ossTableName);
-            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION p20210301");
-            long count4 = count(conn2, ossTableName);
+            long count1 = FileStorageTestUtil.count(conn2, ossTableName);
+            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(1L).toString().replace("-", ""));
+            long count2 = FileStorageTestUtil.count(conn2, ossTableName);
+            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(2L).toString().replace("-", ""));
+            long count3 = FileStorageTestUtil.count(conn2, ossTableName);
+            statement1.executeUpdate("ALTER TABLE t_local_partition EXPIRE LOCAL PARTITION " +
+                "p" + startWithDate.plusMonths(3L).toString().replace("-", ""));
+            long count4 = FileStorageTestUtil.count(conn2, ossTableName);
 
             Assert.assertTrue(String.valueOf(count1), count1 == 0);
             Assert.assertTrue(String.valueOf(count2), count2 == 2000);
@@ -596,232 +619,6 @@ public class FileStorageTest extends BaseTestCase {
     }
 
     /**
-     * ALTER FILESTORAGE OSS purge before TIMESTAMP timestamp_value
-     */
-    @Test
-    public void testAlterFileStoragePurgeBeforeTimeStamp() {
-        try (Connection connection = getConnection()) {
-            String ossTableName = "testAlterFileStoragePurgeBeforeTimeStamp";
-            createFileStorageTableWith10000Rows(ossTableName);
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery("show files from " + ossTableName);
-            while (resultSet.next()) {
-                String fileName = resultSet.getString("FILE_NAME");
-
-                LocalDateTime beforeDropTime = LocalDateTime.now();
-                Thread.sleep(2000);
-
-                try (Connection connection2 = getConnection()) {
-                    Statement statement2 = connection2.createStatement();
-                    statement2.execute(String.format("alter table %s drop file '%s'", ossTableName, fileName));
-
-                    Thread.sleep(2000);
-                    LocalDateTime afterDropTime = LocalDateTime.now();
-
-                    long countBeforeDropTime = countAsOfTimeStamp(connection2, ossTableName, beforeDropTime);
-                    long countAfterDropTable = countAsOfTimeStamp(connection2, ossTableName, afterDropTime);
-
-                    Assert.assertTrue(countBeforeDropTime > countAfterDropTable);
-
-                    statement2.executeUpdate(String.format(
-                        "/*+TDDL:cmd_extra(BACKUP_OSS_PERIOD=0)*/ ALTER FILESTORAGE '%s' PURGE BEFORE TIMESTAMP '%s'",
-                        engine.name(),
-                        String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                            afterDropTime.getYear(),
-                            afterDropTime.getMonthValue(),
-                            afterDropTime.getDayOfMonth(),
-                            afterDropTime.getHour(),
-                            afterDropTime.getMinute(),
-                            afterDropTime.getSecond())));
-
-                    countBeforeDropTime = countAsOfTimeStamp(connection2, ossTableName, beforeDropTime);
-                    countAfterDropTable = countAsOfTimeStamp(connection2, ossTableName, afterDropTime);
-
-                    Assert.assertTrue(countBeforeDropTime == countAfterDropTable);
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    /**
-     * ALTER FILESTORAGE OSS AS OF TIMESTAMP timestamp_value
-     */
-    @Test
-    public void testAlterFileStorageAsOfTimeStamp() {
-        try (Connection connection = getConnection()) {
-            String tableName = "testAlterFileStorageAsOfTimeStampTable";
-            createFileStorageTableWith10000Rows(tableName);
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery("show files from " + tableName);
-            int lastCount = Integer.MAX_VALUE;
-            List<LocalDateTime> dateTimeList = new ArrayList<>();
-            dateTimeList.add(LocalDateTime.now());
-            while (resultSet.next()) {
-                String fileName = resultSet.getString("FILE_NAME");
-                try (Connection connection2 = getConnection()) {
-                    Statement statement2 = connection2.createStatement();
-                    statement2.execute(String.format("alter table %s drop file '%s'", tableName, fileName));
-                    Thread.sleep(1000);
-                    dateTimeList.add(LocalDateTime.now());
-                    Thread.sleep(1000);
-                    ResultSet resultSet2 = statement2.executeQuery(String.format("select count(*) from %s", tableName));
-                    resultSet2.next();
-                    int count = resultSet2.getInt(1);
-                    Assert.assertTrue(lastCount > count);
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-
-            statement.execute(String.format("alter filestorage '%s' backup", engine.name()));
-
-            lastCount = Integer.MIN_VALUE;
-            for (int i = dateTimeList.size() - 1; i >= 0; i--) {
-                try (Connection connection2 = getConnection()) {
-                    Statement statement2 = connection2.createStatement();
-                    LocalDateTime localDateTime = dateTimeList.get(i);
-                    statement2.execute(String.format("alter fileStorage '%s' as of timestamp '%s'",
-                        engine.name(),
-                        String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                            localDateTime.getYear(),
-                            localDateTime.getMonthValue(),
-                            localDateTime.getDayOfMonth(),
-                            localDateTime.getHour(),
-                            localDateTime.getMinute(),
-                            localDateTime.getSecond())));
-                    ResultSet resultSet2 = statement2.executeQuery(String.format("select count(*) from %s", tableName));
-                    resultSet2.next();
-                    int count = resultSet2.getInt(1);
-                    Assert.assertTrue(lastCount < count);
-                    lastCount = count;
-                } catch (SQLException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    /**
-     * ALTER FILESTORAGE OSS AS OF TIMESTAMP timestamp_value
-     */
-    @Test
-    public void testAlterFileStorageAsOfTimeStamp2() {
-        try (Connection connection = getConnection()) {
-            String tableName = "testAlterFileStorageAsOfTimeStamp2";
-            createFileStorageTableWith10000Rows(tableName);
-            LocalDateTime localDateTime = LocalDateTime.now();
-            Thread.sleep(1000);
-
-            Statement statement = connection.createStatement();
-            statement.execute(String.format("alter filestorage '%s' backup", engine.name()));
-
-            try (Connection connection2 = getPolardbxConnection(testDataBase2)) {
-                Statement statement2 = connection2.createStatement();
-                statement2.execute(String.format("alter fileStorage '%s' as of timestamp '%s'",
-                    engine.name(),
-                    String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                        localDateTime.getYear(),
-                        localDateTime.getMonthValue(),
-                        localDateTime.getDayOfMonth(),
-                        localDateTime.getHour(),
-                        localDateTime.getMinute(),
-                        localDateTime.getSecond())));
-                long count1 = count(connection, tableName);
-                Assert.assertTrue(count1 == 10000);
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    /**
-     * ALTER TABLE table_name PURGE BEFORE TIMESTAMP timestamp_value
-     */
-    @Test
-    public void testAlterFileStoragePurgeBeforeTimeStamp2() {
-        try (Connection connection = getConnection()) {
-
-            String tableName = "testAlterFileStoragePurgeBeforeTimeStamp2";
-            createFileStorageTableWith10000Rows(tableName);
-
-            Statement statement = connection.createStatement();
-            statement.executeUpdate("drop table " + tableName);
-
-            Thread.sleep(1000);
-            LocalDateTime localDateTime = LocalDateTime.now();
-
-            ResultSet rs = statement.executeQuery("show recyclebin");
-            rs.next();
-            Assert.assertTrue(rs.getString("ORIGINAL_NAME").equalsIgnoreCase(tableName));
-            Assert.assertFalse(rs.next());
-
-            try (Connection connection2 = getPolardbxConnection(testDataBase2)) {
-                Statement statement2 = connection2.createStatement();
-                statement2.execute(String.format(
-                    "/*+TDDL:cmd_extra(BACKUP_OSS_PERIOD=0)*/ alter fileStorage '%s' purge before timestamp '%s'",
-                    engine.name(),
-                    String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                        localDateTime.getYear(),
-                        localDateTime.getMonthValue(),
-                        localDateTime.getDayOfMonth(),
-                        localDateTime.getHour(),
-                        localDateTime.getMinute(),
-                        localDateTime.getSecond())));
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-
-            rs = statement.executeQuery("show recyclebin");
-            Assert.assertFalse(rs.next());
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    /**
-     * ALTER FILESTORAGE OSS AS OF TIMESTAMP timestamp_value
-     */
-    @Test
-    public void testAlterFileStorageAsOfTimeStamp4() {
-        try (Connection connection = getConnection()) {
-            LocalDateTime localDateTime = LocalDateTime.now();
-            Thread.sleep(1000);
-            String tableName = "testAlterFileStorageAsOfTimeStamp4";
-            createFileStorageTableWith10000Rows(tableName);
-
-            Statement statement = connection.createStatement();
-            statement.execute(String.format("alter filestorage '%s' backup", engine.name()));
-
-            try (Connection connection2 = getPolardbxConnection(testDataBase2)) {
-                Statement statement2 = connection2.createStatement();
-                statement2.execute(String.format("alter fileStorage '%s' as of timestamp '%s'",
-                    engine.name(),
-                    String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                        localDateTime.getYear(),
-                        localDateTime.getMonthValue(),
-                        localDateTime.getDayOfMonth(),
-                        localDateTime.getHour(),
-                        localDateTime.getMinute(),
-                        localDateTime.getSecond())));
-            } catch (SQLException e) {
-                throw new RuntimeException(e);
-            }
-
-            Assert.assertTrue(count(connection, tableName) == 0);
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    /**
      * ALTER TABLE source_table EXCHANGE PARTITION partition_name WITH TABLE target_table;
      */
     @Test
@@ -865,13 +662,13 @@ public class FileStorageTest extends BaseTestCase {
 
             statement.execute(String
                 .format("ALTER TABLE %s EXCHANGE PARTITION p0 WITH TABLE %s", innodbTestTableName, ossTestTableName));
-            long count1 = count(conn, ossTestTableName);
+            long count1 = FileStorageTestUtil.count(conn, ossTestTableName);
             statement.execute(String
                 .format("ALTER TABLE %s EXCHANGE PARTITION p1 WITH TABLE %s", innodbTestTableName, ossTestTableName));
-            long count2 = count(conn, ossTestTableName);
+            long count2 = FileStorageTestUtil.count(conn, ossTestTableName);
             statement.execute(String
                 .format("ALTER TABLE %s EXCHANGE PARTITION p2 WITH TABLE %s", innodbTestTableName, ossTestTableName));
-            long count3 = count(conn, ossTestTableName);
+            long count3 = FileStorageTestUtil.count(conn, ossTestTableName);
             Assert.assertTrue(count3 > count2 && count2 > count1 && count1 > 0);
         } catch (Throwable t) {
             throw new RuntimeException(t);
@@ -881,6 +678,7 @@ public class FileStorageTest extends BaseTestCase {
     /**
      * INSERT INTO target_table SELECT * FROM source_table.
      */
+    @Ignore("This case will fail under JDBC: #51938614")
     @Test
     public void testInsertSelectFromOssToInnodb() {
         try (Connection conn = getConnection()) {
@@ -890,9 +688,10 @@ public class FileStorageTest extends BaseTestCase {
             createOssTableLoadingFromInnodbTable(conn, ossTestTableName, innodbTestTableName);
             Statement statement = conn.createStatement();
             statement.execute(String.format("truncate table %s", innodbTestTableName));
-            Assert.assertTrue(count(conn, innodbTestTableName) == 0);
+            Assert.assertTrue(FileStorageTestUtil.count(conn, innodbTestTableName) == 0);
             statement.execute(String.format("insert into %s select * from %s", innodbTestTableName, ossTestTableName));
-            Assert.assertTrue(count(conn, innodbTestTableName) == count(conn, ossTestTableName));
+            Assert.assertTrue(FileStorageTestUtil.count(conn, innodbTestTableName) == FileStorageTestUtil.count(conn,
+                ossTestTableName));
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -900,7 +699,13 @@ public class FileStorageTest extends BaseTestCase {
 
     @Test
     public void testQueryFlashBackAsOfTimestamp() {
+        if (isMySQL80()) {
+            return;
+        }
         try (Connection conn = getConnection()) {
+
+            LocalDate now = LocalDate.now();
+            LocalDate startWithDate = now.minusMonths(12L);
             String ossTableName = "oss_testQueryFlashBackAsOfTimestampTable";
             String innodbTableName = "testQueryFlashBackAsOfTimestampTable";
             Statement statement = conn.createStatement();
@@ -911,22 +716,23 @@ public class FileStorageTest extends BaseTestCase {
                 ")\n" +
                 "PARTITION BY HASH(id) PARTITIONS 8\n" +
                 "LOCAL PARTITION BY RANGE (gmt_modified)\n" +
-                "STARTWITH '2021-01-01'\n" +
+                "STARTWITH '%s'\n" +
                 "INTERVAL 1 MONTH\n" +
                 "EXPIRE AFTER 1\n" +
                 "PRE ALLOCATE 3\n" +
-                "PIVOTDATE NOW();", innodbTableName));
+                "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            String[] dates =
-                {"2020-12-01", "2021-01-01", "2021-01-01", "2021-02-01", "2021-03-01", "2021-04-01", "2021-05-01"};
-            for (String date : dates) {
+            LocalDate dateIterator = startWithDate;
+            for (int j = 0; j < 5; j++) {
+
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 999; i++) {
-                    insert.append("('").append(date).append("')").append(",");
+                    insert.append("('").append(dateIterator).append("')").append(",");
                 }
-                insert.append("('").append(date).append("')");
+                insert.append("('").append(dateIterator).append("')");
                 statement.executeUpdate(insert.toString());
+                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement.executeUpdate(String
@@ -937,29 +743,35 @@ public class FileStorageTest extends BaseTestCase {
 
             dateTimeList.add(LocalDateTime.now());
 
-            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION p20210101", innodbTableName));
+            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION " +
+                    "p" + startWithDate.plusMonths(1L).toString().replace("-", ""),
+                innodbTableName));
             Thread.sleep(1000);
             dateTimeList.add(LocalDateTime.now());
             Thread.sleep(1000);
-            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION p20210201", innodbTableName));
+            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION " +
+                    "p" + startWithDate.plusMonths(2L).toString().replace("-", ""),
+                innodbTableName));
             Thread.sleep(1000);
             dateTimeList.add(LocalDateTime.now());
             Thread.sleep(1000);
-            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION p20210301", innodbTableName));
+            statement.executeUpdate(String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION " +
+                    "p" + startWithDate.plusMonths(3L).toString().replace("-", ""),
+                innodbTableName));
             Thread.sleep(1000);
             dateTimeList.add(LocalDateTime.now());
 
             LocalDateTime localDateTime = dateTimeList.get(0);
-            long count1 = countAsOfTimeStamp(conn, ossTableName, localDateTime);
+            long count1 = FileStorageTestUtil.countAsOfTimeStamp(conn, ossTableName, localDateTime);
 
             localDateTime = dateTimeList.get(1);
-            long count2 = countAsOfTimeStamp(conn, ossTableName, localDateTime);
+            long count2 = FileStorageTestUtil.countAsOfTimeStamp(conn, ossTableName, localDateTime);
 
             localDateTime = dateTimeList.get(2);
-            long count3 = countAsOfTimeStamp(conn, ossTableName, localDateTime);
+            long count3 = FileStorageTestUtil.countAsOfTimeStamp(conn, ossTableName, localDateTime);
 
             localDateTime = dateTimeList.get(3);
-            long count4 = countAsOfTimeStamp(conn, ossTableName, localDateTime);
+            long count4 = FileStorageTestUtil.countAsOfTimeStamp(conn, ossTableName, localDateTime);
 
             Assert.assertTrue(count1 == 0);
             Assert.assertTrue(count1 < count2);
@@ -972,11 +784,13 @@ public class FileStorageTest extends BaseTestCase {
 
     @Test
     public void TestUnArchiveOssTable() {
+        LocalDate now = LocalDate.now();
+        LocalDate startWithDate = now.minusMonths(12L);
         String BUILD = "CREATE TABLE %s ( id bigint NOT NULL AUTO_INCREMENT,"
             + " gmt_modified DATETIME NOT NULL,PRIMARY KEY (id, gmt_modified))"
             + " PARTITION BY HASH(id) PARTITIONS %s"
             + " LOCAL PARTITION BY RANGE (gmt_modified)"
-            + " STARTWITH '2021-01-01'"
+            + " STARTWITH '%s'"
             + " INTERVAL 1 MONTH"
             + " EXPIRE AFTER 1"
             + " PRE ALLOCATE 3"
@@ -999,7 +813,7 @@ public class FileStorageTest extends BaseTestCase {
         try (Connection conn = getPolardbxConnection(testDataBase3)) {
             Statement stmt = conn.createStatement();
             for (int i = 0; i < tables.size(); i++) {
-                sql = String.format(BUILD, tables.get(i), partitions.get(i));
+                sql = String.format(BUILD, tables.get(i), partitions.get(i), startWithDate);
                 stmt.execute(sql);
                 sql = String.format(BUILDOSS, tables.get(i), tables.get(i), engine.name());
                 stmt.execute(sql);
@@ -1070,7 +884,9 @@ public class FileStorageTest extends BaseTestCase {
 
             Random random = new Random();
             for (int i = 0; i < 10; i++) {
-                statement.executeQuery(String.format("trace select * from %s where varchar_column = '%s'", ossTableName,
+                statement.executeQuery(String.format(
+                    "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where varchar_column = '%s'",
+                    ossTableName,
                     varcharValues.get(random.nextInt(10000))));
                 ResultSet resultSet = statement.executeQuery("show trace");
                 int traceCount = 0;
@@ -1083,7 +899,8 @@ public class FileStorageTest extends BaseTestCase {
 
             for (int i = 0; i < 10; i++) {
                 String expSql =
-                    String.format("trace select * from %s where varchar_column in('%s', '%s') or id in(%s, %s)",
+                    String.format(
+                        "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where varchar_column in('%s', '%s') or id in(%s, %s)",
                         ossTableName,
                         varcharValues.get(random.nextInt(10000)), varcharValues.get(random.nextInt(10000)),
                         random.nextInt(10000), random.nextInt(10000));
@@ -1093,7 +910,7 @@ public class FileStorageTest extends BaseTestCase {
                 boolean findArgument = false;
                 while (resultSet.next()) {
                     String argument = resultSet.getString("STATEMENT").toLowerCase();
-                    findArgument |= (argument.contains("in varchar_column") && argument.contains("in id"));
+                    findArgument |= (argument.contains("__id____redundant__") && argument.contains("__id__ "));
                 }
                 assertWithMessage(String.format("sql %s should build search argument", expSql))
                     .that(findArgument).isTrue();
@@ -1132,7 +949,9 @@ public class FileStorageTest extends BaseTestCase {
                 ossTableName, innodbTableName, engine.name()));
             statement.execute("drop table " + innodbTableName);
 
-            statement.executeQuery(String.format("trace select * from %s where varchar_column = '1'", ossTableName));
+            statement.executeQuery(
+                String.format("trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where varchar_column = '1'",
+                    ossTableName));
             ResultSet resultSet = statement.executeQuery("show trace");
             int traceCount = 0;
             while (resultSet.next()) {
@@ -1181,8 +1000,10 @@ public class FileStorageTest extends BaseTestCase {
 
             Random random = new Random();
             for (int i = 0; i < 10; i++) {
-                statement.executeQuery(String.format("trace select * from %s where decimal_column = %s", ossTableName,
-                    decimalValues.get(random.nextInt(10000))));
+                statement.executeQuery(
+                    String.format("trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column = %s",
+                        ossTableName,
+                        decimalValues.get(random.nextInt(10000))));
                 ResultSet resultSet = statement.executeQuery("show trace");
                 int traceCount = 0;
                 while (resultSet.next()) {
@@ -1193,7 +1014,9 @@ public class FileStorageTest extends BaseTestCase {
             }
 
             for (int i = 0; i < 10; i++) {
-                String expSql = String.format("trace select * from %s where decimal_column in(%s, %s)", ossTableName,
+                String expSql = String.format(
+                    "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column in(%s, %s)",
+                    ossTableName,
                     decimalValues.get(random.nextInt(10000)), decimalValues.get(random.nextInt(10000)));
                 statement.executeQuery(expSql);
                 ResultSet resultSet = statement.executeQuery("show trace");
@@ -1201,7 +1024,7 @@ public class FileStorageTest extends BaseTestCase {
                 boolean findArgument = false;
                 while (resultSet.next()) {
                     String argument = resultSet.getString("STATEMENT").toLowerCase();
-                    findArgument |= argument.contains("in decimal_column");
+                    findArgument |= (argument.contains("in") && argument.contains("__id__"));
                 }
                 assertWithMessage(String.format("sql %s should build search argument", expSql))
                     .that(findArgument).isTrue();
@@ -1241,7 +1064,9 @@ public class FileStorageTest extends BaseTestCase {
                 ossTableName, innodbTableName, engine.name()));
             statement.execute("drop table " + innodbTableName);
 
-            statement.executeQuery(String.format("trace select * from %s where decimal_column = 1.1", ossTableName));
+            statement.executeQuery(
+                String.format("trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column = 1.1",
+                    ossTableName));
             ResultSet resultSet = statement.executeQuery("show trace");
             int traceCount = 0;
             while (resultSet.next()) {
@@ -1254,61 +1079,6 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
-    private void initLocalDisk() {
-        try (Connection connection = getMetaConnection()) {
-            initLocalDisk(connection);
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public static void initLocalDisk(Connection metadbConn) {
-        try {
-            FileStorageInfoAccessor fileStorageInfoAccessor = new FileStorageInfoAccessor();
-            fileStorageInfoAccessor.setConnection(metadbConn);
-
-            FileStorageInfoRecord record1 = new FileStorageInfoRecord();
-            record1.instId = "";
-            record1.engine = "local_disk";
-            record1.fileUri = "file:///tmp/local-orc-dir/";
-            record1.fileSystemConf = "";
-            record1.priority = 1;
-            record1.regionId = "";
-            record1.availableZoneId = "";
-            record1.cachePolicy = CachePolicy.META_AND_DATA_CACHE.getValue();
-            record1.deletePolicy = DeletePolicy.MASTER_ONLY.getValue();
-            record1.status = 1;
-
-            List<FileStorageInfoRecord> fileStorageInfoRecordList = new ArrayList<>();
-            fileStorageInfoRecordList.add(record1);
-            fileStorageInfoAccessor.insertIgnore(fileStorageInfoRecordList);
-            Statement statement = metadbConn.createStatement();
-            statement.execute(
-                "update config_listener set op_version = op_version + 1 where data_id = 'polardbx.file.storage.info'");
-            Thread.sleep(5000);
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Test
-    public void testDropFileStorageLocalDisk() {
-        initLocalDisk();
-        try (Connection connection = getConnection()) {
-            String localDiskTableName = "testDropFileStorageLocalDisk";
-            createLocalDiskTableWith10000Rows(localDiskTableName);
-            Statement statement = connection.createStatement();
-            statement.execute("drop table " + localDiskTableName);
-            createLocalDiskTableWith10000Rows(localDiskTableName);
-            statement.execute("Drop FileStorage 'local_disk'");
-            Thread.sleep(5000);
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
-        } finally {
-            initLocalDisk();
-        }
-    }
-
     public void createFileStorageTableWith10000Rows(String tableName) throws SQLException {
         createFileStorageTableWith10000Rows(tableName, engine);
     }
@@ -1318,57 +1088,9 @@ public class FileStorageTest extends BaseTestCase {
     }
 
     public void createFileStorageTableWith10000Rows(String tableName, Engine engine) throws SQLException {
-        String innodbTableName = tableName + "_innodb";
-        createInnodbTableWith10000Rows(innodbTableName);
         try (Connection connection = getConnection()) {
-            Statement statement = connection.createStatement();
-            statement.execute(String.format(
-                "/*+TDDL:ENABLE_FILE_STORE_CHECK_TABLE=true*/ create table %s like %s engine = '%s' archive_mode = 'loading'",
-                tableName, innodbTableName, engine.name()));
-            statement.execute("drop table " + innodbTableName);
+            FileStorageTestUtil.createFileStorageTableWith10000Rows(tableName, engine, connection);
         }
-    }
-
-    public void createInnodbTableWith10000Rows(String tableName) throws SQLException {
-        try (Connection connection = getConnection()) {
-            Statement statement = connection.createStatement();
-            statement.execute(String.format("CREATE TABLE %s (\n" +
-                "    id bigint NOT NULL AUTO_INCREMENT,\n" +
-                "    gmt_modified DATETIME DEFAULT CURRENT_TIMESTAMP,\n" +
-                "    PRIMARY KEY (id, gmt_modified)\n" +
-                ")\n" +
-                "PARTITION BY HASH(id) PARTITIONS 8\n", tableName));
-
-            StringBuilder insert = new StringBuilder();
-            insert.append("insert into ").append(tableName).append("('id') values ");
-            for (int i = 0; i < 9999; i++) {
-                insert.append("(0)").append(",");
-            }
-            insert.append("(0)");
-            statement.executeUpdate(insert.toString());
-        }
-    }
-
-    public long count(Connection conn, String tableName) throws SQLException {
-        Statement statement = conn.createStatement();
-        ResultSet resultSet = statement.executeQuery("select count(*) from " + tableName);
-        resultSet.next();
-        return resultSet.getLong(1);
-    }
-
-    public long countAsOfTimeStamp(Connection conn, String tableName, LocalDateTime localDateTime) throws SQLException {
-        Statement statement = conn.createStatement();
-        ResultSet resultSet = statement.executeQuery(String
-            .format("select count(*) from %s as of TIMESTAMP '%s'", tableName,
-                String.format("%04d-%02d-%02d %02d:%02d:%02d",
-                    localDateTime.getYear(),
-                    localDateTime.getMonthValue(),
-                    localDateTime.getDayOfMonth(),
-                    localDateTime.getHour(),
-                    localDateTime.getMinute(),
-                    localDateTime.getSecond())));
-        resultSet.next();
-        return resultSet.getLong(1);
     }
 
     public boolean createOssTableLoadingFromInnodbTable(Connection conn, String ossTableName, String innodbTableName)

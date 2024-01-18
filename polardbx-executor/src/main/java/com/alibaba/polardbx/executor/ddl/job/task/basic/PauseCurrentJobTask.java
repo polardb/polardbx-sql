@@ -45,10 +45,10 @@ public class PauseCurrentJobTask extends BaseDdlTask {
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         final DdlEngineSchedulerManager schedulerManager = new DdlEngineSchedulerManager();
         if (schedulerManager.tryPauseDdl(
-            getJobId(),
+            getRootJobId(),
             DdlState.RUNNING,
             DdlState.PAUSED)) {
-            DdlEngineDagExecutor ddlEngineDagExecutor = DdlEngineDagExecutorMap.get(schemaName, jobId);
+            DdlEngineDagExecutor ddlEngineDagExecutor = DdlEngineDagExecutorMap.get(schemaName, getRootJobId());
             if (ddlEngineDagExecutor == null) {
                 return;
             }

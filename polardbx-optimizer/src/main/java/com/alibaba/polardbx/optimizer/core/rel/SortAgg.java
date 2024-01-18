@@ -180,7 +180,6 @@ public class SortAgg extends Aggregate implements PhysicalNode {
         }
 
         final RelDistribution inputDistribution = RelDistributions.ANY;
-        ;
 
         RelTraitSet inputTraits = getInput().getTraitSet();
         RelCollation collation = requireNonNull(required.getCollation(),

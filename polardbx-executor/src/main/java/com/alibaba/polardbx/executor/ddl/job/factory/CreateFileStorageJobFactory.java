@@ -27,7 +27,6 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.gms.engine.FileStorageInfoKey;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import org.eclipse.jetty.util.StringUtil;
 
 import java.util.Map;
 import java.util.Set;
@@ -52,7 +51,7 @@ public class CreateFileStorageJobFactory extends DdlJobFactory {
         if (!items.containsKey(FileStorageInfoKey.FILE_URI)) {
             throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, "Should contain FILE_URI in with!");
         }
-        if (StringUtil.endsWithIgnoreCase(engine.name(), "OSS")) {
+        if (engine.name().equalsIgnoreCase("OSS")) {
             if (!items.containsKey(FileStorageInfoKey.ENDPOINT)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, "Should contain ENDPOINT in with!");
             }

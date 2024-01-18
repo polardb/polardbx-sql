@@ -49,10 +49,14 @@ import java.sql.Types;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+
+import static com.alibaba.polardbx.optimizer.biv.MockDataManager.MOCK_DB_USERNAME;
+import static org.apache.commons.lang.StringUtils.isNotEmpty;
 
 public class MockUtils {
 
@@ -218,7 +222,11 @@ public class MockUtils {
             SqlNode validatedNode = sqlConverter.validate(sqlNode);
             rel = sqlConverter.toRel(validatedNode);
         } catch (Throwable e) {
-            throw new NotSupportException("meta mock failed :" + sql + ", " + e.getMessage());
+            if (e.getMessage().contains("For update not in root")) {
+                sql = sql.toLowerCase(Locale.ROOT).replaceAll("for update", " ");
+                return findMeta(sql, schema);
+            }
+            throw new RuntimeException("meta mock failed :" + sql + ", " + e.getMessage(), e);
         }
         CursorMeta meta = CursorMeta.build(CalciteUtils.buildColumnMeta(rel, "__fake_data__"));
 
@@ -344,4 +352,7 @@ public class MockUtils {
         return new MockResultSet((MockStatement) null, CursorMeta.build(Lists.newArrayList(columnMeta)), true);
     }
 
+    public static boolean mockByEnv() {
+        return isNotEmpty(System.getenv(MOCK_DB_USERNAME));
+    }
 }

@@ -1,0 +1,779 @@
+## DISABLE_FAST_SQL_PARSER
+# test alter tablegroup
+# list, algorithm=default
+create tablegroup tg_modify_1;
+create table tb_modify_1(
+  a int,
+  b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+) tablegroup="tg_modify_1";
+insert into tb_modify_1 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_1 modify partition p1 drop values(1,2);
+select a from tb_modify_1 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_1 partition(p1) order by a;
+a
+3
+select a from tb_modify_1 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_1 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter tablegroup tg_modify_1 modify partition p1 add values(7) algorithm=default;
+alter tablegroup tg_modify_1 modify partition p2 add values(8,9);
+select a from tb_modify_1 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_1 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_1 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_1 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_1;
+Table,Create Table
+tb_modify_1,CREATE TABLE `tb_modify_1` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_1`
+# list, algorithm=instant
+create tablegroup tg_modify_2;
+create table tb_modify_2(
+  a int,
+  b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+) tablegroup="tg_modify_2";
+insert into tb_modify_2 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_2 modify partition p1 add values(7) algorithm=instant;
+alter tablegroup tg_modify_2 modify partition p2 add values(8,9) algorithm=instant;
+select a from tb_modify_2 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_2 partition(p1) order by a;
+a
+1
+2
+3
+select a from tb_modify_2 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_2 partition(pd) order by a;
+a
+7
+8
+9
+show create table tb_modify_2;
+Table,Create Table
+tb_modify_2,CREATE TABLE `tb_modify_2` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_2`
+# list columns, algorithm=default
+create tablegroup tg_modify_3;
+create table tb_modify_3(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2"),(3, "3")),
+partition p2 values in((4,"4"),(5, "5"),(6, "6")),
+partition pd values in(default)
+) tablegroup="tg_modify_3";
+insert into tb_modify_3 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_3 modify partition p1 drop values((1, "1"), (2, "2"));
+select a from tb_modify_3 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_3 partition(p1) order by a;
+a
+3
+select a from tb_modify_3 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_3 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter tablegroup tg_modify_3 modify partition p1 add values((7,"7")) algorithm=default;
+alter tablegroup tg_modify_3 modify partition p2 add values((8,"8"),(9,"9"));
+select a from tb_modify_3 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_3 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_3 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_3 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_3;
+Table,Create Table
+tb_modify_3,CREATE TABLE `tb_modify_3` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((3,'3'),(7,'7')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_3`
+# test list columns algorithm=instant
+create tablegroup tg_modify_4;
+create table tb_modify_4(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2"),(3, "3")),
+partition p2 values in((4,"4"),(5, "5"),(6, "6")),
+partition pd values in(default)
+) tablegroup="tg_modify_4";
+insert into tb_modify_4 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_4 modify partition p1 add values((7,"7")) algorithm=instant;
+alter tablegroup tg_modify_4 modify partition p2 add values((8,"8"),(9,"9")) algorithm=instant;
+select a from tb_modify_4 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_4 partition(p1) order by a;
+a
+2
+3
+select a from tb_modify_4 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_4 partition(pd) order by a;
+a
+1
+7
+8
+9
+show create table tb_modify_4;
+Table,Create Table
+tb_modify_4,CREATE TABLE `tb_modify_4` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2'),(3,'3'),(7,'7')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_4`
+# test list columns(single), algorithm=default
+create tablegroup tg_modify_5;
+create table tb_modify_5(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+) tablegroup="tg_modify_5";
+insert into tb_modify_5 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_5 modify partition p1 drop values(1,2) algorithm=default;
+select a from tb_modify_5 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_5 partition(p1) order by a;
+a
+3
+select a from tb_modify_5 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_5 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter tablegroup tg_modify_5 modify partition p1 add values(7);
+alter tablegroup tg_modify_5 modify partition p2 add values(8,9);
+select a from tb_modify_5 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_5 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_5 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_5 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_5;
+Table,Create Table
+tb_modify_5,CREATE TABLE `tb_modify_5` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_5`
+# test list columns(single), algorithm=instant
+create tablegroup tg_modify_6;
+create table tb_modify_6(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+) tablegroup="tg_modify_6";
+insert into tb_modify_6 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter tablegroup tg_modify_6 modify partition p1 add values(7) algorithm=instant;
+alter tablegroup tg_modify_6 modify partition p2 add values(8,9) algorithm=instant;
+select a from tb_modify_6 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_6 partition(p1) order by a;
+a
+1
+2
+3
+select a from tb_modify_6 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_6 partition(pd) order by a;
+a
+7
+8
+9
+show create table tb_modify_6;
+Table,Create Table
+tb_modify_6,CREATE TABLE `tb_modify_6` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+tablegroup = `tg_modify_6`
+# test bad input
+## error_msg: $# It's not allowed to modify default partition #$
+alter tablegroup tg_modify_6 modify partition pd drop values(10, 11);
+It's not allowed to modify default partition
+## error_msg: $# already exists in other partition #$
+alter tablegroup tg_modify_6 modify partition p1 add values(5, 6);
+already exists in other partition
+# test alter table
+# list, algorithm=default
+create table tb_modify_7(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+);
+insert into tb_modify_7 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_7 modify partition p1 drop values(1,2);
+select a from tb_modify_7 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_7 partition(p1) order by a;
+a
+3
+select a from tb_modify_7 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_7 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter table tb_modify_7  modify partition p1 add values(7) algorithm=default;
+alter table tb_modify_7  modify partition p2 add values(8,9);
+select a from tb_modify_7 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_7 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_7 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_7 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_7;
+Table,Create Table
+tb_modify_7,CREATE TABLE `tb_modify_7` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+#list, algorithm=instant
+create table tb_modify_8(
+a int,
+b varchar(20) default null
+) partition by list(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+);
+insert into tb_modify_8 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_8 modify partition p1 add values(7) algorithm=instant;
+alter table tb_modify_8 modify partition p2 add values(8,9) algorithm=instant;
+select a from tb_modify_8 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_8 partition(p1) order by a;
+a
+1
+2
+3
+select a from tb_modify_8 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_8 partition(pd) order by a;
+a
+7
+8
+9
+show create table tb_modify_8;
+Table,Create Table
+tb_modify_8,CREATE TABLE `tb_modify_8` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`a`)
+(PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns, algorithm=default
+create table tb_modify_9(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2"),(3, "3")),
+partition p2 values in((4,"4"),(5, "5"),(6, "6")),
+partition pd values in(default)
+);
+insert into tb_modify_9 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_9 modify partition p1 drop values((1, "1"), (2, "2"));
+select a from tb_modify_9 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_9 partition(p1) order by a;
+a
+3
+select a from tb_modify_9 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_9 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter table tb_modify_9 modify partition p1 add values((7,"7")) algorithm=default;
+alter table tb_modify_9 modify partition p2 add values((8,"8"),(9,"9"));
+select a from tb_modify_9 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_9 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_9 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_9 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_9;
+Table,Create Table
+tb_modify_9,CREATE TABLE `tb_modify_9` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((3,'3'),(7,'7')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# list columns, algorithm=instant
+create table tb_modify_10(
+a int,
+b varchar(20) default null
+) partition by list columns(a, b) (
+partition p1 values in((1,"1"),(2, "2"),(3, "3")),
+partition p2 values in((4,"4"),(5, "5"),(6, "6")),
+partition pd values in(default)
+);
+insert into tb_modify_10 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_10 modify partition p1 add values((7,"7")) algorithm=instant;
+alter table tb_modify_10 modify partition p2 add values((8,"8"),(9,"9")) algorithm=instant;
+select a from tb_modify_10 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_10 partition(p1) order by a;
+a
+2
+3
+select a from tb_modify_10 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_10 partition(pd) order by a;
+a
+1
+7
+8
+9
+show create table tb_modify_10;
+Table,Create Table
+tb_modify_10,CREATE TABLE `tb_modify_10` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN ((1,'1'),(2,'2'),(3,'3'),(7,'7')) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+# test bad input
+## error_msg: $# It's not allowed to modify default partition #$
+alter table tb_modify_10 modify partition pd drop values((10, "10"), (11, "11"));
+It's not allowed to modify default partition
+## error_msg: $# already exists in other partition #$
+alter table tb_modify_10 modify partition p1 add values((5, "5"), (6, "6"));
+already exists in other partition
+# list columns(single), algorithm=default
+create table tb_modify_11(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+);
+insert into tb_modify_11 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_11 modify partition p1 drop values(1,2);
+select a from tb_modify_11 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_11 partition(p1) order by a;
+a
+3
+select a from tb_modify_11 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_11 partition(pd) order by a;
+a
+1
+2
+7
+8
+9
+alter table tb_modify_11  modify partition p1 add values(7) algorithm=default;
+alter table tb_modify_11  modify partition p2 add values(8,9);
+select a from tb_modify_11 partition(p1) order by a;
+a
+3
+7
+select a from tb_modify_11 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_11 partition(p2) order by a;
+a
+4
+5
+6
+8
+9
+select a from tb_modify_11 partition(pd) order by a;
+a
+1
+2
+show create table tb_modify_11;
+Table,Create Table
+tb_modify_11,CREATE TABLE `tb_modify_11` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)
+#list, algorithm=instant
+create table tb_modify_12(
+a int,
+b varchar(20) default null
+) partition by list columns(a) (
+partition p1 values in(1,2,3),
+partition p2 values in(4,5,6),
+partition pd values in(default)
+);
+insert into tb_modify_12 values(1, 'a'),(2,'2'),(3,'3'),(4,'4'),(5,'5'),(6,'6'),(7,'7'),(8,'8'),(9,'9');
+alter table tb_modify_12 modify partition p1 add values(7) algorithm=instant;
+alter table tb_modify_12 modify partition p2 add values(8,9) algorithm=instant;
+select a from tb_modify_12 order by a;
+a
+1
+2
+3
+4
+5
+6
+7
+8
+9
+select a from tb_modify_12 partition(p1) order by a;
+a
+1
+2
+3
+select a from tb_modify_12 partition(p2) order by a;
+a
+4
+5
+6
+select a from tb_modify_12 partition(pd) order by a;
+a
+7
+8
+9
+show create table tb_modify_12;
+Table,Create Table
+tb_modify_12,CREATE TABLE `tb_modify_12` (
+	`a` int(11) DEFAULT NULL,
+	`b` varchar(20) DEFAULT NULL,
+	KEY `auto_shard_key_a` USING BTREE (`a`)
+) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`a`)
+(PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
+ PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
+ PARTITION pd VALUES IN (DEFAULT) ENGINE = InnoDB)

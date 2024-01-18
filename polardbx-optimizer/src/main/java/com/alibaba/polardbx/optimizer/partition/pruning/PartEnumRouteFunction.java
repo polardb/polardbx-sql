@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionStrategy;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
-import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionIntFunction;
 import com.alibaba.polardbx.optimizer.partition.datatype.iterator.PartitionFieldIterator;
 import com.alibaba.polardbx.optimizer.partition.datatype.iterator.PartitionFieldIterators;
@@ -31,6 +31,7 @@ import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionE
 
 import java.util.BitSet;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -42,57 +43,61 @@ public class PartEnumRouteFunction extends PartRouteFunction {
 
     protected PartitionInfo partInfo;
     protected StepIntervalInfo rangeIntervalInfo;
-    protected PartitionRouter router;
     protected boolean inclMin;
     protected boolean inclMax;
     protected boolean containPartIntFunc = false;
     protected PartitionIntFunction partIntFunc;
 
     public PartEnumRouteFunction(PartitionInfo partInfo,
-                                 PartitionRouter hashRouter,
                                  StepIntervalInfo rangeIntervalInfo,
                                  boolean inclMin,
                                  boolean inclMax) {
         this.partInfo = partInfo;
-        this.router = hashRouter;
         this.rangeIntervalInfo = rangeIntervalInfo;
         this.matchLevel = PartKeyLevel.PARTITION_KEY;
         this.inclMin = inclMin;
         this.inclMax = inclMax;
         this.partIntFunc = partInfo.getPartitionBy().getPartIntFunc();
         this.containPartIntFunc = partIntFunc != null;
-        
-        
     }
 
     @Override
     public PartRouteFunction copy() {
         PartEnumRouteFunction routeFunction =
-            new PartEnumRouteFunction(this.partInfo, this.router, this.rangeIntervalInfo.copy(), this.inclMin,
+            new PartEnumRouteFunction(this.partInfo, this.rangeIntervalInfo.copy(), this.inclMin,
                 this.inclMax);
         return routeFunction;
     }
 
     @Override
-    public BitSet routePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx) {
+    public PartPrunedResult routePartitions(ExecutionContext context, PartPruneStepPruningContext pruningCtx,
+                                            List<Integer> parentPartPosiSet) {
         SearchDatumInfo min = rangeIntervalInfo.getMinVal().getBndValue();
         SearchDatumInfo max = rangeIntervalInfo.getMaxVal().getBndValue();
-        BitSet allPartBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSet(partInfo);
         Set<Integer> partPosiSet = new HashSet<>();
+
+        // Get the target router from partInfo and parentPartPosi
+        Integer parentPartPosi =
+            parentPartPosiSet == null || parentPartPosiSet.isEmpty() ? null : parentPartPosiSet.get(0);
+        PartitionRouter router = getRouterByPartInfo(this.matchLevel, parentPartPosi, this.partInfo);
+        BitSet allPartBitSet = PartitionPrunerUtils.buildEmptyPartitionsBitSetByPartRouter(router);
         try {
             DataType fldDataType = partInfo.getPartitionBy().getQuerySpaceComparator().getDatumDrdsDataTypes()[0];
             int partitionCount = partInfo.getPartitionBy().getPartitions().size();
             PartitionFieldIterator iterator =
-                PartitionFieldIterators.getIterator(fldDataType, partInfo.getPartitionBy().getIntervalType());
+                PartitionFieldIterators.getIterator(fldDataType, partInfo.getPartitionBy().getIntervalType(),
+                    partIntFunc);
             iterator.range(min.getSingletonValue().getValue(), max.getSingletonValue().getValue(), inclMin, inclMax);
-            
-            boolean isListOrListCol = partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST || partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST_COLUMNS;
+
+            boolean isListOrListCol = partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST
+                || partInfo.getPartitionBy().getStrategy() == PartitionStrategy.LIST_COLUMNS;
             while (iterator.hasNext()) {
                 PartitionField partPruningFld = null;
                 Object evalObj = iterator.next();
                 if (containPartIntFunc) {
                     partPruningFld = PartitionPrunerUtils.buildPartField(evalObj,
-                        DataTypes.LongType, partIntFunc.getReturnType(), null, context, PartFieldAccessType.QUERY_PRUNING);
+                        DataTypes.LongType, partIntFunc.getReturnType(), null, context,
+                        PartFieldAccessType.QUERY_PRUNING);
                 } else {
                     partPruningFld = PartitionPrunerUtils.buildPartField(evalObj,
                         fldDataType, fldDataType, null, context, PartFieldAccessType.QUERY_PRUNING);
@@ -111,12 +116,12 @@ public class PartEnumRouteFunction extends PartRouteFunction {
                 }
             }
             PartitionPrunerUtils
-                .setPartBitSetForPartList(allPartBitSet, partPosiSet, matchLevel, partCount, -1, true);
+                .setPartBitSetForPartList(allPartBitSet, partPosiSet, true);
         } catch (InvalidTypeConversionException ex) {
             // Type cast Exception, use full scan instead
-            allPartBitSet = PartitionPrunerUtils.buildFullScanPartitionsBitSet(partInfo);
+            allPartBitSet = PartitionPrunerUtils.buildFullScanPartitionsBitSetByPartRouter(router);
         }
-        return allPartBitSet;
+        return PartPrunedResult.buildPartPrunedResult(partInfo, allPartBitSet, this.matchLevel, parentPartPosi, false);
     }
 
     @Override
@@ -133,12 +138,4 @@ public class PartEnumRouteFunction extends PartRouteFunction {
         return rangeIntervalInfo;
     }
 
-    @Override
-    public PartitionRouter getRouter() {
-        return router;
-    }
-
-    public void setRouter(HashPartRouter router) {
-        this.router = router;
-    }
 }

@@ -1,0 +1,64 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `h_h_tp1` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`c`,`d`)
+PARTITIONS 4
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4;
+CREATE TABLE `h_h_tp2` (
+`a` bigint(20) UNSIGNED NOT NULL,
+`b` bigint(20) UNSIGNED NOT NULL,
+`c` datetime NOT NULL,
+`d` varchar(16) NOT NULL,
+`e` varchar(16) NOT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`c`,`d`)
+PARTITIONS 4
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 4;
+## error_msg: $# the template subpartition:p1 is not exists #$
+alter table h_h_tp1 split subpartition p1;
+the template subpartition:p1 is not exists
+alter table h_h_tp1 split partition p1;
+alter table h_h_tp2 split partition p1;
+alter table h_h_tp1 split partition p2 into pxx partitions 4;
+alter table h_h_tp2 split partition p2 into pxx partitions 4;
+alter table h_h_tp1 split subpartition sp1;
+alter table h_h_tp2 split subpartition sp1;
+alter table h_h_tp1 split subpartition sp2 into pxx subpartitions 3;
+alter table h_h_tp2 split subpartition sp2 into pxx subpartitions 3;
+show create table h_h_tp1;
+Table,Create Table
+h_h_tp1,CREATE TABLE `h_h_tp1` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`c`,`d`)
+PARTITIONS 8
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 7
+show create table h_h_tp2;
+Table,Create Table
+h_h_tp2,CREATE TABLE `h_h_tp2` (
+	`a` bigint(20) UNSIGNED NOT NULL,
+	`b` bigint(20) UNSIGNED NOT NULL,
+	`c` datetime NOT NULL,
+	`d` varchar(16) NOT NULL,
+	`e` varchar(16) NOT NULL,
+	KEY `auto_shard_key_c_d` USING BTREE (`c`, `d`),
+	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`c`,`d`)
+PARTITIONS 8
+SUBPARTITION BY HASH(`a`,`b`)
+SUBPARTITIONS 7

@@ -30,6 +30,7 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.type.BasicSqlType;
 import org.apache.calcite.sql.type.EnumSqlType;
+import org.apache.calcite.util.ImmutableBitSet;
 
 import java.io.InputStream;
 import java.math.BigDecimal;
@@ -92,21 +93,30 @@ public class MemoryEstimator {
     private static final double HASH_KEY_SIZE_PER_ROW = Integer.BYTES / Hash.FAST_LOAD_FACTOR;
 
     public static double estimateRowSizeInArrayList(RelDataType rowType) {
-        return estimateRowSize(rowType) * 1.1;
+        return estimateRowSize(rowType, null) * 1.1;
     }
 
     public static double estimateRowSizeInHashTable(RelDataType rowType) {
-        return estimateRowSize(rowType) * 1.3 + HASH_KEY_SIZE_PER_ROW;
+        return estimateRowSize(rowType, null) * 1.3 + HASH_KEY_SIZE_PER_ROW;
     }
 
-    private static long estimateRowSize(List<RelDataTypeField> fields) {
+    public static double estimateKeySizeInHashTable(RelDataType rowType, ImmutableBitSet keys) {
+        return estimateRowSize(rowType, keys) * 1.3 + HASH_KEY_SIZE_PER_ROW;
+    }
+
+    private static long estimateRowSize(List<RelDataTypeField> fields, ImmutableBitSet selected) {
         long result = 0;
-        for (RelDataTypeField field : fields) {
+        for (int idx = 0; idx < fields.size(); ++idx) {
+            if (selected != null && selected.indexOf(idx) == -1) {
+                continue;
+            }
+            RelDataTypeField field = fields.get(idx);
             if (field.getType() instanceof BasicSqlType) {
                 BasicSqlType sqlType = (BasicSqlType) field.getType();
                 result += estimateFieldSize(sqlType);
             } else if (field.getType().isStruct()) {
-                result += estimateRowSize(field.getType().getFieldList());
+                // should not enter this branch if selected is not null
+                result += estimateRowSize(field.getType().getFieldList(), null);
             } else if (field.getType() instanceof EnumSqlType) {
                 result += 10;
             } else {
@@ -116,8 +126,8 @@ public class MemoryEstimator {
         return result;
     }
 
-    public static long estimateRowSize(RelDataType rowType) {
-        return estimateRowSize(rowType.getFieldList());
+    public static long estimateRowSize(RelDataType rowType, ImmutableBitSet selected) {
+        return estimateRowSize(rowType.getFieldList(), selected);
     }
 
     public static long estimateColumnSize(ColumnMeta columnMeta) {
@@ -131,11 +141,11 @@ public class MemoryEstimator {
             BasicSqlType sqlType = (BasicSqlType) type;
             result += estimateFieldSize(sqlType);
         } else if (type.isStruct()) {
-            result += estimateRowSize(type.getFieldList());
+            result += estimateRowSize(type.getFieldList(), null);
         } else if (type instanceof EnumSqlType) {
             result += 10;
         } else {
-            throw new AssertionError();
+            result += 100;
         }
         return result;
     }
@@ -338,7 +348,7 @@ public class MemoryEstimator {
     public static long calcSelectValuesMemCost(long batchSize, RelDataType selectRelRowType) {
 
         long memoryOfOneRowOfSelectValues =
-            MemoryEstimator.estimateRowSize(selectRelRowType);
+            MemoryEstimator.estimateRowSize(selectRelRowType, null);
         long memoryOfBatchRows = memoryOfOneRowOfSelectValues * batchSize;
         return memoryOfBatchRows;
 

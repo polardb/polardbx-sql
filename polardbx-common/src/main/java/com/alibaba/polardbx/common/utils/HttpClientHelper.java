@@ -31,9 +31,9 @@ import org.apache.commons.lang.StringUtils;
 
 public class HttpClientHelper {
 
-    private static final int   READ_TIMEOUT     = 50000;
-    private static final int   CONNECT_TIMEOUT  = 20000;
-    public static final int    HTTP_OK          = 200;
+    private static final int READ_TIMEOUT = 50000;
+    private static final int CONNECT_TIMEOUT = 20000;
+    public static final int HTTP_OK = 200;
     public static final String DEFAULT_ENCODING = "utf-8";
 
     public static String doGet(String url) {
@@ -70,7 +70,7 @@ public class HttpClientHelper {
         } catch (MalformedURLException e) {
             throw new IllegalArgumentException("url format error.the url is:" + url, e);
         } catch (IOException e) {
-            throw new RuntimeException("connect to " + url + "error.", e);
+            throw new RuntimeException("connect to " + url + " error.", e);
         }
     }
 
@@ -118,7 +118,7 @@ public class HttpClientHelper {
             } else {
                 InputStream is = conn.getErrorStream();
                 String errorMsg = "response not ok,http status:" + i + ",url:" + url + ",params:"
-                                  + (paramStr == null ? "" : paramStr);
+                    + (paramStr == null ? "" : paramStr);
                 if (is != null) {
                     errorMsg += ",responsed error msg is:" + IOUtils.toString(is, DEFAULT_ENCODING);
                 }
@@ -127,7 +127,7 @@ public class HttpClientHelper {
         } catch (MalformedURLException e) {
             throw new IllegalArgumentException("url format error.the url is:" + url, e);
         } catch (IOException e) {
-            throw new RuntimeException("connect to " + url + "error.", e);
+            throw new RuntimeException("connect to " + url + " error.", e);
         }
     }
 
@@ -140,14 +140,14 @@ public class HttpClientHelper {
     }
 
     public static String encodingParams(Map<String, String> params, String encoding)
-                                                                                    throws UnsupportedEncodingException {
+        throws UnsupportedEncodingException {
         if (params == null || params.size() == 0) {
             return null;
         }
 
         StringBuilder sb = new StringBuilder();
         Iterator<String> keys = params.keySet().iterator();
-        for (; keys.hasNext();) {
+        for (; keys.hasNext(); ) {
             String key = keys.next();
             sb.append(key).append("=").append(URLEncoder.encode(params.get(key), encoding));
             if (keys.hasNext()) {

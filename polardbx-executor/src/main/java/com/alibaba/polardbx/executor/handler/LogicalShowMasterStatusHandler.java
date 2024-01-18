@@ -16,18 +16,22 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import com.alibaba.polardbx.rpc.CdcRpcClient;
-import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceBlockingStub;
-import com.alibaba.polardbx.rpc.cdc.MasterStatus;
-import com.alibaba.polardbx.rpc.cdc.Request;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rpc.CdcRpcClient;
+import com.alibaba.polardbx.rpc.cdc.CdcServiceGrpc.CdcServiceBlockingStub;
+import com.alibaba.polardbx.rpc.cdc.MasterStatus;
+import com.alibaba.polardbx.rpc.cdc.Request;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlShowMasterStatus;
 
 /**
  *
@@ -39,10 +43,15 @@ public class LogicalShowMasterStatusHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        final CdcServiceBlockingStub blockingStub = CdcRpcClient.getCdcRpcClient()
-            .getCdcServiceBlockingStub();
-        MasterStatus masterStatus = blockingStub.showMasterStatus(
-            Request.newBuilder().build());
+
+        SqlShowMasterStatus sqlShowMasterStatus = (SqlShowMasterStatus) ((LogicalShow) logicalPlan).getNativeSqlNode();
+        SqlNode with = sqlShowMasterStatus.getWith();
+        String streamName = with == null ? "" : RelUtils.lastStringValue(with);
+        CdcServiceBlockingStub cdcServiceBlockingStub =
+            with == null ? CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub() :
+                CdcRpcClient.getCdcRpcClient().getCdcServiceBlockingStub(streamName);
+        MasterStatus masterStatus = cdcServiceBlockingStub.showMasterStatus(
+            Request.newBuilder().setStreamName(streamName).build());
         ArrayResultCursor result = new ArrayResultCursor("SHOW MASTER STATUS");
         result.addColumn("File", DataTypes.StringType);
         result.addColumn("Position", DataTypes.LongType);
@@ -53,7 +62,7 @@ public class LogicalShowMasterStatusHandler extends HandlerCommon {
         result.addRow(new Object[] {
             masterStatus.getFile(), masterStatus.getPosition(), masterStatus.getBinlogDoDB(),
             masterStatus.getBinlogIgnoreDB(), masterStatus.getExecutedGtidSet()});
-        Channel channel = blockingStub.getChannel();
+        Channel channel = cdcServiceBlockingStub.getChannel();
         if (channel instanceof ManagedChannel) {
             ((ManagedChannel) channel).shutdown();
         }

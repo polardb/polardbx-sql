@@ -49,8 +49,8 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
     private static final String USE_OMC_ALGORITHM = " ALGORITHM=OMC ";
     private static final String OMC_FORCE_TYPE_CONVERSION = "OMC_FORCE_TYPE_CONVERSION=TRUE";
     private static final String OMC_ALTER_TABLE_WITH_GSI = "OMC_ALTER_TABLE_WITH_GSI=TRUE";
-    private static final String OMC_SKIP_BACK_FILL = "OMC_SKIP_BACK_FILL=TRUE";
-    private static final String OMC_USE_SIMPLE_CHECKER = "OMC_USE_SIMPLE_CHECKER=TRUE";
+    private static final String COL_SKIP_BACK_FILL = "COL_SKIP_BACK_FILL=TRUE";
+    private static final String COL_USE_SIMPLE_CHECKER = "COL_USE_SIMPLE_CHECKER=TRUE";
     private static final String SLOW_HINT = "GSI_DEBUG=\"slow\"";
 
     private static String buildCmdExtra(String... params) {
@@ -78,7 +78,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql =
             buildCmdExtra(OMC_ALTER_TABLE_WITH_GSI) + String.format("alter table %s modify column c bigint", tableName)
                 + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
     }
 
     @Test
@@ -118,7 +118,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql =
             buildCmdExtra(OMC_ALTER_TABLE_WITH_GSI) + String.format("alter table %s modify column c bigint", tableName)
                 + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
     }
 
     @Test
@@ -152,11 +152,11 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
 
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b text", tableName)
             + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b blob(10)",
             tableName) + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
     }
 
     @Test
@@ -188,15 +188,17 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b tinyint,",
             tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column c smallint,",
             tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column d mediumint,",
             tableName) + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column e int,", tableName)
             + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format("select * from %s where a=0", tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
@@ -233,15 +235,17 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b varchar(0),",
             tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column c smallint,",
             tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column d mediumint,",
             tableName) + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
         sql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column e int,", tableName)
             + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format("select * from %s where a=0", tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
@@ -309,13 +313,14 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql = String.format("insert into table %s values (0, 1)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = buildCmdExtra(OMC_SKIP_BACK_FILL, OMC_USE_SIMPLE_CHECKER) + String.format(
+        sql = buildCmdExtra(COL_SKIP_BACK_FILL, COL_USE_SIMPLE_CHECKER) + String.format(
             "alter table %s modify column b bigint,", tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
 
-        sql = buildCmdExtra(OMC_USE_SIMPLE_CHECKER) + String.format("alter table %s modify column b bigint,", tableName)
+        sql = buildCmdExtra(COL_USE_SIMPLE_CHECKER) + String.format("alter table %s modify column b bigint,", tableName)
             + USE_OMC_ALGORITHM;
-        JdbcUtil.executeSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format("select * from %s where a=0", tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
@@ -332,39 +337,47 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testOnlineModifyColumnCheckerTest() {
-        String tableName = "omc_checker_test_tbl" + RandomUtils.getStringBetween(1, 5);
-        dropTableIfExists(tableName);
-        String sql = String.format(
-            "create table %s (a int primary key, b int) dbpartition by hash(a) tbpartition by hash(a)",
-            tableName);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        String[] checkerPolicies = new String[] {
+            "OMC_CHECKER_CONCURRENT_POLICY=TABLE_CONCURRENT", "OMC_CHECKER_CONCURRENT_POLICY=DB_CONCURRENT",
+            "OMC_CHECKER_CONCURRENT_POLICY=INSTANCE_CONCURRENT"};
 
-        sql = String.format("insert into table %s values (0, 1)", tableName);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        for (String checkerPolicy : checkerPolicies) {
+            String tableName = "omc_checker_test_tbl" + RandomUtils.getStringBetween(1, 5);
+            dropTableIfExists(tableName);
+            String sql = String.format(
+                "create table %s (a int primary key, b int) dbpartition by hash(a) tbpartition by hash(a) tbpartitions 2",
+                tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = buildCmdExtra(OMC_SKIP_BACK_FILL) + String.format("alter table %s modify column b bigint,", tableName)
-            + USE_OMC_ALGORITHM;
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+            sql = String.format("insert into table %s values (0, 1)", tableName);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = String.format("alter table %s modify column b bigint,", tableName) + USE_OMC_ALGORITHM;
-        JdbcUtil.executeSuccess(tddlConnection, sql);
+            sql = buildCmdExtra(COL_SKIP_BACK_FILL, checkerPolicy) + String.format(
+                "alter table %s modify column b bigint,", tableName) + USE_OMC_ALGORITHM;
+            JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+            rollbackDdl(tddlDatabase1, tableName, tddlConnection);
 
-        sql = String.format("select * from %s where a=0", tableName);
-        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
-        try {
-            Assert.assertTrue(rs.next());
-            Assert.assertEquals(rs.getString(1), "0");
-            Assert.assertEquals(rs.getString(2), "1");
-        } catch (SQLException e) {
-            throw new RuntimeException("", e);
-        } finally {
-            JdbcUtil.close(rs);
+            sql = buildCmdExtra(checkerPolicy) + String.format("alter table %s modify column b bigint,", tableName)
+                + USE_OMC_ALGORITHM;
+            execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+            sql = String.format("select * from %s where a=0", tableName);
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            try {
+                Assert.assertTrue(rs.next());
+                Assert.assertEquals(rs.getString(1), "0");
+                Assert.assertEquals(rs.getString(2), "1");
+            } catch (SQLException e) {
+                throw new RuntimeException("", e);
+            } finally {
+                JdbcUtil.close(rs);
+            }
         }
     }
 
     @Test
     public void testShowTable() throws Exception {
-        String tableName = "omc_show_table_tbl" + RandomUtils.getStringBetween(1, 5);
+        String tableName = "omc_show_table_tbl";
         testShowTableInternal(tableName,
             buildCmdExtra(SLOW_HINT, OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b int,",
                 tableName) + USE_OMC_ALGORITHM);
@@ -406,7 +419,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             };
         Future<Void> result = threadPool.submit(showTableTask);
 
-        JdbcUtil.executeSuccess(tddlConnection, alterSql);
+        execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
         shouldStop.set(true);
 
         result.get();
@@ -415,7 +428,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
     @Test
     public void testShowColumns() throws Exception {
         String tableName = "omc_show_columns_tbl" + RandomUtils.getStringBetween(1, 5);
-
+        ;
         testShowColumnsInternal(tableName,
             buildCmdExtra(SLOW_HINT, OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b int,",
                 tableName) + USE_OMC_ALGORITHM);
@@ -458,7 +471,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             };
         Future<Void> result = threadPool.submit(showTableTask);
 
-        JdbcUtil.executeSuccess(tddlConnection, alterSql);
+        execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
         shouldStop.set(true);
 
         result.get();
@@ -467,7 +480,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
     @Test
     public void testDescTable() throws Exception {
         String tableName = "omc_desc_table_tbl" + RandomUtils.getStringBetween(1, 5);
-
+        ;
         testDescTableInternal(tableName,
             buildCmdExtra(SLOW_HINT, OMC_FORCE_TYPE_CONVERSION) + String.format("alter table %s modify column b int,",
                 tableName) + USE_OMC_ALGORITHM);
@@ -510,7 +523,7 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             };
         Future<Void> result = threadPool.submit(showTableTask);
 
-        JdbcUtil.executeSuccess(tddlConnection, alterSql);
+        execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
         shouldStop.set(true);
 
         result.get();
@@ -532,13 +545,14 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql = String.format("insert into table %s values (0, 1)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = buildCmdExtra(OMC_SKIP_BACK_FILL, OMC_USE_SIMPLE_CHECKER) + String.format(
+        sql = buildCmdExtra(COL_SKIP_BACK_FILL, COL_USE_SIMPLE_CHECKER) + String.format(
             "alter table %s modify column b bigint,", tableName) + USE_OMC_ALGORITHM;
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "");
+        rollbackDdl(tddlDatabase1, tableName, tddlConnection);
 
-        sql = buildCmdExtra(OMC_USE_SIMPLE_CHECKER) + String.format("alter table %s modify column b bigint,", tableName)
+        sql = buildCmdExtra(COL_USE_SIMPLE_CHECKER) + String.format("alter table %s modify column b bigint,", tableName)
             + USE_OMC_ALGORITHM;
-        JdbcUtil.executeSuccess(tddlConnection, sql);
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
 
         sql = String.format("select * from %s where a=0", tableName);
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
@@ -552,4 +566,78 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
             JdbcUtil.close(rs);
         }
     }
+
+    @Test
+    public void testOnlineModifyColumnNullColumn() {
+        String tableName = "omc_null_column";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int ) dbpartition by hash(a)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0,1),(2,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column b bigint null,", tableName) + USE_OMC_ALGORITHM;
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+        sql = String.format("select * from %s where a=0", tableName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "0");
+            Assert.assertEquals(rs.getString(2), "1");
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+
+        sql = String.format("select * from %s where a=2", tableName);
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "2");
+            Assert.assertNull(rs.getString(2));
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
+
+    @Test
+    public void testOnlineModifyColumnColumnName() {
+        String tableName = "```omc_column_name```";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int) dbpartition by hash(a) ", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0,1)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        String sqlMode = JdbcUtil.getSqlMode(tddlConnection);
+        setSqlMode("STRICT_TRANS_TABLES", tddlConnection);
+        try {
+            sql = String.format("alter table %s change column b ```c``` bigint not null unique,", tableName)
+                + USE_OMC_ALGORITHM;
+            execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+            sql = String.format("select * from %s", tableName);
+            ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+            try {
+                Assert.assertTrue(rs.next());
+                Assert.assertEquals(rs.getString(1), "0");
+                Assert.assertEquals(rs.getString(2), "1");
+            } catch (SQLException e) {
+                throw new RuntimeException("", e);
+            } finally {
+                JdbcUtil.close(rs);
+            }
+        } finally {
+            setSqlMode(sqlMode, tddlConnection);
+        }
+    }
+
 }

@@ -24,7 +24,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -47,7 +46,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  *
  * @author xiaowen.guoxw
  */
-@RunWith(Parameterized.class)
+
 public class InsertSelectTest extends AutoCrudBasedLockTestCase {
     //原来的单线程执行
     private static final String HINT1 = "";
@@ -1027,5 +1026,17 @@ public class InsertSelectTest extends AutoCrudBasedLockTestCase {
         ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
         rs.next();
         return rs.getInt(1);
+    }
+
+    @Test
+    public void insertWithSubQueryTest() throws Exception {
+        String sql = "insert into " + baseTwoTableName
+            + " (pk, bigint_test) values(10002323, (SELECT IFNULL((select pk + 50000000 from " + baseOneTableName
+            + " order by pk desc limit 1 ), 20)));";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null, true);
+
+        sql = "select * from " + baseTwoTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 }

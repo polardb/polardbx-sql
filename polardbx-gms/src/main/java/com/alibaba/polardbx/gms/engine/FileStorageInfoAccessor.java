@@ -51,7 +51,7 @@ public class FileStorageInfoAccessor extends AbstractAccessor {
         + " (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     private static final String DELETE_ENGINE = "delete from "
-        + TABLE_NAME + " where engine = ?";
+            + TABLE_NAME + " where engine = ?";
 
     public FileStorageInfoRecord queryLatest(Engine engine) {
         Map<Integer, ParameterContext> params = new HashMap<>();

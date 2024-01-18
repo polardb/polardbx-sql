@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.fragmenter;
 
+import com.alibaba.polardbx.executor.common.PlanTestCommon;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.planner.PlanUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.planner.common.PlanTestCommon;
 import org.apache.calcite.rel.RelNode;
 import org.junit.runners.Parameterized;
 

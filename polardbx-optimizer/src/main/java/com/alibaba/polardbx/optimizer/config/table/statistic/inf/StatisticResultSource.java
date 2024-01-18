@@ -17,5 +17,5 @@
 package com.alibaba.polardbx.optimizer.config.table.statistic.inf;
 
 public enum StatisticResultSource {
-    HLL_SKETCH, CACHE_LINE, HEAVY_HITTER, TOP_N, HISTOGRAM, MULTI
+    HLL_SKETCH, CACHE_LINE, HEAVY_HITTER, TOP_N, HISTOGRAM, MULTI, NULL, CORRECTIONS
 }

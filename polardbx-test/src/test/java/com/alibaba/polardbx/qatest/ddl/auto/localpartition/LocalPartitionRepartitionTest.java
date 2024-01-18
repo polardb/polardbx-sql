@@ -21,9 +21,11 @@ import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;

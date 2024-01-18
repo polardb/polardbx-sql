@@ -32,25 +32,30 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTableOption;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.sharding.DataNodeChooser;
+import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.rule.model.TargetDB;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTable;
+import org.apache.calcite.sql.SqlAddForeignKey;
+import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlDdlNodes;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlKind;
-import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -85,7 +90,8 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
                                                                String logicalTableName,
                                                                String sql,
                                                                List<String> columns,
-                                                               ExecutionContext executionContext) {
+                                                               ExecutionContext executionContext,
+                                                               RelOptCluster cluster) {
         SqlIdentifier logicalTableNameNode = new SqlIdentifier(logicalTableName, SqlParserPos.ZERO);
         Map<SqlAlterTable.ColumnOpt, List<String>> columnOpts = new HashMap<>();
         columnOpts.put(SqlAlterTable.ColumnOpt.ADD, columns);
@@ -94,7 +100,6 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
             SqlDdlNodes.alterTable(null, logicalTableNameNode, columnOpts, sql, null, new ArrayList<>(),
                 SqlParserPos.ZERO);
 
-        final RelOptCluster cluster = SqlConverter.getInstance(executionContext).createRelOptCluster(null);
         AlterTable alterTable = AlterTable.create(cluster, sqlAlterTable, logicalTableNameNode, null);
 
         LogicalAlterTable logicalAlterTable = LogicalAlterTable.create(alterTable);
@@ -139,6 +144,7 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
     public void buildTableRuleAndTopology() {
         buildExistingTableRule(preparedData.getTableName());
         buildChangedTableTopology(preparedData.getSchemaName(), preparedData.getTableName());
+        buildAlterReferenceTableTopology();
     }
 
     @Override
@@ -155,6 +161,7 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
     @Override
     protected void buildSqlTemplate() {
         super.buildSqlTemplate();
+        sqlTemplateFkRewrite();
         this.sequenceBean = ((SqlAlterTable) this.sqlTemplate).getAutoIncrement();
     }
 
@@ -176,7 +183,7 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
         // Only support INSTANT ADD COLUMN when all the Alter Table items are Add Column.
         if (instantAddColumnSupported && addColumns != null && addColumns.size() == sqlAlterTable.getAlters().size()) {
             // Check if underlying physical database supports INSTANT ADD COLUMN.
-            DataSource dataSource = CommonMetaChanger.getPhyDataSource(preparedData.getSchemaName(), ddl.getDbIndex());
+            DataSource dataSource = DdlHelper.getPhyDataSource(preparedData.getSchemaName(), ddl.getDbIndex());
             if (TableInfoManager.isInstantAddColumnSupportedByPhyDb(dataSource, ddl.getDbIndex())) {
                 String newSql = reorgColumnsToGenerateNewPhysicalDdl(sqlAlterTable);
                 if (TStringUtil.isNotEmpty(newSql)) {
@@ -194,7 +201,8 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
 
     private String reorgColumnsToGenerateNewPhysicalDdl(SqlAlterTable sqlAlterTable) {
         SQLAlterTableStatement alterTableStmt =
-            (SQLAlterTableStatement) SQLUtils.parseStatements(sqlAlterTable.getSourceSql(), JdbcConstants.MYSQL).get(0);
+            (SQLAlterTableStatement) SQLUtils.parseStatementsWithDefaultFeatures(sqlAlterTable.getSourceSql(),
+                JdbcConstants.MYSQL).get(0);
 
         if (GeneralUtil.isNotEmpty(alterTableStmt.getTableOptions())) {
             for (SQLAssignItem tableOption : alterTableStmt.getTableOptions()) {
@@ -296,4 +304,70 @@ public class AlterTableBuilder extends DdlPhyPlanBuilder {
         return logicalAlterTable;
     }
 
+    public void buildAlterReferenceTableTopology() {
+        // Dealing extra referenced tables.
+        if (preparedData.getReferencedTables() != null) {
+            for (String referencedTable : preparedData.getReferencedTables()) {
+                final List<List<TargetDB>> targetDBs =
+                    DataNodeChooser.shardChangeTable(preparedData.getSchemaName(), referencedTable, executionContext);
+                if (OptimizerContext.getContext(preparedData.getSchemaName()).getRuleManager()
+                    .isBroadCast(referencedTable)) {
+                    final String tableName = targetDBs.get(0).get(0).getTableNames().stream().findFirst().orElse(null);
+                    assert tableName != null;
+                    for (Map.Entry<String, List<List<String>>> entry : tableTopology.entrySet()) {
+                        for (List<String> l : entry.getValue()) {
+                            l.add(tableName);
+                        }
+                    }
+                } else {
+                    final Map<String, List<List<String>>> refTopo =
+                        convertTargetDBs(preparedData.getSchemaName(), targetDBs);
+                    assert refTopo.size() == tableTopology.size();
+                    for (Map.Entry<String, List<List<String>>> entry : refTopo.entrySet()) {
+                        final List<List<String>> match = tableTopology.get(entry.getKey());
+                        assert match != null;
+                        assert match.size() == entry.getValue().size();
+                        // Concat one by one.
+                        for (int i = 0; i < match.size(); ++i) {
+                            match.get(i).addAll(entry.getValue().get(i));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public void sqlTemplateFkRewrite() {
+        final SqlAlterTable sqlTemplate = (SqlAlterTable) this.sqlTemplate;
+        if (sqlTemplate.getAlters().size() == 0 || !(sqlTemplate.getAlters().get(0) instanceof SqlAddForeignKey)) {
+            return;
+        }
+        SqlAddForeignKey sqlAddForeignKey = (SqlAddForeignKey) sqlTemplate.getAlters().get(0);
+        if (sqlAddForeignKey.isPushDown()) {
+            return;
+        }
+
+        // create foreign key constraints symbol
+        String symbol =
+            ForeignKeyUtils.getForeignKeyConstraintName(preparedData.getSchemaName(), preparedData.getTableName());
+
+        if (sqlAddForeignKey.getIndexName() == null) {
+            // Rewrite foreign key to normal index.
+            SqlPrettyWriter writer = new SqlPrettyWriter(MysqlSqlDialect.DEFAULT);
+            writer.setAlwaysUseParentheses(true);
+            writer.setSelectListItemsOnSeparateLines(false);
+            writer.setIndentation(0);
+            final int leftPrec = sqlTemplate.getOperator().getLeftPrec();
+            final int rightPrec = sqlTemplate.getOperator().getRightPrec();
+            sqlTemplate.getAlters().clear();
+            sqlTemplate.getAlters().add(new SqlAddIndex(SqlParserPos.ZERO,
+                sqlAddForeignKey.getConstraint() == null ? new SqlIdentifier(symbol, SqlParserPos.ZERO) :
+                    sqlAddForeignKey.getConstraint(),
+                sqlAddForeignKey.getIndexDef()));
+            sqlTemplate.unparse(writer, leftPrec, rightPrec, true);
+            sqlTemplate.setSourceSql(writer.toSqlString().getSql());
+        }
+
+        this.sqlTemplate = sqlTemplate;
+    }
 }

@@ -23,9 +23,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.optimizer.statis.SQLRecord;
@@ -55,7 +53,12 @@ public class DdlContext {
     private transient long parentJobId = 0;
     private transient long parentTaskId = 0;
     private transient boolean forRollback = false;
+    private transient boolean isFkRepartition = false;
     private DdlContext parentDdlContext = null;
+    private boolean ignoreCdcGsiMark = false;
+    private boolean isGSI = false;
+    private DdlState pausedPolicy = DdlState.RUNNING;
+    private DdlState rollbackPausedPolicy = DdlState.ROLLBACK_RUNNING;
 
     private ConcurrentHashMap<Long, AtomicBoolean> physicalDdlInjectionFlag = new ConcurrentHashMap<>();
 
@@ -68,6 +71,8 @@ public class DdlContext {
      * whether current execution is interrupted
      */
     private transient AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
+
+    private transient AtomicReference<Boolean> rollbackToReady = new AtomicReference<>(false);
 
     private transient AtomicReference<LeaseRecord> jobLease = new AtomicReference<>();
 
@@ -89,6 +94,15 @@ public class DdlContext {
     private Map<String, Object> extraCmds = new HashMap<>();
     private String encoding;
     private String timeZone;
+
+    private Boolean explain;
+
+    private String errorMessage;
+
+    private String sqlMode;
+
+    // rewrite origin sql for different fk naming behaviours in 5.7 & 8.0
+    private String foreignKeyOriginalSql;
 
     public static DdlContext create(String schemaName, String objectName, DdlType ddlType,
                                     ExecutionContext executionContext) {
@@ -118,7 +132,8 @@ public class DdlContext {
             ddlStmt = executionContext.getOriginSql();
         }
 
-        ddlContext.setDdlStmt(ddlStmt);
+        String ddlStmtWithoutDebugHint = filterOutDebugHint(ddlStmt, executionContext);
+        ddlContext.setDdlStmt(ddlStmtWithoutDebugHint);
 
         ddlContext.addDataPassed(SQLRecord.CONN_ID, executionContext.getConnId());
         ddlContext.addDataPassed(SQLRecord.CLIENT_IP, executionContext.getClientIp());
@@ -146,7 +161,23 @@ public class DdlContext {
             ddlContext.setParentDdlContext(executionContext.getDdlContext().getParentDdlContext());
         }
 
+        if (executionContext.getParamManager().getBoolean(ConnectionParams.EXPLAIN_DDL_PHYSICAL_OPERATION)
+            || executionContext.getExplain() != null) {
+            ddlContext.setExplain(true);
+        } else {
+            ddlContext.setExplain(false);
+        }
+        ddlContext.setSqlMode(executionContext.getSqlMode());
         return ddlContext;
+    }
+
+    private static String filterOutDebugHint(String origStmt, ExecutionContext executionContext) {
+        if (executionContext.getParamManager().getString(ConnectionParams.DDL_ENGINE_DEBUG) != null ||
+            TStringUtil.containsIgnoreCase(origStmt, ConnectionProperties.DDL_ENGINE_DEBUG)) {
+            // Remove the debug hint to avoid running repeatedly in potentially subsequent recovery.
+            return TStringUtil.substringAfterLast(origStmt, "*/");
+        }
+        return origStmt;
     }
 
     public DdlContext copy() {
@@ -157,6 +188,8 @@ public class DdlContext {
         res.setObjectName(getObjectName());
         res.setTraceId(getTraceId());
         res.setDdlStmt(getDdlStmt());
+        res.setPausedPolicy(getPausedPolicy());
+        res.setRollbackPausedPolicy(getRollbackPausedPolicy());
 
         GeneralUtil.addAllIfNotEmpty(getResources(), res.resources);
         GeneralUtil.addAllIfNotEmpty(physicalDdlInjectionFlag, res.physicalDdlInjectionFlag);
@@ -168,6 +201,9 @@ public class DdlContext {
         res.setAsyncMode(isAsyncMode());
         res.setUsingWarning(isUsingWarning());
 
+        res.setExplain(getExplain());
+        res.setSqlMode(getSqlMode());
+
         GeneralUtil.addAllIfNotEmpty(getDataPassed(), res.dataPassed);
         GeneralUtil.addAllIfNotEmpty(getServerVariables(), res.serverVariables);
         GeneralUtil.addAllIfNotEmpty(getUserDefVariables(), res.userDefVariables);
@@ -177,6 +213,7 @@ public class DdlContext {
         res.setEncoding(getEncoding());
         res.setTimeZone(getTimeZone());
         res.setParentDdlContext(getParentDdlContext());
+        res.setForeignKeyOriginalSql(getForeignKeyOriginalSql());
 
         return res;
     }
@@ -343,6 +380,10 @@ public class DdlContext {
         return false;
     }
 
+    public Boolean isRollbackToReady() {
+        return this.rollbackToReady.get();
+    }
+
     public AtomicReference<LeaseRecord> getJobLease() {
         return this.jobLease;
     }
@@ -353,6 +394,14 @@ public class DdlContext {
 
     public void setInterruptedAsFalse() {
         this.interrupted.set(false);
+    }
+
+    public void setRollbackToReadyAsTrue() {
+        this.rollbackToReady.set(true);
+    }
+
+    public void setRollbackToReadyAsFalse() {
+        this.rollbackToReady.set(false);
     }
 
     public boolean compareAndSetPhysicalDdlInjectionFlag(long taskId) {
@@ -408,11 +457,75 @@ public class DdlContext {
         this.forRollback = forRollback;
     }
 
+    public boolean isFkRepartition() {
+        return this.isFkRepartition;
+    }
+
+    public void setFkRepartition(final boolean isFkRepartition) {
+        this.isFkRepartition = isFkRepartition;
+    }
+
     public DdlContext getParentDdlContext() {
         return parentDdlContext;
     }
 
     public void setParentDdlContext(DdlContext parentDdlContext) {
         this.parentDdlContext = parentDdlContext;
+    }
+
+    public Boolean getExplain() {
+        return explain;
+    }
+
+    public void setExplain(Boolean explain) {
+        this.explain = explain;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
+    public String getSqlMode() {
+        return sqlMode;
+    }
+
+    public void setSqlMode(String sqlMode) {
+        this.sqlMode = sqlMode;
+    }
+
+    public boolean isIgnoreCdcGsiMark() {
+        return ignoreCdcGsiMark;
+    }
+
+    public void setIgnoreCdcGsiMark(boolean ignoreCdcGsiMark) {
+        this.ignoreCdcGsiMark = ignoreCdcGsiMark;
+    }
+
+    public DdlState getPausedPolicy() {
+        return pausedPolicy;
+    }
+
+    public void setPausedPolicy(DdlState pausedPolicy) {
+        this.pausedPolicy = pausedPolicy;
+    }
+
+    public DdlState getRollbackPausedPolicy() {
+        return rollbackPausedPolicy;
+    }
+
+    public void setRollbackPausedPolicy(DdlState rollbackPausedPolicy) {
+        this.rollbackPausedPolicy = rollbackPausedPolicy;
+    }
+
+    public void setForeignKeyOriginalSql(String foreignKeyOriginalSql) {
+        this.foreignKeyOriginalSql = foreignKeyOriginalSql;
+    }
+
+    public String getForeignKeyOriginalSql() {
+        return this.foreignKeyOriginalSql;
     }
 }

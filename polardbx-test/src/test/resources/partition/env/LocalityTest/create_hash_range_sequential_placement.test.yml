@@ -1,0 +1,283 @@
+storageList: [ $dn1, $dn2 ]
+dbName: "test_locality_db_seq"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "create database test_locality_db_seq mode = auto locality = 'dn=$dn1,$dn2'"
+      - "use test_locality_db_seq"
+      - "CREATE TABLE IF NOT EXISTS `t0` (
+           `c1` bigint NOT NULL,
+           `c2` date NOT NULL,
+           `c3` double NOT NULL
+         )
+         PARTITION BY RANGE(`c1`) PARTITIONS 16
+         (PARTITION `p1` VALUES LESS THAN (10310) ENGINE = InnoDB,
+         PARTITION `p2` VALUES LESS THAN (259216) ENGINE = InnoDB,
+         PARTITION `p3` VALUES LESS THAN (310435) ENGINE = InnoDB,
+         PARTITION `p4` VALUES LESS THAN (318647) ENGINE = InnoDB,
+         PARTITION `p5` VALUES LESS THAN (381890) ENGINE = InnoDB,
+         PARTITION `p6` VALUES LESS THAN (424876) ENGINE = InnoDB,
+         PARTITION `p7` VALUES LESS THAN (468168) ENGINE = InnoDB,
+         PARTITION `p8` VALUES LESS THAN (474072) ENGINE = InnoDB,
+         PARTITION `p9` VALUES LESS THAN (541988) ENGINE = InnoDB,
+         PARTITION `p10` VALUES LESS THAN (788713) ENGINE = InnoDB,
+         PARTITION `p11` VALUES LESS THAN (804024) ENGINE = InnoDB,
+         PARTITION `p12` VALUES LESS THAN (879676) ENGINE = InnoDB,
+         PARTITION `p13` VALUES LESS THAN (912081) ENGINE = InnoDB,
+         PARTITION `p14` VALUES LESS THAN (916915) ENGINE = InnoDB,
+         PARTITION `p15` VALUES LESS THAN (928310) ENGINE = InnoDB,
+         PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+         locality='hash_range_sequential_placement=on'"
+      - "CREATE TABLE IF NOT EXISTS `t1` (
+           `c1` bigint NOT NULL,
+           `c2` date NOT NULL,
+           `c3` double NOT NULL
+         )
+         PARTITION BY HASH(`c1`) PARTITIONS 16
+         (PARTITION `p1` VALUES LESS THAN (10310) ENGINE = InnoDB,
+         PARTITION `p2` VALUES LESS THAN (259216) ENGINE = InnoDB,
+         PARTITION `p3` VALUES LESS THAN (310435) ENGINE = InnoDB,
+         PARTITION `p4` VALUES LESS THAN (318647) ENGINE = InnoDB,
+         PARTITION `p5` VALUES LESS THAN (381890) ENGINE = InnoDB,
+         PARTITION `p6` VALUES LESS THAN (424876) ENGINE = InnoDB,
+         PARTITION `p7` VALUES LESS THAN (468168) ENGINE = InnoDB,
+         PARTITION `p8` VALUES LESS THAN (474072) ENGINE = InnoDB,
+         PARTITION `p9` VALUES LESS THAN (541988) ENGINE = InnoDB,
+         PARTITION `p10` VALUES LESS THAN (788713) ENGINE = InnoDB,
+         PARTITION `p11` VALUES LESS THAN (804024) ENGINE = InnoDB,
+         PARTITION `p12` VALUES LESS THAN (879676) ENGINE = InnoDB,
+         PARTITION `p13` VALUES LESS THAN (912081) ENGINE = InnoDB,
+         PARTITION `p14` VALUES LESS THAN (916915) ENGINE = InnoDB,
+         PARTITION `p15` VALUES LESS THAN (928310) ENGINE = InnoDB,
+         PARTITION `p16` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+         locality='hash_range_sequential_placement=on'"
+#      - "CREATE TABLE IF NOT EXISTS `t3` (
+#           `c1` bigint NOT NULL,
+#           `c2` date NOT NULL,
+#           `c3` double NOT NULL
+#         )
+#         PARTITION BY HASH(`c1`) PARTITIONS 16
+#         (PARTITION `p1` VALUES LESS THAN (10310) ENGINE = InnoDB,
+#         PARTITION `p2` VALUES LESS THAN (310435) ENGINE = InnoDB,
+#         PARTITION `p3` VALUES LESS THAN (381890) ENGINE = InnoDB,
+#         PARTITION `p4` VALUES LESS THAN (259216) ENGINE = InnoDB,
+#         PARTITION `p5` VALUES LESS THAN (318647) ENGINE = InnoDB,
+#         PARTITION `p6` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB,
+#         PARTITION `p7` VALUES LESS THAN (928310) ENGINE = InnoDB,
+#         PARTITION `p8` VALUES LESS THAN (474072) ENGINE = InnoDB,
+#         PARTITION `p9` VALUES LESS THAN (879676) ENGINE = InnoDB,
+#         PARTITION `p10` VALUES LESS THAN (916915) ENGINE = InnoDB,
+#         PARTITION `p11` VALUES LESS THAN (424876) ENGINE = InnoDB,
+#         PARTITION `p12` VALUES LESS THAN (468168) ENGINE = InnoDB,
+#         PARTITION `p13` VALUES LESS THAN (788713) ENGINE = InnoDB,
+#         PARTITION `p14` VALUES LESS THAN (541988) ENGINE = InnoDB,
+#         PARTITION `p15` VALUES LESS THAN (912081) ENGINE = InnoDB,
+#         PARTITION `p16` VALUES LESS THAN (804024) ENGINE = InnoDB)
+#         locality='hash_range_sequential_placement=on'"
+#      - "CREATE TABLE IF NOT EXISTS `t4` (
+#           `c1` bigint NOT NULL,
+#           `c2` date NOT NULL,
+#           `c3` double NOT NULL
+#         )
+#         PARTITION BY HASH(`c1`) PARTITIONS 16
+#         (PARTITION `p1` VALUES LESS THAN (10310) ENGINE = InnoDB,
+#         PARTITION `p2` VALUES LESS THAN (310435) ENGINE = InnoDB,
+#         PARTITION `p3` VALUES LESS THAN (381890) ENGINE = InnoDB,
+#         PARTITION `p4` VALUES LESS THAN (259216) ENGINE = InnoDB,
+#         PARTITION `p5` VALUES LESS THAN (318647) ENGINE = InnoDB,
+#         PARTITION `p6` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB),
+#         PARTITION `p7` VALUES LESS THAN (928310) ENGINE = InnoDB,
+#         PARTITION `p8` VALUES LESS THAN (474072) ENGINE = InnoDB,
+#         PARTITION `p9` VALUES LESS THAN (879676) ENGINE = InnoDB,
+#         PARTITION `p10` VALUES LESS THAN (916915) ENGINE = InnoDB,
+#         PARTITION `p11` VALUES LESS THAN (424876) ENGINE = InnoDB,
+#         PARTITION `p12` VALUES LESS THAN (468168) ENGINE = InnoDB,
+#         PARTITION `p13` VALUES LESS THAN (788713) ENGINE = InnoDB,
+#         PARTITION `p14` VALUES LESS THAN (541988) ENGINE = InnoDB,
+#         PARTITION `p15` VALUES LESS THAN (912081) ENGINE = InnoDB,
+#         PARTITION `p16` VALUES LESS THAN (804024) ENGINE = InnoDB,
+#         locality='hash_range_sequential_placement=on'"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t0 table ""
+        - t1 table ""
+        - test_locality_db7 database ""
+      tableGroupMatchCheck:
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+        - t1.p1 partition $dn1
+        - t1.p2 partition $dn1
+        - t1.p3 partition $dn1
+        - t1.p4 partition $dn1
+        - t1.p5 partition $dn1
+        - t1.p6 partition $dn1
+        - t1.p7 partition $dn1
+        - t1.p8 partition $dn1
+        - t1.p9 partition $dn2
+        - t1.p10 partition $dn2
+        - t1.p11 partition $dn2
+        - t1.p12 partition $dn2
+        - t1.p13 partition $dn2
+        - t1.p14 partition $dn2
+        - t1.p15 partition $dn2
+        - t1.p16 partition $dn2
+        - t2.p1 partition $dn1
+        - t2.p2 partition $dn1
+        - t2.p3 partition $dn1
+        - t2.p4 partition $dn1
+        - t2.p5 partition $dn1
+        - t2.p6 partition $dn1
+        - t2.p7 partition $dn1
+        - t2.p8 partition $dn1
+        - t2.p9 partition $dn2
+        - t2.p10 partition $dn2
+        - t2.p11 partition $dn2
+        - t2.p12 partition $dn2
+        - t2.p13 partition $dn2
+        - t2.p14 partition $dn2
+        - t2.p15 partition $dn2
+        - t2.p16 partition $dn2
+#        - t3.p1 partition $dn1
+#        - t3.p4 partition $dn1
+#        - t3.p2 partition $dn1
+#        - t3.p5 partition $dn1
+#        - t3.p3 partition $dn1
+#        - t3.p11 partition $dn1
+#        - t3.p12 partition $dn1
+#        - t3.p8 partition $dn1
+#        - t3.p14 partition $dn2
+#        - t3.p13 partition $dn2
+#        - t3.p16 partition $dn2
+#        - t3.p9 partition $dn2
+#        - t3.p15 partition $dn2
+#        - t3.p10 partition $dn2
+#        - t3.p7 partition $dn2
+#        - t3.p6 partition $dn2
+#        - t4.p1 partition $dn1
+#        - t4.p4 partition $dn1
+#        - t4.p2 partition $dn1
+#        - t4.p5 partition $dn1
+#        - t4.p3 partition $dn1
+#        - t4.p11 partition $dn1
+#        - t4.p12 partition $dn1
+#        - t4.p8 partition $dn1
+#        - t4.p14 partition $dn2
+#        - t4.p13 partition $dn2
+#        - t4.p16 partition $dn2
+#        - t4.p9 partition $dn2
+#        - t4.p15 partition $dn2
+#        - t4.p10 partition $dn2
+#        - t4.p7 partition $dn2
+#        - t4.p6 partition $dn2
+  - prepareDDls:
+      - "use polardbx"
+      - "use test_locality_db_seq"
+      - "rebalance database test_locality_db_seq drain_node = '$dn1' "
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'test_locality_db_seq';###0"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t0 table ""
+        - t1 table ""
+        - test_locality_db7 database ""
+      tableGroupMatchCheck:
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+  - prepareDDls:
+      - "use polardbx"
+      - "use test_locality_db_seq"
+      - "rebalance database"
+    checkTriggers:
+      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'test_locality_db_seq';###0"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - t0 table ""
+        - t1 table ""
+        - test_locality_db7 database ""
+      tableGroupMatchCheck:
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+
+      topologyCheck:
+        - t1.p1 partition $dn1
+        - t1.p2 partition $dn1
+        - t1.p3 partition $dn1
+        - t1.p4 partition $dn1
+        - t1.p5 partition $dn1
+        - t1.p6 partition $dn1
+        - t1.p7 partition $dn1
+        - t1.p8 partition $dn1
+        - t1.p9 partition $dn2
+        - t1.p10 partition $dn2
+        - t1.p11 partition $dn2
+        - t1.p12 partition $dn2
+        - t1.p13 partition $dn2
+        - t1.p14 partition $dn2
+        - t1.p15 partition $dn2
+        - t1.p16 partition $dn2
+        - t2.p1 partition $dn1
+        - t2.p2 partition $dn1
+        - t2.p3 partition $dn1
+        - t2.p4 partition $dn1
+        - t2.p5 partition $dn1
+        - t2.p6 partition $dn1
+        - t2.p7 partition $dn1
+        - t2.p8 partition $dn1
+        - t2.p9 partition $dn2
+        - t2.p10 partition $dn2
+        - t2.p11 partition $dn2
+        - t2.p12 partition $dn2
+        - t2.p13 partition $dn2
+        - t2.p14 partition $dn2
+        - t2.p15 partition $dn2
+        - t2.p16 partition $dn2
+#        - t3.p1 partition $dn1
+#        - t3.p4 partition $dn1
+#        - t3.p2 partition $dn1
+#        - t3.p5 partition $dn1
+#        - t3.p3 partition $dn1
+#        - t3.p11 partition $dn1
+#        - t3.p12 partition $dn1
+#        - t3.p8 partition $dn1
+#        - t3.p14 partition $dn2
+#        - t3.p13 partition $dn2
+#        - t3.p16 partition $dn2
+#        - t3.p9 partition $dn2
+#        - t3.p15 partition $dn2
+#        - t3.p10 partition $dn2
+#        - t3.p7 partition $dn2
+#        - t3.p6 partition $dn2
+#        - t4.p1 partition $dn1
+#        - t4.p4 partition $dn1
+#        - t4.p2 partition $dn1
+#        - t4.p5 partition $dn1
+#        - t4.p3 partition $dn1
+#        - t4.p11 partition $dn1
+#        - t4.p12 partition $dn1
+#        - t4.p8 partition $dn1
+#        - t4.p14 partition $dn2
+#        - t4.p13 partition $dn2
+#        - t4.p16 partition $dn2
+#        - t4.p9 partition $dn2
+#        - t4.p15 partition $dn2
+#        - t4.p10 partition $dn2
+#        - t4.p7 partition $dn2
+#        - t4.p6 partition $dn2
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "drop database if exists test_locality_db_seq;"

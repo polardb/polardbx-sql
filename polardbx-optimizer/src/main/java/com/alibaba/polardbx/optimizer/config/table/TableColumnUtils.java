@@ -18,13 +18,18 @@ package com.alibaba.polardbx.optimizer.config.table;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnUniqueKey;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLNotNullConstraint;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptTable;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlNode;
@@ -33,8 +38,8 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -42,7 +47,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_KEY_NAME;
 import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
+import static org.apache.calcite.sql.type.SqlTypeName.BIGINT;
+import static org.apache.calcite.sql.type.SqlTypeName.BIGINT_UNSIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.INTEGER;
+import static org.apache.calcite.sql.type.SqlTypeName.INTEGER_UNSIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.MEDIUMINT;
+import static org.apache.calcite.sql.type.SqlTypeName.MEDIUMINT_UNSIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.SIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.SMALLINT;
+import static org.apache.calcite.sql.type.SqlTypeName.SMALLINT_UNSIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.TINYINT;
+import static org.apache.calcite.sql.type.SqlTypeName.TINYINT_UNSIGNED;
+import static org.apache.calcite.sql.type.SqlTypeName.UNSIGNED;
 
 /**
  * @author qianjing
@@ -63,6 +82,11 @@ public class TableColumnUtils {
         ColumnMeta columnMeta = tableMeta.getColumn(columnName);
         if (columnMeta == null || columnMeta.getStatus() == ColumnStatus.MULTI_WRITE_TARGET) {
             // Not in table meta's all column list, must be hidden
+            return true;
+        }
+
+        if (IMPLICIT_COL_NAME.equalsIgnoreCase(columnName) || IMPLICIT_KEY_NAME.equalsIgnoreCase(columnName)) {
+            // hide IMPLICIT_KEY_NAME from all dal command
             return true;
         }
 
@@ -108,6 +132,22 @@ public class TableColumnUtils {
         return tableColumnMeta.isModifying();
     }
 
+    public static boolean isModifyPrimaryKey(String schemaName, String tableName, ExecutionContext ec) {
+        // In OMC execution, may not be doing column multi-write
+        SchemaManager sm;
+        if (ec != null) {
+            sm = ec.getSchemaManager(schemaName);
+        } else {
+            sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        }
+        final TableMeta table = sm.getTable(tableName);
+        final TableColumnMeta tableColumnMeta = table.getTableColumnMeta();
+        if (tableColumnMeta == null) {
+            return false;
+        }
+        return tableColumnMeta.isModifyPrimaryKey();
+    }
+
     public static Pair<String, String> getColumnMultiWriteMapping(TableColumnMeta tableColumnMeta,
                                                                   ExecutionContext ec) {
         Pair<String, String> columnMultiWriteMapping =
@@ -130,17 +170,45 @@ public class TableColumnUtils {
         return columnMultiWriteMapping;
     }
 
-    public static String getDataDefFromColumnDef(String columnName, String colDef) {
+    public static String getDataDefFromColumnDef(SQLColumnDefinition colDef) {
         // Just remove column name from column def
-        colDef = colDef.trim();
-        return StringUtils.replaceOnceIgnoreCase(colDef, columnName, "").replace("`", "");
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        return tmpColDef.toString();
     }
 
-    public static String getDataDefFromColumnDefWithoutUnique(String columnName, String colDef) {
+    public static String getDataDefFromColumnDefNoDefault(SQLColumnDefinition colDef) {
+        // Just remove column name and defaultExpr from column def
+        SQLColumnDefinition tmpColDef = new SQLColumnDefinition();
+        tmpColDef.setDbType(colDef.getDbType());
+        tmpColDef.setDataType(colDef.getDataType());
+        tmpColDef.setName("");
+        return tmpColDef.toString();
+    }
+
+    public static String getDataDefFromColumnDefWithoutUnique(SQLColumnDefinition colDef) {
         // Just remove column name from column def
-        colDef = StringUtils.replaceOnceIgnoreCase(colDef, "UNIQUE", "");
-        colDef = colDef.trim();
-        return StringUtils.replaceOnceIgnoreCase(colDef, columnName, "").replace("`", "");
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        tmpColDef.getConstraints().removeIf(constraint -> constraint instanceof SQLColumnUniqueKey);
+        return tmpColDef.toString();
+    }
+
+    public static String getDataDefFromColumnDefWithoutUniqueNullable(SQLColumnDefinition colDef) {
+        // Just remove column name from column def
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        tmpColDef.getConstraints().removeIf(constraint -> constraint instanceof SQLColumnUniqueKey);
+        tmpColDef.getConstraints().removeIf(sqlColumnConstraint -> sqlColumnConstraint instanceof SQLNotNullConstraint);
+        return tmpColDef.toString();
+    }
+
+    public static String getDataDefFromColumnDefWithoutNullable(SQLColumnDefinition colDef) {
+        // Just remove column name from column def
+        SQLColumnDefinition tmpColDef = colDef.clone();
+        tmpColDef.setName("");
+        tmpColDef.getConstraints().removeIf(sqlColumnConstraint -> sqlColumnConstraint instanceof SQLNotNullConstraint);
+        return tmpColDef.toString();
     }
 
     public static String generateTemporaryName(String name) {
@@ -284,5 +352,76 @@ public class TableColumnUtils {
             updateList.add(new SqlBasicCall(SqlStdOperatorTable.EQUALS,
                 ImmutableList.of(targetColumnId, alterTypeFunc).toArray(new SqlNode[2]), SqlParserPos.ZERO));
         }
+    }
+
+    public static final List<SqlTypeName> SIGNED_INT_TYPES = ImmutableList.of(
+        TINYINT,
+        SMALLINT,
+        MEDIUMINT,
+        INTEGER,
+        SIGNED,
+        BIGINT);
+
+    public static final List<SqlTypeName> UNSIGNED_INT_TYPES = ImmutableList.of(
+        TINYINT_UNSIGNED,
+        SMALLINT_UNSIGNED,
+        MEDIUMINT_UNSIGNED,
+        INTEGER_UNSIGNED,
+        UNSIGNED,
+        BIGINT_UNSIGNED);
+
+    public static boolean canConvertBetweenTypeFileStorage(RelDataType source, RelDataType target,
+                                                           SqlDataTypeSpec sqlDataTypeSpec) {
+        SqlTypeName sourceType = source.getSqlTypeName();
+        SqlTypeName targetType = target.getSqlTypeName();
+        if (UNSUPPORTED_TYPE.contains(sourceType) || UNSUPPORTED_TYPE.contains(targetType)) {
+            return false;
+        }
+
+        // same data type
+        if (sourceType == targetType) {
+            switch (sourceType) {
+            case CHAR:
+            case VARCHAR:
+                if (StringUtils.isEmpty(sqlDataTypeSpec.getCharSetName()) &&
+                    StringUtils.isEmpty(sqlDataTypeSpec.getCollationName()) &&
+                    source.getPrecision() <= target.getPrecision()) {
+                    return true;
+                }
+                return source.getPrecision() <= target.getPrecision() &&
+                    (source.getCharset().equals(target.getCharset())) &&
+                    (source.getCollation().equals(target.getCollation()));
+            case BOOLEAN:
+            case TINYINT:
+            case SMALLINT:
+            case MEDIUMINT:
+            case INTEGER:
+            case SIGNED:
+            case BIGINT:
+            case TINYINT_UNSIGNED:
+            case SMALLINT_UNSIGNED:
+            case MEDIUMINT_UNSIGNED:
+            case INTEGER_UNSIGNED:
+            case UNSIGNED:
+            case BIGINT_UNSIGNED:
+            case FLOAT:
+            case REAL:
+            case DOUBLE:
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        if (SIGNED_INT_TYPES.contains(sourceType)
+            && SIGNED_INT_TYPES.indexOf(sourceType) < SIGNED_INT_TYPES.indexOf(targetType)) {
+            return true;
+        }
+
+        if (UNSIGNED_INT_TYPES.contains(sourceType)
+            && UNSIGNED_INT_TYPES.indexOf(sourceType) < UNSIGNED_INT_TYPES.indexOf(targetType)) {
+            return true;
+        }
+        return false;
     }
 }

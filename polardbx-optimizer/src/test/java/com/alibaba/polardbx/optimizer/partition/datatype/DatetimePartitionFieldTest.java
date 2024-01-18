@@ -24,15 +24,11 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DateTimeType;
-import com.alibaba.polardbx.optimizer.core.datatype.DateType;
-import com.alibaba.polardbx.optimizer.core.datatype.StringType;
+import com.alibaba.polardbx.optimizer.core.datatype.LongType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
-import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumHasher;
-import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -251,7 +247,6 @@ public class DatetimePartitionFieldTest {
         Assert.assertTrue(endPoints[1] == true);
     }
 
-
     @Test
     public void testDatetimePartitionFieldHashCode() {
 
@@ -264,28 +259,28 @@ public class DatetimePartitionFieldTest {
         fields[0] = f1;
         String f1StrVal = f1.stringValue().toStringUtf8();
         long f1HashVal = PartitionFieldTestUtil.calcHashCodeForKey(1, fields);
-        
+
         PartitionField f2 = new DatetimePartitionField(new DateTimeType(0));
         f2.store("9999-99-99 99:99:99", new VarcharType(), sessionProperties);
         fields[0] = f2;
         String f2StrVal = f2.stringValue().toStringUtf8();
         long f2HashVal = PartitionFieldTestUtil.calcHashCodeForKey(1, fields);
-        
+
         PartitionField f3 = new DatetimePartitionField(new DateTimeType(0));
         f3.store("", new VarcharType(), sessionProperties);
         fields[0] = f3;
         String f3StrVal = f3.stringValue().toStringUtf8();
         long f3HashVal = PartitionFieldTestUtil.calcHashCodeForKey(1, fields);
-        
+
         System.out.print(f1HashVal);
         System.out.print(f2HashVal);
         System.out.print(f3HashVal);
 
         Assert.assertTrue(f1StrVal.equalsIgnoreCase(f2StrVal));
         Assert.assertTrue(f1StrVal.equalsIgnoreCase(f3StrVal));
-        
-        Assert.assertTrue(f1HashVal==f2HashVal);
-        Assert.assertTrue(f1HashVal==f3HashVal);
+
+        Assert.assertTrue(f1HashVal == f2HashVal);
+        Assert.assertTrue(f1HashVal == f3HashVal);
     }
 
     @Test
@@ -309,5 +304,31 @@ public class DatetimePartitionFieldTest {
             = partitionField.store(Timestamp.valueOf(timestampStr), new TimestampType(), SessionProperties.empty());
         String res = partitionField.stringValue().toStringUtf8();
         Assert.assertEquals("2022-05-02 00:00:00.000", res);
+    }
+
+    @Test
+    public void testBadValue() {
+        DateTimeType dateTimeType = new DateTimeType(0);
+        partitionField = PartitionFieldBuilder.createField(dateTimeType);
+
+        long badValue = 232;
+        TypeConversionStatus status
+            = partitionField.store(badValue, new LongType(), SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals("0000-00-00 00:00:00", res);
+        Assert.assertEquals(status, TypeConversionStatus.TYPE_ERR_BAD_VALUE);
+    }
+
+    @Test
+    public void testOutOfRange() {
+        DateTimeType dateTimeType = new DateTimeType(0);
+        partitionField = PartitionFieldBuilder.createField(dateTimeType);
+
+        long badValue = -9999;
+        TypeConversionStatus status
+            = partitionField.store(badValue, new LongType(), SessionProperties.empty());
+        String res = partitionField.stringValue().toStringUtf8();
+        Assert.assertEquals("0000-00-00 00:00:00", res);
+        Assert.assertEquals(status, TypeConversionStatus.TYPE_WARN_OUT_OF_RANGE);
     }
 }

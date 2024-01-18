@@ -20,6 +20,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.cdc.entity.DDLExtInfo;
 import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -47,13 +48,11 @@ import java.util.List;
  * 2. 一个时机是在CdcManager的doInit方法中，我们选择此方案，但要特别注意死锁问题，因为系统表初始化也会触发CDC打标
  **/
 public class SysTableUtil {
-    private final static Logger logger = LoggerFactory.getLogger(SysTableUtil.class);
-
     public static final String CDC_DDL_RECORD_TABLE = "__cdc_ddl_record__";
     public static final String CDC_INSTRUCTION_TABLE = "__cdc_instruction__";
     public static final String CDC_HEARTBEAT_TABLE = "__cdc_heartbeat__";
     public static final String CDC_TABLE_SCHEMA = "__cdc__";
-
+    private final static Logger logger = LoggerFactory.getLogger(SysTableUtil.class);
     /**
      * 需注意"SCHEMA_NAME列"和"TABLE_NAME列"的长度不能小于meta db中"db_info表"和"tables表"中对应列的长度
      */
@@ -65,8 +64,8 @@ public class SysTableUtil {
             + "  `SCHEMA_NAME` VARCHAR(200) NOT NULL,\n"
             + "  `TABLE_NAME`  VARCHAR(200) DEFAULT NULL,\n"
             + "  `GMT_CREATED` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
-            + "  `DDL_SQL`  TEXT NOT NULL,\n"
-            + "  `META_INFO` TEXT DEFAULT NULL,\n"
+            + "  `DDL_SQL`  MEDIUMTEXT NOT NULL,\n"
+            + "  `META_INFO` MEDIUMTEXT DEFAULT NULL,\n"
             + "  `VISIBILITY` BIGINT(10) NOT NULL,\n"
             + "  `EXT` TEXT DEFAULT NULL,\n"
             + "  PRIMARY KEY (`ID`),\n"
@@ -127,6 +126,45 @@ public class SysTableUtil {
     private SysTableUtil() {
     }
 
+    public static SysTableUtil getInstance() {
+        return SysTableUtilHolder.INSTANCE;
+    }
+
+    /**
+     * CDC系统表在创建过程中如果有DN节点不可用, Job未执行成功进程便退出
+     * 再次启动时上次残留的job还未清理, 会导致本地启动失败
+     * 可以使用recover ddl来恢复残留的PENDING Job
+     */
+    private static void autoRecover() {
+        try (Connection connection = new InnerConnection(SystemDbHelper.CDC_DB_NAME)) {
+            try (Statement stmt = connection.createStatement()) {
+                ResultSet rs = stmt.executeQuery(SHOW_DDL);
+                while (rs.next()) {
+                    long jobId = rs.getLong(1);
+                    String objectSchema = rs.getString(2);
+                    String jobState = rs.getString(6);
+
+                    if (objectSchema.equals(CDC_TABLE_SCHEMA)) {
+                        // CDC系统表Job任务残留，使用recover ddl语句恢复
+                        if (jobState.equals(JOB_STATE_PENDING)) {
+                            logger.warn("DDL job is pending, try to recover ddl job");
+                            String recoverDDL = String.format(RECOVER_JOB, jobId);
+                            stmt.executeQuery(recoverDDL);
+                        } else if (jobState.equals(JOB_STATE_RUNNING)) {
+                            logger.warn("DDL job is running, wait for the ddl job to complete");
+                        } else {
+                            logger.warn("DDL job state: " + jobState + ", will sleep and retry");
+                        }
+                    } else {
+                        logger.error("Unexpected DDL job, objectSchema: " + objectSchema);
+                    }
+                }
+            }
+        } catch (SQLException throwables) {
+            logger.error("SQL Exception in AutoRecover", throwables);
+        }
+    }
+
     public void prepareCdcSysTables() {
         boolean allReady = false;
         int errorTime = 0;
@@ -168,10 +206,6 @@ public class SysTableUtil {
                 }
             }
         }
-    }
-
-    public static SysTableUtil getInstance() {
-        return SysTableUtilHolder.INSTANCE;
     }
 
     public void insertInstruction(Connection connection, ICdcManager.InstructionType instructionType,
@@ -218,8 +252,9 @@ public class SysTableUtil {
      * 老ddl引擎的幂等，直接通过jobId判断即可
      * 新ddl引擎的幂等，需要通过jobId和TaskId共同判断
      */
-    public boolean isDdlRecordExistForJobId(Connection connection, Long jobId, Long taskId)
+    public boolean isDdlRecordExistForJobId(Connection connection, Long jobId, Long taskId, Long taskSubSeq)
         throws SQLException {
+        boolean result = false;
         try (Statement stmt = connection.createStatement()) {
             try (ResultSet rs = stmt.executeQuery(String.format(QUERY_CDC_DDL_RECORD_BY_JOBID, jobId))) {
                 while (rs.next()) {
@@ -228,15 +263,23 @@ public class SysTableUtil {
                     DDLExtInfo extInfo = StringUtils.isBlank(extStr) ? null :
                         JSONObject.parseObject(extStr, DDLExtInfo.class);
 
-                    if (extInfo != null && extInfo.getTaskId() != null && extInfo.getTaskId() != 0L) {
-                        return jobId == jobIdTemp && extInfo.getTaskId().equals(taskId);
+                    if (taskId != null) {
+                        Assert.assertTrue(extInfo != null && extInfo.getTaskId() != null && extInfo.getTaskId() != 0L);
+                        if (taskSubSeq != null) {
+                            Assert.assertTrue(extInfo.getTaskSubSeq() != null && extInfo.getTaskSubSeq() > 0);
+                            result |= (jobId == jobIdTemp && extInfo.getTaskId().equals(taskId)
+                                && extInfo.getTaskSubSeq().equals(taskSubSeq));
+                        } else {
+                            result |= (jobId == jobIdTemp && extInfo.getTaskId().equals(taskId));
+                        }
                     } else {
-                        return jobId == jobIdTemp;
+                        // extInfo如果为null，说明是之前老引擎的打标记录，包含新引擎的代码，extInfo一定不为null
+                        result |= (jobId == jobIdTemp);
                     }
                 }
             }
         }
-        return false;
+        return result;
     }
 
     public boolean isInstructionExists(ICdcManager.InstructionType instructionType,
@@ -312,41 +355,6 @@ public class SysTableUtil {
             }
         }
         return list;
-    }
-
-    /**
-     * CDC系统表在创建过程中如果有DN节点不可用, Job未执行成功进程便退出
-     * 再次启动时上次残留的job还未清理, 会导致本地启动失败
-     * 可以使用recover ddl来恢复残留的PENDING Job
-     */
-    private static void autoRecover() {
-        try (Connection connection = new InnerConnection(SystemDbHelper.CDC_DB_NAME)) {
-            try (Statement stmt = connection.createStatement()) {
-                ResultSet rs = stmt.executeQuery(SHOW_DDL);
-                while (rs.next()) {
-                    long jobId = rs.getLong(1);
-                    String objectSchema = rs.getString(2);
-                    String jobState = rs.getString(6);
-
-                    if (objectSchema.equals(CDC_TABLE_SCHEMA)) {
-                        // CDC系统表Job任务残留，使用recover ddl语句恢复
-                        if (jobState.equals(JOB_STATE_PENDING)) {
-                            logger.warn("DDL job is pending, try to recover ddl job");
-                            String recoverDDL = String.format(RECOVER_JOB, jobId);
-                            stmt.executeQuery(recoverDDL);
-                        } else if (jobState.equals(JOB_STATE_RUNNING)) {
-                            logger.warn("DDL job is running, wait for the ddl job to complete");
-                        } else {
-                            logger.warn("DDL job state: " + jobState + ", will sleep and retry");
-                        }
-                    } else {
-                        logger.error("Unexpected DDL job, objectSchema: " + objectSchema);
-                    }
-                }
-            }
-        } catch (SQLException throwables) {
-            logger.error("SQL Exception in AutoRecover", throwables);
-        }
     }
 
     private static class SysTableUtilHolder {

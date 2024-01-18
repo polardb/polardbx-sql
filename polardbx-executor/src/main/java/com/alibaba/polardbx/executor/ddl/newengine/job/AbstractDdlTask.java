@@ -35,6 +35,8 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
+import java.util.ArrayList;
+import java.util.List;
 
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_EACH_DDL_TASK_FAIL_ONCE;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_FAIL_ON_DDL_TASK_NAME;
@@ -109,6 +111,11 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     protected abstract void onExecutionSuccess(final ExecutionContext executionContext);
 
     @Override
+    public void handleError(ExecutionContext executionContext) {
+
+    }
+
+    @Override
     public void rollback(ExecutionContext executionContext) {
         beginRollbackTs = System.nanoTime();
         final DdlTask currentTask = this;
@@ -120,7 +127,12 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
                 int result = 0;
                 duringRollbackTransaction(getConnection(), executionContext);
                 DdlEngineTaskRecord taskRecord = TaskHelper.toDdlEngineTaskRecord(currentTask);
-                taskRecord.setState(DdlTaskState.ROLLBACK_SUCCESS.name());
+                if (executionContext.getDdlContext().isRollbackToReady()) {
+                    taskRecord.setState(DdlTaskState.READY.name());
+                } else {
+                    taskRecord.setState(DdlTaskState.ROLLBACK_SUCCESS.name());
+                }
+
                 result += engineTaskAccessor.updateTask(taskRecord);
 
                 //inject exceptions
@@ -179,9 +191,9 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
                                         boolean supportCancel,
                                         Connection connection) {
         if (connection != null) {
-            DdlJobManagerUtils.updateSupportedCommands(jobId, supportContinue, supportCancel, connection);
+            DdlJobManagerUtils.updateSupportedCommands(jobId, supportContinue, supportCancel, false, connection);
         } else {
-            DdlJobManagerUtils.updateSupportedCommands(jobId, supportContinue, supportCancel);
+            DdlJobManagerUtils.updateSupportedCommands(jobId, supportContinue, supportCancel, false);
         }
     }
 
@@ -294,37 +306,42 @@ public abstract class AbstractDdlTask extends HandlerCommon implements DdlTask {
     public String nodeInfo() {
         try {
             return String.format(
-                    "%s [shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
-                    this.taskId,
-                    color(state),
-                    this.getName(),
-                    this.taskId,
-                    this.exceptionAction.name(),
-                    state.name(),
-                    cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
-                    cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
-                    remark()
+                "%s [shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
+                this.taskId,
+                color(state),
+                this.getName(),
+                this.taskId,
+                this.exceptionAction.name(),
+                state.name(),
+                cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
+                cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
+                remark()
             );
-        }catch (Exception e){
+        } catch (Exception e) {
             return "";
         }
+    }
+
+    @Override
+    public List<String> explainInfo() {
+        return new ArrayList<>();
     }
 
     @Override
     public String executionInfo() {
         try {
             return String.format(
-                    "[shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
-                    color(state),
-                    this.getName(),
-                    this.taskId,
-                    this.exceptionAction.name(),
-                    state.name(),
-                    cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
-                    cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
-                    remark()
+                "[shape=record  %s label=\"{%s|taskId:%s|onException:%s|state:%s%s%s%s}\"];",
+                color(state),
+                this.getName(),
+                this.taskId,
+                this.exceptionAction.name(),
+                state.name(),
+                cost("|execute cost:%s", beginExecuteTs, endExecuteTs),
+                cost("|rollback cost:%s", beginRollbackTs, endRollbackTs),
+                remark()
             );
-        }catch (Exception e){
+        } catch (Exception e) {
             return "";
         }
     }

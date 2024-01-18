@@ -79,9 +79,9 @@ public class LogicalAlterTableSplitPartitionHandler extends LogicalCommonDdlHand
         TableGroupConfig tableGroupConfig =
             tableGroupInfoManager.getTableGroupConfigById(tableMeta.getPartitionInfo().getTableGroupId());
         AlterTableGroupUtils.alterTableGroupSplitPartitionCheck(sqlAlterTableSplitPartition, tableGroupConfig,
-            alterTable.getAllRexExprInfo(), true, executionContext, logicalDdlPlan.getSchemaName());
+            alterTable.getAllRexExprInfo(), true, false, executionContext, logicalDdlPlan.getSchemaName());
 
-        return super.validatePlan(logicalDdlPlan, executionContext);
+        return false;
     }
 
 }

@@ -107,6 +107,18 @@ public enum AccountType {
         return AccountType.GOD == this;
     }
 
+    public boolean isDBA() {
+        return AccountType.DBA == this;
+    }
+
+    /**
+     * 高权限账号
+     * 包含 polardbx_root 与 DBA
+     */
+    public boolean isSuperUser() {
+        return isGod() || isDBA();
+    }
+
     public boolean isUser() {
         return ROLE != this;
     }

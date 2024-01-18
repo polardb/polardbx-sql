@@ -1,0 +1,31 @@
+
+# extra table elements
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+PRIMARY KEY (x)
+) partition by hash(x) partitions 2;
+show full create table `t_order`;
+
+# in column def
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+) partition by hash(x) partitions 2;
+show full create table `t_order`;
+
+# no explicit pk
+drop table if exists `t_order`;
+CREATE TABLE `t_order` (
+`x` int NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL
+) partition by hash(x) partitions 2;
+show full create table `t_order`;
+
+# cleanup
+drop table if exists `t_order`;

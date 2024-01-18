@@ -1,0 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+
+show table access limit 0;
+desc information_schema.table_access;
+desc information_schema.table_join_closure;

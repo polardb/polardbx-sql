@@ -43,8 +43,6 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
     private boolean broadcast;
     private boolean single;
 
-    private String logicalSecondaryTableName;
-
     public SqlAlterTablePartitionKey(SqlIdentifier tableName,
                                      String sql,
                                      SqlNode dbPartitionBy,
@@ -116,14 +114,6 @@ public class SqlAlterTablePartitionKey extends SqlAlterTable {
 
     public String getPrimaryTableName() {
         return originTableName.getComponent(1).getLastName();
-    }
-
-    public String getLogicalSecondaryTableName() {
-        return logicalSecondaryTableName;
-    }
-
-    public void setLogicalSecondaryTableName(String logicalSecondaryTableName) {
-        this.logicalSecondaryTableName = logicalSecondaryTableName;
     }
 
     @Override

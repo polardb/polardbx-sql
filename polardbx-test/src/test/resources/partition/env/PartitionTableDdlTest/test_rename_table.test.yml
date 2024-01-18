@@ -1,0 +1,15 @@
+drop table if exists tbl;
+/*TDDL:ENABLE_RANDOM_PHY_TABLE_NAME=false*/create table if not exists tbl (a int not null,primary key (`a`))
+partition by range(a)
+( partition p1 values less than (100),
+partition p2 values less than (200),
+partition p3 values less than (300)
+);
+
+insert into tbl values (1), (101), (102), (201), (202);
+
+select * from tbl order by a;
+
+rename table tbl to tbl2;
+
+select * from tbl2 order by a;

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.net.compress;
 
 import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
+import com.google.common.primitives.UnsignedLong;
 
 /**
  * 这里无法直接继承ByteBuffer，因为构造需要额外无关的参数。而且所有的ByteBuffer也都是从conn
@@ -117,12 +118,17 @@ public abstract class PacketByteBufferOutputProxy extends PacketOutputProxyCommo
 
     @Override
     public void writeLength(long l) {
-        if (l < 251) {
+        /**
+         * l should be compared as unsigned long
+         * refer: com.google.common.primitives.UnsignedLong.compare
+         */
+        long flipL = l ^ Long.MIN_VALUE;
+        if (flipL < (251 ^ Long.MIN_VALUE)) {
             put((byte) l);
-        } else if (l < 0x10000L) {
+        } else if (flipL < (0x10000L ^ Long.MIN_VALUE)) {
             put((byte) 252);
             writeUB2((int) l);
-        } else if (l < 0x1000000L) {
+        } else if (flipL < (0x1000000L ^ Long.MIN_VALUE)) {
             put((byte) 253);
             writeUB3((int) l);
         } else {

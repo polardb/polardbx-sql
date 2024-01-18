@@ -40,6 +40,7 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * @since 5.0.1
  */
 
+
 public class ComplexBatchUpdateTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
 

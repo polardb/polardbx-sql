@@ -76,6 +76,7 @@ public class StrictConnectionHolder extends BaseConnectionHolder {
             logger.debug("getConnection:" + trxConn);
         }
 
+        heldSchema.add(schemaName);
         return trxConn;
     }
 

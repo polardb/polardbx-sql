@@ -209,7 +209,7 @@ public class FilterTableLookupTransposeRule extends TddlFilterJoinRule {
             project.getRowType(),
             leftRel,
             rightRel,
-            primaryPredicates.size() > indexPredicates.size());
+            tableLookup.isRelPushedToPrimary() || primaryPredicates.size() > indexPredicates.size());
         if (!leftFilters.isEmpty()) {
             call.getPlanner().onCopy(filter, leftRel);
         }

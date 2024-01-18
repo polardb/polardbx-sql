@@ -4,8 +4,8 @@ import com.alibaba.polardbx.qatest.BaseTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.base.Splitter;
 import org.apache.commons.lang3.StringUtils;
+import org.junit.After;
 import org.junit.Before;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
-@Ignore
 public class PlParameterTest extends BaseTestCase {
     private static final String DATA_COLUMN_NO_GEOM =
         "c_bit_1,c_bit_8,c_bit_16,c_bit_32,c_bit_64,c_tinyint_1,c_tinyint_1_un,c_tinyint_4,c_tinyint_4_un,c_tinyint_8,c_tinyint_8_un,c_smallint_1,c_smallint_16,c_smallint_16_un,c_mediumint_1,c_mediumint_24,c_mediumint_24_un,c_int_1,c_int_32,c_int_32_un,c_bigint_1,c_bigint_64,c_bigint_64_un,c_decimal,c_decimal_pr,c_float,c_float_pr,c_float_un,c_double,c_double_pr,c_double_un,c_date,c_datetime,c_datetime_1,c_datetime_3,c_datetime_6,c_timestamp,c_timestamp_1,c_timestamp_3,c_timestamp_6,c_time,c_time_1,c_time_3,c_time_6,c_year,c_year_4,c_char,c_varchar,c_binary,c_varbinary,c_blob_tiny,c_blob,c_blob_medium,c_blob_long,c_text_tiny,c_text,c_text_medium,c_text_long,c_enum,c_json";
@@ -44,11 +43,14 @@ public class PlParameterTest extends BaseTestCase {
     public void getConnection() {
         this.mysqlConnection = getMysqlConnection();
         this.tddlConnection = getPolardbxConnection();
+        JdbcUtil.executeSuccess(tddlConnection, "set global log_bin_trust_function_creators = on");
+        JdbcUtil.executeSuccess(mysqlConnection, "set global log_bin_trust_function_creators = on");
         dropFunctionIfExists();
         createFunction();
     }
 
-    private void dropFunctionIfExists() {
+    @After
+    public void dropFunctionIfExists() {
         String dropFunction = "drop function if exists mysql.test_type_parameter";
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropFunction);
         JdbcUtil.executeUpdateSuccess(mysqlConnection, dropFunction);
@@ -74,9 +76,17 @@ public class PlParameterTest extends BaseTestCase {
     @Test
     public void testTypeParameter() {
         for (int i = 1; i < DATA_COLUMN_NO_GEOM.split(",").length; ++i) {
-            selectContentSameAssert(
-                "select * from information_schema.parameters where SPECIFIC_NAME like \'%test_type_parameter%\' and ORDINAL_POSITION = " + i,
-                null, mysqlConnection, tddlConnection, true);
+            if (isMySQL80()) {
+                selectContentSameAssert(
+                    "select SPECIFIC_CATALOG,SPECIFIC_SCHEMA,ORDINAL_POSITION,PARAMETER_MODE,PARAMETER_NAME,CONVERT(DATA_TYPE, CHAR),ROUTINE_TYPE from information_schema.parameters where SPECIFIC_NAME like \'%test_type_parameter%\' and ORDINAL_POSITION = "
+                        + i,
+                    null, mysqlConnection, tddlConnection, true);
+            } else {
+                selectContentSameAssert(
+                    "select SPECIFIC_CATALOG,SPECIFIC_SCHEMA,ORDINAL_POSITION,PARAMETER_MODE,PARAMETER_NAME,DATA_TYPE,ROUTINE_TYPE from information_schema.parameters where SPECIFIC_NAME like \'%test_type_parameter%\' and ORDINAL_POSITION = "
+                        + i,
+                    null, mysqlConnection, tddlConnection, true);
+            }
         }
     }
 }

@@ -51,9 +51,6 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
 
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
         for (String schemaName : schemaNames) {
-            if (SystemDbHelper.isDBBuildIn(schemaName)) {
-                continue;
-            }
             List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchSPMSyncAction(schemaName),
                 schemaName);
             for (List<Map<String, Object>> nodeRows : results) {
@@ -75,6 +72,9 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
                     final String origin = DataTypes.StringType.convertFrom(row.get("ORIGIN"));
                     final String parameterizedSql = DataTypes.StringType.convertFrom(row.get("PARAMETERIZED_SQL"));
                     final String externalizedPlan = DataTypes.StringType.convertFrom(row.get("EXTERNALIZED_PLAN"));
+                    final String isRebuildAtLoad = DataTypes.StringType.convertFrom(row.get("IS_REBUILD_AT_LOAD"));
+                    final String hint = DataTypes.StringType.convertFrom(row.get("HINT"));
+                    final String usePostPlanner = DataTypes.StringType.convertFrom(row.get("USE_POST_PLANNER"));
 
                     cursor.addRow(new Object[] {
                         baselineId,
@@ -91,7 +91,10 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
                         minRowsFeedback,
                         origin,
                         parameterizedSql,
-                        externalizedPlan
+                        externalizedPlan,
+                        isRebuildAtLoad,
+                        hint,
+                        usePostPlanner
                     });
                 }
             }

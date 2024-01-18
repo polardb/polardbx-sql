@@ -48,7 +48,9 @@ import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.SUCCE
  * @author chenzilin
  */
 public class PurgeOssFileScheduledJob extends SchedulerExecutor {
+
     private static final Logger logger = LoggerFactory.getLogger(PurgeOssFileScheduledJob.class);
+
     private final ExecutableScheduledJob executableScheduledJob;
 
     public PurgeOssFileScheduledJob(final ExecutableScheduledJob executableScheduledJob) {
@@ -77,7 +79,9 @@ public class PurgeOssFileScheduledJob extends SchedulerExecutor {
 
             //execute
             FailPoint.injectException("FP_PURGE_OSS_FILE_SCHEDULED_JOB_ERROR");
+
             final InternalTimeZone timeZone = TimeZoneUtils.convertFromMySqlTZ(timeZoneStr);
+
             int purgeOssFileBeforeDay = getInstConfigAsInt(ConnectionProperties.PURGE_OSS_FILE_BEFORE_DAY,
                 Integer.valueOf(ConnectionParams.PURGE_OSS_FILE_BEFORE_DAY.getDefault()));
             Calendar calendar = Calendar.getInstance();
@@ -87,7 +91,9 @@ public class PurgeOssFileScheduledJob extends SchedulerExecutor {
             calendar.set(Calendar.HOUR_OF_DAY, nextStartTime.getHour());
             calendar.set(Calendar.MINUTE, nextStartTime.getMinute());
             calendar.set(Calendar.SECOND, nextStartTime.getSecond());
+
             LocalDateTime localDateTime = LocalDateTime.ofInstant(calendar.toInstant(), timeZone.getZoneId());
+
             String sql = String.format("alter fileStorage 'oss' purge before timestamp '%s'",
                 String.format("%04d-%02d-%02d %02d:%02d:%02d",
                     localDateTime.getYear(),
@@ -96,7 +102,9 @@ public class PurgeOssFileScheduledJob extends SchedulerExecutor {
                     localDateTime.getHour(),
                     localDateTime.getMinute(),
                     localDateTime.getSecond()));
+
             executeBackgroundSql(sql, tableSchema, timeZone);
+
             //mark as SUCCESS
             long finishTime = ZonedDateTime.now().toEpochSecond();
             String remark = "execute: " + sql;
@@ -112,19 +120,6 @@ public class PurgeOssFileScheduledJob extends SchedulerExecutor {
             ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, null, t.getMessage());
             return false;
         }
-    }
-
-    private void executeBackgroundSql(String sql, String schemaName, InternalTimeZone timeZone) {
-        IServerConfigManager serverConfigManager = getServerConfigManager();
-        serverConfigManager.executeBackgroundSql(sql, schemaName, timeZone);
-    }
-
-    private IServerConfigManager getServerConfigManager() {
-        IServerConfigManager serverConfigManager = OptimizerHelper.getServerConfigManager();
-        if (serverConfigManager == null) {
-            serverConfigManager = new DefaultServerConfigManager(null);
-        }
-        return serverConfigManager;
     }
 
     int getInstConfigAsInt(String key, int defaultVal) {

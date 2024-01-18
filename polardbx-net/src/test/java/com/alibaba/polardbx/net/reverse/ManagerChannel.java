@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.net.reverse;
 
 import com.alibaba.polardbx.Capabilities;
+import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.packet.AuthPacket;
 import com.alibaba.polardbx.net.packet.BinaryPacket;
@@ -31,9 +34,6 @@ import com.alibaba.polardbx.net.packet.Reply323Packet;
 import com.alibaba.polardbx.net.reverse.exception.ErrorPacketException;
 import com.alibaba.polardbx.net.reverse.exception.UnknownPacketException;
 import com.alibaba.polardbx.net.util.CharsetUtil;
-import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -165,14 +165,14 @@ public class ManagerChannel {
             throw new IllegalArgumentException(e.getMessage());
         }
         switch (bin.data[0]) {
-        case OkPacket.FIELD_COUNT:
+        case OkPacket.OK_HEADER:
             afterSuccess();
             break;
-        case ErrorPacket.FIELD_COUNT:
+        case ErrorPacket.ERROR_HEADER:
             ErrorPacket err = new ErrorPacket();
             err.read(bin);
             throw new ErrorPacketException(new String(err.message, charset));
-        case EOFPacket.FIELD_COUNT:
+        case EOFPacket.EOF_HEADER:
             auth323(bin.packetId, hsp.seed);
             break;
         default:
@@ -219,10 +219,10 @@ public class ManagerChannel {
         r323.write(PacketOutputProxyFactory.getInstance().createProxy(out));
         BinaryPacket bin = receive();
         switch (bin.data[0]) {
-        case OkPacket.FIELD_COUNT:
+        case OkPacket.OK_HEADER:
             afterSuccess();
             break;
-        case ErrorPacket.FIELD_COUNT:
+        case ErrorPacket.ERROR_HEADER:
             ErrorPacket err = new ErrorPacket();
             err.read(bin);
             throw new ErrorPacketException(new String(err.message, charset));
@@ -247,11 +247,11 @@ public class ManagerChannel {
         cmd.write(PacketOutputProxyFactory.getInstance().createProxy(out));
         BinaryPacket bin = receive();
         switch (bin.data[0]) {
-        case OkPacket.FIELD_COUNT:
+        case OkPacket.OK_HEADER:
             this.charsetIndex = ci;
             this.charset = CharsetUtil.getCharset(ci);
             break;
-        case ErrorPacket.FIELD_COUNT:
+        case ErrorPacket.ERROR_HEADER:
             ErrorPacket err = new ErrorPacket();
             err.read(bin);
             throw new ErrorPacketException(new String(err.message, charset));

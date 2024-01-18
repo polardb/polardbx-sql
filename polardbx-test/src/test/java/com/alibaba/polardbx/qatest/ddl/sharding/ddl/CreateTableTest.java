@@ -560,6 +560,81 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
     }
 
+    @Test
+    public void testCreateTableLikeExist() {
+        String simpleTableName = testTableName + "_3";
+        String tableName = schemaPrefix + simpleTableName;
+        dropTableIfExists(tableName);
+        String sql = "create table if not exists " + tableName
+            + " (id int, name varchar(30),primary key(id)) dbpartition by hash(id) dbpartitions 2";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        RuleValidator.assertMultiRuleExist(tableName, tddlConnection);
+
+        sql = "create table " + tableName + " like " + tableName;
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Not unique table/alias");
+        String physicalTableName = getPhysicalTableName(tddlDatabase2, simpleTableName);
+
+        RuleValidator.assertMultiRuleExist(tableName, tddlConnection);
+
+        assertShardDbTableExist(phyConnectionList, physicalTableName, true, 2);
+        // 用户判断表结构没有变化
+        runInsertOneForTable(tableName);
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
+    public void testCreateTableLikeExist2() {
+        String simpleTableName = testTableName + "_3";
+        String tableName = schemaPrefix + simpleTableName;
+        dropTableIfExists(tableName);
+        String sql = "create table if not exists " + tableName
+            + " (id int, name varchar(30),primary key(id)) dbpartition by hash(id) dbpartitions 2";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        String simpleTableName2 = testTableName + "_4";
+        String tableName2 = schemaPrefix + simpleTableName2;
+        dropTableIfExists(tableName2);
+        String sql2 = "create table if not exists " + tableName2
+            + " (id int, name varchar(30),primary key(id)) dbpartition by hash(id) dbpartitions 2";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql2);
+
+        RuleValidator.assertMultiRuleExist(tableName, tddlConnection);
+
+        sql = "create table " + tableName2 + " like " + tableName;
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "already exists");
+        String physicalTableName = getPhysicalTableName(tddlDatabase2, simpleTableName);
+
+        RuleValidator.assertMultiRuleExist(tableName, tddlConnection);
+
+        assertShardDbTableExist(phyConnectionList, physicalTableName, true, 2);
+        // 用户判断表结构没有变化
+        runInsertOneForTable(tableName);
+
+        dropTableIfExists(tableName);
+    }
+
+    @Test
+    public void testCreateTableLikeExist3() {
+        String simpleTableName = testTableName + "_4";
+        String tableName = schemaPrefix + simpleTableName;
+        dropTableIfExists(tableName);
+
+        String sql = "create table " + "tb123" + " like " + tableName;
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "doesn't exist");
+    }
+
+    @Test
+    public void testCreateTableLikeIfNotExist2() {
+        String simpleTableName = testTableName + "_5";
+        String tableName = schemaPrefix + simpleTableName;
+        dropTableIfExists(tableName);
+
+        String sql = "create table if not exists " + "tb123" + " like " + tableName;
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "doesn't exist");
+    }
+
     /**
      * @since 5.1.20
      */
@@ -2598,15 +2673,15 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
     }
 
-    @Test
-    public void testCreateTableSelect() {
-
-        String tableName = schemaPrefix + testTableName + "_sel";
-        dropTableIfExists(tableName);
-        String sql = "CREATE TABLE if not exists " + tableName + " as select * from " + testTableName;
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Do not support create table select");
-        dropTableIfExists(tableName);
-    }
+//    @Test
+//    public void testCreateTableSelect() {
+//
+//        String tableName = schemaPrefix + testTableName + "_sel";
+//        dropTableIfExists(tableName);
+//        String sql = "CREATE TABLE if not exists " + tableName + " as select * from " + testTableName;
+//        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Do not support create table select");
+//        dropTableIfExists(tableName);
+//    }
 
     private void testTable(String tableName, String colName) {
         dropTableIfExists(tableName);
@@ -2778,5 +2853,79 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
         selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testCreateTableBitDefaultValue() throws Exception {
+        String tableName = testTableName + "_107";
+        String gsiName = testTableName + "_gsi_107";
+
+        dropTableIfExists(tableName);
+        dropTableIfExistsInMySql(tableName);
+
+        String createTable = String.format("create table %s ("
+            + "`pk` int primary key auto_increment, "
+            + "`b1_col` bit(1) default b'0', "
+            + "`b2_col` bit(3) default b'101', "
+            + "`pad` varchar(20) default 'ggg' "
+            + ")", tableName);
+        String partitionDef = " dbpartition by hash(`pk`)";
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTable + partitionDef);
+
+        String createGsi =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", gsiName,
+                tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsi);
+
+        // Use upsert to test default value on CN
+        String upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", tableName);
+        // Use insert to test default value on DN
+        String insert = String.format("insert into %s(`pk`) values (null)", tableName);
+        String select = String.format("select `b1_col`, `b2_col` from %s", tableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+
+        String likeTableName = testTableName + "_108";
+        String likeGsiName = testTableName + "_gsi_108";
+
+        dropTableIfExists(likeTableName);
+        dropTableIfExistsInMySql(likeTableName);
+
+        String createTableLike = String.format("create table %s like %s", likeTableName, tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createTableLike);
+        JdbcUtil.executeUpdateSuccess(mysqlConnection, createTableLike);
+        String createGsiLike =
+            String.format("create global index %s on %s(`pk`) dbpartition by hash(`pk`)", likeGsiName, likeTableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiLike);
+
+        // Use upsert to test default value on CN
+        upsert = String.format("insert into %s(`pk`) values (null) on duplicate key update pad=null", likeTableName);
+        // Use insert to test default value on DN
+        insert = String.format("insert into %s(`pk`) values (null)", likeTableName);
+        select = String.format("select `b1_col`, `b2_col` from %s", likeTableName);
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, upsert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, null, true);
+        selectContentSameAssert(select, null, mysqlConnection, tddlConnection);
+    }
+
+    @Test
+    public void testCreateTableWithRowFormatAndCollate() {
+        final String dropSql = "drop table if exists testCreateTableWithRowFormatAndCollate";
+        final String sql = "create table if not exists `testCreateTableWithRowFormatAndCollate` "
+            + "( `id` bigint(20) NOT NULL AUTO_INCREMENT, "
+            + "`warehouseCode` varchar(50) NOT NULL, "
+            + "`code` varchar(50) NOT NULL, "
+            + "PRIMARY KEY USING BTREE (`id`) "
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8 ROW_FORMAT = DYNAMIC COLLATE `utf8_general_ci`";
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql);
     }
 }

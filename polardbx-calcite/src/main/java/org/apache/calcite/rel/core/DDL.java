@@ -34,6 +34,8 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.SqlRenameTable;
 import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 
+import java.util.List;
+
 /**
  * ${DESCRIPTION}
  *
@@ -52,6 +54,10 @@ public class DDL extends AbstractRelNode {
     protected RelNode input;
 
     protected final SqlDdl ddl;
+
+    // for muti table ddl, like rename table
+    private List<SqlNode> tableNameList;
+    private List<SqlNode> newTableNameList;
 
     /**
      * Creates a <code>SingleRel</code>.
@@ -79,6 +85,14 @@ public class DDL extends AbstractRelNode {
         this.tableName = tableName;
     }
 
+    public List<SqlNode> getTableNameList() {
+        return tableNameList;
+    }
+
+    public void setTableNameList(List<SqlNode> tableNameList) {
+        this.tableNameList = tableNameList;
+    }
+
     public SqlNode getNewTableName() {
         if (sqlNode instanceof SqlRenameTable) {
             return ((SqlRenameTable) sqlNode).getRenamedNode();
@@ -88,6 +102,14 @@ public class DDL extends AbstractRelNode {
 
     public void setNewTableName(SqlNode newTableName) {
         this.newTableName = newTableName;
+    }
+
+    public List<SqlNode> getNewTableNameList() {
+        return newTableNameList;
+    }
+
+    public void setNewTableNameList(List<SqlNode> newTableNameList) {
+        this.newTableNameList = newTableNameList;
     }
 
     public boolean isPartition() {

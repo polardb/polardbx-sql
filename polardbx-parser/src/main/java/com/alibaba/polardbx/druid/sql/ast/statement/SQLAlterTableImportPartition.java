@@ -31,7 +31,7 @@ public class SQLAlterTableImportPartition extends SQLObjectImpl implements SQLAl
     public List<SQLName> getPartitions() {
         return partitions;
     }
-    
+
     public void addPartition(SQLName partition) {
         if (partition != null) {
             partition.setParent(this);

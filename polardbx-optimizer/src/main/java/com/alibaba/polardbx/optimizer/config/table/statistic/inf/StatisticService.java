@@ -24,24 +24,27 @@ import java.util.List;
 import java.util.Set;
 
 public interface StatisticService {
-    StatisticResult getRowCount(String schema, String logicalTableName);
+    StatisticResult getRowCount(String schema, String logicalTableName, boolean isNeedTrace);
 
     void setRowCount(String schema, String logicalTableName, long rowCount);
 
-    StatisticResult getCardinality(String schema, String logicalTableName, String columnName, boolean fromOptimzer);
+    StatisticResult getCardinality(String schema, String logicalTableName, String columnName, boolean fromOptimzer,
+                                   boolean isNeedTrace);
 
-    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value);
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, String value,
+                                 boolean isNeedTrace);
 
     /**
      * get frequency with row value.
      */
-    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, Row.RowValue value);
+    StatisticResult getFrequency(String schema, String logicalTableName, String columnName, Row.RowValue value,
+                                 boolean isNeedTrace);
 
-    StatisticResult getNullCount(String schema, String logicalTableName, String columnName);
+    StatisticResult getNullCount(String schema, String logicalTableName, String columnName, boolean isNeedTrace);
 
     StatisticResult getRangeCount(String schema, String logicalTableName, String columnName, Object lower,
                                   boolean lowerInclusive,
-                                  Object upper, boolean upperInclusive);
+                                  Object upper, boolean upperInclusive, boolean isNeedTrace);
 
     void addUpdateRowCount(String schema, String logicalTableName, long affectRow);
 

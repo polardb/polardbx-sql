@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitor;
 
 import java.util.ArrayList;
@@ -27,8 +28,7 @@ import java.util.List;
  */
 public class MysqlCreateFullTextAnalyzerStatement extends MySqlStatementImpl {
 
-
-    private SQLName    name;
+    private SQLName name;
 
     private String tokenizer;
     private List<String> charfilters = new ArrayList<String>();
@@ -68,4 +68,8 @@ public class MysqlCreateFullTextAnalyzerStatement extends MySqlStatementImpl {
         return tokenizers;
     }
 
+    @Override
+    public SqlType getSqlType() {
+        return null;
+    }
 }

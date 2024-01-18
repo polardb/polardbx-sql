@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundVal;
-import com.alibaba.polardbx.optimizer.partition.PartitionBoundValueKind;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCollation;
@@ -67,6 +67,28 @@ public class SearchDatumComparator implements Comparator<SearchDatumInfo> {
     @Override
     public int compare(SearchDatumInfo datum1, SearchDatumInfo datum2) {
         return compareSearchDatum(datum1, datum2);
+    }
+
+    public boolean isGreaterThan(SearchDatumInfo datum1, SearchDatumInfo datum2) {
+        return compare(datum1, datum2) == 1;
+    }
+
+    public boolean isEqualTo(SearchDatumInfo datum1, SearchDatumInfo datum2) {
+        return compare(datum1, datum2) == 0;
+    }
+
+    public boolean isLessThan(SearchDatumInfo datum1, SearchDatumInfo datum2) {
+        return compare(datum1, datum2) == -1;
+    }
+
+    public boolean isGreaterThanOrEqualTo(SearchDatumInfo datum1, SearchDatumInfo datum2) {
+        int result = compare(datum1, datum2);
+        return result == 1 || result == 0;
+    }
+
+    public boolean isLessThanOrEqualTo(SearchDatumInfo datum1, SearchDatumInfo datum2) {
+        int result = compare(datum1, datum2);
+        return result == 0 || result == -1;
     }
 
     protected int compareSearchDatum(SearchDatumInfo boundDatum, SearchDatumInfo queryDatum) {

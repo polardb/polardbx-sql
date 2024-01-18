@@ -24,6 +24,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import net.jcip.annotations.NotThreadSafe;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
@@ -125,10 +126,10 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
             + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
             + "INTERVAL 1 MONTH\n"
             + "EXPIRE AFTER 12\n"
-            + "PRE ALLOCATE 1\n"
+            + "PRE ALLOCATE 2\n"
             + ";", primaryTableName, gsi1TableName);
         JdbcUtil.executeSuccess(tddlConnection, createTableSql);
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 2);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 4);
 
         LocalDate dateIterator = now;
         int i = 0;
@@ -137,7 +138,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
                 tddlConnection,
                 String.format("INSERT INTO %s VALUES (1,2,3,'%s')", primaryTableName, dateIterator.toString())
             );
-            dateIterator = now.plusMonths(i+1);
+            dateIterator = now.plusMonths(i + 1);
         }
 
         ResultSet resultSet = JdbcUtil.executeQuery(
@@ -146,7 +147,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
         int cnt = resultSet.getInt("cnt");
         Assert.assertEquals("Found Error", cnt, 12);
 
-        dateIterator = now.plusMonths(i+6);
+        dateIterator = now.plusMonths(i + 6);
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("set @FP_OVERRIDE_NOW='%s'", dateIterator)
         );
@@ -175,6 +176,7 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
             + "    c3 bigint,\n"
             + "    gmt_modified DATE PRIMARY KEY NOT NULL\n"
             + ")\n"
+            + "PARTITION BY HASH(gmt_modified)\n"
             + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
             + "STARTWITH '%s'\n"
             + "INTERVAL 1 MONTH\n"
@@ -273,11 +275,11 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s ALLOCATE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 32);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 33);
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 18);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 19);
     }
 
     @Test
@@ -336,11 +338,11 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s ALLOCATE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 32);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 33);
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 18);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 19);
     }
 
     @Test
@@ -399,11 +401,30 @@ public class LocalPartitionRotationTest extends LocalPartitionBaseTest {
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s ALLOCATE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 32);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 33);
         JdbcUtil.executeSuccess(tddlConnection,
             String.format("ALTER TABLE %s EXPIRE LOCAL PARTITION", primaryTableName)
         );
-        validateLocalPartitionCount(tddlConnection, primaryTableName, 18);
+        validateLocalPartitionCount(tddlConnection, primaryTableName, 19);
     }
 
+    @Test
+    public void testRotation7() throws SQLException {
+        String createTableSql = String.format("CREATE TABLE %s (\n"
+            + "    c1 bigint,\n"
+            + "    c2 bigint,\n"
+            + "    c3 bigint,\n"
+            + "    gmt_modified DATE PRIMARY KEY NOT NULL,\n"
+            + "    global index %s(c2) partition by hash(c2) partitions 4\n"
+            + ")\n"
+            + "PARTITION BY HASH(c1)\n"
+            + "PARTITIONS 4\n"
+            + "LOCAL PARTITION BY RANGE (gmt_modified)\n"
+            + "INTERVAL 1 MONTH\n"
+            + "EXPIRE AFTER 12\n"
+            + "PRE ALLOCATE 1\n"
+            + ";", primaryTableName, gsi1TableName);
+        JdbcUtil.executeUpdateFailed(tddlConnection, createTableSql,
+            "The value of PRE ALLOCATE must be greater than 1");
+    }
 }

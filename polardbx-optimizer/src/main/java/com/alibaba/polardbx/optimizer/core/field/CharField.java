@@ -29,9 +29,9 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
-import com.alibaba.polardbx.common.charset.CharsetFactory;
-import com.alibaba.polardbx.common.charset.CharsetHandler;
-import com.alibaba.polardbx.common.collation.CollationHandler;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
+import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
@@ -134,7 +134,19 @@ public class CharField extends AbstractStorageField {
             if (value instanceof OriginalTemporalValue) {
                 // store value from chunk executor as mysql datetime.
                 OriginalTemporalValue temporalValue = (OriginalTemporalValue) value;
-                String timeStr = (String) DataTypeUtil.convert(resultType, fieldType, temporalValue);
+                Object converted = DataTypeUtil.convert(resultType, fieldType, temporalValue);
+                String timeStr;
+                if (converted instanceof Slice) {
+                    timeStr = ((Slice) converted).toStringUtf8();
+                } else if (converted instanceof String) {
+                    timeStr = (String) converted;
+                } else if (converted instanceof byte[]) {
+                    timeStr = new String((byte[]) converted);
+                } else {
+                    // don't accept null value because it's the failed result from implicit cast.
+                    return TypeConversionStatus.TYPE_ERR_UNSUPPORTED_IMPLICIT_CAST;
+                }
+
                 return storeUTF8(timeStr.getBytes(), sessionProperties);
             } else if (value == null) {
                 setNull();
@@ -609,11 +621,16 @@ public class CharField extends AbstractStorageField {
     private int scanChar(byte[] fromBytes, CharsetHandler charsetHandler, int fromLen, int charNumbers,
                          int fromOffset) throws WellFormException {
         int lengthOfCopy;
-        if (fromLen > packetLength()) {
+
+        // We suppose that the min-bytes of any character set is 1, so we use fromLen/1 as the max character number.
+        if (fromLen > packetLength() || fromLen / 1 > charNumbers) {
             // For utf-8 field, calculate the well-formed multi-bytes len
             SliceInput sliceInput = Slices.wrappedBuffer(fromBytes, 0, fromLen).getInput();
             int charLenToCheck = charNumbers;
-            while (charLenToCheck > 0) {
+
+            // Bugfix: when the character number is less than varchar number in column definition,
+            // but the length of byte array is more than varchar number in column definition.
+            while (sliceInput.isReadable() && charLenToCheck > 0) {
                 if (charsetHandler.nextChar(sliceInput) == CharsetHandler.INVALID_CODE) {
                     // handle well-form error
                     LOGGER.warn("un-mappable characters: " + showErrorBytes(fromBytes) + ", for character set: "

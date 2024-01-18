@@ -1,0 +1,54 @@
+## DISABLE_FAST_SQL_PARSER
+create tablegroup mytg1;
+create tablegroup mytg2;
+CREATE TABLE `t1` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(16) DEFAULT NULL,
+`c` varchar(32) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`) PARTITIONS 3
+tablegroup = mytg1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+
+CREATE TABLE `t2` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(16) DEFAULT NULL,
+`c` varchar(32) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`a`,`b`) PARTITIONS 3
+tablegroup = mytg1;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+
+CREATE TABLE `t3` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(16) DEFAULT NULL,
+`c` varchar(32) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY hash(`a`,`b`) PARTITIONS 3
+tablegroup = mytg2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+
+CREATE TABLE `t4` (
+`a` varchar(8) DEFAULT NULL,
+`b` varchar(16) DEFAULT NULL,
+`c` varchar(32) DEFAULT NULL,
+`d` int(11) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY hash(`a`,`b`) PARTITIONS 3
+tablegroup = mytg2;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t4;
+
+alter tablegroup mytg1 split partition p1 into pxx partitions 4;
+alter tablegroup mytg2 split partition p2 into pxx partitions 4;
+
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t1;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t2;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t3;
+/*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show full create table t4;

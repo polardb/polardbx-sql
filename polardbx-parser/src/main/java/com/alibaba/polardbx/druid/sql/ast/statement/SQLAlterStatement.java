@@ -16,6 +16,12 @@
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 
 public interface SQLAlterStatement extends SQLStatement {
+
+    @Override
+    default SqlType getSqlType() {
+        return SqlType.ALTER;
+    }
 }

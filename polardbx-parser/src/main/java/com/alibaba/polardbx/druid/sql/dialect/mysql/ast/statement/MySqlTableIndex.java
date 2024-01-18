@@ -296,4 +296,8 @@ public class MySqlTableIndex extends SQLConstraintImpl implements SQLTableElemen
     public void setTableGroup(SQLName tableGroup) {
         this.indexDefinition.setTableGroup(tableGroup);
     }
+
+    public boolean getVisible() {
+        return this.indexDefinition.isVisible();
+    }
 }

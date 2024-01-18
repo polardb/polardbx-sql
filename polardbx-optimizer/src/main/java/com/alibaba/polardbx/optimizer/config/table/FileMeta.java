@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TreeMaps;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 
 import java.nio.ByteBuffer;
 import java.util.List;
@@ -28,17 +29,21 @@ import java.util.Map;
 public class FileMeta {
     protected String logicalTableSchema;
     protected String logicalTableName;
+
     protected String physicalTableSchema;
     protected String physicalTableName;
+
     protected String fileName;
     protected long fileSize;
     protected long tableRows;
-    protected List<ColumnMeta> columnMetas;
+
+    protected Long commitTs;
+
     protected Map<String, ColumnMeta> columnMetaMap = TreeMaps.caseInsensitiveMap();
 
     public FileMeta(String logicalSchemaName, String logicalTableName, String physicalTableSchema,
                     String physicalTableName, String fileName, long fileSize,
-                    long tableRows) {
+                    long tableRows, Long commitTs) {
         this.logicalTableSchema = logicalSchemaName;
         this.logicalTableName = logicalTableName;
         this.physicalTableSchema = physicalTableSchema;
@@ -46,6 +51,7 @@ public class FileMeta {
         this.fileName = fileName;
         this.fileSize = fileSize;
         this.tableRows = tableRows;
+        this.commitTs = commitTs;
     }
 
     public static FileMeta parseFrom(FilesRecord filesRecord) {
@@ -57,7 +63,9 @@ public class FileMeta {
         switch (engine) {
         case OSS:
         case S3:
-        case LOCAL_DISK: {
+        case LOCAL_DISK:
+        case EXTERNAL_DISK:
+        case NFS: {
             String logicalSchemaName = filesRecord.getLogicalSchemaName();
             String logicalTableName = filesRecord.getLogicalTableName();
             String physicalTableSchema = filesRecord.getTableSchema();
@@ -81,14 +89,11 @@ public class FileMeta {
         return null;
     }
 
-    public List<ColumnMeta> getColumnMetas() {
-        return columnMetas;
-    }
-
     public void initColumnMetas(TableMeta tableMeta) {
-        this.columnMetas = tableMeta.getPhysicalColumns();
-        for (ColumnMeta columnMeta : columnMetas) {
-            this.columnMetaMap.put(columnMeta.getName(), columnMeta);
+        if (tableMeta.isOldFileStorage()) {
+            for (ColumnMeta columnMeta : tableMeta.getPhysicalColumns()) {
+                this.columnMetaMap.put(columnMeta.getName(), columnMeta);
+            }
         }
     }
 
@@ -143,5 +148,18 @@ public class FileMeta {
             ", fileSize=" + fileSize +
             ", tableRows=" + tableRows +
             '}';
+    }
+
+    public Long getCommitTs() {
+        return commitTs;
+    }
+
+    // todo(shengyu): don't store file meta in table meta
+    public static Map<String, List<FileMeta>> getFlatFileMetas(TableMeta tableMeta) {
+        return tableMeta.getFlatFileMetas();
+    }
+
+    public TableMeta getTableMeta(ExecutionContext ec) {
+        return ec.getSchemaManager(logicalTableSchema).getTable(logicalTableName);
     }
 }

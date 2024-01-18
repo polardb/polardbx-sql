@@ -73,7 +73,7 @@
     FROM test_tb6 a
     WHERE a.id = 5
   plan: |
-    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `sub` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `sub` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
 
 - sql: |
     /*TDDL:ENABLE_DIRECT_PLAN=false*/SELECT a.id,
@@ -90,14 +90,14 @@
     WHERE a.id = 5
   plan: |
     correlateapply(cor=$cor, leftconditions=[$0], opkind=equals, type=semi)
-      logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+      logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
       project($f0="id")
         filter(condition="$cor.name = name")
           gather(concurrent=true)
             logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
     cache node:
 
-    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` in((((select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`)))))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
+    logicalview(tables="optest_0000.test_tb5,test_tb6", sql="select `id`, `name`, (`id` = some (select `id` from (select `id`, `name` from `test_tb5` as `test_tb5`) as `t0` where (`t`.`name` = `name`))) as `$f9` from (select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where (`id` = 5)) as `t`")
     gather(concurrent=true)
       logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
 
@@ -344,7 +344,7 @@
   plan: |
     project(id="id", name="name", sub="id < 100 and id0", cor=[$cor0])
       semibkajoin(condition="name = name", type="left")
-        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` in((((select count(*) as `count(id)` from `test_tb5` as `test_tb5`))))))")
+        logicalview(tables="optest_0000.test_tb6,test_tb5", sql="select `id`, `name`, `create_time`, `int_col1`, `int_col2`, `int_col3`, `int_col4`, `int_col5`, `int_col6` from `test_tb6` as `test_tb6` where ((`id` = 5) or (`id` = some (select count(*) as `count(id)` from `test_tb5` as `test_tb5`)))")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb` where (`name` in (...))")
 
@@ -372,17 +372,17 @@
       AND ((`layer_1_column_0` BETWEEN '2011-06-22' AND '2013-09-02'))
       AND ((`layer_1_column_0` NOT BETWEEN 27 AND 81));
   plan: |
-    project(select_column_0="layer_0_column_0", cor=[$cor5])
-      correlateapply(cor=$cor5, leftconditions=[], opkind=null, type=left)
+    project(select_column_0="layer_0_column_0", cor=[$cor4])
+      correlateapply(cor=$cor4, leftconditions=[], opkind=null, type=left)
         gather(concurrent=true)
-          logicalview(tables="[0000-0003].select_partition_interger_[00-11]", shardcount=12, sql="select (68 is null) as `layer_1_column_0` from `select_partition_interger` as `select_partition_interger` where ((((((((98 <= 87) and ((68 is null) = 'cdefeed')) and ((68 is null) between 49 and 13)) and ((68 is null) between '2011-06-22' and '2013-09-02')) and (80 > (68 is null))) and (`tinyint_1bit_test` <= 6)) and (`date_test` > '2014-02-12')) and ((68 is null) not between 27 and 81))")
+          logicalview(tables="[0000-0003].select_partition_interger_[00-11]", shardcount=12, sql="select (68 is null) as `layer_1_column_0` from `select_partition_interger` as `select_partition_interger` where ((98 <= 87) and ((68 is null) = 'cdefeed') and ((68 is null) between 49 and 13) and ((68 is null) between '2011-06-22' and '2013-09-02') and (80 > (68 is null)) and (`tinyint_1bit_test` <= 6) and (`date_test` > '2014-02-12') and ((68 is null) not between 27 and 81))")
         topn(sort="layer_0_column_0 desc", offset=0, fetch=1)
           project(layer_0_column_0="is null(1)")
-            seminljoin(condition="$cor5.layer_1_column_0 = layer_1_column_0 and $cor5.layer_1_column_0 = layer_1_column_00 and $cor5.layer_1_column_0 = layer_1_column_01", type="semi")
+            seminljoin(condition="$cor4.layer_1_column_0 = layer_1_column_0 and $cor4.layer_1_column_0 = layer_1_column_00 and $cor4.layer_1_column_0 = layer_1_column_01", type="semi")
               gather(concurrent=true)
                 logicalview(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardcount=12, sql="select `pk` from `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` as `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
-              project(layer_1_column_0="$cor5.layer_1_column_0", layer_1_column_00="$cor5.layer_1_column_0", layer_1_column_01="$cor5.layer_1_column_0")
-                filter(condition="not($cor5.layer_1_column_0 > '2013-03-22')")
+              project(layer_1_column_0="$cor4.layer_1_column_0", layer_1_column_00="$cor4.layer_1_column_0", layer_1_column_01="$cor4.layer_1_column_0")
+                filter(condition="not($cor4.layer_1_column_0 > '2013-03-22')")
                   gather(concurrent=true)
                     logicalview(tables="[0000-0003].select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk_[00-11]", shardcount=12, sql="select `pk` from `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk` as `select_dml_12_one_pk_no_uk_two_gsi_partition_by_pk`")
     cache node:

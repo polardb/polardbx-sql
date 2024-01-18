@@ -44,7 +44,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @since 5.3.12
  */
 
-@RunWith(CommonCaseRunner.class)
+
 public class CBOJoinTest extends AutoReadBaseTestCase {
 
     private static final Log log = LogFactory.getLog(CBOJoinTest.class);

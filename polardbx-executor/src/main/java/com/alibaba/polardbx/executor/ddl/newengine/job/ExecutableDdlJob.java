@@ -32,6 +32,14 @@ public class ExecutableDdlJob extends AbstractDdlJob {
 
     private transient final Map<String, DdlTask> labeledTasks = new ConcurrentHashMap<>();
 
+    public ExecutableDdlJob() {
+        super();
+    }
+
+    public ExecutableDdlJob(DirectedAcyclicGraph taskGraph) {
+        super(taskGraph);
+    }
+
     public DdlJob combineTasks(ExecutableDdlJob ddlJob) {
         synchronized (taskGraph) {
             taskGraph.addGraph(ddlJob.taskGraph);
@@ -93,7 +101,6 @@ public class ExecutableDdlJob extends AbstractDdlJob {
         return this;
     }
 
-
     /**
      * A convenient method to append to the DAG tail
      *
@@ -111,8 +118,6 @@ public class ExecutableDdlJob extends AbstractDdlJob {
         return this;
     }
 
-
-
     /**
      * Append a job after the predecessor node
      */
@@ -129,12 +134,32 @@ public class ExecutableDdlJob extends AbstractDdlJob {
     }
 
     public DdlJob appendTask(DdlTask task) {
-        synchronized (this.taskGraph){
+        synchronized (this.taskGraph) {
             Set<DirectedAcyclicGraph.Vertex> outSet = this.taskGraph.getAllZeroOutDegreeVertexes();
             DirectedAcyclicGraph.Vertex vertex = this.taskGraph.addVertex(task).getKey();
-            for(DirectedAcyclicGraph.Vertex out: outSet){
+            for (DirectedAcyclicGraph.Vertex out : outSet) {
                 this.taskGraph.addEdge(out, vertex);
             }
+        }
+        return this;
+    }
+
+    public DdlJob addConcurrentTasksBetween(DdlTask beforeTask, DdlTask afterTask, List<List<DdlTask>> addedTasks) {
+        if (addedTasks.isEmpty()) {
+            return this;
+        }
+        int added = 0;
+        removeTaskRelationship(beforeTask, afterTask);
+        for (List<DdlTask> tasks : addedTasks) {
+            if (tasks.isEmpty()) {
+                continue;
+            }
+            added++;
+            addSequentialTasksAfter(beforeTask, tasks);
+            addTaskRelationship(tasks.get(tasks.size() - 1), afterTask);
+        }
+        if (added == 0) {
+            addTaskRelationship(beforeTask, afterTask);
         }
         return this;
     }

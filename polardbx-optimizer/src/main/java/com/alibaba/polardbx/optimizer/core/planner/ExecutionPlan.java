@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.privilege.PrivilegeVerifyItem;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.core.profiler.memory.PlanMemEstimation;
+import com.alibaba.polardbx.optimizer.core.rel.GatherReferencedGsiNameRelVisitor;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.sharding.result.PlanShardInfo;
 import com.google.common.collect.Maps;
@@ -59,12 +62,14 @@ public class ExecutionPlan {
     public enum DirectMode {
         // 访问的表都是在同一个库的单表的转发
         TABLE_DIRECT,
+        // 访问的表都是在同一个DN的单表的转发
+        MULTI_DB_TABLE_DIRECT,
         // 根据分片键点查的转发
         SHARDING_KEY_DIRECT,
         NONE;
 
         public boolean isDirect() {
-            return this == TABLE_DIRECT || this == SHARDING_KEY_DIRECT;
+            return this == TABLE_DIRECT || this == SHARDING_KEY_DIRECT || this == MULTI_DB_TABLE_DIRECT;
         }
     }
 
@@ -101,6 +106,12 @@ public class ExecutionPlan {
     private Set<String> schemaNames;
 
     /**
+     * all the gsi name that is referenced by plan
+     * Map<schema, Set<GsiName>>
+     */
+    private Map<String, Set<String>> referencedGsiNames;
+
+    /**
      * all shard info of plan
      */
     private Map<String, PlanShardInfo> planShardInfo = Maps.newConcurrentMap();
@@ -119,15 +130,43 @@ public class ExecutionPlan {
      */
     private Pair<String, String> dbIndexAndTableName = null;
 
+    /**
+     * If true, this plan can be optimize by adding FORCE INDEX PRIMARY for TSO trx,
+     * (but yet we may not have optimized it.)
+     */
+    private boolean canOptByForcePrimary = false;
+
+    private Map<Integer, ParameterContext> constantParams = null;
+
+    /**
+     * A collection of hints used for this plan
+     */
+    private HintConverter.HintCollection hintCollection = null;
+
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta, BitSet planProperties) {
         this(ast, plan, columnMeta);
         this.planProperties = planProperties;
+        if (this.referencedGsiNames == null) {
+            GatherReferencedGsiNameRelVisitor visitor = new GatherReferencedGsiNameRelVisitor();
+            if (plan != null) {
+                plan.accept(visitor);
+            }
+            this.referencedGsiNames = visitor.getReferencedGsiNames();
+        }
     }
 
     public ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta) {
         this.ast = ast;
         this.plan = plan;
         this.cursorMeta = columnMeta;
+
+        if (this.referencedGsiNames == null) {
+            GatherReferencedGsiNameRelVisitor visitor = new GatherReferencedGsiNameRelVisitor();
+            if (plan != null) {
+                plan.accept(visitor);
+            }
+            this.referencedGsiNames = visitor.getReferencedGsiNames();
+        }
     }
 
     public RelNode getPlan() {
@@ -188,6 +227,10 @@ public class ExecutionPlan {
         newExecutionPlan.hitCount = this.hitCount;
         newExecutionPlan.isDirectShardingKey = this.isDirectShardingKey;
         newExecutionPlan.dbIndexAndTableName = this.dbIndexAndTableName;
+        newExecutionPlan.canOptByForcePrimary = this.canOptByForcePrimary;
+        newExecutionPlan.referencedGsiNames = this.referencedGsiNames;
+        newExecutionPlan.constantParams = this.constantParams;
+        newExecutionPlan.hintCollection = this.hintCollection;
         return newExecutionPlan;
     }
 
@@ -306,9 +349,6 @@ public class ExecutionPlan {
     }
 
     public PlanShardInfo getPlanShardInfo(String key) {
-        if (!planShardInfo.containsKey(key)) {
-
-        }
         return planShardInfo.get(key);
     }
 
@@ -326,6 +366,36 @@ public class ExecutionPlan {
 
     public void setDirectShardingKey(boolean directShardingKey) {
         isDirectShardingKey = directShardingKey;
+    }
+
+    public boolean isCanOptByForcePrimary() {
+        return canOptByForcePrimary;
+    }
+
+    public void setCanOptByForcePrimary(boolean canOptByForcePrimary) {
+        this.canOptByForcePrimary = canOptByForcePrimary;
+    }
+
+    public Map<String, Set<String>> getReferencedGsiNames() {
+        return referencedGsiNames;
+    }
+
+    public Map<Integer, ParameterContext> getConstantParams() {
+        return constantParams;
+    }
+
+    public void setConstantParams(Map<Integer, ParameterContext> constantParams) {
+        this.constantParams = constantParams;
+    }
+
+    public HintConverter.HintCollection getHintCollection() {
+        return hintCollection;
+    }
+
+    public ExecutionPlan setHintCollection(
+        HintConverter.HintCollection hintCollection) {
+        this.hintCollection = hintCollection;
+        return this;
     }
 }
 

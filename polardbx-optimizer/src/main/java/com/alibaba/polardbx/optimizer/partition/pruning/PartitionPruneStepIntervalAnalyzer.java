@@ -18,7 +18,9 @@ package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.util.Pair;
+import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.exception.InvalidTypeConversionException;
 import com.alibaba.polardbx.optimizer.partition.exception.SubQueryDynamicValueNotReadyException;
 
@@ -54,12 +56,12 @@ public class PartitionPruneStepIntervalAnalyzer {
          */
         List<List<SearchExprInfo>> rangeBoundDatumCollection = new ArrayList<>(2);
         List<List<PartitionPruneStep>> rangeStepCollection = new ArrayList<>(2);
-        
+
         boolean useFastSinglePointIntervalMerging = true;
         if (buildContext != null) {
             useFastSinglePointIntervalMerging = buildContext.isUseFastSinglePointIntervalMerging();
         }
-        
+
         for (int i = 0; i < 2; i++) {
             rangeBoundDatumCollection.add(new ArrayList<>());
             rangeStepCollection.add(new ArrayList<>());
@@ -77,7 +79,7 @@ public class PartitionPruneStepIntervalAnalyzer {
             }
         }
 
-        if(useFastSinglePointIntervalMerging) {
+        if (useFastSinglePointIntervalMerging) {
             boolean containEqSteps = false;
             PartitionPruneStepOp firstEqStepOp = null;
             for (int i = 0; i < toBeMergedSteps.size(); i++) {
@@ -85,7 +87,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                 PartitionPruneStepOp stepOp = (PartitionPruneStepOp) step;
                 PartPredicateRouteFunction routeFunction = (PartPredicateRouteFunction) stepOp.getPredRouteFunc();
                 ComparisonKind cmpKind = routeFunction.getSearchExprInfo().getCmpKind();
-                if (cmpKind == ComparisonKind.EQUAL ) {
+                if (cmpKind == ComparisonKind.EQUAL) {
                     containEqSteps = true;
                     firstEqStepOp = stepOp;
                     break;
@@ -93,9 +95,9 @@ public class PartitionPruneStepIntervalAnalyzer {
             }
             if (containEqSteps) {
                 return firstEqStepOp.getIntervalMerger();
-            }            
+            }
         }
-        
+
         /**
          * classify all the predicates into three kinds according to cmpKind: < & <=, = , > & >=
          */
@@ -131,7 +133,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                     ((PartPredicateRouteFunction) geStep.getPredRouteFunc()).getSearchExprInfo();
                 rangeBoundDatumCollection.get(IntersectStepIntervalMerger.GREATER_THEN_OR_EQUALS_STEPS).add(geExprInfo);
                 rangeStepCollection.get(IntersectStepIntervalMerger.GREATER_THEN_OR_EQUALS_STEPS).add(geStep);
-                
+
             }
         }
 
@@ -142,6 +144,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                 StepIntervalInfo intervalStopMerging = new StepIntervalInfo();
                 intervalStopMerging.setForbidMerging(true);
                 intervalStopMerging.setFinalStep(step);
+                intervalStopMerging.setPartLevel(step.getPartLevel());
                 stopMergingIntervalInfos.add(intervalStopMerging);
             }
         }
@@ -171,7 +174,7 @@ public class PartitionPruneStepIntervalAnalyzer {
     /**
      * The Comparator for the endPoint of a interval
      *
-     *  <pre>
+     * <pre>
      *  we define "<A" as the virtual endpoint "A-" and define ">A" as the virtual endpoint "A+":
      *      <=A: A]
      *      <A:  A-]
@@ -181,10 +184,10 @@ public class PartitionPruneStepIntervalAnalyzer {
      *      A- < A < A+
      *
      *  </pre>
-     *
      */
     protected static class RangeEndPointComparator implements Comparator<RangeInterval> {
         protected SearchDatumComparator querySpaceComparator;
+
         public RangeEndPointComparator(SearchDatumComparator querySpaceComparator) {
             this.querySpaceComparator = querySpaceComparator;
         }
@@ -216,9 +219,9 @@ public class PartitionPruneStepIntervalAnalyzer {
                 } else {
                     cmpRs = this.querySpaceComparator.compare(o1Rng.getBndValue(), o2Rng.getBndValue());
                     if (cmpRs == 0) {
-                        if ( o1Rng.getNearType() > o2Rng.getNearType() ) {
+                        if (o1Rng.getNearType() > o2Rng.getNearType()) {
                             cmpRs = 1;
-                        } else if ( o1Rng.getNearType() < o2Rng.getNearType() ) {
+                        } else if (o1Rng.getNearType() < o2Rng.getNearType()) {
                             cmpRs = -1;
                         }
                     }
@@ -228,7 +231,8 @@ public class PartitionPruneStepIntervalAnalyzer {
         }
     }
 
-    protected static boolean isNeighbour(SearchDatumComparator querySpaceComparator, RangeInterval o1, RangeInterval o2) {
+    protected static boolean isNeighbour(SearchDatumComparator querySpaceComparator, RangeInterval o1,
+                                         RangeInterval o2) {
         boolean checkRs = false;
         int cmpRs = querySpaceComparator.compare(o1.getBndValue(), o2.getBndValue());
         if (cmpRs == 0) {
@@ -259,14 +263,20 @@ public class PartitionPruneStepIntervalAnalyzer {
 
     }
 
-
     protected static List<StepIntervalInfo> mergeIntervalsForUnionStep(PartitionInfo partInfo,
+                                                                       PartKeyLevel partLevel,
                                                                        List<StepIntervalInfo> ranges) {
 
         List<StepIntervalInfo> resultRanges = new ArrayList<>();
+        PartitionByDefinition partBy = null;
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            partBy = partInfo.getPartitionBy().getSubPartitionBy();
+        } else {
+            partBy = partInfo.getPartitionBy();
+        }
 
         // Sort all the start point for each ranges
-        SearchDatumComparator querySpaceComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
+        SearchDatumComparator querySpaceComparator = partBy.getQuerySpaceComparator();
         RangeEndPointComparator rangeEndPointComparator = new RangeEndPointComparator(querySpaceComparator);
 
         StepRangeIntervalInfoComparator intervalInfoComparator =
@@ -295,6 +305,7 @@ public class PartitionPruneStepIntervalAnalyzer {
             RangeInterval rngMaxPoint = rng.getMaxVal();
             if (resultRanges.isEmpty()) {
                 StepIntervalInfo newRng = new StepIntervalInfo(rng);
+                newRng.setPartLevel(partLevel);
                 resultRanges.add(newRng);
                 labelAsSinglePointIntervalIfFound(partInfo, newRng);
                 lastRange = newRng;
@@ -415,6 +426,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                          * Handle for case1, create new range:
                          */
                         StepIntervalInfo newRng = new StepIntervalInfo(rng);
+                        newRng.setPartLevel(partLevel);
                         labelAsSinglePointIntervalIfFound(partInfo, newRng);
                         resultRanges.add(newRng);
                         lastRange = newRng;
@@ -445,7 +457,6 @@ public class PartitionPruneStepIntervalAnalyzer {
                      *      if range[i-1].end is open & range[i].start is closed
                      *      then
                      *          range[i-1] and range[i] are NOT overlap, but can merge
-
                      *  case3***:
                      *      rng_{i-1}:  (a, b]
                      *      rng_{i}:         (b, c)
@@ -476,6 +487,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                          * Only handle range merge for case1 & case4
                          */
                         StepIntervalInfo newRng = new StepIntervalInfo(rng);
+                        newRng.setPartLevel(partLevel);
                         labelAsSinglePointIntervalIfFound(partInfo, newRng);
                         resultRanges.add(newRng);
                         lastRange = newRng;
@@ -490,7 +502,8 @@ public class PartitionPruneStepIntervalAnalyzer {
                                                                   ExecutionContext context,
                                                                   PartPruneStepPruningContext pruningCtx,
                                                                   List<List<SearchExprInfo>> rangeBoundDataumCollection,
-                                                                  List<List<PartitionPruneStep>> rangeStepCollection) {
+                                                                  List<List<PartitionPruneStep>> rangeStepCollection,
+                                                                  PartitionPruneStepCombine targetIntersectStep) {
 
         List<SearchExprInfo> allLessThanOrEqualsRngBndInfos =
             rangeBoundDataumCollection.get(IntersectStepIntervalMerger.LESS_THEN_OR_EQUALS_STEPS);
@@ -498,14 +511,22 @@ public class PartitionPruneStepIntervalAnalyzer {
             rangeBoundDataumCollection.get(IntersectStepIntervalMerger.GREATER_THEN_OR_EQUALS_STEPS);
 
         // ----------------------
-        int partColCnt = partInfo.getPartitionBy().getPartitionColumnNameList().size();
+        PartKeyLevel partLevel = targetIntersectStep.getPartLevel();
+        PartitionByDefinition partBy = null;
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            partBy = partInfo.getPartitionBy().getSubPartitionBy();
+        } else {
+            partBy = partInfo.getPartitionBy();
+        }
+        int partColCnt = partBy.getPartitionColumnNameList().size();
 
         // process all range predicates with < & <=, find the range predicate with the min value 
         RangeInterval maxVal = null;
         PartitionPruneStep maxValStep = null;
         if (!allLessThanOrEqualsRngBndInfos.isEmpty()) {
             // find min value
-            maxVal = findMostSearchDatumInfo(partInfo, context, pruningCtx, false, allLessThanOrEqualsRngBndInfos);
+            maxVal = findMostSearchDatumInfo(partInfo, partLevel, context, pruningCtx, false,
+                allLessThanOrEqualsRngBndInfos);
             if (maxVal != null) {
                 maxValStep =
                     rangeStepCollection.get(IntersectStepIntervalMerger.LESS_THEN_OR_EQUALS_STEPS)
@@ -524,7 +545,8 @@ public class PartitionPruneStepIntervalAnalyzer {
         PartitionPruneStep minValStep = null;
         if (!allGreaterThanOrEqualsRngBndInfos.isEmpty()) {
             // find max value
-            minVal = findMostSearchDatumInfo(partInfo, context, pruningCtx, true, allGreaterThanOrEqualsRngBndInfos);
+            minVal = findMostSearchDatumInfo(partInfo, partLevel, context, pruningCtx, true,
+                allGreaterThanOrEqualsRngBndInfos);
             if (minVal != null) {
                 minValStep = rangeStepCollection.get(IntersectStepIntervalMerger.GREATER_THEN_OR_EQUALS_STEPS)
                     .get(minVal.getExprIndex());
@@ -536,18 +558,20 @@ public class PartitionPruneStepIntervalAnalyzer {
                 ComparisonKind.GREATER_THAN, false, 0, false, true);
         }
 
-        SearchDatumComparator querySpaceComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
+        SearchDatumComparator querySpaceComparator = partBy.getQuerySpaceComparator();
         boolean isRangeConflict = checkIfRangeConflict(querySpaceComparator, minVal, maxVal);
         boolean isEqualValuesConflict = false;
         StepIntervalInfo stepRngInfo = new StepIntervalInfo();
         if (isRangeConflict || isEqualValuesConflict) {
-            stepRngInfo.setRangeType(RangeIntervalType.CONFLICT_RANGE);
+            stepRngInfo = buildConflictRange();
+            stepRngInfo.setPartLevel(partLevel);
         } else {
             stepRngInfo.setRangeType(RangeIntervalType.SATISFIABLE_RANGE);
             stepRngInfo.setMaxVal(maxVal);
             stepRngInfo.setMaxValStep(maxValStep);
             stepRngInfo.setMinVal(minVal);
             stepRngInfo.setMinValStep(minValStep);
+            stepRngInfo.setPartLevel(partLevel);
             if (maxVal.isMaxInf() && minVal.isMinInf()) {
                 // Range:  [-inf, +inf]
                 stepRngInfo.setRangeType(RangeIntervalType.TAUTOLOGY_RANGE);
@@ -596,6 +620,7 @@ public class PartitionPruneStepIntervalAnalyzer {
      * @param isFindMax isFindMax=false: findMin, isFindMax=true: findMax
      */
     protected static RangeInterval findMostSearchDatumInfo(PartitionInfo partInfo,
+                                                           PartKeyLevel partLevel,
                                                            ExecutionContext context,
                                                            PartPruneStepPruningContext pruningCtx,
                                                            boolean isFindMax,
@@ -607,7 +632,14 @@ public class PartitionPruneStepIntervalAnalyzer {
             return null;
         }
 
-        SearchDatumComparator queryComparator = partInfo.getPartitionBy().getQuerySpaceComparator();
+        PartitionByDefinition partBy = null;
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            partBy = partInfo.getPartitionBy().getSubPartitionBy();
+        } else {
+            partBy = partInfo.getPartitionBy();
+        }
+
+        SearchDatumComparator queryComparator = partBy.getQuerySpaceComparator();
         SearchExprEvalResult mostExprRs = searchExprEvalRsInfo.get(0).getKey();
         Integer mostExprIdx = searchExprEvalRsInfo.get(0).getValue();
         ComparisonKind mostExprRsCmpKind = mostExprRs.getComparisonKind();
@@ -685,7 +717,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                      *  the SearchExprInfo should be treated as Always-True expr
                      */
                     continue;
-                }  else if (ex instanceof SubQueryDynamicValueNotReadyException) {
+                } else if (ex instanceof SubQueryDynamicValueNotReadyException) {
                     /**
                      *  when it is failed to compute its SearchDatumInfo because of
                      *  the not-ready subquery-dyanamic value,
@@ -693,7 +725,7 @@ public class PartitionPruneStepIntervalAnalyzer {
                      *  so generate a full scan bitset
                      */
                     continue;
-                }else {
+                } else {
                     throw ex;
                 }
             }

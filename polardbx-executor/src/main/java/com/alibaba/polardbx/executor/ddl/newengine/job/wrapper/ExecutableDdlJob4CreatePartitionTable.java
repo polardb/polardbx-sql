@@ -16,11 +16,13 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.job.wrapper;
 
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateArchiveTableEventLogTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreatePartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesPartitionInfoMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -36,5 +38,5 @@ public class ExecutableDdlJob4CreatePartitionTable extends ExecutableDdlJob {
     private CdcDdlMarkTask cdcDdlMarkTask;
     private CreateTableShowTableMetaTask createTableShowTableMetaTask;
     private TableSyncTask tableSyncTask;
-
+    private CreateArchiveTableEventLogTask createArchiveTableEventLogTask;
 }

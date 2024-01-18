@@ -1,0 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+## test show createdb without extras of default_single
+show create database drds_polarx2_part_qatest_app;
+Database,Create Database
+drds_polarx2_part_qatest_app,CREATE DATABASE `drds_polarx2_part_qatest_app` CHARSET = `utf8mb4` MODE = 'auto'

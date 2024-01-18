@@ -52,4 +52,7 @@ public class ExecutionStrategyResult {
      */
     public boolean doMultiWrite = false;
 
+    public boolean pushablePrimaryKeyCheck = true;
+
+    public boolean pushableForeignConstraintCheck = true;
 }

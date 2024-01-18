@@ -91,4 +91,7 @@ public class SqlDropColumn extends SqlAlterSpecification {
     public SqlAlterSpecification replaceTableName(SqlIdentifier newTableName) {
         return new SqlDropColumn(newTableName, colName, sourceSql, getParserPosition());
     }
+
+    @Override
+    public boolean supportFileStorage() { return true;}
 }

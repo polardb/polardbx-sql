@@ -1,0 +1,47 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE t1 (
+	id bigint(20) NOT NULL AUTO_INCREMENT,
+	a int,
+	primary key(id)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p0 VALUES LESS THAN (100),
+	PARTITION p1 VALUES LESS THAN (200),
+	PARTITION p2 VALUES LESS THAN (300)
+);
+CREATE TABLE t2 (
+	id bigint(20) NOT NULL AUTO_INCREMENT,
+	a int,
+	primary key(id)
+)
+PARTITION BY RANGE (a) (
+	PARTITION p0 VALUES LESS THAN (100),
+	PARTITION p1 VALUES LESS THAN (200),
+	PARTITION p2 VALUES LESS THAN (300)
+);
+explain select * from t1 partition (p1) join t2 partition (p1) on t1.id=t2.id;
+Logical ExecutionPlan
+BKAJoin(condition="id = id", type="inner")
+  Gather(concurrent=true)
+    LogicalView(tables="t1[p1]", sql="SELECT `id`, `a` FROM `t1` AS `t1`")
+  Gather(concurrent=true)
+    LogicalView(tables="t2[p1]", sql="SELECT `id`, `a` FROM `t2` AS `t2` WHERE (`id` IN (...))")
+explain select * from t1 partition (p1);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1]", sql="SELECT `id`, `a` FROM `t1` AS `t1`")
+explain select * from t2 partition (p1);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t2[p1]", sql="SELECT `id`, `a` FROM `t2` AS `t2`")
+explain select * from t1 partition (p1) join t2 partition (p1) on t1.a=t2.a;
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="t1[p1],t2[p1]", sql="SELECT `t1`.`id`, `t1`.`a`, `t2`.`id` AS `id0`, `t2`.`a` AS `a0` FROM `t1` AS `t1` INNER JOIN `t2` AS `t2` ON (`t1`.`a` = `t2`.`a`)")
+explain select * from t1 partition (p1) join t2 partition (p2) on t1.a=t2.a;
+Logical ExecutionPlan
+BKAJoin(condition="a = a", type="inner")
+  Gather(concurrent=true)
+    LogicalView(tables="t1[p1]", sql="SELECT `id`, `a` FROM `t1` AS `t1`")
+  Gather(concurrent=true)
+    LogicalView(tables="t2[p2]", sql="SELECT `id`, `a` FROM `t2` AS `t2` WHERE (`a` IN (...))")

@@ -62,7 +62,7 @@ public class TruncateTableJobFactory extends DdlJobFactory {
 
         DdlTask validateTask = new TruncateTableValidateTask(schemaName, logicalTableName, tableGroupConfig);
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData);
+        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         executableDdlJob.addSequentialTasks(Lists.newArrayList(

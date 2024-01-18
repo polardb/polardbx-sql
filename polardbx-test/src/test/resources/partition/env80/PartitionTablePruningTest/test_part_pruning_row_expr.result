@@ -1,0 +1,184 @@
+DROP TABLE IF EXISTS tbl_rng_col;
+CREATE TABLE `tbl_rng_col` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` bigint(20) DEFAULT NULL,
+	`d` bigint(20) DEFAULT NULL,
+	`e` bigint(20) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS (b) (
+	PARTITION p1 VALUES LESS THAN (1000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p2 VALUES LESS THAN (2000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p3 VALUES LESS THAN (3000)
+		STORAGE ENGINE InnoDB
+);
+INSERT INTO tbl_rng_col
+VALUES (1, 1, 1, 1, 1),
+	(1001, 1001, 1, 1, 1),
+	(2001, 2001, 1, 1, 1),
+	(2002, NULL, 1, 1, 1);
+SELECT *
+FROM tbl_rng_col
+WHERE (a, b, c) < (1000, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+SELECT *
+FROM tbl_rng_col
+WHERE (b, c, a) > (1000, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1001,1001,1,1,1
+2001,2001,1,1,1
+SELECT *
+FROM tbl_rng_col
+WHERE (b, c, a) <= (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+1001,1001,1,1,1
+2001,2001,1,1,1
+SELECT *
+FROM tbl_rng_col
+WHERE (b, c, a) >= (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+SELECT *
+FROM tbl_rng_col
+WHERE (b, c, a) = (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+SELECT *
+FROM tbl_rng_col
+WHERE (b, c, a) != (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+1001,1001,1,1,1
+2001,2001,1,1,1
+2002,null,1,1,1
+CREATE TABLE `tbl_rng_col2` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` bigint(20) DEFAULT NULL,
+	`c` bigint(20) DEFAULT NULL,
+	`d` bigint(20) DEFAULT NULL,
+	`e` bigint(20) DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS (b, c) (
+	PARTITION p1 VALUES LESS THAN (1000, 10000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p2 VALUES LESS THAN (2000, 20000)
+		STORAGE ENGINE InnoDB,
+	PARTITION p3 VALUES LESS THAN (3000, 30000)
+		STORAGE ENGINE InnoDB
+);
+INSERT INTO tbl_rng_col2
+VALUES (1, 1, 1, 1, 1),
+	(1001, 1001, 10001, 1, 1),
+	(2001, 2001, 20001, 1, 1),
+	(2002, NULL, NULL, 1, 1),
+	(2003, 1001, NULL, 1, 1);
+SELECT *
+FROM tbl_rng_col2
+WHERE (a, b, c) < (1000, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) > (1000, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1001,1001,10001,1,1
+2001,2001,20001,1,1
+2003,1001,null,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) <= (1501, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+1001,1001,10001,1,1
+2003,1001,null,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) >= (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+2001,2001,20001,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) = (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) != (2001, 1999, 10000)
+ORDER BY a, b, c;
+a,b,c,d,e
+1,1,1,1,1
+1001,1001,10001,1,1
+2001,2001,20001,1,1
+2002,null,null,1,1
+2003,1001,null,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) > (2000, 1999, 10000);
+a,b,c,d,e
+2001,2001,20001,1,1
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c) IN ((1, 1), (1000, 1000), (10001, 10001), (2002, 20001), (2001, 20001))
+ORDER BY b, c;
+a,b,c,d,e
+1,1,1,1,1
+2001,2001,20001,1,1
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (a, b, c) < (1000, 1999, 10000);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1,p2,p3]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`a`, `b`, `c`) <(?, ?, ?))")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) > (1000, 1999, 10000);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1,p2,p3]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) >(?, ?, ?))")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) <= (1501, 1999, 10000);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1,p2]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) <=(?, ?, ?))")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) >= (2001, 1999, 10000);
+Logical ExecutionPlan
+PhyTableOperation(tables="tbl_rng_col2[p3]", sql="SELECT `tbl_rng_col2`.`a`, `tbl_rng_col2`.`b`, `tbl_rng_col2`.`c`, `tbl_rng_col2`.`d`, `tbl_rng_col2`.`e` FROM ? AS `tbl_rng_col2` WHERE ((`tbl_rng_col2`.`b`, `tbl_rng_col2`.`c`, `tbl_rng_col2`.`a`) >=(?, ?, ?))", params="1999,2001,10000")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) = (2001, 1999, 10000);
+Logical ExecutionPlan
+LogicalView(tables="tbl_rng_col2[p3]", sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) =(?, ?, ?))")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) != (2001, 1999, 10000);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p1,p2,p3]", shardCount=3, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) <>(?, ?, ?))")
+EXPLAIN SELECT *
+FROM tbl_rng_col2
+WHERE (b, c, a) > (2000, 1999, 10000);
+Logical ExecutionPlan
+Gather(concurrent=true)
+  LogicalView(tables="tbl_rng_col2[p2,p3]", shardCount=2, sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) >(?, ?, ?))")
+SELECT *
+FROM tbl_rng_col2
+WHERE (b, c) NOT IN ((1, 1), (1000, 1000), (10001, 10001), (2002, 20001), (2001, 20001))
+ORDER BY b, c;
+a,b,c,d,e
+2003,1001,null,1,1
+1001,1001,10001,1,1

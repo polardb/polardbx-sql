@@ -57,7 +57,8 @@ import java.util.stream.Stream;
 /**
  * @author chenghui.lch
  */
-@RunWith(Parameterized.class)
+
+@NotThreadSafe
 public class ScaleOutCompleteTest extends ScaleOutBaseTest {
 
     private static List<ComplexTaskMetaManager.ComplexTaskStatus> moveTableStatus =

@@ -24,12 +24,14 @@ import com.alibaba.polardbx.executor.ddl.job.factory.gsi.DropPartitionGsiJobFact
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionTableWithGsiValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4DropPartitionTable;
+import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
@@ -114,6 +116,14 @@ public class DropPartitionTableWithGsiJobFactory extends DdlJobFactory {
             final String indexTableName = gsiPreparedData.getIndexTableName();
             ExecutableDdlJob4DropPartitionGsi dropGsiJob = (ExecutableDdlJob4DropPartitionGsi)
                 DropPartitionGsiJobFactory.create(gsiPreparedData, executionContext, true, false);
+
+            DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
+                gsiPreparedData.getSchemaName(),
+                gsiPreparedData.getPrimaryTableName(),
+                gsiPreparedData.getIndexTableName(),
+                GsiStatisticsSyncAction.DELETE_RECORD,
+                null);
+            dropGsiJob.appendTask(gsiStatisticsInfoTask);
 
             result.addTaskRelationship(validateTask, dropGsiJob.getValidateTask());
             result.addTaskRelationship(dropPrimaryTableSyncTask, dropGsiJob.getDropGsiTableHideTableMetaTask());

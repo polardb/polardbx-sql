@@ -18,36 +18,23 @@ package com.alibaba.polardbx.executor.gms;
 
 import com.alibaba.druid.pool.GetConnectionTimeoutException;
 import com.alibaba.druid.proxy.jdbc.ResultSetMetaDataProxy;
-import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
-import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
-import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
-import com.mysql.cj.polarx.protobuf.PolarxResultset;
-import com.alibaba.polardbx.rpc.client.XSession;
-import com.alibaba.polardbx.rpc.compatible.XResultSet;
-import com.alibaba.polardbx.rpc.compatible.XResultSetMetaData;
-import com.alibaba.polardbx.rpc.pool.XConnection;
-import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlDuration;
@@ -57,6 +44,10 @@ import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.evolution.ColumnMappingRecord;
+import com.alibaba.polardbx.gms.metadb.foreign.ForeignColsRecord;
+import com.alibaba.polardbx.gms.metadb.foreign.ForeignRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
@@ -82,19 +73,22 @@ import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.IndexType;
 import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
-import com.alibaba.polardbx.optimizer.partition.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
+import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
 import com.alibaba.polardbx.rpc.client.XSession;
 import com.alibaba.polardbx.rpc.compatible.XResultSet;
 import com.alibaba.polardbx.rpc.compatible.XResultSetMetaData;
@@ -102,14 +96,15 @@ import com.alibaba.polardbx.rpc.pool.XConnection;
 import com.alibaba.polardbx.rpc.result.XResult;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import lombok.val;
-import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.SetUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 
 import javax.sql.DataSource;
@@ -135,6 +130,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -166,25 +162,17 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         this.storage = storage;
     }
 
-    public GmsTableMetaManager(GmsTableMetaManager old, String tableName, TddlRuleManager rule) {
-        this.schemaName = old.schemaName;
-        this.appName = old.appName;
-        this.rule = rule;
-        this.latestTables = new HashMap<>(old.latestTables);
-        this.storage = old.storage;
-        loadAndCacheTableMeta(tableName.toLowerCase());
-    }
-
     /**
      * Load multiple tables in transaction
      */
-    public GmsTableMetaManager(GmsTableMetaManager old, List<String> tableNames, TddlRuleManager rule) {
+    public GmsTableMetaManager(GmsTableMetaManager old, List<String> tableNames, TddlRuleManager rule,
+                               Connection metaDbConn) {
         this.schemaName = old.schemaName;
         this.appName = old.appName;
         this.rule = rule;
         this.latestTables = new HashMap<>(old.latestTables);
         this.storage = old.storage;
-        loadAndCacheTableMeta(tableNames);
+        loadAndCacheTableMeta(tableNames, metaDbConn);
     }
 
     public static TableMeta fetchTableMeta(Connection metaDbConn,
@@ -239,19 +227,30 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
             if (tableRecord != null) {
                 List<ColumnsRecord> columnsRecords;
+                List<ColumnMappingRecord> columnMappingRecords;
                 List<IndexesRecord> indexesRecords;
                 if (includeInvisiableInfo) {
                     columnsRecords =
                         tableInfoManager.queryColumns(schemaName, origTableName);
+                    columnMappingRecords =
+                        tableInfoManager.queryColumnMappings(schemaName, origTableName);
                     indexesRecords =
                         tableInfoManager.queryIndexes(schemaName, origTableName);
                 } else {
                     columnsRecords =
                         tableInfoManager.queryVisibleColumns(schemaName, origTableName);
+                    columnMappingRecords =
+                        tableInfoManager.queryColumnMappings(schemaName, origTableName);
                     indexesRecords =
                         tableInfoManager.queryVisibleIndexes(schemaName, origTableName);
                 }
-                meta = buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, logicalTableName);
+                final List<ForeignRecord> referencedFkRecords =
+                    tableInfoManager.queryReferencedForeignKeys(schemaName, origTableName);
+                final List<ForeignRecord> fkRecords =
+                    tableInfoManager.queryForeignKeys(schemaName, origTableName);
+
+                meta = buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, columnMappingRecords,
+                    fkRecords, referencedFkRecords, tableInfoManager, logicalTableName);
 
                 if (meta != null && !fetchPrimaryTableMetaOnly) {
 
@@ -296,6 +295,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
                     }
                 }
+
                 // fetch file metas for oss engine.
                 if (meta != null && meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
                     Map<String, Map<String, List<FileMeta>>> fileMetaSet =
@@ -305,6 +305,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             }
 
             metaMap.put(logicalTableName, meta);
+
+            if (meta != null && Engine.isFileStore(meta.getEngine())) {
+                OrcColumnManager.getINSTANCE().rebuild(schemaName, logicalTableName);
+            }
         }
 
         if (locked) {
@@ -358,13 +362,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 2. Allow two concurrent version exists, which is not safe for single-versioned TableRule & PartitionInfoManager
      */
     public void tonewversion(String tableName) {
-        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, true);
+        tonewversionImpl(Arrays.asList(tableName), false, null, null, null, -1, true, false);
     }
 
     public void tonewversion(String tableName,
                              boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
                              boolean allowTwoVersion) {
-        tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, allowTwoVersion);
+        tonewversionImpl(Arrays.asList(tableName), preemptive, initWait, interval, timeUnit, -1, allowTwoVersion,
+            false);
     }
 
     /**
@@ -373,8 +378,17 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     @Override
     public void toNewVersionInTrx(List<String> tableNameList,
                                   boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
-                                  boolean allowTwoVersion) {
-        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, allowTwoVersion);
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup);
+    }
+
+    @Override
+    public void toNewVersionInTrx(List<String> tableNameList,
+                                  boolean preemptive, long initWait, long interval, TimeUnit timeUnit,
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
+        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup, trxId);
     }
 
     /**
@@ -382,14 +396,19 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      * 1. Be preemptive to avoid deadlock within multiple tables
      */
     @Override
-    public void toNewVersionInTrx(List<String> tableNameList, boolean allowTwoVersion) {
+    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion, long trxId) {
         ParamManager paramManager = OptimizerContext.getContext(schemaName).getParamManager();
         boolean enablePreemptiveMdl = paramManager.getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
-        Long initWait = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
-        Long interval = paramManager.getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL);
+        Long initWait = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INITWAIT);
+        Long interval = paramManager.getLong(ConnectionParams.TG_PREEMPTIVE_MDL_INTERVAL);
 
-        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.SECONDS,
-            allowTwoVersion);
+        toNewVersionInTrx(tableNameList, enablePreemptiveMdl, initWait, interval, TimeUnit.MILLISECONDS, connId,
+            allowTwoVersion, tableNameList.size() > 1, trxId);
+    }
+
+    @Override
+    public void toNewVersionInTrx(List<String> tableNameList, long connId, boolean allowTwoVersion) {
+        toNewVersionInTrx(tableNameList, connId, allowTwoVersion, 1L);
     }
 
     /**
@@ -419,7 +438,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         .map(TablePartRecordInfoContext::getTableName)
                         .collect(Collectors.toList());
 
-                toNewVersionInTrx(tableNames, allowTwoVersion);
+                toNewVersionInTrx(tableNames, -1, allowTwoVersion);
             }
         }
 
@@ -428,12 +447,17 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     public static TableMeta buildTableMeta(String schemaName, TablesRecord tableRecord,
                                            List<ColumnsRecord> columnsRecords,
                                            List<IndexesRecord> indexesRecords,
+                                           List<ColumnMappingRecord> columnMappingRecords,
+                                           List<ForeignRecord> fkRecords,
+                                           List<ForeignRecord> referencedFkRecords,
+                                           TableInfoManager tableInfoManager,
                                            String tableName) {
         if (columnsRecords == null || tableRecord == null) {
             return null;
         }
         List<ColumnMeta> allColumnsOrderByDefined = new ArrayList<>();
         Map<String, ColumnMeta> columnMetaMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        Map<String, String> columnMappingMap = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
         List<IndexMeta> secondaryIndexMetas = new ArrayList<>();
         boolean hasPrimaryKey;
         List<String> primaryKeys;
@@ -443,73 +467,23 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             .map(CollationName::getCharsetOf)
             .map(Enum::name)
             .orElse(CharsetName.DEFAULT_CHARACTER_SET);
+        final Map<String, ForeignKeyData> foreignKeys = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        final Map<String, ForeignKeyData> referencedForeignKeys = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         try {
             for (ColumnsRecord record : columnsRecords) {
-                String columnName = record.columnName;
-                String extra = record.extra;
-                String columnDefault = record.columnDefault;
-                int precision = (int) record.numericPrecision;
-                int scale = (int) record.numericScale;
-                int datetimePrecision = (int) record.datetimePrecision;
-                long length = record.fieldLength;
-
-                // for datetime / timestamp / time
-                SqlTypeName sqlTypeName = SqlTypeName.getNameForJdbcType(record.jdbcType);
-                if (sqlTypeName != null && SqlTypeName.DATETIME_TYPES.contains(sqlTypeName)) {
-                    scale = datetimePrecision;
-                    precision = TddlRelDataTypeSystemImpl.getInstance().getMaxPrecision(sqlTypeName);
-                }
-                if (precision == 0) {
-                    precision = (int) record.characterMaximumLength;
-                }
-                int status = record.status;
-                long flag = record.flag;
-
-                boolean autoIncrement = TStringUtil.equalsIgnoreCase(record.extra, "auto_increment");
-
-                boolean nullable = "YES".equalsIgnoreCase(record.isNullable);
-
-                String typeName = record.jdbcTypeName;
-                if (TStringUtil.startsWithIgnoreCase(record.columnType, "enum(")) {
-                    typeName = record.columnType;
-                }
-
-                // Fix length for char & varchar.
-                if (record.jdbcType == Types.VARCHAR || record.jdbcType == Types.CHAR) {
-                    length = record.characterMaximumLength;
-                }
-
-                RelDataType calciteDataType =
-                    DataTypeUtil.jdbcTypeToRelDataType(record.jdbcType, typeName, precision, scale, length, nullable);
-
-                // handle character types
-                if (SqlTypeUtil.isCharacter(calciteDataType)) {
-                    String columnCharacterSet = record.characterSetName;
-                    String columnCollation = record.collationName;
-
-                    String characterSet = GeneralUtil.coalesce(columnCharacterSet, tableCharacterSet);
-                    String collation = columnCollation != null ? columnCollation :
-                        Optional.ofNullable(columnCharacterSet)
-                            .map(CharsetName::of)
-                            .map(CharsetName::getDefaultCollationName)
-                            .map(Enum::name)
-                            .orElse(tableCollation);
-
-                    calciteDataType =
-                        DataTypeUtil.getCharacterTypeWithCharsetAndCollation(calciteDataType, characterSet, collation);
-                }
-
-                Field field =
-                    new Field(tableName, columnName, record.collationName, extra, columnDefault, calciteDataType,
-                        autoIncrement, false);
 
                 ColumnMeta columnMeta =
-                    new ColumnMeta(tableName, columnName, null, field, ColumnStatus.convert(status), flag);
+                    GmsTableMetaManager.buildColumnMeta(record, tableName, tableCollation, tableCharacterSet);
 
                 allColumnsOrderByDefined.add(columnMeta);
 
                 columnMetaMap.put(columnMeta.getName(), columnMeta);
+            }
+            if (!CollectionUtils.isEmpty(columnMappingRecords)) {
+                for (ColumnMappingRecord columnMappingRecord : columnMappingRecords) {
+                    columnMappingMap.put(columnMappingRecord.getColumnName(), columnMappingRecord.getFieldIdString());
+                }
             }
 
             try {
@@ -550,6 +524,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         meta.keys.add(record.columnName);
                         meta.keySubParts.add(record.subPart);
                     }
+                    getForeignKeys(foreignKeys, fkRecords, tableInfoManager);
+                    getReferencedForeignKeys(referencedForeignKeys, referencedFkRecords, tableInfoManager);
                     for (SecondaryIndexMeta meta : localIndexMetaMap.values()) {
                         secondaryIndexMetas.add(convertFromSecondaryIndexMeta(meta, columnMetaMap, tableName, true));
                     }
@@ -589,7 +565,136 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             hasPrimaryKey, TableStatus.convert(tableRecord.status), tableRecord.version, tableRecord.flag);
         res.setId(tableRecord.id);
         res.setEngine(Engine.of(tableRecord.engine));
+        if (Engine.isFileStore(res.getEngine())) {
+            res.buildFileStoreMeta(columnMappingMap, columnMetaMap);
+        }
+        res.setDefaultCharset(tableCharacterSet);
+        res.setDefaultCollation(tableCollation);
+        res.getForeignKeys().putAll(foreignKeys);
+        res.getReferencedForeignKeys().putAll(referencedForeignKeys);
         return res;
+    }
+
+    public static void getForeignKeys(Map<String, ForeignKeyData> foreignKeys, List<ForeignRecord> fkRecords,
+                                      TableInfoManager tableInfoManager) {
+        for (ForeignRecord record : fkRecords) {
+            List<ForeignColsRecord> fkColRecords =
+                tableInfoManager.queryForeignKeysCols(record.schemaName, record.tableName, record.indexName);
+            ForeignKeyData foreignKey = new ForeignKeyData();
+            foreignKey.schema = record.schemaName;
+            foreignKey.tableName = record.tableName;
+            foreignKey.constraint = record.constraintName;
+            foreignKey.refSchema = record.refSchemaName;
+            foreignKey.refTableName = record.refTableName;
+            foreignKey.indexName = record.indexName;
+            foreignKey.onUpdate = ForeignKeyData.ReferenceOptionType.fromString(record.updateRule);
+            foreignKey.onDelete = ForeignKeyData.ReferenceOptionType.fromString(record.deleteRule);
+            foreignKey.columns = new ArrayList<>();
+            foreignKey.refColumns = new ArrayList<>();
+            foreignKey.pushDown = record.pushDown;
+            for (ForeignColsRecord fkColRecord : fkColRecords) {
+                foreignKey.columns.add(fkColRecord.forColName);
+                foreignKey.refColumns.add(fkColRecord.refColName);
+            }
+            foreignKeys.put(foreignKey.indexName, foreignKey);
+        }
+    }
+
+    public static void getReferencedForeignKeys(Map<String, ForeignKeyData> referencedForeignKeys,
+                                                List<ForeignRecord> referencedFkRecords,
+                                                TableInfoManager tableInfoManager) {
+        for (ForeignRecord record : referencedFkRecords) {
+            List<ForeignColsRecord> fkColRecords =
+                tableInfoManager.queryForeignKeysCols(record.schemaName, record.tableName, record.indexName);
+            ForeignKeyData foreignKey = new ForeignKeyData();
+
+            foreignKey.schema = record.schemaName;
+            foreignKey.tableName = record.tableName;
+            foreignKey.constraint = record.constraintName;
+            foreignKey.refSchema = record.refSchemaName;
+            foreignKey.refTableName = record.refTableName;
+            foreignKey.indexName = record.indexName;
+            foreignKey.onUpdate = ForeignKeyData.ReferenceOptionType.fromString(record.updateRule);
+            foreignKey.onDelete = ForeignKeyData.ReferenceOptionType.fromString(record.deleteRule);
+            foreignKey.columns = new ArrayList<>();
+            foreignKey.refColumns = new ArrayList<>();
+            foreignKey.pushDown = record.pushDown;
+            for (ForeignColsRecord fkColRecord : fkColRecords) {
+                foreignKey.columns.add(fkColRecord.forColName);
+                foreignKey.refColumns.add(fkColRecord.refColName);
+            }
+            String tableSchema = record.schemaName;
+            String tableName = record.tableName;
+
+            referencedForeignKeys.put(
+                tableSchema + "/" + tableName + "/" + foreignKey.indexName, foreignKey);
+        }
+    }
+
+    public static ColumnMeta buildColumnMeta(ColumnsRecord record,
+                                             String tableName,
+                                             String tableCollation,
+                                             String tableCharacterSet) {
+        String columnName = record.columnName;
+        String extra = record.extra;
+        String columnDefault = record.columnDefault;
+        int precision = (int) record.numericPrecision;
+        int scale = (int) record.numericScale;
+        int datetimePrecision = (int) record.datetimePrecision;
+        long length = record.fieldLength;
+
+        // for datetime / timestamp / time
+        SqlTypeName sqlTypeName = SqlTypeName.getNameForJdbcType(record.jdbcType);
+        if (sqlTypeName != null && SqlTypeName.DATETIME_TYPES.contains(sqlTypeName)) {
+            scale = datetimePrecision;
+            precision = TddlRelDataTypeSystemImpl.getInstance().getMaxPrecision(sqlTypeName);
+        }
+        if (precision == 0) {
+            precision = (int) record.characterMaximumLength;
+        }
+        int status = record.status;
+        long flag = record.flag;
+
+        boolean autoIncrement = TStringUtil.equalsIgnoreCase(record.extra, "auto_increment");
+
+        boolean nullable = "YES".equalsIgnoreCase(record.isNullable);
+
+        String typeName = record.jdbcTypeName;
+        if (TStringUtil.startsWithIgnoreCase(record.columnType, "enum(")) {
+            typeName = record.columnType;
+        }
+
+        // Fix length for char & varchar.
+        if (record.jdbcType == Types.VARCHAR || record.jdbcType == Types.CHAR) {
+            length = record.characterMaximumLength;
+        }
+
+        RelDataType calciteDataType =
+            DataTypeUtil.jdbcTypeToRelDataType(record.jdbcType, typeName, precision, scale, length, nullable);
+
+        // handle character types
+        if (SqlTypeUtil.isCharacter(calciteDataType)) {
+            String columnCharacterSet = record.characterSetName;
+            String columnCollation = record.collationName;
+
+            String characterSet = GeneralUtil.coalesce(columnCharacterSet, tableCharacterSet);
+            String collation = columnCollation != null ? columnCollation :
+                Optional.ofNullable(columnCharacterSet)
+                    .map(CharsetName::of)
+                    .map(CharsetName::getDefaultCollationName)
+                    .map(Enum::name)
+                    .orElse(tableCollation);
+
+            calciteDataType =
+                DataTypeUtil.getCharacterTypeWithCharsetAndCollation(calciteDataType, characterSet, collation);
+        }
+
+        Field field =
+            new Field(tableName, columnName, record.collationName, extra, columnDefault, calciteDataType,
+                autoIncrement, false);
+
+        return new ColumnMeta(tableName, columnName, null, field, ColumnStatus.convert(status), flag);
+
     }
 
     private static List<String> extractPrimaryKeys(List<IndexesRecord> indexesRecords) {
@@ -669,6 +774,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     /**
      * return published tables only
      */
+    @Override
     public Collection<TableMeta> getAllTables() {
         return latestTables.values();
     }
@@ -716,9 +822,14 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
             Map<String, List<ColumnsRecord>> allColumns = tableInfoManager.queryVisibleColumns(schemaName);
             Map<String, List<IndexesRecord>> allIndexes = tableInfoManager.queryVisibleIndexes(schemaName);
+            Map<String, List<ColumnMappingRecord>> allColumnMappings = tableInfoManager.queryColumnMappings(schemaName);
             Map<String, TablesExtRecord> extRecords = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             extRecords.putAll(tableInfoManager.queryTableExts(schemaName).stream().collect(
                 Collectors.toMap(TablesExtRecord::getTableName, r -> r)));
+            Map<String, List<ForeignRecord>> allReferencedFkRecords =
+                tableInfoManager.queryReferencedForeignKeys(schemaName);
+            Map<String, List<ForeignRecord>> allFkRecords =
+                tableInfoManager.queryForeignKeys(schemaName);
 
             DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
             final GsiMetaManager gsiMetaManager =
@@ -746,13 +857,27 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 String origTableName = tableRecord.tableName;
                 List<ColumnsRecord> columnsRecords =
                     allColumns.get(origTableName);
+                List<ColumnMappingRecord> columnMappings =
+                    allColumnMappings.get(origTableName);
                 List<IndexesRecord> indexesRecords = allIndexes.get(origTableName);
                 if (indexesRecords == null) {
                     indexesRecords = Collections.emptyList();
                 }
+                List<ForeignRecord> referencedFkRecords =
+                    allReferencedFkRecords.get(origTableName);
+                if (referencedFkRecords == null) {
+                    referencedFkRecords = Collections.emptyList();
+                }
+                List<ForeignRecord> fkRecords =
+                    allFkRecords.get(origTableName);
+                if (fkRecords == null) {
+                    fkRecords = Collections.emptyList();
+                }
 
                 TableMeta meta =
-                    buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, tableRecord.tableName);
+                    buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, columnMappings,
+                        fkRecords, referencedFkRecords, tableInfoManager, tableRecord.tableName);
+
                 boolean locked = false;
                 if (meta != null) {
                     meta.setTableColumnMeta(new TableColumnMeta(schemaName, origTableName,
@@ -786,6 +911,12 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             meta.setTableGroupDigestList(TableGroupVersionManager.getTableGroupDigestList(
                                 meta.getPartitionInfo().getTableGroupId()));
                         }
+                        // fetch file metas for oss engine.
+                        if (meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
+                            Map<String, Map<String, List<FileMeta>>> fileMetaSet =
+                                FileManager.INSTANCE.getFiles(meta);
+                            meta.setFileMetaSet(fileMetaSet);
+                        }
                     } else {
                         meta.setSchemaDigestList(SchemaVersionManager.getSchemaDigestList(schemaName));
                     }
@@ -818,6 +949,9 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 }
 
                 tableMetas.add(meta);
+                if (Engine.isFileStore(meta.getEngine())) {
+                    OrcColumnManager.getINSTANCE().rebuild(schemaName, origTableName);
+                }
             }
         } catch (SQLException e) {
             throw new RuntimeException(
@@ -876,6 +1010,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
+                    ruleMgr.getPartitionInfoManager().putNewPartitionInfo(logicalTableName, newPartitionInfo);
                 } else {
                     logTblMeta.setNewPartitionInfo(newPartitionInfo);
                     logTblMeta.setPartitionInfo(curPartitionInfo);
@@ -917,6 +1052,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     ruleMgr.getPartitionInfoManager().getPartitionInfoFromDeltaTable(origTableName);
                 logTblMeta.initPartitionInfo(schemaName, logicalTableName, ruleMgr, tablePartitionRecords,
                     tablePartitionRecordsFromDelta);
+                PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(metaDbConnect,
+                    curPartitionInfo.getTableGroupId(), newPartitionInfo);
                 if (logTblMeta.getComplexTaskTableMetaBean().isNeedSwitchDatasource()) {
                     curPartitionInfo = PartitionInfoUtil
                         .updatePartitionInfoByOutDatePartitionRecords(metaDbConnect, curPartitionInfo.getTableGroupId(),
@@ -924,9 +1061,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     newPartitionInfo = newPartitionInfo.copy();
                     logTblMeta.setNewPartitionInfo(curPartitionInfo);
                     logTblMeta.setPartitionInfo(newPartitionInfo);
+                    ruleMgr.getPartitionInfoManager().putNewPartitionInfo(logicalTableName, newPartitionInfo);
                 } else {
-                    PartitionInfoUtil.updatePartitionInfoByNewCommingPartitionRecords(metaDbConnect,
-                        curPartitionInfo.getTableGroupId(), newPartitionInfo);
                     logTblMeta.setNewPartitionInfo(newPartitionInfo);
                     logTblMeta.setPartitionInfo(curPartitionInfo);
                 }
@@ -935,53 +1071,63 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         logParitionInfo(logTblMeta);
     }
 
-    protected void loadAndCacheTableMeta(List<String> tableNames) {
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            metaDbConn.setAutoCommit(false);
-            metaDbConn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+    protected void loadAndCacheTableMeta(List<String> tableNames, Connection metaDbConn) {
 
-            Map<String, TableMeta> metaMap =
-                fetchTableMeta(metaDbConn, schemaName, tableNames, rule, storage, false, false);
+        Map<String, TableMeta> metaMap =
+            fetchTableMeta(metaDbConn, schemaName, tableNames, rule, storage, false, false);
 
-            for (val entry : metaMap.entrySet()) {
-                String tableName = entry.getKey().toLowerCase();
-                TableMeta meta = entry.getValue();
+        for (val entry : metaMap.entrySet()) {
+            String tableName = entry.getKey().toLowerCase();
+            TableMeta meta = entry.getValue();
 
-                if (meta == null) {
-                    latestTables.remove(tableName);
-                } else {
-                    //create/alter table
-                    meta.setSchemaName(schemaName);
-                    latestTables.put(tableName, meta);
-                    if (meta.getGsiTableMetaBean() != null && !meta.getGsiTableMetaBean().indexMap.isEmpty()) {
-                        for (GsiMetaManager.GsiIndexMetaBean index : meta.getGsiTableMetaBean().indexMap.values()) {
-                            String indexName = index.indexName.toLowerCase();
-                            TableMeta indexTableMeta =
-                                fetchTableMeta(metaDbConn, schemaName, indexName, rule, storage, false, false);
-                            if (indexTableMeta == null) {
-                                latestTables.remove(indexName);
-                            } else {
-                                boolean isNewPartition = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-                                indexTableMeta.setSchemaName(schemaName);
-                                latestTables.put(indexName, indexTableMeta);
-                                indexTableMeta.getGsiTableMetaBean().gsiMetaBean = index;
-                                if (!isNewPartition) {
-                                    TableRuleManager.reload(schemaName, index.indexName);
+            if (meta == null) {
+                latestTables.remove(tableName);
+            } else {
+                boolean modifyPrimaryKey = false;
+                TreeSet<String> pkSet = new TreeSet<>(String::compareToIgnoreCase);
+                pkSet.addAll(meta.getPrimaryKeyMap().keySet());
+
+                //create/alter table
+                meta.setSchemaName(schemaName);
+                latestTables.put(tableName, meta);
+                if (meta.getGsiTableMetaBean() != null && !meta.getGsiTableMetaBean().indexMap.isEmpty()) {
+                    for (GsiMetaManager.GsiIndexMetaBean index : meta.getGsiTableMetaBean().indexMap.values()) {
+                        String indexName = index.indexName.toLowerCase();
+                        TableMeta indexTableMeta =
+                            fetchTableMeta(metaDbConn, schemaName, indexName, rule, storage, false, false);
+                        if (indexTableMeta == null) {
+                            latestTables.remove(indexName);
+                        } else {
+                            boolean isNewPartition = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+                            indexTableMeta.setSchemaName(schemaName);
+                            latestTables.put(indexName, indexTableMeta);
+                            indexTableMeta.getGsiTableMetaBean().gsiMetaBean = index;
+                            if (!isNewPartition) {
+                                TableRuleManager.reload(schemaName, index.indexName);
+                            }
+
+                            // for modify partition key
+                            if (!indexTableMeta.hasGsiImplicitPrimaryKey()) {
+                                TreeSet<String> gsiPkSet = new TreeSet<>(String::compareToIgnoreCase);
+                                gsiPkSet.addAll(indexTableMeta.getPrimaryKeyMap().keySet());
+                                if (!SetUtils.isEqualSet(pkSet, gsiPkSet)) {
+                                    modifyPrimaryKey = true;
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            metaDbConn.setAutoCommit(true);
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, "fail to fetch table metas: " + tableNames, e);
+                meta.getTableColumnMeta().setModifyPartitionKey(modifyPrimaryKey);
+            }
         }
     }
 
-    protected void loadAndCacheTableMeta(String tableName) {
-        loadAndCacheTableMeta(Arrays.asList(tableName));
+    private void tonewversionImpl(List<String> tableNameList,
+                                  boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup) {
+        tonewversionImpl(tableNameList, preemptive, initWait, interval, timeUnit, connId, allowTwoVersion,
+            sameTableGroup, 1L);
     }
 
     /**
@@ -996,97 +1142,79 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
      *
      * @param allowTwoVersion if two versions of schema exist at the same time
      */
+
     private void tonewversionImpl(List<String> tableNameList,
                                   boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                  boolean allowTwoVersion) {
+                                  long connId, boolean allowTwoVersion, boolean sameTableGroup, long trxId) {
         synchronized (OptimizerContext.getContext(schemaName)) {
-            boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
-            GmsTableMetaManager oldSchemaManager =
-                (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
             GmsTableMetaManager newSchemaManager;
-            Map<String, Long> staleTables = new HashMap<>();
-
-            for (String tableName : tableNameList) {
-                TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
-                long version = checkTableVersion(tableName);
-
-                if (version != -1
-                    && currentMeta != null
-                    && !Engine.isFileStore(currentMeta.getEngine())
-                    && currentMeta.getVersion() >= version
-                    && currentMeta.getStatus() != TableStatus.ABSENT) {
-                    SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
-                        "{0}.{1} meta version change to {2} ignored, current version {3}", schemaName, tableName,
-                        version,
-                        currentMeta.getVersion()));
-                    continue;
-                }
-
-                // Invalidate various cache
-                SequenceCacheManager.invalidate(schemaName, AUTO_SEQ_PREFIX + tableName);
-                if (!isNewPartitionDb) {
-                    if (version == -1) {
-                        TableRuleManager.invalidate(schemaName, tableName);
-                    } else {
-                        TableRuleManager.reload(schemaName, tableName);
+            GmsTableMetaManager oldSchemaManager;
+            Map<String, Long> staleTables;
+            boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+            try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+                int iso = metaDbConn.getTransactionIsolation();
+                try {
+                    metaDbConn.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+                    staleTables = getStaleTables(tableNameList, metaDbConn);
+                    if (staleTables.isEmpty()) {
+                        return;
                     }
-                } else {
-                    if (version == -1) {
-                        PartitionInfoManager.invalidate(schemaName, tableName);
-                    } else {
-                        PartitionInfoManager.reload(schemaName, tableName);
+                    oldSchemaManager =
+                        (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+                    sameTableGroup = allowTwoVersion && sameTableGroup && (staleTables.size() > 1);
+
+                    // Load new TableMeta
+                    Map.Entry<String, Long> firstTable = staleTables.entrySet().iterator().next();
+                    String tableName = firstTable.getKey();
+                    TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
+                    long oldVersion = currentMeta == null ? 0 : currentMeta.getVersion();
+                    long newVersion = firstTable.getValue();
+
+                    if (sameTableGroup) {
+                        // for tables sync
+                        if (isNewPartitionDb) {
+                            PartitionInfo partitionInfo =
+                                oldSchemaManager.getTddlRuleManager().getPartitionInfoManager()
+                                    .getPartitionInfo(tableName);
+                            if (partitionInfo != null) {
+                                TableGroupVersionManager.increaseTableGroupVersion(partitionInfo.getTableGroupId());
+                            }
+                        } else {
+                            SchemaVersionManager.increaseSchemaVersion(schemaName);
+                        }
                     }
-                }
-                staleTables.put(tableName, version);
-            }
 
-            if (staleTables.isEmpty()) {
-                return;
-            }
-
-            // Load new TableMeta
-            {
-                Map.Entry<String, Long> firstTable = staleTables.entrySet().iterator().next();
-                String tableName = firstTable.getKey();
-                TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
-                long oldVersion = currentMeta == null ? 0 : currentMeta.getVersion();
-                long newVersion = firstTable.getValue();
-
-                if (allowTwoVersion && staleTables.size() > 1) {
-                    // for tables sync
-                    if (isNewPartitionDb) {
-                        PartitionInfo partitionInfo = oldSchemaManager.getTddlRuleManager().getPartitionInfoManager()
-                            .getPartitionInfo(tableName);
-                        TableGroupVersionManager.increaseTableGroupVersion(partitionInfo.getTableGroupId());
+                    // TODO(moyi) unify these two code path
+                    if (tableNameList.size() > 1) {
+                        newSchemaManager =
+                            new GmsTableMetaManager(oldSchemaManager, new ArrayList<>(staleTables.keySet()), rule,
+                                metaDbConn);
                     } else {
-                        SchemaVersionManager.increaseSchemaVersion(schemaName);
+                        newSchemaManager =
+                            new GmsTableMetaManager(oldSchemaManager, ImmutableList.of(tableName), rule, metaDbConn);
                     }
+
+                    newSchemaManager.init();
+                    SQLRecorderLogger.ddlMetaLogger.info("allowTwoVersion1:" + String.valueOf(allowTwoVersion));
+                    if (allowTwoVersion) {
+                        OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
+                    }
+                    SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
+                        "{0} reload table metas for [{1}]: since meta version of table {2} change from {3} to {4}",
+                        String.valueOf(System.identityHashCode(newSchemaManager)), tableNameList, tableName, oldVersion,
+                        newVersion));
+
+                } finally {
+                    metaDbConn.setTransactionIsolation(iso);
                 }
-
-                // TODO(moyi) unify these two code path
-                if (tableNameList.size() > 1) {
-                    newSchemaManager = new GmsTableMetaManager(oldSchemaManager, tableNameList, rule);
-                } else {
-                    newSchemaManager = new GmsTableMetaManager(oldSchemaManager, tableName, rule);
-                }
-
-                newSchemaManager.init();
-
-                SQLRecorderLogger.ddlMetaLogger.info("allowTwoVersion1:" + String.valueOf(allowTwoVersion));
-                if (allowTwoVersion) {
-                    OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
-                }
-                SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
-                    "{0} reload table metas for [{1}]: since meta version of table {2} change from {3} to {4}",
-                    String.valueOf(System.identityHashCode(newSchemaManager)), tableNameList, tableName, oldVersion,
-                    newVersion));
-
+            } catch (SQLException e) {
+                throw new TddlNestableRuntimeException(e);
             }
 
             // Insert mdl barrier
             {
-                mdlCriticalSection(preemptive, initWait, interval, timeUnit, oldSchemaManager, staleTables.keySet(),
-                    isNewPartitionDb, (x) -> {
+                mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
+                    staleTables.keySet(), isNewPartitionDb, sameTableGroup, (x) -> {
                         oldSchemaManager.expire();
                         if (!allowTwoVersion) {
                             OptimizerContext.getContext(schemaName).setSchemaManager(newSchemaManager);
@@ -1095,25 +1223,81 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                         }
                         return null;
-                    });
+                    }, trxId);
             }
         }
+    }
+
+    @Override
+    public Map<String, Long> getStaleTables(List<String> tableNameList, Connection conn) {
+        boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+        GmsTableMetaManager oldSchemaManager =
+            (GmsTableMetaManager) OptimizerContext.getContext(schemaName).getLatestSchemaManager();
+        Map<String, Long> staleTables = new HashMap<>();
+
+        for (String tableName : tableNameList) {
+            TableMeta currentMeta = oldSchemaManager.getTableWithNull(tableName);
+            long version = checkTableVersion(tableName, conn);
+
+            if (version != -1
+                && currentMeta != null
+                && currentMeta.getVersion() >= version
+                && currentMeta.getStatus() != TableStatus.ABSENT) {
+                SQLRecorderLogger.ddlLogger.info(MessageFormat.format(
+                    "{0}.{1} meta version change to {2} ignored, current version {3}", schemaName, tableName,
+                    version,
+                    currentMeta.getVersion()));
+                continue;
+            }
+
+            // Invalidate various cache
+            SequenceCacheManager.invalidate(schemaName, AUTO_SEQ_PREFIX + tableName);
+            if (!isNewPartitionDb) {
+                if (version == -1) {
+                    TableRuleManager.invalidate(schemaName, tableName);
+                } else {
+                    TableRuleManager.reload(schemaName, tableName);
+                }
+            } else {
+                if (version == -1) {
+                    PartitionInfoManager.invalidate(schemaName, tableName);
+                } else {
+                    PartitionInfoManager.reload(schemaName, tableName);
+                }
+            }
+            staleTables.put(tableName, version);
+        }
+
+        return staleTables;
+    }
+
+    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
+                                   GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
+                                   boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier) {
+        mdlCriticalSection(preemptive, initWait, interval, timeUnit, connId, oldSchemaManager,
+            tableNameList, isNewPartDb, sameTableGroup, duringBarrier, 1L);
     }
 
     /**
      * Insert an MDL barrier for tables to clear cross status transaction.
      */
-    private void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit,
-                                    GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
-                                    boolean isNewPartDb, Function<Void, Void> duringBarrier) {
+    public void mdlCriticalSection(boolean preemptive, Long initWait, Long interval, TimeUnit timeUnit, long connId,
+                                   GmsTableMetaManager oldSchemaManager, Collection<String> tableNameList,
+                                   boolean isNewPartDb, boolean sameTableGroup, Function<Void, Void> duringBarrier,
+                                   long trxId) {
         final MdlContext context;
-        if (preemptive) {
+        if (connId > 0) {
+            // to new version while lock tables, using connection id
+            context = preemptive ? MdlManager.addContext(connId, schemaName, initWait, interval, timeUnit) :
+                MdlManager.addContext(connId);
+        } else if (preemptive) {
             context = MdlManager.addContext(schemaName, initWait, interval, timeUnit);
         } else {
             context = MdlManager.addContext(schemaName, false);
         }
+        String contextName = connId > 0 ? String.valueOf(connId) : schemaName;
         SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
-            "Mdl {0}  {1}.addContext({2})", Thread.currentThread().getName(), this.hashCode(), schemaName));
+            "Mdl {0}  {1}.addContext({2})", Thread.currentThread().getName(), this.hashCode(), contextName));
 
         try {
             long startMillis = System.currentTimeMillis();
@@ -1136,13 +1320,13 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             if (lockedTables.size() == 1) {
                 // table sync (all database support)
                 MdlTicket ticket = context.acquireLock(
-                    new MdlRequest(1L,
+                    new MdlRequest(trxId,
                         MdlKey.getTableKeyWithLowerTableName(schemaName, lockedTables.get(0)),
                         MdlType.MDL_EXCLUSIVE,
                         MdlDuration.MDL_TRANSACTION));
 
                 tickets.add(ticket);
-            } else if (oldSchemaManager.getTableWithNull(tableNameFirst) != null) {
+            } else if (oldSchemaManager.getTableWithNull(tableNameFirst) != null && sameTableGroup) {
                 // tables sync only (for table group)
                 // oldDigest will not be null, then tables sync can use tablegroup mdl to clear old transactio
                 List<String> oldDigestList = isNewPartDb ?
@@ -1152,10 +1336,20 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 for (String oldDigest : oldDigestList) {
                     assert oldDigest != null;
                     MdlTicket ticket = context.acquireLock(
-                        new MdlRequest(1L,
+                        new MdlRequest(trxId,
                             MdlKey.getTableKeyWithLowerTableName(schemaName, oldDigest),
                             MdlType.MDL_EXCLUSIVE,
                             MdlDuration.MDL_TRANSACTION));
+                    tickets.add(ticket);
+                }
+            } else {
+                for (String tableName : lockedTables) {
+                    MdlTicket ticket = context.acquireLock(
+                        new MdlRequest(trxId,
+                            MdlKey.getTableKeyWithLowerTableName(schemaName, tableName),
+                            MdlType.MDL_EXCLUSIVE,
+                            MdlDuration.MDL_TRANSACTION));
+
                     tickets.add(ticket);
                 }
             }
@@ -1174,7 +1368,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             PlanManager.getInstance().invalidateCache();
 
             for (MdlTicket ticket : tickets) {
-                context.releaseLock(1L, ticket);
+                context.releaseLock(trxId, ticket);
             }
 
             elapsedMillis = System.currentTimeMillis() - startMillis;
@@ -1187,10 +1381,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
     }
 
-    private long checkTableVersion(String tableName) {
+    private long checkTableVersion(String tableName, Connection metaDbConn) {
         long version = -1;
 
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+        try {
             PreparedStatement stmt =
                 metaDbConn.prepareStatement("select version from tables where table_schema=? and table_name=?");
             stmt.setString(1, schemaName);
@@ -1612,7 +1806,6 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             primaryKeyMeta,
             secondaryIndexMetas,
             hasPrimaryKey, TableStatus.PUBLIC, 0, 0);
-
     }
 
     private static void propagateIfGetConnectionFailed(Throwable t) {

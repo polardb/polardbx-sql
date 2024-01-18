@@ -6,7 +6,7 @@
     <parent>
         <artifactId>polardbx</artifactId>
         <groupId>com.alibaba.polardbx</groupId>
-        <version>5.4.15-SNAPSHOT</version>
+        <version>5.4.18-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <packaging>jar</packaging>
@@ -22,10 +22,6 @@
         <mvn_threadCountClasses>10</mvn_threadCountClasses>
         <mvn_threadCountSuites>10</mvn_threadCountSuites>
         <jcip.version>1.0</jcip.version>
-<!--        <mvn_useSystemClassLoader>false</mvn_useSystemClassLoader>-->
-<!--        <mvn_parallelOptimized>true</mvn_parallelOptimized>-->
-<!--        <mvn_perCoreThreadCount>false</mvn_perCoreThreadCount>-->
-        <!--  sed -i "" 's/'{mysql_connector_v5}'/'{mysql_connector_v5}'/g' tddl-qatest/pom.xml-->
     </properties>
 
     <dependencies>
@@ -121,7 +117,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <argLine>-Xms2g -Xmx2g -Xmn2g -Xss2048k -XX:SurvivorRatio=10</argLine>
+                    <argLine>-Xms2g -Xmx2g -Xmn2g -Xss2048k -XX:SurvivorRatio=10 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=target/surefire-reports/</argLine>
                     <properties>
                         <property>
                             <name>listener</name>

@@ -23,18 +23,17 @@ import com.alibaba.polardbx.server.util.LogUtils;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 public class CollectHandler {
-    public static void handle(ByteString stmt, ServerConnection c, int offset) {
+    public static boolean handle(ByteString stmt, ServerConnection c, int offset) {
         int rs = ServerParseCollect.parse(stmt, offset);
         boolean recordSql = true;
         Throwable sqlEx = null;
         try {
             switch (rs & 0xff) {
             case ServerParseCollect.STATISTIC:
-                CollectStatistic.response(c);
-                break;
+                return CollectStatistic.response(c);
             default:
-                c.execute(stmt, false);
                 recordSql = false;
+                return c.execute(stmt, false);
             }
         } catch (Throwable ex) {
             sqlEx = ex;

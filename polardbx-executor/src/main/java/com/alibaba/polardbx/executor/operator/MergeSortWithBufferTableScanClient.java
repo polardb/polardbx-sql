@@ -120,10 +120,11 @@ public class MergeSortWithBufferTableScanClient extends TableScanClient {
             try {
                 while (super.next()) {
                     chunkBuilder.declarePosition();
-                    ResultSetCursorExec.buildOneRow(super.current(), dataTypeList, chunkBuilder.getBlockBuilders(), context);
+                    ResultSetCursorExec.buildOneRow(super.current(), dataTypeList, chunkBuilder.getBlockBuilders(),
+                        context);
                     Chunk chunk = chunkBuilder.build();
                     bufferData.add(chunk);
-                    chunkSize = chunk.getSizeInBytes();
+                    chunkSize = chunk.estimateSize();
                     allocator.allocateReservedMemory(chunkSize);
                     chunkBuilder.reset();
                 }
@@ -161,7 +162,7 @@ public class MergeSortWithBufferTableScanClient extends TableScanClient {
                 if (notEnough && bufferData.size() == 0) {
                     //ignore release the memory of last row.
                 } else {
-                    allocator.releaseReservedMemory(chunk.getSizeInBytes(), false);
+                    allocator.releaseReservedMemory(chunk.estimateSize(), false);
                 }
                 return true;
             } else {

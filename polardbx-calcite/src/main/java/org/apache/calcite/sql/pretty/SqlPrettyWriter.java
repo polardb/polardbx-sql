@@ -899,7 +899,7 @@ public class SqlPrettyWriter implements SqlWriter {
     charCount += is.length();
   }
 
-  private BytesSql.BytesSqlBuilder bytesSqlBuilder = BytesSql.BytesSqlBuilder.getInstance();
+  private BytesSql.BytesSqlBuilder bytesSqlBuilder = BytesSql.BytesSqlBuilder.buildInstance();
   private int lastDynamicIndex=0;
 
   @Override
@@ -915,7 +915,7 @@ public class SqlPrettyWriter implements SqlWriter {
   @Override
   public void lastDynamicParam() {
     if(lastDynamicIndex == sw.getBuffer().length()){
-      bytesSqlBuilder.setParameterLast();
+      bytesSqlBuilder.setParameterLast(true);
       return;
     }
     if(sw.getBuffer().length()!=0){

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.qatest.util;
 
 import com.alibaba.druid.pool.DruidDataSource;
-import com.alibaba.polardbx.cdc.SysTableUtil;
 import com.alibaba.polardbx.gms.util.JdbcUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
@@ -28,15 +27,18 @@ import org.junit.Assert;
 import javax.sql.DataSource;
 import java.security.Security;
 import java.sql.Connection;
+import java.sql.Driver;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Properties;
 
 import static com.alibaba.polardbx.qatest.util.JdbcUtil.getSqlMode;
+import static com.alibaba.polardbx.qatest.util.PropertiesUtil.POLARDBX_SERVER_ID_CONF;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.dnCount;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getConnectionProperties;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.getMetaDB;
+import static com.alibaba.polardbx.qatest.util.PropertiesUtil.useCursorFetch;
 import static com.alibaba.polardbx.qatest.util.PropertiesUtil.useDruid;
 import static com.alibaba.polardbx.ssl.SslConstant.PROPERTY_TLS_DISABLED_ALGS;
 
@@ -48,11 +50,8 @@ public class ConnectionManager {
     private static final Log log = LogFactory.getLog(ConnectionManager.class);
 
     private static final int MAX_ACTIVE = 60;
-
-    private Properties configProp;
-
     private static ConnectionManager connectionManager = new ConnectionManager();
-
+    private Properties configProp;
     private boolean inited = false;
 
     private boolean skipInitMysql = false;
@@ -84,6 +83,57 @@ public class ConnectionManager {
     private boolean enableOpenSSL;
     private String polardbxMode;
     private String mysqlMode;
+
+    public static ConnectionManager getInstance() {
+        if (!connectionManager.isInited()) {
+            synchronized (connectionManager) {
+                if (!connectionManager.isInited()) {
+                    connectionManager.init();
+                }
+            }
+        }
+        return connectionManager;
+    }
+
+    public static DruidDataSource getDruidDataSource(String server, String port,
+                                                     String user, String password, String db, boolean isMysql) {
+        // Do not use MySQL cursor fetch mode to compare, since it has some bug in Date type handling. Using server
+        // prepare mode instead.
+        String connProp = getConnectionProperties();
+        if (useCursorFetch() && isMysql) {
+            connProp = connProp.replace("useCursorFetch=true", "");
+            connProp = connProp.replace("defaultFetchSize=1", "");
+            connProp = connProp + "&useServerPrepStmts=true";
+        }
+        if (isMysql) {
+            connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+        }
+        String url = String.format(ConfigConstant.URL_PATTERN_WITH_DB + connProp, server, port,
+            db);
+        return getDruidDataSource(url, user, password);
+    }
+
+    public static DruidDataSource getDruidDataSource(String url, String user, String password) {
+        DruidDataSource druidDs = new DruidDataSource();
+        druidDs.setUrl(url);
+        druidDs.setUsername(user);
+        druidDs.setPassword(password);
+        druidDs.setRemoveAbandoned(false);
+        druidDs.setMaxActive(MAX_ACTIVE);
+        try {
+            druidDs.init();
+            druidDs.getConnection();
+        } catch (SQLException e) {
+            String errorMs = "[DruidDataSource getConnection] failed! ";
+            log.error(errorMs, e);
+            Assert.fail(errorMs);
+        }
+        return druidDs;
+    }
+
+    public static Log getLog() {
+        return log;
+    }
 
     private void ConnectionManager() {
 
@@ -123,13 +173,13 @@ public class ConnectionManager {
         try {
             if (!skipInitMysql) {
                 this.mysqlDataSource = getDruidDataSource(
-                    mysqlAddress, mysqlPort, mysqlUser, mysqlPassword, PropertiesUtil.mysqlDBName1());
+                    mysqlAddress, mysqlPort, mysqlUser, mysqlPassword, PropertiesUtil.mysqlDBName1(), true);
                 setMysqlParameter(mysqlDataSource);
 
                 if (dnCount > 1) {
                     this.mysqlDataSourceSecond = getDruidDataSource(
                         mysqlAddressSecond, mysqlPortSecond, mysqlUserSecond, mysqlPasswordSecond,
-                        PropertiesUtil.mysqlDBName1());
+                        PropertiesUtil.mysqlDBName1(), true);
                     setMysqlParameter(mysqlDataSourceSecond);
                 }
                 try (Connection mysqlCon = mysqlDataSource.getConnection()) {
@@ -139,22 +189,13 @@ public class ConnectionManager {
             }
 
             this.metaDataSource =
-                getDruidDataSource(metaAddress, metaPort, metaUser, metaPassword, PropertiesUtil.getMetaDB);
+                getDruidDataSource(metaAddress, metaPort, metaUser, metaPassword, PropertiesUtil.getMetaDB, true);
 
-            this.polardbxDataSource = getDruidDataSource(
-                polardbxAddress, polardbxPort, polardbxUser, polardbxPassword, PropertiesUtil.polardbXDBName1(false));
+            this.polardbxDataSource = getDruidDataSource(polardbxAddress, polardbxPort, polardbxUser, polardbxPassword,
+                PropertiesUtil.polardbXDBName1(false), false);
 
             try (Connection polardbxCon = polardbxDataSource.getConnection()) {
                 this.polardbxMode = getSqlMode(polardbxCon);
-            }
-
-            try (Connection polardbxCon = polardbxDataSource.getConnection()) {
-                com.alibaba.polardbx.qatest.util.JdbcUtil.useDb(polardbxCon, SysTableUtil.CDC_TABLE_SCHEMA);
-                polardbxCon.createStatement().execute(String
-                    .format("alter table %s add index KEY idx_job_id(`JOB_ID`)",
-                        SysTableUtil.CDC_DDL_RECORD_TABLE));
-            } catch (Throwable t) {
-                //ignore
             }
 
         } catch (Throwable t) {
@@ -180,42 +221,6 @@ public class ConnectionManager {
         } catch (Throwable t) {
             //ignore
         }
-    }
-
-    public static ConnectionManager getInstance() {
-        if (!connectionManager.isInited()) {
-            synchronized (connectionManager) {
-                if (!connectionManager.isInited()) {
-                    connectionManager.init();
-                }
-            }
-        }
-        return connectionManager;
-    }
-
-    public static DruidDataSource getDruidDataSource(String server, String port,
-                                                     String user, String password, String db) {
-        String url = String.format(ConfigConstant.URL_PATTERN_WITH_DB + getConnectionProperties(), server, port,
-            db);
-        return getDruidDataSource(url, user, password);
-    }
-
-    public static DruidDataSource getDruidDataSource(String url, String user, String password) {
-        DruidDataSource druidDs = new DruidDataSource();
-        druidDs.setUrl(url);
-        druidDs.setUsername(user);
-        druidDs.setPassword(password);
-        druidDs.setRemoveAbandoned(false);
-        druidDs.setMaxActive(MAX_ACTIVE);
-        try {
-            druidDs.init();
-            druidDs.getConnection();
-        } catch (SQLException e) {
-            String errorMs = "[DruidDataSource getConnection] failed! ";
-            log.error(errorMs, e);
-            Assert.fail(errorMs);
-        }
-        return druidDs;
     }
 
     public DruidDataSource getMysqlDataSource() {
@@ -254,8 +259,10 @@ public class ConnectionManager {
         if (useDruid) {
             return getMetaDataSource().getConnection();
         } else {
+            String connProp = getConnectionProperties();
+            connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
             String url = String
-                .format(ConfigConstant.URL_PATTERN_WITH_DB + getConnectionProperties(), mysqlAddress, mysqlPort,
+                .format(ConfigConstant.URL_PATTERN_WITH_DB + connProp, metaAddress, metaPort,
                     getMetaDB);
             return JdbcUtil.createConnection(url, metaUser, metaPassword);
         }
@@ -272,6 +279,18 @@ public class ConnectionManager {
     public Connection newPolarDBXConnection() {
         String url =
             String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), polardbxAddress, polardbxPort);
+        return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
+    }
+
+    public Connection newPolarDBXConnectionWithUseAffectedRows() {
+        String props = getConnectionProperties();
+        if (props.isEmpty()) {
+            props = "useAffectedRows=true";
+        } else {
+            props += "&useAffectedRows=true";
+        }
+        final String url =
+            String.format(ConfigConstant.URL_PATTERN + props, polardbxAddress, polardbxPort);
         return JdbcUtil.createConnection(url, polardbxUser, polardbxPassword);
     }
 
@@ -292,19 +311,67 @@ public class ConnectionManager {
     }
 
     public Connection newMysqlConnection() {
-        String url = String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), mysqlAddress, mysqlPort);
+        // Do not use MySQL cursor fetch mode to compare, since it has some bug in Date type handling. Using server
+        // prepare mode instead.
+        String connProp = getConnectionProperties();
+        if (useCursorFetch()) {
+            connProp = connProp.replace("useCursorFetch=true", "");
+            connProp = connProp.replace("defaultFetchSize=1", "");
+            connProp = connProp + "&useServerPrepStmts=true";
+        }
+
+        connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+
+        String url = String.format(ConfigConstant.URL_PATTERN + connProp, mysqlAddress, mysqlPort);
+        return JdbcUtil.createConnection(url, mysqlUser, mysqlPassword);
+    }
+
+    public Connection newMysqlConnectionWithUseAffectedRows() {
+        // Do not use MySQL cursor fetch mode to compare, since it has some bug in Date type handling. Using server
+        // prepare mode instead.
+        String connProp = getConnectionProperties();
+        if (useCursorFetch()) {
+            connProp = connProp.replace("useCursorFetch=true", "");
+            connProp = connProp.replace("defaultFetchSize=1", "");
+            connProp = connProp + "&useServerPrepStmts=true";
+        }
+
+        connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+
+        if (connProp.isEmpty()) {
+            connProp = "useAffectedRows=true";
+        } else {
+            connProp += "&useAffectedRows=true";
+        }
+        String url = String.format(ConfigConstant.URL_PATTERN + connProp, mysqlAddress, mysqlPort);
         return JdbcUtil.createConnection(url, mysqlUser, mysqlPassword);
     }
 
     public Connection newMysqlConnectionWithExtraParams(String extraParams) {
-        String url = String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(), mysqlAddress, mysqlPort);
+        String connProp = getConnectionProperties();
+        if (useCursorFetch()) {
+            connProp = connProp.replace("useCursorFetch=true", "");
+            connProp = connProp.replace("defaultFetchSize=1", "");
+            connProp = connProp + "&useServerPrepStmts=true";
+        }
+        connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+
+        String url = String.format(ConfigConstant.URL_PATTERN + connProp, mysqlAddress, mysqlPort);
         url += extraParams;
         return JdbcUtil.createConnection(url, mysqlUser, mysqlPassword);
     }
 
     public Connection newMysqlConnectionSecond() {
-        String url = String.format(ConfigConstant.URL_PATTERN + getConnectionProperties(),
-            mysqlAddressSecond, mysqlPortSecond);
+        String connProp = getConnectionProperties();
+        if (useCursorFetch()) {
+            connProp = connProp.replace("useCursorFetch=true", "");
+            connProp = connProp.replace("defaultFetchSize=1", "");
+            connProp = connProp + "&useServerPrepStmts=true";
+        }
+
+        connProp = connProp.replace(POLARDBX_SERVER_ID_CONF, "");
+
+        String url = String.format(ConfigConstant.URL_PATTERN + connProp, mysqlAddressSecond, mysqlPortSecond);
         return JdbcUtil.createConnection(url, mysqlUserSecond, mysqlPasswordSecond);
 
     }
@@ -367,8 +434,12 @@ public class ConnectionManager {
         return polardbxUser;
     }
 
-    public static Log getLog() {
-        return log;
+    public String getPolardbxPort() {
+        return polardbxPort;
+    }
+
+    public String getPolardbxAddress() {
+        return polardbxAddress;
     }
 
     public String getMetaUser() {

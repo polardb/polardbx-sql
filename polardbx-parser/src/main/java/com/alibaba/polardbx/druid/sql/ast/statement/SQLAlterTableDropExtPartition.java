@@ -26,7 +26,7 @@ import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
  * @author shicai.xsc 2018/9/17 上午10:35
  * @since 5.0.0.0
  */
-public class SQLAlterTableDropExtPartition  extends SQLObjectImpl implements SQLAlterTableItem, MySqlObject {
+public class SQLAlterTableDropExtPartition extends SQLObjectImpl implements SQLAlterTableItem, MySqlObject {
     private MySqlExtPartition extPartition;
 
     @Override

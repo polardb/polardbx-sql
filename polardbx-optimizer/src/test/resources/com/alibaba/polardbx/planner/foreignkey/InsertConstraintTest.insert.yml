@@ -1,0 +1,35 @@
+- sql: |
+    insert into test_hash_tb(id) values (1), (2);
+
+  plan: |
+
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="insert into ? (`id`) values(?)", params="`test_hash_tb`,1")
+    phytableoperation(tables="optest_0002.[test_hash_tb]", sql="insert into ? (`id`) values(?)", params="`test_hash_tb`,2")
+
+- sql: |
+    insert into test_hash_tc(id, name) values (1, 'test');
+
+  plan: |
+
+    phytableoperation(tables="optest_0001.[test_hash_tc]", sql="insert into ? (`id`, `name`) values(?, ?)", params="`test_hash_tc`,1,test")
+
+- sql: |
+    insert into test_hash_tc(id) values (1);
+
+  plan: |
+
+    phytableoperation(tables="optest_0001.[test_hash_tc]", sql="insert into ? (`id`, `name`) values(?, null)", params="`test_hash_tc`,1")
+
+- sql: |
+    insert into test_hash_single_2(id) values (1);
+
+  plan: |
+
+    phytableoperation(tables="optest_0000.[test_hash_single_2]", sql="insert into ? (`id`) values(?)", params="`test_hash_single_2`,1")
+
+- sql: |
+    insert into test_hash_single_2(id, name) values (1, 'test');
+
+  plan: |
+
+    phytableoperation(tables="optest_0000.[test_hash_single_2]", sql="insert into ? (`id`, `name`) values(?, ?)", params="`test_hash_single_2`,1,test")

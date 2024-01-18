@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.gsi;
 
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
@@ -41,7 +42,7 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionLocation;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -89,8 +90,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.alibaba.polardbx.ErrorCode.ER_LOCK_DEADLOCK;
 import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
+import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_LOCK_DEADLOCK;
 
 public class GsiUtils {
 
@@ -134,9 +135,44 @@ public class GsiUtils {
             }
         } else {
             Map<String, Set<String>> phyTables = new HashMap<>();
-            for (PartitionSpec spec : partitionInfo.getPartitionBy().getPartitions()) {
+            for (PartitionSpec spec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
                 PartitionLocation location = spec.getLocation();
                 phyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>()).add(location.getPhyTableName());
+            }
+            return phyTables;
+        }
+    }
+
+    /**
+     * return group and physical tables for one logical table.
+     *
+     * @return db: [tbs], db and tb are both sorted
+     */
+    public static Map<String, Set<String>> getPhyTablesForBackFill(String schemaName, String logicalTableName) {
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+        if (partitionInfo == null) {
+            TableRule tableRule =
+                OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
+            if (tableRule != null) {
+                return tableRule.getActualTopology();
+            } else {
+                Map<String, Set<String>> topology = new HashMap<>(1);
+                Set<String> groupTopology = new HashSet<>(1);
+                groupTopology.add(logicalTableName);
+                topology
+                    .put(OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(logicalTableName),
+                        groupTopology);
+                return topology;
+            }
+        } else {
+            Map<String, Set<String>> phyTables = new HashMap<>();
+            for (PartitionSpec spec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
+                PartitionLocation location = spec.getLocation();
+                phyTables.computeIfAbsent(location.getGroupKey(), o -> new HashSet<>()).add(location.getPhyTableName());
+                if (partitionInfo.isGsiBroadcastOrBroadcast()) {
+                    break;
+                }
             }
             return phyTables;
         }
@@ -599,7 +635,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            0);
+            0,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static IndexRecord indexCoveringRecord(String catalog, String schema, String tableName, String indexName,
@@ -632,7 +669,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            0L);
+            0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static IndexRecord indexColumnRecord(String catalog, String schema, String tableName, boolean nonUnique,
@@ -667,7 +705,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L);
+            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static IndexRecord indexColumnRecord(String catalog, String schema, String tableName, boolean nonUnique,
@@ -701,7 +740,8 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L);
+            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            IndexVisibility.VISIBLE.getValue());
     }
 
     private static TableRecord buildTableRecord(TableRule tableRule, String catalog, String schema,
@@ -920,8 +960,8 @@ public class GsiUtils {
             .collect(Collectors.joining(","));
     }
 
-    public static boolean vendorErrorIs(TddlNestableRuntimeException e, String sqlState, int errCode) {
-        return sqlState.equals(e.getSQLState()) && errCode == e.getErrorCode();
+    public static boolean vendorErrorIs(TddlNestableRuntimeException e, String sqlState, ErrorCode errCode) {
+        return sqlState.equals(e.getSQLState()) && errCode.getCode() == e.getErrorCode();
     }
 
     public static <R> R retryOnDeadLock(Supplier<R> call,

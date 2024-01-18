@@ -24,8 +24,6 @@ import java.util.concurrent.Executor;
 
 public interface IConnection extends Connection {
 
-    void kill() throws SQLException;
-
     void setEncoding(String encoding) throws SQLException;
 
     String getEncoding();
@@ -91,7 +89,19 @@ public interface IConnection extends Connection {
         throw new UnsupportedOperationException("Connection does not support share read view.");
     }
 
-    default boolean inShareReadView() {
+    default boolean isInShareReadView() {
         throw new UnsupportedOperationException("Connection does not support share read view.");
     }
+
+    default void setShareReadViewSeq(int seq) {
+        throw new UnsupportedOperationException("Connection does not support share read view.");
+    }
+
+    default int getShareReadViewSeq() {
+        throw new UnsupportedOperationException("Connection does not support share read view.");
+    }
+
+    void discard(Throwable t);
+
+    void kill() throws SQLException;
 }

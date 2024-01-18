@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.handler;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.localpartition.ExpireLocalPartitionJobFactory;
@@ -47,16 +48,19 @@ public class LogicalAlterTableExpireLocalPartitionHandler extends LogicalCommonD
         SqlAlterTableExpireLocalPartition expireLocalPartition =
             (SqlAlterTableExpireLocalPartition) sqlAlterTable.getAlters().get(0);
         List<SqlIdentifier> partitions = expireLocalPartition.getPartitions();
-        List<String> partitionNameList = CollectionUtils.isEmpty(partitions)?
-            new ArrayList<>() : partitions.stream().map(e->e.getLastName()).collect(Collectors.toList());
+        List<String> partitionNameList = CollectionUtils.isEmpty(partitions) ?
+            new ArrayList<>() : partitions.stream().map(SqlIdentifier::getLastName).collect(Collectors.toList());
         final String schemaName = logicalDdlPlan.getSchemaName();
         final String primaryTableName = logicalDdlPlan.getTableName();
 
         PolarPrivilegeUtils.checkPrivilege(schemaName, primaryTableName, PrivilegePoint.ALTER, executionContext);
         PolarPrivilegeUtils.checkPrivilege(schemaName, primaryTableName, PrivilegePoint.DROP, executionContext);
 
+        executionContext.getDdlContext().setPausedPolicy(DdlState.PAUSED);
+
         ExpireLocalPartitionJobFactory jobFactory =
-            new ExpireLocalPartitionJobFactory(schemaName, primaryTableName, partitionNameList, logicalDdlPlan.relDdl, executionContext);
+            new ExpireLocalPartitionJobFactory(schemaName, primaryTableName, partitionNameList, logicalDdlPlan.relDdl,
+                executionContext);
         return jobFactory.create();
     }
 }

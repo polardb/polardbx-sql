@@ -1,3 +1,4 @@
+
 /*
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -14,8 +15,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.calcite.sql2rel;
 
+import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -31,6 +34,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
@@ -47,6 +51,7 @@ import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelRoot;
+import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.Collect;
@@ -58,6 +63,8 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinInfo;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.core.RecursiveCTE;
+import org.apache.calcite.rel.core.RecursiveCTEAnchor;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.core.Sample;
 import org.apache.calcite.rel.core.Sort;
@@ -68,6 +75,7 @@ import org.apache.calcite.rel.core.Uncollect;
 import org.apache.calcite.rel.core.Values;
 import org.apache.calcite.rel.dal.Dal;
 import org.apache.calcite.rel.dal.Show;
+import org.apache.calcite.rel.ddl.AlterDatabase;
 import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
 import org.apache.calcite.rel.ddl.AlterFileStorageBackup;
 import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
@@ -85,41 +93,62 @@ import org.apache.calcite.rel.ddl.AlterTableGroupMergePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupModifyPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupMovePartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupRenamePartition;
+import org.apache.calcite.rel.ddl.AlterTableGroupReorgPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetLocality;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetPartitionsLocality;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartition;
 import org.apache.calcite.rel.ddl.AlterTableGroupSplitPartitionByHotValue;
+import org.apache.calcite.rel.ddl.AlterTableGroupTruncatePartition;
 import org.apache.calcite.rel.ddl.AlterTablePartitionCount;
 import org.apache.calcite.rel.ddl.AlterTableRemovePartitioning;
 import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
+import org.apache.calcite.rel.ddl.AnalyzeTable;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateFunction;
 import org.apache.calcite.rel.ddl.CreateIndex;
+import org.apache.calcite.rel.ddl.CreateJavaFunction;
 import org.apache.calcite.rel.ddl.CreateJoinGroup;
+import org.apache.calcite.rel.ddl.CreateMaterializedView;
 import org.apache.calcite.rel.ddl.CreateProcedure;
+import org.apache.calcite.rel.ddl.CreateStoragePool;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
 import org.apache.calcite.rel.ddl.DropDatabase;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropFunction;
 import org.apache.calcite.rel.ddl.DropIndex;
+import org.apache.calcite.rel.ddl.DropJavaFunction;
 import org.apache.calcite.rel.ddl.DropJoinGroup;
+import org.apache.calcite.rel.ddl.DropMaterializedView;
+import org.apache.calcite.rel.ddl.DropProcedure;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
 import org.apache.calcite.rel.ddl.GenericDdl;
+import org.apache.calcite.rel.ddl.InspectIndex;
 import org.apache.calcite.rel.ddl.MergeTableGroup;
 import org.apache.calcite.rel.ddl.MoveDatabase;
 import org.apache.calcite.rel.ddl.OptimizeTable;
 import org.apache.calcite.rel.ddl.PushDownUdf;
 import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.RenameTable;
+import org.apache.calcite.rel.ddl.RenameTables;
 import org.apache.calcite.rel.ddl.SequenceDdl;
 import org.apache.calcite.rel.ddl.TruncateTable;
-import org.apache.calcite.rel.ddl.DropProcedure;
 import org.apache.calcite.rel.ddl.UnArchive;
+import org.apache.calcite.rel.ddl.OptimizeTable;
+import org.apache.calcite.rel.ddl.PushDownUdf;
+import org.apache.calcite.rel.ddl.RefreshTopology;
+import org.apache.calcite.rel.ddl.RenameTable;
+import org.apache.calcite.rel.ddl.SequenceDdl;
+import org.apache.calcite.rel.ddl.TruncateTable;
+import org.apache.calcite.rel.ddl.*;
+import org.apache.calcite.rel.ddl.DropProcedure;
+import org.apache.calcite.rel.ddl.DropStoragePool;
+import org.apache.calcite.rel.ddl.AlterStoragePool;
+import org.apache.calcite.rel.ddl.CreateStoragePool;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalCreateTrigger;
@@ -176,13 +205,18 @@ import org.apache.calcite.sql.OutFileParams;
 import org.apache.calcite.sql.SemiJoinType;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlAlter;
+import org.apache.calcite.sql.SqlAlterDatabase;
+import org.apache.calcite.sql.SqlAlterFileStorage;
 import org.apache.calcite.sql.SqlAlterFunction;
+import org.apache.calcite.sql.SqlAlterJoinGroup;
 import org.apache.calcite.sql.SqlAlterProcedure;
 import org.apache.calcite.sql.SqlAlterRule;
-import org.apache.calcite.sql.SqlAlterFileStorage;
-import org.apache.calcite.sql.SqlAlterJoinGroup;
-import org.apache.calcite.sql.SqlAlterRule;
 import org.apache.calcite.sql.SqlAlterSpecification;
+import org.apache.calcite.sql.SqlAlterStoragePool;
+import org.apache.calcite.sql.SqlAlterSystemLeader;
+import org.apache.calcite.sql.SqlAlterSystemRefreshStorage;
+import org.apache.calcite.sql.SqlAlterSystemReloadStorage;
 import org.apache.calcite.sql.SqlAlterSystemSetConfig;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
@@ -200,27 +234,34 @@ import org.apache.calcite.sql.SqlAlterTableGroupSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableGroupSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableMergePartition;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
+import org.apache.calcite.sql.SqlAlterTableModifySubPartitionValues;
 import org.apache.calcite.sql.SqlAlterTableMovePartition;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlAlterTablePartitionKey;
 import org.apache.calcite.sql.SqlAlterTableRemovePartitioning;
+import org.apache.calcite.sql.SqlAlterTableReorgPartition;
 import org.apache.calcite.sql.SqlAlterTableRepartition;
 import org.apache.calcite.sql.SqlAlterTableSetTableGroup;
 import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
+import org.apache.calcite.sql.SqlAnalyzeTableDdl;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlCallBinding;
 import org.apache.calcite.sql.SqlChangeConsensusRole;
 import org.apache.calcite.sql.SqlCharStringLiteral;
+import org.apache.calcite.sql.SqlCreate;
 import org.apache.calcite.sql.SqlCreateDatabase;
 import org.apache.calcite.sql.SqlCreateFileStorage;
 import org.apache.calcite.sql.SqlCreateFunction;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateProcedure;
+import org.apache.calcite.sql.SqlCreateJavaFunction;
 import org.apache.calcite.sql.SqlCreateJoinGroup;
+import org.apache.calcite.sql.SqlCreateMaterializedView;
 import org.apache.calcite.sql.SqlCreateProcedure;
+import org.apache.calcite.sql.SqlCreateStoragePool;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlCreateTableGroup;
 import org.apache.calcite.sql.SqlCreateTrigger;
@@ -234,8 +275,11 @@ import org.apache.calcite.sql.SqlDropFileStorage;
 import org.apache.calcite.sql.SqlDropFunction;
 import org.apache.calcite.sql.SqlDropIndex;
 import org.apache.calcite.sql.SqlDropProcedure;
+import org.apache.calcite.sql.SqlDropJavaFunction;
 import org.apache.calcite.sql.SqlDropJoinGroup;
+import org.apache.calcite.sql.SqlDropMaterializedView;
 import org.apache.calcite.sql.SqlDropProcedure;
+import org.apache.calcite.sql.SqlDropStoragePool;
 import org.apache.calcite.sql.SqlDropTable;
 import org.apache.calcite.sql.SqlDropTableGroup;
 import org.apache.calcite.sql.SqlDropTrigger;
@@ -247,6 +291,7 @@ import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlInsert;
+import org.apache.calcite.sql.SqlInspectIndex;
 import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.SqlJoin;
 import org.apache.calcite.sql.SqlKind;
@@ -264,17 +309,22 @@ import org.apache.calcite.sql.SqlOptimizeTableDdl;
 import org.apache.calcite.sql.SqlOrderBy;
 import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionBy;
+import org.apache.calcite.sql.SqlPartitionByList;
 import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlPartitionValueItem;
 import org.apache.calcite.sql.SqlPushDownUdf;
 import org.apache.calcite.sql.SqlRefreshTopology;
 import org.apache.calcite.sql.SqlRenameTable;
+import org.apache.calcite.sql.SqlRenameTables;
 import org.apache.calcite.sql.SqlSampleSpec;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSelectKeyword;
 import org.apache.calcite.sql.SqlSequence;
 import org.apache.calcite.sql.SqlSetOperator;
 import org.apache.calcite.sql.SqlShow;
+import org.apache.calcite.sql.SqlSubPartition;
+import org.apache.calcite.sql.SqlSubPartitionBy;
+import org.apache.calcite.sql.SqlSubPartitionByList;
 import org.apache.calcite.sql.SqlTruncateTable;
 import org.apache.calcite.sql.SqlUnArchive;
 import org.apache.calcite.sql.SqlUnnestOperator;
@@ -318,8 +368,10 @@ import org.apache.calcite.sql.validate.SqlValidatorNamespace;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
 import org.apache.calcite.sql.validate.SqlValidatorTable;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
+import org.apache.calcite.sql.validate.WithItemNamespace;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.tools.ValidationFirstValueException;
+import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.ImmutableIntList;
 import org.apache.calcite.util.Litmus;
@@ -352,6 +404,8 @@ import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_PARTITION;
+import static com.alibaba.polardbx.gms.partition.TablePartitionRecord.PARTITION_LEVEL_SUBPARTITION;
 import static org.apache.calcite.sql.SqlUtil.stripAs;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.IN;
 import static org.apache.calcite.sql.fun.SqlStdOperatorTable.NOT_EQUALS;
@@ -401,6 +455,7 @@ public class SqlToRelConverter {
     private int explainParamCount;
     public final SqlToRelConverter.Config config;
     protected final RelBuilder relBuilder;
+    final Set<String> cteNames = Sets.newTreeSet();
 
     /**
      * Fields used in name resolution for correlated sub-queries.
@@ -786,6 +841,7 @@ public class SqlToRelConverter {
             this.hintBlackboard.endFrom();
         }
 
+        replaceLogicalGeneratedColumnExpr(bb, select);
         convertWhere(bb, select.getWhere(), select.getOrderList() != null || select.getFetch() != null);
 
         final List<SqlNode> orderExprList = new ArrayList<>();
@@ -1139,6 +1195,11 @@ public class SqlToRelConverter {
         }
 
         bb.setRoot(r, false);
+    }
+
+    protected void replaceLogicalGeneratedColumnExpr(Blackboard bb, SqlSelect select) {
+        // implemented in TddlSqlToRelConverter
+        return;
     }
 
     private void replaceSubQueries(final Blackboard bb, final SqlNode expr, RelOptUtil.Logic logic) {
@@ -1716,51 +1777,56 @@ public class SqlToRelConverter {
         } else {
             rowType = SqlTypeUtil.promoteToRowType(typeFactory, validator.getValidatedNodeType(rowList), null);
         }
-
         final List<RelNode> unionInputs = new ArrayList<>();
-        for (SqlNode node : rows) {
-            SqlBasicCall call;
-            if (isRowConstructor(node)) {
-                call = (SqlBasicCall) node;
-                ImmutableList.Builder<RexNode> tuple = ImmutableList.builder();
-                for (Ord<SqlNode> operand : Ord.zip(call.operands)) {
-                    RexDynamicParam rexDynamicParam = null;
-                    if (operand.e instanceof SqlDynamicParam) {
-                        rexDynamicParam = convertDynamicParam((SqlDynamicParam) operand.e);
+        if (shouldBuildDynamicList(rows, rowType)) {
+            ImmutableList.Builder<RexNode> tuple = ImmutableList.builder();
+            buildDynamicTuples(tuple, (SqlDynamicParam) rows.iterator().next(), rowType);
+            tupleList.add(tuple.build());
+        } else {
+            for (SqlNode node : rows) {
+                SqlBasicCall call;
+                if (isRowConstructor(node)) {
+                    call = (SqlBasicCall) node;
+                    ImmutableList.Builder<RexNode> tuple = ImmutableList.builder();
+                    for (Ord<SqlNode> operand : Ord.zip(call.operands)) {
+                        RexDynamicParam rexDynamicParam = null;
+                        if (operand.e instanceof SqlDynamicParam) {
+                            rexDynamicParam = convertDynamicParam((SqlDynamicParam) operand.e);
+                        }
+                        if ((rexDynamicParam == null) && allowLiteralsOnly) {
+                            return null;
+                        }
+                        if ((rexDynamicParam == null) || !config.isCreateValuesRel()) {
+                            // fallback to convertRowConstructor
+                            tuple = null;
+                            break;
+                        }
+                        tuple.add(rexDynamicParam);
                     }
-                    if ((rexDynamicParam == null) && allowLiteralsOnly) {
-                        return null;
+                    if (tuple != null) {
+                        tupleList.add(tuple.build());
+                        continue;
                     }
-                    if ((rexDynamicParam == null) || !config.isCreateValuesRel()) {
-                        // fallback to convertRowConstructor
-                        tuple = null;
-                        break;
-                    }
-                    tuple.add(rexDynamicParam);
-                }
-                if (tuple != null) {
-                    tupleList.add(tuple.build());
-                    continue;
-                }
-            } else {
-                RexDynamicParam rexDynamicParam = null;
-                if (node instanceof SqlDynamicParam) {
-                    rexDynamicParam = convertDynamicParam((SqlDynamicParam) node);
-                }
-
-                if ((rexDynamicParam != null) && config.isCreateValuesRel()) {
-                    tupleList.add(ImmutableList.of(rexDynamicParam));
-                    continue;
                 } else {
-                    if ((rexDynamicParam == null) && allowLiteralsOnly) {
-                        return null;
+                    RexDynamicParam rexDynamicParam = null;
+                    if (node instanceof SqlDynamicParam) {
+                        rexDynamicParam = convertDynamicParam((SqlDynamicParam) node);
                     }
-                }
 
-                // convert "1" to "row(1)"
-                call = (SqlBasicCall) SqlStdOperatorTable.ROW.createCall(SqlParserPos.ZERO, node);
+                    if ((rexDynamicParam != null) && config.isCreateValuesRel()) {
+                        tupleList.add(ImmutableList.of(rexDynamicParam));
+                        continue;
+                    } else {
+                        if ((rexDynamicParam == null) && allowLiteralsOnly) {
+                            return null;
+                        }
+                    }
+
+                    // convert "1" to "row(1)"
+                    call = (SqlBasicCall) SqlStdOperatorTable.ROW.createCall(SqlParserPos.ZERO, node);
+                }
+                unionInputs.add(convertRowConstructor(bb, call));
             }
-            unionInputs.add(convertRowConstructor(bb, call));
         }
         DynamicValues values = DynamicValues.create(cluster, rowType, tupleList.build());
         RelNode resultRel;
@@ -1774,6 +1840,37 @@ public class SqlToRelConverter {
         }
         leaves.add(resultRel);
         return resultRel;
+    }
+
+    private void buildDynamicTuples(ImmutableList.Builder<RexNode> tuple,
+                                    SqlDynamicParam dynamic,
+                                    RelDataType rowType) {
+        // expand dynamic rex node by rowtype
+        if (rowType.getFieldCount() == 1) {
+            tuple.add(
+                rexBuilder.makeDynamicParam(rowType.getFieldList().iterator().next().getType(), dynamic.getIndex()));
+        } else {
+            for (int i = 0; i < rowType.getFieldCount(); i++) {
+                RelDataTypeField field = rowType.getFieldList().get(i);
+                RexDynamicParam rexDynamicParam = rexBuilder.makeDynamicParam(field.getType(), dynamic.getIndex());
+                rexDynamicParam.setSkIndex(i);
+                tuple.add(rexDynamicParam);
+            }
+        }
+    }
+
+    private boolean shouldBuildDynamicList(Collection<SqlNode> rows, RelDataType rowType) {
+        if (rows == null || rowType == null) {
+            return false;
+        }
+        if (rows.size() != 1 || rowType.getFieldCount() <= rows.size()) {
+            return false;
+        }
+        if (rows.iterator().next() instanceof SqlDynamicParam) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     private boolean isRowConstructor(SqlNode node) {
@@ -2092,7 +2189,79 @@ public class SqlToRelConverter {
             return;
 
         case WITH_ITEM:
-            convertFrom(bb, ((SqlWithItem) from).query);
+            SqlValidatorNamespace nc = this.validator.getNamespace(from);
+            if (nc instanceof WithItemNamespace &&
+                ((WithItemNamespace) nc).isRecursive() &&
+                from instanceof SqlWithItem
+            ) {
+                // prepare the union part for the anchor part detaching
+                // prepare offset/fetch for cte special limit grammar
+                SqlCall sqlUnion;
+                SqlNode cteOffset = null;
+                SqlNode cteFetch = null;
+                if (((SqlWithItem) from).query.getKind() == SqlKind.UNION) {
+                    sqlUnion = (SqlCall) ((SqlWithItem) from).query;
+                } else if (((SqlWithItem) from).query instanceof SqlSelect) {
+                    // from part must be a union call
+                    SqlNode f = ((SqlSelect) ((SqlWithItem) from).query).getFrom();
+                    if (!(f instanceof SqlCall)) {
+                        throw GeneralUtil.nestedException("not support cte:" + f);
+                    }
+                    sqlUnion = (SqlCall) f;
+
+                    cteOffset = ((SqlSelect) ((SqlWithItem) from).query).getOffset();
+                    cteFetch = ((SqlSelect) ((SqlWithItem) from).query).getFetch();
+                } else {
+                    throw GeneralUtil.nestedException("not support cte:" + ((SqlWithItem) from).query);
+                }
+
+                // build anchor part
+                SqlNode anchorNode = sqlUnion.getOperandList().get(0);
+                final SqlValidatorScope anchorScope =
+                    Util.first(validator.getWithScope(from), ((DelegatingScope) bb.scope).getParent());
+                final Blackboard anchorBlackboard = createBlackboard(anchorScope, null, false, bb);
+                convertFrom(anchorBlackboard, anchorNode);
+                RelNode anchor = anchorBlackboard.root;
+
+                // build recursive part
+                SqlNode sqlBody = sqlUnion.getOperandList().get(1);
+                final Blackboard bodyBlackboard = createBlackboard(anchorScope, null, false, bb);
+                cteNames.add(((SqlWithItem) from).name.getLastName());
+                convertFrom(bodyBlackboard, sqlBody);
+                RelNode bodyRel = bodyBlackboard.root;
+
+                // check if any recursive part inside
+                final boolean[] hasAnchorInside = {false};
+                bodyRel.accept(new RelShuttleImpl() {
+                    @Override
+                    public RelNode visit(RelNode orther) {
+                        if (orther instanceof RecursiveCTEAnchor) {
+                            hasAnchorInside[0] = true;
+                        }
+                        return orther;
+                    }
+                });
+
+                if (!hasAnchorInside[0]) {
+                    convertFrom(bb, ((SqlWithItem) from).query);
+                    return;
+                }
+
+                // assem recursive cte
+                RecursiveCTE recursiveCTE = new RecursiveCTE(cluster, cluster.traitSet(),
+                    anchor,
+                    bodyRel,
+                    ((SqlWithItem) from).name.getLastName(),
+                    cteOffset == null ? null : convertExpression(cteOffset),
+                    cteFetch == null ? null : convertExpression(cteFetch));
+                if (all(sqlUnion)) {
+                    bb.setRoot(recursiveCTE, true);
+                } else {
+                    bb.setRoot(LogicalUnion.create(Lists.newArrayList(recursiveCTE), false), true);
+                }
+            } else {
+                convertFrom(bb, ((SqlWithItem) from).query);
+            }
             return;
 
         case WITH:
@@ -2392,6 +2561,13 @@ public class SqlToRelConverter {
                                    SqlNode partitions) {
         final SqlValidatorNamespace fromNamespace = validator.getNamespace(id).resolve();
         if (fromNamespace.getNode() != null) {
+            if (fromNamespace instanceof WithItemNamespace && ((WithItemNamespace) fromNamespace).isRecursive()
+                && cteNames.contains(id.getLastName())) {
+                RecursiveCTEAnchor cteAnchor =
+                    new RecursiveCTEAnchor(cluster, cluster.traitSet(), id.getLastName(), fromNamespace.getRowType());
+                bb.setRoot(cteAnchor, true);
+                return;
+            }
             convertFrom(bb, fromNamespace.getNode());
             return;
         }
@@ -2614,7 +2790,7 @@ public class SqlToRelConverter {
                     Optional<SqlIdentifier> optionalSqlIdentifier = null;
                     if (firstValues != null) {
                         optionalSqlIdentifier = firstValues.stream()
-                            .filter(i -> i.names.containsAll(ImmutableList.of(originalRelName, originalFieldName)))
+                            .filter(i -> i.names.containsAll(ImmutableList.of(originalRelName, field.getName())))
                             .findFirst();
                     }
                     // sub-query can reference group by keys projected from
@@ -2628,10 +2804,10 @@ public class SqlToRelConverter {
                     } else {
                         // correl not grouped
                         SqlIdentifier firstValue =
-                            new SqlIdentifier(ImmutableList.of(originalRelName, originalFieldName), null,
+                            new SqlIdentifier(ImmutableList.of(originalRelName, field.getName()), null,
                                 SqlParserPos.ZERO, null);
                         throw new ValidationFirstValueException(
-                            "Identifier '" + originalRelName + "." + originalFieldName + "' is not a group expr",
+                            "Identifier '" + originalRelName + "." + field.getName() + "' is not a group expr",
                             firstValue);
                     }
                 }
@@ -3194,14 +3370,14 @@ public class SqlToRelConverter {
         int ordinal = -1;
         for (SqlNode selectItem : selectScope.getExpandedSelectList()) {
             ++ordinal;
-            if (converted.equalsDeep(stripAs(selectItem), Litmus.IGNORE)) {
+            if (converted.equalsDeep(stripAs(selectItem), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                 return new RelFieldCollation(ordinal, direction, nullDirection);
             }
         }
 
         for (SqlNode extraExpr : extraExprs) {
             ++ordinal;
-            if (converted.equalsDeep(extraExpr, Litmus.IGNORE)) {
+            if (converted.equalsDeep(extraExpr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                 return new RelFieldCollation(ordinal, direction, nullDirection);
             }
         }
@@ -3284,11 +3460,16 @@ public class SqlToRelConverter {
             }
             return RelRoot.of(convertAlterTable((SqlAlterTable) query), kind);
         case RENAME_TABLE:
+            if (query instanceof SqlRenameTables) {
+                return RelRoot.of(convertRenameTable((SqlRenameTables) query), kind);
+            }
             return RelRoot.of(convertRenameTable((SqlRenameTable) query), kind);
         case TRUNCATE_TABLE:
             return RelRoot.of(convertTruncateTable((SqlTruncateTable) query), kind);
         case DROP_TABLE:
             return RelRoot.of(convertDropTable((SqlDropTable) query), kind);
+        case DROP_MATERIALIZED_VIEW:
+            return RelRoot.of(convertDropMaterializedView((SqlDropMaterializedView) query), kind);
         case CREATE_INDEX:
             return RelRoot.of(convertCreateIndex((SqlCreateIndex) query), kind);
         case DROP_INDEX:
@@ -3305,6 +3486,14 @@ public class SqlToRelConverter {
         case CHECK_GLOBAL_INDEX:
         case REBALANCE:
             return RelRoot.of(convertGenericDdl((SqlDdl) query), kind);
+        case CREATE_STORAGE_POOL:
+            return RelRoot.of(convertCreateStoragePool((SqlCreate) query), kind);
+        case ALTER_STORAGE_POOL:
+            return RelRoot.of(convertAlterStoragePool((SqlCreate) query), kind);
+        case DROP_STORAGE_POOL:
+            return RelRoot.of(convertDropStoragePool((SqlCreate) query), kind);
+        case CREATE_MATERIALIZED_VIEW:
+            return RelRoot.of(convertCreateMaterializedViewDdl((SqlCreateMaterializedView) query), kind);
         case MOVE_DATABASE:
             return RelRoot.of(convertMoveDatabase((SqlMoveDatabase) query), kind);
         case FLASHBACK_TABLE:
@@ -3315,8 +3504,14 @@ public class SqlToRelConverter {
             return RelRoot.of(convertShow(show), show.getShowKind());
         case CREATE_DATABASE:
             return RelRoot.of(convertCreateDatabase((SqlCreateDatabase) query), kind);
+        case ALTER_DATABASE:
+            return RelRoot.of(convertAlterDatabase((SqlAlterDatabase) query), kind);
         case DROP_DATABASE:
             return RelRoot.of(convertDropDatabase((SqlDropDatabase) query), kind);
+        case CREATE_JAVA_FUNCTION:
+            return RelRoot.of(convertCreateJavaFunction((SqlCreateJavaFunction) query), kind);
+        case DROP_JAVA_FUNCTION:
+            return RelRoot.of(convertDropJavaFunction((SqlDropJavaFunction) query), kind);
         case ALTER_TABLEGROUP:
             return RelRoot.of(convertAlterTableGroup((SqlAlterTableGroup) query), kind);
         case CREATE_TABLEGROUP:
@@ -3331,6 +3526,16 @@ public class SqlToRelConverter {
             return RelRoot.of(convertAlterSystemSetConfig((SqlAlterSystemSetConfig) query), kind);
         case REFRESH_TOPOLOGY:
             return RelRoot.of(convertRefreshTopology((SqlRefreshTopology) query), kind);
+        case ALTER_FILESTORAGE:
+            return RelRoot.of(convertAlterFileStorage((SqlAlterFileStorage) query), kind);
+        case CREATE_TRIGGER:
+            return RelRoot.of(convertCreateTrigger((SqlCreateTrigger) query), kind);
+        case DROP_TRIGGER:
+            return RelRoot.of(convertDropTrigger((SqlDropTrigger) query), kind);
+        case CREATE_PROCEDURE:
+            return RelRoot.of(convertCreateProcedure((SqlCreateProcedure) query), kind);
+        case DROP_PROCEDURE:
+            return RelRoot.of(convertDropProcedure((SqlDropProcedure) query), kind);
         case CREATE_FUNCTION:
             return RelRoot.of(convertCreateFunction((SqlCreateFunction) query), kind);
         case DROP_FUNCTION:
@@ -3341,16 +3546,6 @@ public class SqlToRelConverter {
             return RelRoot.of(convertAlterProcedure((SqlAlterProcedure) query), kind);
         case ALTER_FUNCTION:
             return RelRoot.of(convertAlterFunction((SqlAlterFunction) query), kind);
-        case CREATE_PROCEDURE:
-            return RelRoot.of(convertCreateProcedure((SqlCreateProcedure) query), kind);
-        case DROP_PROCEDURE:
-            return RelRoot.of(convertDropProcedure((SqlDropProcedure) query), kind);
-        case CREATE_TRIGGER:
-            return RelRoot.of(convertCreateTrigger((SqlCreateTrigger) query), kind);
-        case DROP_TRIGGER:
-            return RelRoot.of(convertDropTrigger((SqlDropTrigger) query), kind);
-        case ALTER_FILESTORAGE:
-            return RelRoot.of(convertAlterFileStorage((SqlAlterFileStorage) query), kind);
         case UNARCHIVE:
             return RelRoot.of(convertUnArchive((SqlUnArchive) query), kind);
         case DROP_FILESTORAGE:
@@ -3368,6 +3563,12 @@ public class SqlToRelConverter {
         case OPTIMIZE_TABLE:
             if (query instanceof SqlOptimizeTableDdl) {
                 return RelRoot.of(convertOptimizeTable((SqlOptimizeTableDdl) query), kind);
+            }
+        case INSPECT_INDEX:
+            return RelRoot.of(convertInspectIndex((SqlInspectIndex) query), kind);
+        case ANALYZE_TABLE:
+            if (query instanceof SqlAnalyzeTableDdl) {
+                return RelRoot.of(convertAnalyzeTable((SqlAnalyzeTableDdl) query), kind);
             }
         default:
             if (kind.belongsTo(SqlKind.DAL)) {
@@ -3387,23 +3588,72 @@ public class SqlToRelConverter {
         return ChangeConsensusRole.create(query, targetRowType, getCluster());
     }
 
+    private RelNode convertAlterSystemRefreshStorage(SqlAlterSystemRefreshStorage query) {
+        RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return Dal.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertAlterSystemLeader(SqlAlterSystemLeader query) {
+        RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return Dal.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertAlterSystemReloadStorage(SqlAlterSystemReloadStorage query) {
+        RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return Dal.create(query, targetRowType, getCluster());
+    }
+
     private RelNode convertCreateIndex(SqlCreateIndex query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
 
         query = checkAndRewriteGsiName(query);
         checkGsiColumnLen(query);
-        Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(query.getPartitioning());
+        //Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(query.getPartitioning());
+        Map<SqlNode, RexNode> rexNodesForPartition = convertPartition(query.getPartitioning());
 
         return CreateIndex.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
     }
 
+    private RelNode convertCreateStoragePool(SqlCreate query){
+        if(query instanceof SqlCreateStoragePool) {
+            SqlNode storagePool = ((SqlCreateStoragePool)query).getStoragePool();
+            SqlNode dnList = ((SqlCreateStoragePool) query).getDnList();
+            SqlNode tableName = ((SqlCreateStoragePool)query).getName();
+            SqlNode undeletableDn = ((SqlCreateStoragePool)query).getUndeletableDn();
+            return CreateStoragePool.create(getCluster(), query, tableName, storagePool, dnList, undeletableDn);
+        }else{
+            throw new AssertionError("not suitable create storage pool statement");
+        }
+    }
+
+    private RelNode convertDropStoragePool(SqlCreate query){
+        if(query instanceof SqlDropStoragePool) {
+            SqlNode storagePool = ((SqlDropStoragePool)query).getStoragePool();
+            SqlNode tableName = ((SqlDropStoragePool)query).getName();
+            return DropStoragePool.create(getCluster(), query, tableName, storagePool);
+        }else{
+            throw new AssertionError("not suitable drop storage pool statement");
+        }
+    }
+    private RelNode convertAlterStoragePool(SqlCreate query){
+        if(query instanceof SqlAlterStoragePool) {
+            SqlNode storagePool = ((SqlAlterStoragePool)query).getStoragePool();
+            SqlNode dnList = ((SqlAlterStoragePool) query).getDnList();
+            SqlNode operation = ((SqlAlterStoragePool) query).getOperation();
+            SqlNode tableName = ((SqlAlterStoragePool) query).getName();
+            return AlterStoragePool.create(getCluster(), query, tableName, storagePool, dnList, operation);
+        }else{
+            throw new AssertionError("not suitable alter storage pool statement");
+        }
+    }
     private RelNode convertAlterTable(SqlAlterTable query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
 
         List<SqlAlterSpecification> alterItems = query.getAlters();
         SqlAlterSpecification alterSpecItem = GeneralUtil.isNotEmpty(alterItems) ? alterItems.get(0) : null;
+
         boolean changePartition = (alterSpecItem instanceof SqlAlterTableSplitPartitionByHotValue)
             || (alterSpecItem instanceof SqlAlterTableExtractPartition)
             || (alterSpecItem instanceof SqlAlterTableMergePartition)
@@ -3411,13 +3661,18 @@ public class SqlToRelConverter {
             || (alterSpecItem instanceof SqlAlterTableMovePartition)
             || (alterSpecItem instanceof SqlAlterTableAddPartition)
             || (alterSpecItem instanceof SqlAlterTableDropPartition)
-            || (alterSpecItem instanceof SqlAlterTableModifyPartitionValues);
+            || (alterSpecItem instanceof SqlAlterTableModifyPartitionValues)
+            || (alterSpecItem instanceof SqlAlterTableTruncatePartition)
+            || (alterSpecItem instanceof SqlAlterTableReorgPartition);
+
         if (!changePartition) {
             query = checkAndRewriteGsiName(query);
         }
+
         if (alterItems.size() == 1 && alterItems.get(0) instanceof SqlAddIndex) {
             checkGsiColumnLen(query);
         }
+
         if (1 == alterItems.size()) {
             if (alterSpecItem instanceof SqlAddIndex) {
                 // All add index goes here for name check.
@@ -3431,13 +3686,15 @@ public class SqlToRelConverter {
                     o -> o instanceof SqlAlterTableSplitPartitionByHotValue || o instanceof SqlAlterTableSplitPartition
                         || o instanceof SqlAlterTableExtractPartition || o instanceof SqlAlterTableMergePartition
                         || o instanceof SqlAlterTableMovePartition || o instanceof SqlAlterTableAddPartition
-                        || o instanceof SqlAlterTableDropPartition || o instanceof SqlAlterTableModifyPartitionValues)
+                        || o instanceof SqlAlterTableDropPartition || o instanceof SqlAlterTableModifyPartitionValues
+                        || o instanceof SqlAlterTableTruncatePartition)
                 .findFirst();
             if (mergeSplitItem.isPresent()) {
                 throw new RuntimeException(
                     "alter table modify partition operation is only allow to be executed separately");
             }
         }
+
         if (query instanceof SqlAlterTableRepartition) {
             SqlNode partitioning = ((SqlAlterTableRepartition) query).getSqlPartition();
             Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromPartition(partitioning);
@@ -3452,11 +3709,44 @@ public class SqlToRelConverter {
         return AlterTable.create(getCluster(), query, query.getOperandList().get(0), new HashMap<>());
     }
 
+    public List<RexNode> getRexForGeneratedColumn(RelDataType rowType, List<SqlCall> sqlCalls) {
+        RexNode sourceRef = rexBuilder.makeRangeReference(rowType, 0, false);
+        final Map<String, RexNode> nameToNodeMap = new HashMap<>();
+        final List<String> targetFields = rowType.getFieldNames();
+        for (int i = 0; i < targetFields.size(); i++) {
+            nameToNodeMap.put(targetFields.get(i), rexBuilder.makeFieldAccess(sourceRef, i));
+        }
+
+        Blackboard bb = createBlackboard(null, nameToNodeMap, false);
+        List<RexNode> result = new ArrayList<>();
+        sqlCalls.forEach(sqlCall -> result.add(bb.convertExpression(sqlCall)));
+        return result;
+    }
+
+    public RexNode getRexForDefaultExpr(RelDataType rowType, SqlCall sqlCall) {
+        RexNode sourceRef = rexBuilder.makeRangeReference(rowType, 0, false);
+        final Map<String, RexNode> nameToNodeMap = new HashMap<>();
+        final List<String> targetFields = rowType.getFieldNames();
+        for (int i = 0; i < targetFields.size(); i++) {
+            nameToNodeMap.put(targetFields.get(i), rexBuilder.makeFieldAccess(sourceRef, i));
+        }
+
+        Blackboard bb = createBlackboard(null, nameToNodeMap, false);
+        return bb.convertExpression(sqlCall);
+    }
+
     private RelNode convertRenameTable(SqlRenameTable query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
 
         return RenameTable.create(getCluster(), query, query.getOperandList().get(0), query.getOriginNewTableName());
+    }
+
+    private RelNode convertRenameTable(SqlRenameTables query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+
+        return RenameTables.create(getCluster(), query, query.getTableNameList());
     }
 
     private RelNode convertTruncateTable(SqlTruncateTable query) {
@@ -3503,18 +3793,27 @@ public class SqlToRelConverter {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
         return CreateFileStorage.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query, targetRowType,
-            query.getEngineName().toString(), query.getWithValue());
+            query.getEngineName().toString(), query.getWithValue(), query.isIfNotExists());
     }
 
     private RelNode convertAlterTableGroup(SqlAlterTableGroup query) {
-        ;
-        Map<SqlNode, RexNode> partRexInfoCtx = getRexInfoFromSqlAlterSpec(query.getAlters());
-        query.setPartRexInfoCtx(partRexInfoCtx);
+        Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel =
+            getRexInfoFromSqlAlterSpecByLevel(query.getAlters());
+
+        Map<SqlNode, RexNode> partRexInfoCtx = partRexInfoCtxByLevel.get(PARTITION_LEVEL_PARTITION);
+
+        query.setPartRexInfoCtxByLevel(partRexInfoCtxByLevel);
+
         assert query.getAlters().size() == 1;
         SqlAlterSpecification item = query.getAlters().get(0);
-        String tableGroupName = query.getTableGroupName().toString();
+
+        String tableGroupName = null;
+        SqlNode tgNameAst = query.getTableGroupName();
+        tableGroupName = tgNameAst.toString();
+
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
+
         if (item instanceof SqlAlterTableGroupSplitPartition) {
             return AlterTableGroupSplitPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
                 targetRowType, partRexInfoCtx, tableGroupName);
@@ -3522,8 +3821,11 @@ public class SqlToRelConverter {
             return AlterTableGroupMergePartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
                 targetRowType, partRexInfoCtx, tableGroupName);
         } else if (item instanceof SqlAlterTableGroupMovePartition) {
+            SqlAlterTableGroupMovePartition sqlAlterTableGroupMovePartition =
+                ((SqlAlterTableGroupMovePartition) (item));
             return AlterTableGroupMovePartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
-                targetRowType, tableGroupName);
+                targetRowType, tableGroupName, sqlAlterTableGroupMovePartition.getTargetPartitions(),
+                sqlAlterTableGroupMovePartition.isSubPartitionsMoved());
         } else if (item instanceof SqlAlterTableGroupExtractPartition) {
             return AlterTableGroupExtractPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
                 targetRowType, partRexInfoCtx, tableGroupName);
@@ -3539,11 +3841,12 @@ public class SqlToRelConverter {
             String targetLocality = ((SqlAlterTableGroupSetPartitionsLocality) item).getTargetLocality();
             String partition = ((SqlAlterTableGroupSetPartitionsLocality) item).getPartition();
             Boolean isLogical = ((SqlAlterTableGroupSetPartitionsLocality) item).getLogical();
-            return AlterTableGroupSetPartitionsLocality.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
-                query, targetRowType, tableGroupName, partition, targetLocality, isLogical);
+            return AlterTableGroupSetPartitionsLocality
+                .create(getCluster(), getCluster().traitSetOf(Convention.NONE),
+                    query, targetRowType, tableGroupName, partition, targetLocality, isLogical);
         } else if (item instanceof SqlAlterTableAddPartition) {
             return AlterTableGroupAddPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
-                targetRowType, partRexInfoCtx, tableGroupName);
+                targetRowType, partRexInfoCtxByLevel, tableGroupName);
         } else if (item instanceof SqlAlterTableDropPartition) {
             return AlterTableGroupDropPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
                 targetRowType, tableGroupName);
@@ -3551,8 +3854,11 @@ public class SqlToRelConverter {
             return AlterTableGroupModifyPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE), query,
                 targetRowType, tableGroupName);
         } else if (item instanceof SqlAlterTableTruncatePartition) {
-            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
-                "please use alter table truncate partition instead");
+            return AlterTableGroupTruncatePartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
+                query, targetRowType, tableGroupName);
+        } else if (item instanceof SqlAlterTableReorgPartition) {
+            return AlterTableGroupReorgPartition.create(getCluster(), getCluster().traitSetOf(Convention.NONE),
+                query, targetRowType, partRexInfoCtxByLevel, tableGroupName);
         } else if (item instanceof SqlAlterTableGroupSplitPartitionByHotValue) {
             return AlterTableGroupSplitPartitionByHotValue.create(getCluster(),
                 getCluster().traitSetOf(Convention.NONE), query, targetRowType, partRexInfoCtx, tableGroupName);
@@ -3641,8 +3947,14 @@ public class SqlToRelConverter {
         if (alters.size() > 1) {
             throw new RuntimeException("alter table split/merge partition is only allow to be executed separately");
         }
-        Map<SqlNode, RexNode> rexNodesForPartition = getRexInfoFromSqlAlterSpec(query.getAlters());
-        return AlterTable.create(getCluster(), query, query.getOperandList().get(0), rexNodesForPartition);
+
+        Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel =
+            getRexInfoFromSqlAlterSpecByLevel(query.getAlters());
+
+        query.setPartRexInfoCtxByLevel(partRexInfoCtxByLevel);
+
+        return AlterTable.create(getCluster(), query, query.getOperandList().get(0),
+            partRexInfoCtxByLevel.get(PARTITION_LEVEL_PARTITION));
     }
 
     //
@@ -3676,6 +3988,47 @@ public class SqlToRelConverter {
         return AlterRule.create(getCluster(), query, query.getOperandList().get(0));
     }
 
+    private RelNode convertDropMaterializedView(SqlDropMaterializedView query) {
+        String schemaName;
+        String viewName;
+        int nameSize = ((SqlIdentifier) query.getName()).names.size();
+        if (nameSize == 2) {
+            schemaName = ((SqlIdentifier) query.getName()).names.get(0);
+            viewName = ((SqlIdentifier) query.getName()).names.get(1);
+        } else {
+            schemaName = DefaultSchema.getSchemaName();
+            viewName = ((SqlIdentifier) query.getName()).names.get(nameSize - 1);
+        }
+        return DropMaterializedView.create(getCluster(), schemaName, viewName);
+    }
+
+    private RelNode convertCreateMaterializedViewDdl(SqlCreateMaterializedView query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+
+        RelNode sourceRel = convertQueryRecursive(query.query, false, targetRowType).project(false);
+
+        SqlNodeList columns = query.columnList;
+        List<String> columnList = null;
+        if (columns != null && columns.size() > 0) {
+            columnList = columns.getList().stream().map(x -> x.toString()).collect(Collectors.toList());
+        }
+
+        String schemaName;
+        String viewName;
+        int nameSize = ((SqlIdentifier) query.getName()).names.size();
+        if (nameSize == 2) {
+            schemaName = ((SqlIdentifier) query.getName()).names.get(0);
+            viewName = ((SqlIdentifier) query.getName()).names.get(1);
+        } else {
+            schemaName = DefaultSchema.getSchemaName();
+            viewName = ((SqlIdentifier) query.getName()).names.get(nameSize - 1);
+        }
+
+        return new CreateMaterializedView(getCluster(), schemaName, viewName,
+            columnList, query.query, sourceRel, query.bRefresh);
+    }
+
     private RelNode convertGenericDdl(SqlDdl query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
@@ -3694,6 +4047,12 @@ public class SqlToRelConverter {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
         return OptimizeTable.create(getCluster(), query, query.getOperandList().get(0));
+    }
+
+    private RelNode convertAnalyzeTable(SqlAnalyzeTableDdl query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        assert targetRowType != null;
+        return AnalyzeTable.create(getCluster(), query, query.getOperandList().get(0));
     }
 
     private RelNode convertAlterTableModifyListPartitionValues(SqlAlterTable query) {
@@ -3796,7 +4155,7 @@ public class SqlToRelConverter {
             if (operandList.get(0).toString().equalsIgnoreCase("COLUMNS")) {
                 return true;
             }
-            if (operandList.get(0).toString().equalsIgnoreCase("FULL")) {
+            if (operandList.get(0).toString().equalsIgnoreCase("FULL") && operandList.size() > 1) {
                 if (operandList.get(1) instanceof SqlLiteral && operandList.get(1).toString()
                     .equalsIgnoreCase("COLUMNS")) {
                     return true;
@@ -3895,60 +4254,212 @@ public class SqlToRelConverter {
             return partRexInfoCtx;
         }
 
-        for (SqlNode sqlNode : sqlPartitionBy.getPartitions()) {
-            SqlPartition sqlPartition = (SqlPartition) sqlNode;
-            SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
-            for (SqlPartitionValueItem item : ((SqlPartition) sqlPartition).getValues().getItems()) {
-                SqlNode itemValue = item.getValue();
-                if (!item.isMaxValue()) {
-                    validator.validate(itemValue);
-                    RexNode rexExpr = convertExpression(itemValue);
-                    partRexInfoCtx.put(itemValue, rexExpr);
-                } else {
-                    // add null literal as placeholder, do not need to derive actual value and value type for maxvalue
-                    SqlLiteral sqlLiteral =
-                        SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
-                    partRexInfoCtx.put(itemValue, convertExpression(sqlLiteral));
+        boolean isListPart = sqlPartitionBy instanceof SqlPartitionByList;
+        boolean isListSubPart = false;
+        SqlSubPartitionBy subPartByDef = sqlPartitionBy.getSubPartitionBy();
+        if (subPartByDef != null) {
+            isListSubPart = subPartByDef instanceof SqlSubPartitionByList;
+            List<SqlSubPartition> subPartList = subPartByDef.getSubPartitions();
+            if (subPartList != null && !subPartList.isEmpty()) {
+                for (int i = 0; i < subPartList.size(); i++) {
+                    SqlSubPartition subPart = subPartList.get(i);
+                    SqlPartitionValue subPartVals = subPart.getValues();
+                    if (subPartVals == null) {
+                        continue;
+                    }
+                    List<SqlPartitionValueItem> valueItems = subPartVals.getItems();
+                    for (int j = 0; j < valueItems.size(); j++) {
+                        SqlPartitionValueItem item = valueItems.get(j);
+                        SqlNode itemValue = item.getValue();
+                        if (!item.isMaxValue()) {
+                            validator.validate(itemValue);
+                            RexNode rexExpr = convertExpression(itemValue);
+                            partRexInfoCtx.put(item.getValue(), rexExpr);
+                        } else {
+                            // add null literal as placeholder
+                            SqlLiteral sqlLiteral =
+                                SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
+                            partRexInfoCtx.put(item.getValue(), convertExpression(sqlLiteral));
+                        }
+                    }
                 }
             }
         }
+
+        List<SqlNode> partList = sqlPartitionBy.getPartitions();
+        if (partList != null && !partList.isEmpty()) {
+            for (int i = 0; i < partList.size(); i++) {
+                SqlPartition part = (SqlPartition) partList.get(i);
+                List<SqlNode> subPartList = part.getSubPartitions();
+                SqlPartitionValue partVals = part.getValues();
+                if (partVals != null) {
+                    List<SqlPartitionValueItem> valueItems = partVals.getItems();
+                    for (int j = 0; j < valueItems.size(); j++) {
+                        SqlPartitionValueItem item = valueItems.get(j);
+                        SqlNode itemValue = item.getValue();
+                        if (!item.isMaxValue()) {
+                            SqlNode val = item.getValue();
+                            validator.validate(val);
+                            if (val instanceof SqlCall) {
+                                partRexInfoCtx.put(val, convertExpression(val));
+                            } else if (val instanceof SqlLiteral) {
+                                partRexInfoCtx.put(val, convertExpression((SqlLiteral) val));
+                            }
+                        } else {
+                            // add null literal as placeholder
+                            SqlLiteral sqlLiteral =
+                                SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
+                            partRexInfoCtx.put(item.getValue(), convertExpression(sqlLiteral));
+                        }
+                    }
+                }
+
+                if (subPartList != null && !subPartList.isEmpty()) {
+                    for (int j = 0; j < subPartList.size(); j++) {
+                        SqlSubPartition subPart = (SqlSubPartition) subPartList.get(j);
+                        SqlPartitionValue subPartVals = subPart.getValues();
+                        if (subPartVals == null) {
+                            continue;
+                        }
+                        List<SqlPartitionValueItem> subValueItems = subPartVals.getItems();
+                        for (int k = 0; k < subValueItems.size(); k++) {
+                            SqlPartitionValueItem item = subValueItems.get(k);
+                            if (!item.isMaxValue()) {
+                                SqlNode val = item.getValue();
+                                validator.validate(val);
+                                if (val instanceof SqlCall) {
+                                    partRexInfoCtx.put(val, convertExpression(val));
+                                } else if (val instanceof SqlLiteral) {
+                                    partRexInfoCtx.put(val, convertExpression((SqlLiteral) val));
+                                }
+                            } else {
+                                // add null literal as placeholder
+                                SqlLiteral sqlLiteral =
+                                    SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO,
+                                        SqlTypeName.INTEGER);
+                                partRexInfoCtx.put(item.getValue(), convertExpression(sqlLiteral));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         return partRexInfoCtx;
     }
 
-    private Map<SqlNode, RexNode> convertPartition(SqlNode sqlPartitionBy) {
+    public Map<SqlNode, RexNode> convertPartition(SqlNode sqlPartitionBy) {
         Map<SqlNode, RexNode> partRexInfoCtx = new HashMap<>();
         if (sqlPartitionBy != null) {
             final SqlValidatorScope partitionScope = validator.getPartitionByScope(sqlPartitionBy);
             final Blackboard bb = createBlackboard(partitionScope, null, false);
-            for (SqlNode sqlNode : ((SqlPartitionBy) sqlPartitionBy).getColumns()) {
-//                if (sqlNode instanceof SqlCall) {
-//                    partRexInfoCtx.put(sqlNode, bb.convertExpression(sqlNode));
-//                }
-            }
-            for (SqlNode sqlPartition : ((SqlPartitionBy) sqlPartitionBy).getPartitions()) {
-                for (SqlPartitionValueItem item : ((SqlPartition) sqlPartition).getValues().getItems()) {
-                    if (!item.isMaxValue()) {
-                        partRexInfoCtx.put(item.getValue(), bb.convertExpression(item.getValue()));
-                    } else {
-                        // add null literal as placeholder
-                        SqlLiteral sqlLiteral =
-                            SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
-                        partRexInfoCtx.put(item.getValue(), bb.convertExpression(sqlLiteral));
+            SqlPartitionBy partByDef = (SqlPartitionBy) sqlPartitionBy;
+
+            boolean isListPart = partByDef instanceof SqlPartitionByList;
+            boolean isListSubPart = false;
+            SqlSubPartitionBy subPartByDef = partByDef.getSubPartitionBy();
+            if (subPartByDef != null) {
+                isListSubPart = subPartByDef instanceof SqlSubPartitionByList;
+                List<SqlSubPartition> subPartList = subPartByDef.getSubPartitions();
+                if (subPartList != null && !subPartList.isEmpty()) {
+                    for (int i = 0; i < subPartList.size(); i++) {
+                        SqlSubPartition subPart = subPartList.get(i);
+                        SqlPartitionValue subPartVals = subPart.getValues();
+                        if (subPartVals == null) {
+                            continue;
+                        }
+                        List<SqlPartitionValueItem> valueItems = subPartVals.getItems();
+                        for (int j = 0; j < valueItems.size(); j++) {
+                            SqlPartitionValueItem item = valueItems.get(j);
+                            if (!item.isMaxValue()) {
+                                SqlNode val = item.getValue();
+                                validator.validate(val);
+                                partRexInfoCtx.put(item.getValue(), bb.convertExpression(val));
+                            } else {
+                                // add null literal as placeholder
+                                SqlLiteral sqlLiteral =
+                                    SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
+                                partRexInfoCtx.put(item.getValue(), bb.convertExpression(sqlLiteral));
+                            }
+                        }
                     }
-//                    if (sqlNode instanceof SqlCall) {
-//                        partRexInfoCtx.put(sqlNode, bb.convertExpression(sqlNode));
-//                    } else if (sqlNode instanceof SqlLiteral) {
-//                        partRexInfoCtx.put(sqlNode, bb.convertLiteral((SqlLiteral) sqlNode));
-//                    }
                 }
             }
+
+            List<SqlNode> partList = partByDef.getPartitions();
+            if (partList != null && !partList.isEmpty()) {
+                for (int i = 0; i < partList.size(); i++) {
+                    SqlPartition part = (SqlPartition) partList.get(i);
+                    List<SqlNode> subPartList = part.getSubPartitions();
+                    SqlPartitionValue partVals = part.getValues();
+                    if (partVals != null) {
+                        List<SqlPartitionValueItem> valueItems = partVals.getItems();
+                        for (int j = 0; j < valueItems.size(); j++) {
+                            SqlPartitionValueItem item = valueItems.get(j);
+                            if (!item.isMaxValue()) {
+                                SqlNode val = item.getValue();
+                                validator.validate(val);
+                                if (val instanceof SqlCall) {
+                                    partRexInfoCtx.put(val, bb.convertExpression(val));
+                                } else if (val instanceof SqlLiteral) {
+                                    partRexInfoCtx.put(val, bb.convertLiteral((SqlLiteral) val));
+                                }
+                            } else {
+                                // add null literal as placeholder
+                                SqlLiteral sqlLiteral =
+                                    SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO, SqlTypeName.INTEGER);
+                                partRexInfoCtx.put(item.getValue(), bb.convertExpression(sqlLiteral));
+                            }
+                        }
+                    }
+
+                    if (subPartList != null && !subPartList.isEmpty()) {
+                        for (int j = 0; j < subPartList.size(); j++) {
+                            SqlSubPartition subPart = (SqlSubPartition) subPartList.get(j);
+                            SqlPartitionValue subPartVals = subPart.getValues();
+                            if (subPartVals == null) {
+                                continue;
+                            }
+                            List<SqlPartitionValueItem> subValueItems = subPartVals.getItems();
+                            for (int k = 0; k < subValueItems.size(); k++) {
+                                SqlPartitionValueItem item = subValueItems.get(k);
+                                if (!item.isMaxValue()) {
+//                                    partRexInfoCtx.put(item.getValue(), bb.convertExpression(item.getValue()));
+                                    SqlNode val = item.getValue();
+                                    validator.validate(val);
+                                    if (val instanceof SqlCall) {
+                                        partRexInfoCtx.put(val, bb.convertExpression(val));
+                                    } else if (val instanceof SqlLiteral) {
+                                        partRexInfoCtx.put(val, bb.convertLiteral((SqlLiteral) val));
+                                    }
+                                } else {
+                                    // add null literal as placeholder
+                                    SqlLiteral sqlLiteral =
+                                        SqlLiteral.createLiteralForIntTypes("0", SqlParserPos.ZERO,
+                                            SqlTypeName.INTEGER);
+                                    partRexInfoCtx.put(item.getValue(), bb.convertExpression(sqlLiteral));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
         }
         return partRexInfoCtx;
     }
 
-    private Map<SqlNode, RexNode> getRexInfoFromSqlAlterSpec(List<SqlAlterSpecification> sqlAlterSpecifications) {
-        //final SqlValidatorScope partitionScope = validator
+    public Map<SqlNode, RexNode> getRexInfoFromSqlAlterSpec(List<SqlAlterSpecification> sqlAlterSpecifications) {
+        return getRexInfoFromSqlAlterSpecByLevel(sqlAlterSpecifications).get(PARTITION_LEVEL_PARTITION);
+    }
+
+    public Map<Integer, Map<SqlNode, RexNode>> getRexInfoFromSqlAlterSpecByLevel(
+        List<SqlAlterSpecification> sqlAlterSpecifications) {
+
+        Map<Integer, Map<SqlNode, RexNode>> partRexInfoCtxByLevel = new HashMap<>();
         Map<SqlNode, RexNode> partRexInfoCtx = new HashMap<>();
+        partRexInfoCtxByLevel.put(PARTITION_LEVEL_PARTITION, partRexInfoCtx);
+
         if (GeneralUtil.isNotEmpty(sqlAlterSpecifications)) {
             assert sqlAlterSpecifications.size() == 1;
             final Blackboard bb = createBlackboard(null, null, false);
@@ -3958,7 +4469,8 @@ public class SqlToRelConverter {
                 SqlNode atVal = sqlAlterTableSplitPartition.getAtValue();
                 if (atVal != null) {
                     partRexInfoCtx.put(atVal, bb.convertExpression(atVal));
-                } else if (GeneralUtil.isNotEmpty(sqlAlterTableSplitPartition.getNewPartitions())) {
+                }
+                if (GeneralUtil.isNotEmpty(sqlAlterTableSplitPartition.getNewPartitions())) {
                     List<SqlPartition> sqlPartitions = sqlAlterTableSplitPartition.getNewPartitions();
                     for (SqlPartition sqlPartition : sqlPartitions) {
                         SqlPartitionValue partVal = sqlPartition.getValues();
@@ -3967,8 +4479,54 @@ public class SqlToRelConverter {
                                 if (valItem.isMaxValue() || valItem.isMinValue()) {
                                     continue;
                                 }
-                                RexNode rexExpr = convertExpression(valItem.getValue());
+                                //RexNode rexExpr = convertExpression(valItem.getValue());
+                                validator.validate(valItem.getValue());
                                 partRexInfoCtx.put(valItem.getValue(), bb.convertExpression(valItem.getValue()));
+                            }
+                        }
+                        for (SqlNode sqlNode : GeneralUtil.emptyIfNull(sqlPartition.getSubPartitions())) {
+                            SqlSubPartition sqlSubPartition = (SqlSubPartition) sqlNode;
+                            partVal = sqlSubPartition.getValues();
+                            if (partVal != null) {
+                                for (SqlPartitionValueItem valItem : GeneralUtil.emptyIfNull(partVal.getItems())) {
+                                    if (valItem.isMaxValue() || valItem.isMinValue()) {
+                                        continue;
+                                    }
+                                    //RexNode rexExpr = convertExpression(valItem.getValue());
+                                    validator.validate(valItem.getValue());
+                                    partRexInfoCtx.put(valItem.getValue(), bb.convertExpression(valItem.getValue()));
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableReorgPartition) {
+                SqlAlterTableReorgPartition sqlAlterTableReorgPartition =
+                    (SqlAlterTableReorgPartition) sqlAlterSpecifications.get(0);
+                if (GeneralUtil.isNotEmpty(sqlAlterTableReorgPartition.getPartitions())) {
+                    for (SqlNode sqlNode : sqlAlterTableReorgPartition.getPartitions()) {
+                        SqlPartition sqlPartition = (SqlPartition) sqlNode;
+                        SqlPartitionValue partVal = sqlPartition.getValues();
+                        if (partVal != null) {
+                            for (SqlPartitionValueItem valItem : GeneralUtil.emptyIfNull(partVal.getItems())) {
+                                if (valItem.isMaxValue() || valItem.isMinValue()) {
+                                    continue;
+                                }
+                                validator.validate(valItem.getValue());
+                                partRexInfoCtx.put(valItem.getValue(), bb.convertExpression(valItem.getValue()));
+                            }
+                        }
+                        for (SqlNode sqlSubNode : GeneralUtil.emptyIfNull(sqlPartition.getSubPartitions())) {
+                            SqlSubPartition sqlSubPartition = (SqlSubPartition) sqlSubNode;
+                            partVal = sqlSubPartition.getValues();
+                            if (partVal != null) {
+                                for (SqlPartitionValueItem valItem : GeneralUtil.emptyIfNull(partVal.getItems())) {
+                                    if (valItem.isMaxValue() || valItem.isMinValue()) {
+                                        continue;
+                                    }
+                                    validator.validate(valItem.getValue());
+                                    partRexInfoCtx.put(valItem.getValue(), bb.convertExpression(valItem.getValue()));
+                                }
                             }
                         }
                     }
@@ -3993,30 +4551,68 @@ public class SqlToRelConverter {
                     }
                 }
             } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableAddPartition) {
-
                 SqlAlterTableAddPartition addPartition = (SqlAlterTableAddPartition) sqlAlterSpecifications.get(0);
                 for (SqlNode sqlNode : addPartition.getPartitions()) {
                     SqlPartition sqlPartition = (SqlPartition) sqlNode;
                     SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
-                    for (SqlPartitionValueItem valItem : sqlPartitionValue.getItems()) {
-                        if (valItem.isMaxValue() || valItem.isMinValue()) {
-                            continue;
+
+                    if (sqlPartition.getName() != null && sqlPartitionValue != null) {
+                        for (SqlPartitionValueItem valItem : sqlPartitionValue.getItems()) {
+                            if (valItem.isMaxValue() || valItem.isMinValue()) {
+                                continue;
+                            }
+                            SqlNode exprAst = valItem.getValue();
+                            validator.validate(exprAst);
+                            RexNode rexExpr = convertExpression(exprAst);
+                            partRexInfoCtx.put(exprAst, rexExpr);
                         }
-                        SqlNode exprAst = valItem.getValue();
-                        validator.validate(exprAst);
-                        RexNode rexExpr = convertExpression(exprAst);
-                        partRexInfoCtx.put(exprAst, rexExpr);
+
+                        if (GeneralUtil.isNotEmpty(sqlPartition.getSubPartitions())) {
+                            partRexInfoCtxByLevel.putIfAbsent(PARTITION_LEVEL_SUBPARTITION, new HashMap<>());
+                            Map<SqlNode, RexNode> subPartRexInfoCtx = getRexInfoForSubPartition(sqlPartition);
+                            partRexInfoCtxByLevel.get(PARTITION_LEVEL_SUBPARTITION).putAll(subPartRexInfoCtx);
+                        }
+                    } else if (addPartition.isSubPartition()) {
+                        partRexInfoCtxByLevel.putIfAbsent(PARTITION_LEVEL_SUBPARTITION, new HashMap<>());
+                        Map<SqlNode, RexNode> subPartRexInfoCtx = getRexInfoForSubPartition(sqlPartition);
+                        partRexInfoCtxByLevel.get(PARTITION_LEVEL_SUBPARTITION).putAll(subPartRexInfoCtx);
                     }
                 }
-
             } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableDropPartition) {
 
-            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableModifyPartitionValues) {
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
 
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableModifyPartitionValues) {
                 SqlAlterTableModifyPartitionValues modifyPartition =
                     (SqlAlterTableModifyPartitionValues) sqlAlterSpecifications.get(0);
                 SqlPartition sqlPartition = modifyPartition.getPartition();
                 SqlPartitionValue sqlPartitionValue = sqlPartition.getValues();
+                if (sqlPartition.getName() != null && sqlPartitionValue != null) {
+                    List<SqlNode> items =
+                        sqlPartitionValue.getItems().stream().map(o -> o.getValue()).collect(Collectors.toList());
+                    for (int i = 0; i < items.size(); i++) {
+                        SqlNode item = items.get(i);
+                        validator.validate(item);
+                        RexNode rexExpr = convertExpression(item);
+                        partRexInfoCtx.put(item, rexExpr);
+                    }
+                } else if (modifyPartition.isSubPartition()) {
+                    for (SqlNode sqlNode : sqlPartition.getSubPartitions()) {
+                        SqlSubPartition subPartition = (SqlSubPartition) sqlNode;
+                        List<SqlNode> items = subPartition.getValues().getItems().stream().map(o -> o.getValue())
+                            .collect(Collectors.toList());
+                        for (SqlNode item : items) {
+                            validator.validate(item);
+                            RexNode rexExpr = convertExpression(item);
+                            partRexInfoCtx.put(item, rexExpr);
+                        }
+                    }
+                }
+            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableModifySubPartitionValues) {
+                SqlAlterTableModifySubPartitionValues modifySubPartition =
+                    (SqlAlterTableModifySubPartitionValues) sqlAlterSpecifications.get(0);
+                SqlSubPartition sqlSubPartition = modifySubPartition.getSubPartition();
+                SqlPartitionValue sqlPartitionValue = sqlSubPartition.getValues();
                 List<SqlNode> items =
                     sqlPartitionValue.getItems().stream().map(o -> o.getValue()).collect(Collectors.toList());
                 for (int i = 0; i < items.size(); i++) {
@@ -4025,9 +4621,6 @@ public class SqlToRelConverter {
                     RexNode rexExpr = convertExpression(item);
                     partRexInfoCtx.put(item, rexExpr);
                 }
-
-            } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableTruncatePartition) {
-                //return RelRoot.of(convertAlterTableTruncatePartition((SqlAlterTable) query), kind);
             } else if (sqlAlterSpecifications.get(0) instanceof SqlAlterTableSplitPartitionByHotValue) {
                 SqlAlterTableSplitPartitionByHotValue sqlAlterTableSplitPartitionByHotValue =
                     (SqlAlterTableSplitPartitionByHotValue) sqlAlterSpecifications.get(0);
@@ -4050,7 +4643,31 @@ public class SqlToRelConverter {
             }
 
         }
-        return partRexInfoCtx;
+
+        return partRexInfoCtxByLevel;
+    }
+
+    private Map<SqlNode, RexNode> getRexInfoForSubPartition(SqlPartition sqlPartition) {
+        Map<SqlNode, RexNode> subPartRexInfoCtx = new HashMap<>();
+
+        for (SqlNode sqlNode : sqlPartition.getSubPartitions()) {
+            SqlSubPartition subPartition = (SqlSubPartition) sqlNode;
+            SqlPartitionValue subPartitionValue = subPartition.getValues();
+
+            if (subPartition.getName() != null && subPartitionValue != null) {
+                for (SqlPartitionValueItem valItem : subPartitionValue.getItems()) {
+                    if (valItem.isMaxValue() || valItem.isMinValue()) {
+                        continue;
+                    }
+                    SqlNode exprAst = valItem.getValue();
+                    validator.validate(exprAst);
+                    RexNode rexExpr = convertExpression(exprAst);
+                    subPartRexInfoCtx.put(exprAst, rexExpr);
+                }
+            }
+        }
+
+        return subPartRexInfoCtx;
     }
 
     private RelNode convertCreateDatabase(SqlCreateDatabase query) {
@@ -4058,9 +4675,31 @@ public class SqlToRelConverter {
         return CreateDatabase.create(query, targetRowType, getCluster());
     }
 
+    private RelNode convertAlterDatabase(SqlAlterDatabase query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return AlterDatabase.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertInspectIndex(SqlInspectIndex query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return InspectIndex.create(query, targetRowType, getCluster());
+    }
+
     private RelNode convertDropDatabase(SqlDropDatabase query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         return DropDatabase.create(query, targetRowType, getCluster());
+    }
+
+    private RelNode convertCreateJavaFunction(SqlCreateJavaFunction query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return CreateJavaFunction.create(query, targetRowType, getCluster(),
+            new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO));
+    }
+
+    private RelNode convertDropJavaFunction(SqlDropJavaFunction query) {
+        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+        return DropJavaFunction.create(query, targetRowType, getCluster(),
+            new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO));
     }
 
     /**
@@ -4133,7 +4772,7 @@ public class SqlToRelConverter {
     }
 
     protected RelNode convertInsert(SqlInsert call) {
-        RelOptTable targetTable = getTargetTable(call);
+        final RelOptTable targetTable = getTargetTable(call);
 
         final RelDataType targetRowType = validator.getValidatedNodeType(call);
         assert targetRowType != null;
@@ -4155,7 +4794,7 @@ public class SqlToRelConverter {
             // handle implicit column value
             for (int i = 0; i < targetRowType.getFieldCount(); i++) {
                 if (isImplicitKey(targetRowType.getFieldNames().get(i))) {
-                    newPros.add(i, rexBuilder.makeLiteral(0, targetRowType.getFieldList().get(i).getType(), true));
+                    newPros.add(i, rexBuilder.constantNull());
                     originalNames.add(i, targetRowType.getFieldNames().get(i));
                 }
             }
@@ -4598,7 +5237,7 @@ public class SqlToRelConverter {
         return;
     }
 
-    private RelNode convertDelete(SqlDelete call) {
+    protected RelNode convertDelete(SqlDelete call) {
         interceptDMLAllTableSql(call);
 
         final SqlSelect sourceSelect = call.getSourceSelect();
@@ -4612,6 +5251,9 @@ public class SqlToRelConverter {
         // so revert last bb.setRoot(bb.root, true); executed in convertSelectImpl()
         final RelNode last = this.leaves.remove(this.leaves.size() - 1);
         final TableInfo tableInfo = getDeleteTargetTables(call, bb, sourceRel);
+
+        // Check all target tables are updatable
+        checkTargetTableUpdatable(tableInfo.getTargetTables(), call.getKind());
 
         return LogicalTableModify.create(tableInfo.getTargetTables().get(0), catalogReader, sourceRel,
             LogicalTableModify.Operation.DELETE, null, null, false,
@@ -4680,6 +5322,9 @@ public class SqlToRelConverter {
                 tableInfo.getSourceColumnIndexMap(), tableInfo.getRefTableInfos()),
             extraTargetTables.stream().map(i -> srcTableInfoNodes.get(i).getRefTable()).collect(Collectors.toList()),
             extraTargetColumns);
+    }
+
+    protected void checkTargetTableUpdatable(List<RelOptTable> targetTables, SqlKind sqlKind) {
     }
 
     protected RelNode transformUpdateSourceRel(RelNode old, TableInfo tableInfo, List<String> targetColumns,
@@ -5288,7 +5933,7 @@ public class SqlToRelConverter {
          * statement.
          */
         public final SqlValidatorScope scope;
-        private final Map<String, RexNode> nameToNodeMap;
+        public final Map<String, RexNode> nameToNodeMap;
         public RelNode root;
         private List<RelNode> inputs;
         private final Map<CorrelationId, RexFieldAccess> mapCorrelateToRex = new HashMap<>();
@@ -5651,7 +6296,7 @@ public class SqlToRelConverter {
 
         void registerSubQuery(SqlNode node, RelOptUtil.Logic logic) {
             for (SubQuery subQuery : subQueryList) {
-                if (node.equalsDeep(subQuery.node, Litmus.IGNORE)) {
+                if (node.equalsDeep(subQuery.node, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     return;
                 }
             }
@@ -5660,7 +6305,7 @@ public class SqlToRelConverter {
 
         SubQuery getSubQuery(SqlNode expr) {
             for (SubQuery subQuery : subQueryList) {
-                if (expr.equalsDeep(subQuery.node, Litmus.IGNORE)) {
+                if (expr.equalsDeep(subQuery.node, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     return subQuery;
                 }
             }
@@ -6378,7 +7023,7 @@ public class SqlToRelConverter {
 
         void addAuxiliaryGroupExpr(SqlNode node, int index, AuxiliaryConverter converter) {
             for (SqlNode node2 : auxiliaryGroupExprs.keySet()) {
-                if (node2.equalsDeep(node, Litmus.IGNORE)) {
+                if (node2.equalsDeep(node, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     return;
                 }
             }
@@ -6589,7 +7234,7 @@ public class SqlToRelConverter {
         public int lookupGroupExpr(SqlNode expr) {
             for (int i = 0; i < groupExprs.size(); i++) {
                 SqlNode groupExpr = groupExprs.get(i);
-                if (expr.equalsDeep(groupExpr, Litmus.IGNORE)) {
+                if (expr.equalsDeep(groupExpr, Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     return i;
                 }
             }
@@ -6603,7 +7248,7 @@ public class SqlToRelConverter {
                     continue;
                 }
                 SqlCall call = (SqlCall) key;
-                if (expr.equalsDeep(call.operand(0), Litmus.IGNORE)) {
+                if (expr.equalsDeep(call.operand(0), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     RexNode value = entry.getValue();
                     if (value instanceof RexInputRef) {
                         return ((RexInputRef) value).getIndex();
@@ -6619,7 +7264,7 @@ public class SqlToRelConverter {
             assert bb.agg == this;
 
             for (Map.Entry<SqlNode, Ord<AuxiliaryConverter>> e : auxiliaryGroupExprs.entrySet()) {
-                if (call.equalsDeep(e.getKey(), Litmus.IGNORE)) {
+                if (call.equalsDeep(e.getKey(), Litmus.IGNORE, EqualsContext.DEFAULT_EQUALS_CONTEXT)) {
                     AuxiliaryConverter converter = e.getValue().e;
                     final int groupOrdinal = e.getValue().i;
                     return converter.convert(rexBuilder, convertedInputExprs.get(groupOrdinal).left,
@@ -7433,7 +8078,8 @@ public class SqlToRelConverter {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
         assert targetRowType != null;
 
-        return LogicalDropTrigger.create(getCluster(), null, query, new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO), targetRowType);
+        return LogicalDropTrigger.create(getCluster(), null, query,
+            new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO), targetRowType);
     }
     private RelNode convertUnArchive(SqlUnArchive query) {
         final RelDataType targetRowType = validator.getValidatedNodeType(query);
@@ -7463,6 +8109,24 @@ public class SqlToRelConverter {
         return AlterFunction
             .create(getCluster(), null, query, new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO));
     }
+
+//    private RelNode convertAlterFunction(SqlAlterFunction query) {
+//        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+//        assert targetRowType != null;
+//
+//        return LogicalAlterFunction
+//            .create(getCluster(), null, query, new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO),
+//                targetRowType);
+//    }
+
+//    private RelNode convertAlterProcedure(SqlAlterProcedure query) {
+//        final RelDataType targetRowType = validator.getValidatedNodeType(query);
+//        assert targetRowType != null;
+//
+//        return LogicalAlterProcedure
+//            .create(getCluster(), null, query, new SqlIdentifier(query.getTableName(), SqlParserPos.ZERO),
+//                targetRowType);
+//    }
 }
 
 // End SqlToRelConverter.java

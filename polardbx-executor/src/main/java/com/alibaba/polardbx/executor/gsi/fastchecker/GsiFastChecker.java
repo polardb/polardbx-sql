@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.gsi.fastchecker;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.fastchecker.FastChecker;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
@@ -28,10 +29,12 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import org.apache.commons.collections.MapUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -39,16 +42,27 @@ import java.util.stream.Collectors;
 public class GsiFastChecker extends FastChecker {
     public GsiFastChecker(String schemaName, String srcLogicalTableName, String dstLogicalTableName,
                           Map<String, Set<String>> srcPhyDbAndTables, Map<String, Set<String>> dstPhyDbAndTables,
-                          List<String> srcColumns, List<String> dstColumns, PhyTableOperation planSelectHashCheckSrc,
+                          List<String> srcColumns, List<String> dstColumns, List<String> srcPks, List<String> dstPks,
+                          long parallelism, int lockTimeOut, PhyTableOperation planSelectHashCheckSrc,
+                          PhyTableOperation planSelectHashCheckWithUpperBoundSrc,
+                          PhyTableOperation planSelectHashCheckWithLowerBoundSrc,
+                          PhyTableOperation planSelectHashCheckWithLowerUpperBoundSrc,
                           PhyTableOperation planSelectHashCheckDst,
+                          PhyTableOperation planSelectHashCheckWithUpperBoundDst,
+                          PhyTableOperation planSelectHashCheckWithLowerBoundDst,
+                          PhyTableOperation planSelectHashCheckWithLowerUpperBoundDst,
                           PhyTableOperation planIdleSelectSrc, PhyTableOperation planIdleSelectDst,
-                          long parallelism, int lockTimeOut) {
-        super(schemaName, srcLogicalTableName, dstLogicalTableName, null, srcPhyDbAndTables, dstPhyDbAndTables,
-            srcColumns, dstColumns, planSelectHashCheckSrc, planSelectHashCheckDst, planIdleSelectSrc,
-            planIdleSelectDst, parallelism, lockTimeOut);
+                          PhyTableOperation planSelectSampleSrc, PhyTableOperation planSelectSampleDst) {
+        super(schemaName, schemaName, srcLogicalTableName, dstLogicalTableName, null, srcPhyDbAndTables,
+            dstPhyDbAndTables, srcColumns, dstColumns, srcPks, dstPks, parallelism, lockTimeOut, planSelectHashCheckSrc,
+            planSelectHashCheckWithUpperBoundSrc, planSelectHashCheckWithLowerBoundSrc,
+            planSelectHashCheckWithLowerUpperBoundSrc, planSelectHashCheckDst, planSelectHashCheckWithUpperBoundDst,
+            planSelectHashCheckWithLowerBoundDst, planSelectHashCheckWithLowerUpperBoundDst, planIdleSelectSrc,
+            planIdleSelectDst, planSelectSampleSrc, planSelectSampleDst);
     }
 
-    public static FastChecker create(String schemaName, String tableName, String indexName, long parallelism,
+    public static FastChecker create(String schemaName, String tableName, String indexName,
+                                     Map<String, String> virtualColumnMap, long parallelism,
                                      ExecutionContext ec) {
         // Build select plan
         final SchemaManager sm = ec.getSchemaManager(schemaName);
@@ -67,11 +81,13 @@ public class GsiFastChecker extends FastChecker {
             throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER, "Incorrect GSI relationship.");
         }
 
-        final List<String> indexColumns = indexTableMeta.getAllColumns()
-            .stream()
-            .map(ColumnMeta::getName)
-            .collect(Collectors.toList());
+        final List<String> indexColumns =
+            indexTableMeta.getAllColumns().stream().map(ColumnMeta::getName).collect(Collectors.toList());
         final List<String> baseTableColumns = new ArrayList<>(indexColumns);
+
+        // 重要：构造planSelectSampleSrc 和 planSelectSampleDst时，传入的主键必须按原本的主键顺序!
+        final List<String> baseTablePks = FastChecker.getorderedPrimaryKeys(baseTableMeta, ec);
+        final List<String> indexTablePks = FastChecker.getorderedPrimaryKeys(indexTableMeta, ec);
 
         final Map<String, Set<String>> srcPhyDbAndTables = GsiUtils.getPhyTables(schemaName, tableName);
         final Map<String, Set<String>> dstPhyDbAndTables = GsiUtils.getPhyTables(schemaName, indexName);
@@ -80,37 +96,26 @@ public class GsiFastChecker extends FastChecker {
 
         final int lockTimeOut = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_LOCK_TIMEOUT);
 
-        return new GsiFastChecker(schemaName, tableName, indexName,
-            srcPhyDbAndTables, dstPhyDbAndTables,
-            baseTableColumns, indexColumns,
-            builder.buildSelectHashCheckForChecker(baseTableMeta, baseTableColumns),
-            builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns),
+        return new GsiFastChecker(schemaName, tableName, indexName, srcPhyDbAndTables, dstPhyDbAndTables,
+            baseTableColumns, indexColumns, baseTablePks, indexTablePks, parallelism, lockTimeOut,
+            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, virtualColumnMap, baseTablePks,
+                false, false),
+            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, virtualColumnMap, baseTablePks,
+                false, true),
+            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, virtualColumnMap, baseTablePks,
+                true, false),
+            builder.buildSelectHashCheckForGSIChecker(baseTableMeta, baseTableColumns, virtualColumnMap, baseTablePks,
+                true, true),
+
+            builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, false, false),
+            builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, false, true),
+            builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, true, false),
+            builder.buildSelectHashCheckForChecker(indexTableMeta, indexColumns, indexTablePks, true, true),
+
             builder.buildIdleSelectForChecker(baseTableMeta, baseTableColumns),
             builder.buildIdleSelectForChecker(indexTableMeta, indexColumns),
-            parallelism, lockTimeOut);
-    }
 
-    /**
-     * In FastChecker, we use tsoCheck and xaCheckForIsomorphicTable to exec check.
-     * In GsiFastChecker, we use tsoCheck and xaCheckForHeterogeneousTable,
-     * for GSI tables are heterogeneous.
-     */
-    @Override
-    public boolean check(ExecutionContext baseEc) {
-        boolean tsoCheckResult = tsoCheck(baseEc);
-        if (tsoCheckResult) {
-            return true;
-        } else {
-            SQLRecorderLogger.ddlLogger
-                .warn(MessageFormat.format("[{0}] FastChecker with TsoCheck failed, begin XaCheck",
-                    baseEc.getTraceId()));
-        }
-
-        /**
-         * When tsoCheck is failed, bypath to use old checker directly.
-         * because xaCheck of gsi is easily to caused deadlock by using lock tables
-         */
-        //boolean xaCheckResult = xaCheckForHeterogeneousTable(baseEc);
-        return tsoCheckResult;
+            builder.buildSqlSelectForSample(baseTableMeta, baseTablePks, baseTablePks, false, false),
+            builder.buildSqlSelectForSample(indexTableMeta, indexTablePks, indexTablePks, false, false));
     }
 }

@@ -16,23 +16,24 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
-import com.alibaba.polardbx.ErrorCode;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
-import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.util.ByteStringUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.bean.FieldMetaData;
 import com.alibaba.polardbx.optimizer.parse.bean.PreStmtMetaData;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameterKey;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
+import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
@@ -53,10 +54,15 @@ public class MetaConverter {
      * prepare参数个数用2字节表示
      */
     private static final int MAX_PREPARED_PARAM_COUNT = 0xFFFF;
+    private static final int MAX_FIELD_COUNT = 0xFFFF;
 
     public static PreStmtMetaData getMetaData(PreparedStmtCache preparedStmtCache, List<?> params,
                                               ExecutionContext executionContext) throws SQLException {
         ByteString sql = preparedStmtCache.getStmt().getRawSql();
+        int trace = ByteStringUtil.findTraceIndex(sql);
+        if (trace > 0) {
+            sql = sql.slice(trace);
+        }
         // 解析获得参数个数
         ContextParameters contextParameters = new ContextParameters(executionContext.isTestMode());
         contextParameters.setPrepareMode(true);
@@ -69,7 +75,7 @@ public class MetaConverter {
         }
         if (sqlNodeList.size() > 1) {
             // should not be here, since it's handled in earlier steps
-            throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR);
+            throw new SQLException("You have an error in your SQL syntax", "42000", ErrorCode.ER_PARSE_ERROR.getCode());
         }
 
         // 从计划获得字段元信息
@@ -87,6 +93,10 @@ public class MetaConverter {
         }
 
         List<FieldMetaData> selectItems = convertFromPlan(plan);
+        if (selectItems.size() > MAX_FIELD_COUNT) {
+            throw new SQLException(
+                "Prepared statement returns too many fields. The maximum is " + MAX_PREPARED_PARAM_COUNT);
+        }
         return new PreStmtMetaData(parameterCnt, selectItems);
     }
 

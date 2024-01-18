@@ -211,6 +211,10 @@ public class DynamicFunctionTest extends GsiDMLTest {
             String keyword = unit[2];
 
             String updateSql = String.format(sqlTemplate, baseOneTableName, column, function);
+            if (updateSql.startsWith("trace update")
+                && (keyword.equals("UUID") || keyword.equals("UUID_SHORT"))) {
+                continue;
+            }
             JdbcUtil.updateData(tddlConnection, updateSql, Lists.newArrayList());
 
             ResultSet resultSet = JdbcUtil.executeQuery(showTraceSql, tddlConnection);

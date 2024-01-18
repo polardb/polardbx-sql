@@ -1,0 +1,165 @@
+## DISABLE_FAST_SQL_PARSER
+## test create table(date)
+CREATE TABLE `w1` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFWEEK(`d`))
+PARTITIONS 16;
+show create table w1;
+## prepare data
+insert into w1 values('2022-07-17'), ('2022-07-18'),('2022-07-19'),('2022-07-24');
+## check point select
+select * from w1 where d = '2022-07-17';
+select * from w1 where d = '2022-07-18';
+select * from w1 where d = '2022-07-19';
+select * from w1 where d = '2022-07-24';
+## explain
+explain select * from w1 where d = '2022-07-17';
+explain select * from w1 where d = '2022-07-18';
+explain select * from w1 where d = '2022-07-19';
+explain select * from w1 where d = '2022-07-24';
+## range select
+select * from w1 where (d > '2022-07-17' and d < '2022-07-19') or d between '2022-07-18' and '2022-07-19' order by d;
+## full scan
+select * from w1 where d > '2022-07-17' order by d;
+explain select * from w1 where d > '2022-07-17' order by d;
+select * from w1 where d > '2022-07-17' and d < '2022-12-31' order by d;
+explain select * from w1 where d > '2022-07-17' and d < '2022-12-31' order by d;
+## partition enumeration
+select * from w1 where d > '2022-07-18' and d < '2022-07-24' order by d;
+explain select * from w1 where d > '2022-07-18' and d < '2022-07-24' order by d;
+
+## test create table(datetime)
+CREATE TABLE `w2` (
+`dt` datetime DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(DAYOFWEEK(`dt`))
+PARTITIONS 16;
+show create table w2;
+## prepare data
+insert into w2 values('2022-07-17 00:00:00'), ('2022-07-18 00:00:00'),('2022-07-19 00:00:00'),('2022-07-24 00:00:00');
+## check point select
+select * from w2 where dt = '2022-07-17 00:00:00';
+select * from w2 where dt = '2022-07-18 00:00:00';
+select * from w2 where dt = '2022-07-19 00:00:00';
+select * from w2 where dt = '2022-07-24 00:00:00';
+## explain
+explain select * from w2 where dt = '2022-07-17 00:00:00';
+explain select * from w2 where dt = '2022-07-18 00:00:00';
+explain select * from w2 where dt = '2022-07-19 00:00:00';
+explain select * from w2 where dt = '2022-07-24 00:00:00';
+## range select
+select * from w2 where (dt > '2022-07-17 00:00:00' and dt < '2022-07-19 00:00:00') or dt between '2022-07-18 00:00:00' and '2022-07-19 00:00:00' order by dt;
+## full scan
+select * from w2 where dt > '2022-07-17 00:00:00' order by dt;
+explain select * from w2 where dt > '2022-07-17 00:00:00' order by dt;
+select * from w2 where dt > '2022-07-17 00:00:00' and dt < '2022-12-31 00:00:00' order by dt;
+explain select * from w2 where dt > '2022-07-17 00:00:00' and dt < '2022-12-31 00:00:00' order by dt;
+  ## partition enumeration
+select * from w2 where dt > '2022-07-18 00:00:00' and dt < '2022-07-24 00:00:00' order by dt;
+explain select * from w2 where dt > '2022-07-18 00:00:00' and dt < '2022-07-24 00:00:00' order by dt;
+
+## test range partition
+CREATE TABLE `w3` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(DAYOFWEEK(`d`))
+(PARTITION `p2` VALUES LESS THAN (2) ENGINE = InnoDB,
+PARTITION `p3` VALUES LESS THAN (3) ENGINE = InnoDB,
+PARTITION `p4` VALUES LESS THAN (4) ENGINE = InnoDB,
+PARTITION `p5` VALUES LESS THAN (5) ENGINE = InnoDB,
+PARTITION `p6` VALUES LESS THAN (6) ENGINE = InnoDB,
+PARTITION `pd` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);
+show create table w3;
+## prepare data
+insert into w3 values('2022-07-17'), ('2022-07-18'),('2022-07-19'),('2022-07-20'),('2022-07-21'),('2022-07-22'),('2022-07-23'),('2022-07-24');
+select * from w3 order by d;
+## check point select
+select * from w3 where d = '2022-07-17';
+select * from w3 where d = '2022-07-18';
+select * from w3 where d = '2022-07-19';
+select * from w3 where d = '2022-07-20';
+select * from w3 where d = '2022-07-21';
+select * from w3 where d = '2022-07-22';
+select * from w3 where d = '2022-07-23';
+select * from w3 where d = '2022-07-24';
+## explain point select
+explain select * from w3 where d = '2022-07-17';
+explain select * from w3 where d = '2022-07-18';
+explain select * from w3 where d = '2022-07-19';
+explain select * from w3 where d = '2022-07-20';
+explain select * from w3 where d = '2022-07-21';
+explain select * from w3 where d = '2022-07-22';
+explain select * from w3 where d = '2022-07-23';
+explain select * from w3 where d = '2022-07-24';
+## range select
+select * from w3 where (d < '2022-07-23' and d > '2022-07-21') or d between '2022-07-21' and '2022-07-22' order by d;
+## range select full scan
+select * from w3 where d < '2022-07-24' order by d;
+explain select * from w3 where d < '2022-07-24' order by d;
+select * from w3 where d < '2022-07-24' and d >= '2022-07-17' order by d;
+explain select * from w3 where d < '2022-07-24' and d >= '2022-01-01' order by d;
+## partition enumeration
+select * from w3 where d < '2022-07-23' and d > '2022-07-20' order by d;
+explain select * from w3 where d < '2022-07-23' and d > '2022-07-20' order by d;
+
+## test list
+CREATE TABLE `w4` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(DAYOFWEEK(`d`))
+(PARTITION `p1` VALUES IN (1) ENGINE = InnoDB,
+PARTITION `p2` VALUES IN (2) ENGINE = InnoDB,
+PARTITION `p3` VALUES IN (3) ENGINE = InnoDB,
+PARTITION `p4` VALUES IN (4) ENGINE = InnoDB,
+PARTITION `p5` VALUES IN (5) ENGINE = InnoDB,
+PARTITION `p6` VALUES IN (6) ENGINE = InnoDB,
+PARTITION `p7` VALUES IN (default) ENGINE = InnoDB);
+show create table w4;
+## prepare data
+insert into w4 values('2022-07-17'), ('2022-07-18'),('2022-07-19'),('2022-07-20'),('2022-07-21'),('2022-07-22'),('2022-07-23'),('2022-07-24');
+select * from w4 order by d;
+## check point select
+select * from w4 where d = '2022-07-17';
+select * from w4 where d = '2022-07-18';
+select * from w4 where d = '2022-07-19';
+select * from w4 where d = '2022-07-20';
+select * from w4 where d = '2022-07-21';
+select * from w4 where d = '2022-07-22';
+select * from w4 where d = '2022-07-23';
+select * from w4 where d = '2022-07-24';
+## explain point select
+explain select * from w4 where d = '2022-07-17';
+explain select * from w4 where d = '2022-07-18';
+explain select * from w4 where d = '2022-07-19';
+explain select * from w4 where d = '2022-07-20';
+explain select * from w4 where d = '2022-07-21';
+explain select * from w4 where d = '2022-07-22';
+explain select * from w4 where d = '2022-07-23';
+explain select * from w4 where d = '2022-07-24';
+## range test
+select * from w4 where (d < '2022-07-23' and d > '2022-07-21') or d between '2022-07-21' and '2022-07-22' order by d;
+## range select full scan
+select * from w4 where d < '2022-07-24' order by d;
+explain select * from w4 where d < '2022-07-24' order by d;
+select * from w4 where d < '2022-07-24' and d >= '2022-07-17' order by d;
+explain select * from w4 where d < '2022-07-24' and d >= '2022-01-01' order by d;
+## partition enumeration
+select * from w4 where d < '2022-07-23' and d > '2022-07-20' order by d;
+explain select * from w4 where d < '2022-07-23' and d > '2022-07-20' order by d;
+
+## test: spanning weeks and year
+CREATE TABLE `w5` (
+`d` date DEFAULT NULL
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(dayofweek(`d`))
+PARTITIONS 7;
+# prepare data
+insert into w5 values('2021-12-30'),('2021-12-31'),('2022-01-01'),('2022-01-02');
+# range select
+select * from w5 where d > '2021-12-30' and d < '2022-01-02' order by d;
+select * from w5 where d > '2021-12-30' and d <='2022-01-03' order by d;
+select * from w5 where d > '2021-12-30' order by d;
+#partition enumeration
+select * from w5 where d >= '2021-12-30' and d <= '2022-01-02' order by d;
+explain select * from w5 where d >= '2021-12-30' and d <= '2022-01-02' order by d;

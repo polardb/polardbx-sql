@@ -1,0 +1,95 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `l_tb` (
+`a` int(11) DEFAULT NULL,
+`b` varchar(20) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+(
+PARTITION p1 VALUES IN (1,2),
+PARTITION p2 VALUES IN (3,4)
+);
+insert into l_tb values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4);
+select * from l_tb order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+alter table l_tb modify partition p1 add values(5,6);
+select * from l_tb order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+CREATE TABLE `l_lc_ntp` (
+`a` int(11) DEFAULT NULL,
+`b` varchar(20) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(PARTITION p1 VALUES IN (1,2)
+(SUBPARTITION p1sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+SUBPARTITION p1sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB),
+PARTITION p2 VALUES IN (3,4)
+(SUBPARTITION p2sp1 VALUES IN ((1,'1'),(2,'2')) ENGINE = InnoDB,
+SUBPARTITION p2sp2 VALUES IN ((3,'3'),(4,'4')) ENGINE = InnoDB));
+insert into l_lc_ntp values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4);
+select * from l_lc_ntp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+alter table l_lc_ntp modify partition p2 add values(5,6);
+select * from l_lc_ntp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+alter table l_lc_ntp modify subpartition p2sp1 add values((5,'5'),(6,'6'));
+select * from l_lc_ntp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+CREATE TABLE `l_lc_tp` (
+`a` int(11) DEFAULT NULL,
+`b` varchar(20) DEFAULT NULL,
+`c` int(11) DEFAULT NULL
+) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(`c`)
+SUBPARTITION BY LIST COLUMNS(`a`,`b`)
+(
+SUBPARTITION sp1 VALUES IN ((1,'1'),(2,'2')),
+SUBPARTITION  `sp2 VALUES IN ((3,'3'),(4,'4'))
+)
+(
+PARTITION p1 VALUES IN (1,2),
+PARTITION p2 VALUES IN (3,4)
+);
+insert into l_lc_tp values(1, '1', 1),(2,'2', 2),(3,'3', 3),(4,'4', 4);
+select * from l_lc_tp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+alter table l_lc_tp modify partition p1 add values(5,6);
+select * from l_lc_tp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4
+alter table l_lc_tp modify subpartition sp1 add values((5,'5'),(6,'6'));
+select * from l_lc_tp order by a,b,c;
+a,b,c
+1,1,1
+2,2,2
+3,3,3
+4,4,4

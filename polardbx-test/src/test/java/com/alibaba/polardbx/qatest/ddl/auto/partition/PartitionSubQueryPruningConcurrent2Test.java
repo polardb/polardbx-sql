@@ -46,8 +46,8 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
 
     protected static final Log log = LogFactory.getLog(PartitionSubQueryPruningConcurrent2Test.class);
 
-    protected static String testTableName = "sb_concurr_test";
-    protected static String targetTableNameAlias = "`sb_concurr_test`";
+    protected static String testTableName = "sb2_concurr_test";
+    protected static String targetTableNameAlias = "`sb2_concurr_test`";
     protected static String dropTblSql = "drop table if exists " + testTableName + ";";
 
     protected static String traceSqlTemplate = "trace %s";
@@ -85,8 +85,10 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
         /**
          * subquery complex Expr for Comparison
          */
-        // (select t1.a from sb_pruning_test1 t1 order by a limit 8,1)=98
-        subQueryExprSampleList.add(String.format("a in (select t1.a from sb_pruning_test1 t1 order by a limit 8,1) and a between 97 and 99", tbNames[1]));
+        // (select t1.a from sb2_pruning_test1 t1 order by a limit 8,1)=98
+        subQueryExprSampleList.add(
+            String.format("a in (select t1.a from sb2_pruning_test1 t1 order by a limit 8,1) and a between 97 and 99",
+                tbNames[1]));
         onePartitionAfterPruning.add(Boolean.FALSE);
 
     }
@@ -194,7 +196,7 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
             String useDb = String.format("use %s", currDbName);
 
             for (int i = 0; i < threadCnt; i++) {
-                Connection conn  = ConnectionManager.getInstance().newPolarDBXConnection();
+                Connection conn = ConnectionManager.getInstance().newPolarDBXConnection();
                 JdbcUtil.executeUpdate(conn, useDb);
                 polarxConns[i] = conn;
                 taskList[i].setPolarxConn(conn);
@@ -211,7 +213,6 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
                     ex.printStackTrace();
                 }
             }
-
 
             for (int i = 1; i < threadCnt; i++) {
                 Future future = executorService.submit(taskList[i]);
@@ -281,9 +282,10 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
     protected static class SubQueryPruningTask implements Runnable {
 
         protected Connection polarxConn;
-        protected String subQuerySql = "select t1.a from sb_concurr_test1 t1 order by a limit 8,1";
-        protected String targetSubQueryPruningSql = "select a from sb_concurr_test where a in (select t1.a from sb_concurr_test1 t1 order by a limit 8,1) and a between 97 and 200";
-        protected String updateDataSql = "delete from sb_concurr_test1 where a in (97,98,99,100);";
+        protected String subQuerySql = "select t1.a from sb2_concurr_test1 t1 order by a limit 8,1";
+        protected String targetSubQueryPruningSql =
+            "select a from sb2_concurr_test where a in (select t1.a from sb2_concurr_test1 t1 order by a limit 8,1) and a between 97 and 200";
+        protected String updateDataSql = "delete from sb2_concurr_test1 where a in (97,98,99,100);";
         protected String setTrxRrSql = "set session transaction isolation level REPEATABLE READ;";
         protected volatile boolean isStop = false;
         protected volatile boolean findRouteErr = false;
@@ -303,7 +305,7 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
                 }
 
                 polarxConn.setAutoCommit(false);
-                int  i = 0;
+                int i = 0;
                 Statement rrStmt = polarxConn.createStatement();
                 rrStmt.executeUpdate(setTrxRrSql);
                 rrStmt.close();
@@ -390,7 +392,8 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
             this.needUpdateData = needUpdateData;
         }
     }
-    protected void runTestSql(String rndSql, boolean isOnePart) throws Throwable  {
+
+    protected void runTestSql(String rndSql, boolean isOnePart) throws Throwable {
 
         ResultSet rs = null;
         DataValidator dataValidator = new DataValidator();
@@ -446,7 +449,7 @@ public class PartitionSubQueryPruningConcurrent2Test extends PartitionTestBase {
         return rndSql;
     }
 
-    protected String genSingleExpr(int predIdx ) {
+    protected String genSingleExpr(int predIdx) {
         String predExpr = subQueryExprSampleList.get(predIdx);
         return predExpr;
     }

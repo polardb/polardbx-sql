@@ -50,6 +50,7 @@ public class DropPartitionTableValidateTask extends BaseValidateTask {
         TableValidator.validateTableInTableGroup(schemaName, logicalTableName, tableGroupIds, executionContext);
         GsiValidator.validateAllowDdlOnTable(schemaName, logicalTableName, executionContext);
         TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);
+
     }
 
     @Override

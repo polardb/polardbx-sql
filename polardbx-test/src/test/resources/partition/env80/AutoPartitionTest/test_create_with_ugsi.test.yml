@@ -1,0 +1,10 @@
+drop table if exists ugsi_pk;
+
+create table ugsi_pk (
+a int not null,
+b int not null,
+unique index ugsi_b(b)
+);
+
+show full create table ugsi_pk;
+show full create table ugsi_b;

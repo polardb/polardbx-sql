@@ -1,0 +1,142 @@
+## DISABLE_FAST_SQL_PARSER
+SET ENABLE_FOREIGN_KEY = true;
+CREATE TABLE `parent` (`parent_id` INT, PRIMARY KEY (`parent_id`));
+CREATE TABLE `child1` (`id` INT ,`child1_fk1` INT, `child1_fk2` INT,
+PRIMARY KEY (`id`));
+CREATE TABLE `child2` (`id` INT, `child2_fk1` INT, `child2_fk2` INT,
+PRIMARY KEY (`id`));
+CREATE TABLE `child3` (`id` INT , `child3_fk1` INT, PRIMARY KEY (`id`));
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk1`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk2`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk2`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child3` ADD FOREIGN KEY (`child3_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk2`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk1`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk2`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child3` ADD FOREIGN KEY (`child3_fk1`) REFERENCES
+`parent` (`parent_id`);
+SHOW FULL CREATE TABLE `child3`;
+Table,Create Table
+child3,CREATE PARTITION TABLE `child3` (
+	`id` int(11) NOT NULL,
+	`child3_fk1` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child3_ibfk_1` FOREIGN KEY (`child3_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child3_ibfk_2` FOREIGN KEY (`child3_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE `child2`;
+Table,Create Table
+child2,CREATE PARTITION TABLE `child2` (
+	`id` int(11) NOT NULL,
+	`child2_fk1` int(11) DEFAULT NULL,
+	`child2_fk2` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child2_ibfk_1` FOREIGN KEY (`child2_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_2` FOREIGN KEY (`child2_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_3` FOREIGN KEY (`child2_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_4` FOREIGN KEY (`child2_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE `child1`;
+Table,Create Table
+child1,CREATE PARTITION TABLE `child1` (
+	`id` int(11) NOT NULL,
+	`child1_fk1` int(11) DEFAULT NULL,
+	`child1_fk2` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child1_ibfk_1` FOREIGN KEY (`child1_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child1_ibfk_2` FOREIGN KEY (`child1_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child1_ibfk_3` FOREIGN KEY (`child1_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child1_ibfk_4` FOREIGN KEY (`child1_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+DROP TABLE `child3`;
+DROP TABLE `child2`;
+DROP TABLE `child1`;
+DROP TABLE `parent`;
+CREATE TABLE `parent` (`parent_id` INT, PRIMARY KEY (`parent_id`)) broadcast;
+CREATE TABLE `child1` (`id` INT ,`child1_fk1` INT, `child1_fk2` INT,
+PRIMARY KEY (`id`)) broadcast;
+CREATE TABLE `child2` (`id` INT, `child2_fk1` INT, `child2_fk2` INT,
+PRIMARY KEY (`id`)) single;
+CREATE TABLE `child3` (`id` INT , `child3_fk1` INT, PRIMARY KEY (`id`));
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk1`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk2`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk2`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child3` ADD FOREIGN KEY (`child3_fk1`) REFERENCES `parent`
+(`parent_id`);
+ALTER TABLE `child1` ADD FOREIGN KEY (`child1_fk2`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk1`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child2` ADD FOREIGN KEY (`child2_fk2`) REFERENCES
+`parent` (`parent_id`);
+ALTER TABLE `child3` ADD FOREIGN KEY (`child3_fk1`) REFERENCES
+`parent` (`parent_id`);
+SHOW FULL CREATE TABLE `child3`;
+Table,Create Table
+child3,CREATE PARTITION TABLE `child3` (
+	`id` int(11) NOT NULL,
+	`child3_fk1` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child3_ibfk_1` FOREIGN KEY (`child3_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child3_ibfk_2` FOREIGN KEY (`child3_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`id`)
+PARTITIONS 3
+/* tablegroup = `tg` */
+SHOW FULL CREATE TABLE `child2`;
+Table,Create Table
+child2,CREATE TABLE `child2` (
+	`id` int(11) NOT NULL,
+	`child2_fk1` int(11) DEFAULT NULL,
+	`child2_fk2` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child2_ibfk_1` FOREIGN KEY (`child2_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_2` FOREIGN KEY (`child2_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_3` FOREIGN KEY (`child2_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */,
+	CONSTRAINT `child2_ibfk_4` FOREIGN KEY (`child2_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE LOGICAL */
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SINGLE
+/* tablegroup = `single_tg` */
+SHOW FULL CREATE TABLE `child1`;
+Table,Create Table
+child1,CREATE TABLE `child1` (
+	`id` int(11) NOT NULL,
+	`child1_fk1` int(11) DEFAULT NULL,
+	`child1_fk2` int(11) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CONSTRAINT `child1_ibfk_1` FOREIGN KEY (`child1_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE PHYSICAL */,
+	CONSTRAINT `child1_ibfk_2` FOREIGN KEY (`child1_fk1`) REFERENCES `parent` (`parent_id`) /* TYPE PHYSICAL */,
+	CONSTRAINT `child1_ibfk_3` FOREIGN KEY (`child1_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE PHYSICAL */,
+	CONSTRAINT `child1_ibfk_4` FOREIGN KEY (`child1_fk2`) REFERENCES `parent` (`parent_id`) /* TYPE PHYSICAL */,
+	LOCAL KEY `child1_ibfk_2` (`child1_fk1`),
+	LOCAL KEY `child1_ibfk_4` (`child1_fk2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+BROADCAST
+/* tablegroup = `broadcast_tg` */

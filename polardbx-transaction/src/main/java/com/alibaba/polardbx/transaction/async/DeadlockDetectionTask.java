@@ -33,19 +33,23 @@ import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.sync.FetchTransForDeadlockDetectionSyncAction;
 import com.alibaba.polardbx.transaction.utils.DiGraph;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.tuple.Triple;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -201,7 +205,7 @@ public class DeadlockDetectionTask implements Runnable {
         boolean isMySQL80 = ExecUtils.isMysql80Version();
         String deadLocksSql = isMySQL80 ? SQL_QUERY_DEADLOCKS_80 : SQL_QUERY_DEADLOCKS;
 
-        try (final IConnection conn = dataSource.getConnection();
+        try (final Connection conn = createPhysicalConnectionForLeaderStorage(dataSource);
             final Statement stmt = conn.createStatement();
             final ResultSet rs = stmt.executeQuery(deadLocksSql)) {
 
@@ -286,7 +290,8 @@ public class DeadlockDetectionTask implements Runnable {
         }
     }
 
-    private void extractWaitingTrx(ResultSet rs, LocalTransaction waitingLocalTrx, boolean isMySQL80) throws SQLException {
+    private void extractWaitingTrx(ResultSet rs, LocalTransaction waitingLocalTrx, boolean isMySQL80)
+        throws SQLException {
         if (!waitingLocalTrx.isUpdated()) {
             waitingLocalTrx.setState(rs.getString("waiting_state"));
             final String physicalSql = rs.getString("waiting_physical_sql");
@@ -414,6 +419,9 @@ public class DeadlockDetectionTask implements Runnable {
                 final StringBuilder simpleDeadlockLog = deadlockLog.getKey();
                 final StringBuilder fullDeadlockLog = deadlockLog.getValue();
 
+                Optional.ofNullable(OptimizerContext.getTransStat(DEFAULT_DB_NAME))
+                    .ifPresent(s -> s.countGlobalDeadlock.incrementAndGet());
+
                 // TODO: kill transaction by some priority, such as create time, or prefer to kill internal transaction.
                 // The index of the transaction to be killed in the cycle
                 final int indexOfToKillTrx = 0;
@@ -441,4 +449,8 @@ public class DeadlockDetectionTask implements Runnable {
         return !allSchemas.isEmpty() && ExecUtils.hasLeadership(allSchemas.iterator().next());
     }
 
+    public static Connection createPhysicalConnectionForLeaderStorage(TGroupDataSource dataSource) {
+        String masterDnId = dataSource.getMasterDNId();
+        return DbTopologyManager.getConnectionForStorage(masterDnId);
+    }
 }

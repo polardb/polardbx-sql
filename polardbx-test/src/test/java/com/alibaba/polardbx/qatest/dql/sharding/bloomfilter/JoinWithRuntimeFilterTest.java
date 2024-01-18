@@ -36,7 +36,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * 验证CN与DN bloomfilter实现的一致性
  * 包括hash算法、probe算法与类型支持
  */
-@RunWith(Parameterized.class)
+
 public class JoinWithRuntimeFilterTest extends ReadBaseTestCase {
 
     private String baseOneTableName;

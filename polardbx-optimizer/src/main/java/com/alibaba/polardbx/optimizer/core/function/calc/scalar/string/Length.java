@@ -16,14 +16,17 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
+import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
+import io.airlift.slice.Slice;
 
 import java.util.List;
 import java.util.Optional;
@@ -55,7 +58,13 @@ public class Length extends AbstractScalarFunction {
         if (FunctionUtils.isNull(arg)) {
             return null;
         }
-        String str = DataTypeUtil.convert(operandTypes.get(0), DataTypes.StringType, arg);
+        DataType operandType = operandTypes.get(0);
+        if (operandType instanceof VarcharType
+            && operandType.getCharsetName() == CharsetName.BINARY) {
+            byte[] bytes = ((Slice) args[0]).getBytes();
+            return bytes.length;
+        }
+        String str = DataTypeUtil.convert(operandType, DataTypes.StringType, arg);
 
         return Optional.ofNullable(operandTypes)
             .map(types -> types.get(0))
