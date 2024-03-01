@@ -80,12 +80,11 @@ make install
 
 ```shell
 # install JDK 1.8 and Maven 3
+# enter the polardbx-sql directory
+cd polardbx-sql/
 
 # make sure polardbx-rpc (polardbx-glue) initialized
 git submodule update --init
-
-# enter the polardbx-sql directory 
-cd polardbx-sql/
 
 # compile&install
 mvn install -D maven.test.skip=true -D env=release 
