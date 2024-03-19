@@ -1069,7 +1069,7 @@ public abstract class HandlerCommon implements PlanHandler {
                                                                                           String schemaName,
                                                                                           String tableName,
                                                                                           TableMeta tableMeta,
-                                                                                          TableMeta refTableMeta,
+                                                                                          TableMeta parentTableMeta,
                                                                                           List<List<Object>> values,
                                                                                           PhysicalPlanBuilder builder,
                                                                                           List<String> selectKeys,
@@ -1080,7 +1080,7 @@ public abstract class HandlerCommon implements PlanHandler {
         List<String> sortedColumns;
         if (!isInsert) {
             sortedColumns =
-                isFront ? getSortedColumns(true, refTableMeta, data) : getSortedColumns(false, tableMeta, data);
+                isFront ? getSortedColumns(true, tableMeta, data) : getSortedColumns(false, parentTableMeta, data);
         } else {
             sortedColumns = new ArrayList<>(columns);
         }
@@ -1094,12 +1094,14 @@ public abstract class HandlerCommon implements PlanHandler {
         final boolean singleOrBroadcast =
             Optional.ofNullable(oc.getRuleManager()).map(rule -> !rule.isShard(tableName)).orElse(true);
 
+        TableMeta currentTableMeta = isFront ? parentTableMeta : tableMeta;
+
         boolean fullTableScan =
-            singleOrBroadcast || !GlobalIndexMeta.isEveryUkContainsTablePartitionKey(refTableMeta, tarCols);
+            singleOrBroadcast || !GlobalIndexMeta.isEveryUkContainsTablePartitionKey(currentTableMeta, tarCols);
 
         return fullTableScan ?
-            builder.getShardResultsFullTableScan(refTableMeta, values.size()) :
-            builder.getShardResults(refTableMeta, values, sortedColumns.stream()
+            builder.getShardResultsFullTableScan(currentTableMeta, values.size()) :
+            builder.getShardResults(currentTableMeta, values, sortedColumns.stream()
                     .map(String::toUpperCase)
                     .collect(Collectors.toList()),
                 false);
@@ -1184,7 +1186,7 @@ public abstract class HandlerCommon implements PlanHandler {
                     builder, null,
                     true, false);
 
-            List<String> sortedColumns = getSortedColumns(true, parentTableMeta, data.getValue());
+            List<String> sortedColumns = getSortedColumns(true, tableMeta, data.getValue());
 
             List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
                 parentTableMeta, updateValueList, tableModify, memoryAllocator, builder, shardResults,
@@ -1260,7 +1262,7 @@ public abstract class HandlerCommon implements PlanHandler {
                 null, false);
 
             Map<String, Map<String, List<Pair<Integer, List<Object>>>>> selectShardResults =
-                getShardResults(data.getValue(), schemaName, tableName, tableMeta, refTableMeta,
+                getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta,
                     shardConditionValueList, builder,
                     null,
                     false, false);
@@ -1397,11 +1399,11 @@ public abstract class HandlerCommon implements PlanHandler {
             Map<String, Map<String, List<Pair<Integer, List<Object>>>>> shardResults = isBroadcast ?
                 BuildPlanUtils.buildResultForBroadcastTable(schemaName, tableName, conditionValueList, null,
                     executionContext, false) :
-                getShardResults(data.getValue(), schemaName, tableName, tableMeta, refTableMeta, conditionValueList,
+                getShardResults(data.getValue(), schemaName, tableName, refTableMeta, tableMeta, conditionValueList,
                     builder, null,
                     false, false);
 
-            List<String> sortedColumns = getSortedColumns(false, tableMeta, data.getValue());
+            List<String> sortedColumns = getSortedColumns(false, refTableMeta, data.getValue());
 
             List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
                 refTableMeta, conditionValueList, logicalModify, memoryAllocator, builder, shardResults,
