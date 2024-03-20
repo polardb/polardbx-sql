@@ -1041,6 +1041,7 @@ public abstract class HandlerCommon implements PlanHandler {
         return conditionValueList;
     }
 
+    // when check front, tableMeta is child table, check back, tableMeta is parent table
     protected List<String> getSortedColumns(boolean isFront, TableMeta tableMeta, ForeignKeyData data) {
         Map<String, String> columnMap = isFront ?
             IntStream.range(0, data.columns.size()).collect(TreeMaps::caseInsensitiveMap,
@@ -1167,6 +1168,7 @@ public abstract class HandlerCommon implements PlanHandler {
 
             PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
 
+            // parent table
             final TableMeta parentTableMeta = executionContext.getSchemaManager(schemaName).getTableWithNull(tableName);
             if (parentTableMeta == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_ADD_UPDATE_FK_CONSTRAINT, schemaName, tableName,
@@ -1386,6 +1388,7 @@ public abstract class HandlerCommon implements PlanHandler {
 
             PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, executionContext);
 
+            // child table
             final TableMeta refTableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
 
             // get select condition values
@@ -1403,7 +1406,7 @@ public abstract class HandlerCommon implements PlanHandler {
                     builder, null,
                     false, false);
 
-            List<String> sortedColumns = getSortedColumns(false, refTableMeta, data.getValue());
+            List<String> sortedColumns = getSortedColumns(false, tableMeta, data.getValue());
 
             List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
                 refTableMeta, conditionValueList, logicalModify, memoryAllocator, builder, shardResults,
