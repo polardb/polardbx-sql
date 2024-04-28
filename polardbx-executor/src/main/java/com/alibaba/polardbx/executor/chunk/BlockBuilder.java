@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 
 import java.math.BigInteger;
 import java.sql.Blob;
@@ -126,4 +128,8 @@ public interface BlockBuilder extends Block {
      * Creates a new block builder of the same type with current block size as initial capacity
      */
     BlockBuilder newBlockBuilder();
+
+    default BlockBuilder newBlockBuilder(ObjectPools objectPools, int chunkLimit) {
+        return newBlockBuilder();
+    }
 }

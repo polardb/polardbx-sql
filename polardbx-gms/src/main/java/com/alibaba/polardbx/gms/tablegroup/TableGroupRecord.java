@@ -19,6 +19,8 @@ package com.alibaba.polardbx.gms.tablegroup;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.record.SystemTableRecord;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
+import lombok.ToString;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -29,6 +31,7 @@ import java.util.Date;
  *
  * @author luoyanxin
  */
+@ToString
 public class TableGroupRecord implements SystemTableRecord {
 
     public static final long INVALID_TABLE_GROUP_ID = -1L;
@@ -40,12 +43,14 @@ public class TableGroupRecord implements SystemTableRecord {
      * 2: non-default tg for single_tbl
      * 3: broadcast tg for broadcast_tbl
      * 4: tg for oss table
+     * 5: tg for columnar table
      */
     public static final int TG_TYPE_PARTITION_TBL_TG = 0;
     public static final int TG_TYPE_DEFAULT_SINGLE_TBL_TG = 1;
     public static final int TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG = 2;
     public static final int TG_TYPE_BROADCAST_TBL_TG = 3;
     public static final int TG_TYPE_OSS_TBL_TG = 4;
+    public static final int TG_TYPE_COLUMNAR_TBL_TG = 5;
 
     public Long id;
     public Date gmt_create;
@@ -177,6 +182,10 @@ public class TableGroupRecord implements SystemTableRecord {
 
     public boolean isSingleTableGroup() {
         return tg_type == TG_TYPE_DEFAULT_SINGLE_TBL_TG || tg_type == TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
+    }
+
+    public boolean isColumnarTableGroup() {
+        return tg_type == TG_TYPE_COLUMNAR_TBL_TG || TableGroupNameUtil.isColumnarTg(tg_name);
     }
 
     public boolean withBalanceSingleTableLocality() {

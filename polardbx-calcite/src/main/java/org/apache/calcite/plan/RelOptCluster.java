@@ -19,6 +19,7 @@ package org.apache.calcite.plan;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.metadata.DefaultRelMetadataProvider;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.MetadataFactory;
 import org.apache.calcite.rel.metadata.MetadataFactoryImpl;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
@@ -150,17 +151,24 @@ public class RelOptCluster {
    * method, then use {@link RelOptRuleCall#getMetadataQuery()} instead. */
   public RelMetadataQuery getMetadataQuery() {
     if (mq == null) {
-      mq = RelMetadataQuery.instance();
+      mq = buildMetaQuery();
     }
 
     RelMetadataQuery local = mq;
     if (local == null) {
       // maybe some concurrent thread call invalidateMetadataQuery
       // cache RelMetadataQuery on the stack to in case of returning null
-      local = RelMetadataQuery.instance();
+      local = buildMetaQuery();
       mq = local;
     }
     return local;
+  }
+
+  private RelMetadataQuery buildMetaQuery() {
+    RelMetadataProvider provider = getMetadataProvider();
+    // provider in cluster cannot be a JaninoRelMetadataProvider,
+    // for it doesn't support RelMetadataProvider.apply method
+    return RelMetadataQuery.instance(JaninoRelMetadataProvider.of(provider));
   }
 
   /**

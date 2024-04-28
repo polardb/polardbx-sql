@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMeta
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiInsertIndexMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiUpdateIndexStatusTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import lombok.Data;

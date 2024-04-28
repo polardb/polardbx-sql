@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor;
 
-import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 
 /**
  * 为TGroupDatasource实现的groupexecutor

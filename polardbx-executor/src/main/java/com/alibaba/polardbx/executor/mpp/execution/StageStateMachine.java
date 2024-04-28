@@ -29,7 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -39,6 +38,7 @@ import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;
 import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.google.common.collect.ImmutableList;
 import org.joda.time.DateTime;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -53,7 +53,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.ABORTED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.CANCELED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.FAILED;
@@ -65,6 +64,7 @@ import static com.alibaba.polardbx.executor.mpp.execution.StageState.SCHEDULED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.SCHEDULING;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.SCHEDULING_SPLITS;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.TERMINAL_STAGE_STATES;
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static io.airlift.units.DataSize.succinctBytes;
 import static java.util.Objects.requireNonNull;
 
@@ -239,7 +239,7 @@ public class StageStateMachine {
                 runningTasks++;
             }
 
-            TaskStats taskStats = taskInfo.getStats();
+            TaskStats taskStats = taskInfo.getTaskStats();
 
             if (taskStats != null) {
                 totalPipelineExecs += taskStats.getTotalPipelineExecs();
@@ -250,10 +250,10 @@ public class StageStateMachine {
                 cumulativeMemory += taskStats.getCumulativeMemory();
                 totalMemoryReservation += taskStats.getMemoryReservation();
 
-                totalScheduledTime += taskStats.getTotalScheduledTime();
-                totalCpuTime += taskStats.getTotalCpuTime();
-                totalUserTime += taskStats.getTotalUserTime();
-                totalBlockedTime += taskStats.getTotalBlockedTime();
+                totalScheduledTime += taskStats.getTotalScheduledTimeNanos();
+                totalCpuTime += taskStats.getTotalCpuTimeNanos();
+                totalUserTime += taskStats.getTotalUserTimeNanos();
+                totalBlockedTime += taskStats.getTotalBlockedTimeNanos();
                 if (!taskState.isDone()) {
                     fullyBlocked &= taskStats.isFullyBlocked();
                     blockedReasons.addAll(taskStats.getBlockedReasons());
@@ -271,9 +271,10 @@ public class StageStateMachine {
                             OperatorStats operator = taskStats.getOperatorStats().get(i);
                             operators.add(new OperatorStats(Optional.of(stageId), operator.getPipelineId(),
                                 operator.getOperatorType(),
-                                operator.getOperatorId(), operator.getOutputRowCount(), operator.getOutputBytes(),
-                                operator.getStartupDuration(), operator.getDuration(), operator.getMemory(),
-                                operator.getInstances(), operator.getSpillCnt()));
+                                operator.getOperatorId(), operator.getOutputRowCount(),
+                                operator.getRuntimeFilteredCount(),
+                                operator.getOutputBytes(), operator.getStartupDuration(), operator.getDuration(),
+                                operator.getMemory(), operator.getInstances(), operator.getSpillCnt()));
                         }
                     } else {
                         if (taskStats.getOperatorStats() != null) {

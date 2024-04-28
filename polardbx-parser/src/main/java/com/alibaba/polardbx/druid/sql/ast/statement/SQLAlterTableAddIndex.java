@@ -204,6 +204,22 @@ public class SQLAlterTableAddIndex extends SQLObjectImpl implements SQLAlterTabl
         indexDefinition.setClustered(clustered);
     }
 
+    public boolean isColumnar() {
+        return indexDefinition.isColumnar();
+    }
+
+    public void setColumnar(boolean columnar) {
+        indexDefinition.setColumnar(columnar);
+    }
+
+    public SQLName getEngineName() {
+        return indexDefinition.getEngineName();
+    }
+
+    public void setEngineName(SQLName engineName) {
+        indexDefinition.setEngineName(engineName);
+    }
+
     public SQLExpr getDbPartitionBy() {
         return indexDefinition.getDbPartitionBy();
     }
@@ -244,9 +260,22 @@ public class SQLAlterTableAddIndex extends SQLObjectImpl implements SQLAlterTabl
         this.indexDefinition.setTableGroup(tableGroup);
     }
 
+    public boolean isWithImplicitTablegroup() {
+        return indexDefinition.isWithImplicitTablegroup();
+    }
+
+    public void setWithImplicitTablegroup(boolean withImplicitTablegroup) {
+        this.indexDefinition.setWithImplicitTablegroup(withImplicitTablegroup);
+    }
+
     @Override
     public List<SQLName> getCovering() {
         return indexDefinition.getCovering();
+    }
+
+    @Override
+    public List<SQLName> getClusteredKeys() {
+        return indexDefinition.getClusteredKeys();
     }
 
     @Override

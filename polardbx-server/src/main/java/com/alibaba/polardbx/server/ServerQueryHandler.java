@@ -42,6 +42,7 @@ import com.alibaba.polardbx.server.handler.UseHandler;
 import com.alibaba.polardbx.server.handler.pl.PlCommandHandlers;
 import com.alibaba.polardbx.server.handler.privileges.polar.PrivilegeCommandHandlers;
 import com.alibaba.polardbx.server.parser.ServerParse;
+import com.alibaba.polardbx.server.response.AlterSystemHandler;
 import com.alibaba.polardbx.server.response.KillHandler;
 import com.alibaba.polardbx.server.response.PurgeTransHandler;
 import com.alibaba.polardbx.server.response.ReloadHandler;
@@ -240,6 +241,11 @@ public class ServerQueryHandler implements QueryHandler {
             case ServerParse.CALL:
                 success = PlCommandHandlers.handle(commandCode, c, sql, hasMore);
                 recordSql = true;
+                break;
+            case ServerParse.ALTER_SYSTEM_SET:
+                // "ALTER SYSTEM SET x = y" should be handled in server module.
+                success = AlterSystemHandler.handle(sql, c, rs >>> 8, hasMore);
+                recordSql = false;
                 break;
             default:
                 success = c.execute(sql, hasMore);

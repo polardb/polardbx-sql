@@ -48,15 +48,17 @@ import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
 import com.alibaba.polardbx.server.conn.InnerConnection;
+import lombok.SneakyThrows;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -113,30 +115,32 @@ public class CommandScanner extends AbstractLifecycle {
                 }
                 replyBinlogCommand(SUCCESS.getValue(), "", commandRecord.id);
             } catch (Throwable t) {
-                replyBinlogCommand(FAIL.getValue(), Arrays.toString(t.getStackTrace()), commandRecord.id);
+                replyBinlogCommand(FAIL.getValue(), getStackTraceStr(t), commandRecord.id);
             }
         }
         lastScanTimestamp = System.currentTimeMillis() - 3600 * 1000;
     }
 
+    @SneakyThrows
     private void doCdcInit(BinlogCommandRecord commandRecord) {
         logger.warn("cdc init begin.");
         try {
             buildSnapshotAndSend(commandRecord, ICdcManager.InstructionType.CdcStart, commandRecord.cmdId);
         } catch (Throwable ex) {
             logger.error("something goes wrong when do cdc init", ex);
-            throw GeneralUtil.nestedException(ex);
+            throw ex;
         }
         logger.warn("cdc init finished.");
     }
 
+    @SneakyThrows
     private void buildCdcMetaSnapshot(BinlogCommandRecord commandRecord) {
         logger.warn("build cdc meta snapshot begin.");
         try {
             buildSnapshotAndSend(commandRecord, ICdcManager.InstructionType.MetaSnapshot, commandRecord.cmdId);
         } catch (Throwable ex) {
             logger.error("something goes wrong when build cdc meta snapshot", ex);
-            throw GeneralUtil.nestedException(ex);
+            throw ex;
         }
         logger.warn("build cdc meta snapshot finished.");
     }
@@ -220,6 +224,7 @@ public class CommandScanner extends AbstractLifecycle {
         Set<String> databases = getDatabases();
 
         for (String db : databases) {
+            logger.warn("prepare to build cdc meta data for database :" + db);
             try (Connection connection = new InnerConnection(db)) {
                 try (Statement stmt = connection.createStatement()) {
                     Set<String> tables = getTables(connection, db);
@@ -236,7 +241,7 @@ public class CommandScanner extends AbstractLifecycle {
                     }
 
                     logicMeta.getLogicDbMetas().add(logicDbMeta);
-                    logger.warn("successfully build cdc init data for database :" + db);
+                    logger.warn("successfully build cdc meta data for database :" + db);
                 }
             }
         }
@@ -253,6 +258,8 @@ public class CommandScanner extends AbstractLifecycle {
             databases.remove(SystemDbHelper.CDC_DB_NAME);
             databases.remove(SystemDbHelper.DEFAULT_DB_NAME);
             databases.remove(SystemDbHelper.INFO_SCHEMA_DB_NAME);
+            databases.remove("mysql");
+            databases.remove("performance_schema");
         }
         return databases;
     }
@@ -260,7 +267,7 @@ public class CommandScanner extends AbstractLifecycle {
     private Set<String> getTables(Connection connection, String db) throws SQLException {
         Set<String> tables = new HashSet<>();
         try (Statement stmt = connection.createStatement();
-            ResultSet resultSet = stmt.executeQuery(String.format("show full tables from %s", db))) {
+            ResultSet resultSet = stmt.executeQuery(String.format("show full tables from `%s`", db))) {
             while (resultSet.next()) {
                 String tableName = resultSet.getString(1);
                 String tableType = resultSet.getString(2);
@@ -412,5 +419,12 @@ public class CommandScanner extends AbstractLifecycle {
             accessor.setConnection(connection);
             accessor.updateBinlogCommandRequestById(request, id);
         }
+    }
+
+    private String getStackTraceStr(Throwable t) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        t.printStackTrace(pw);
+        return sw.toString();
     }
 }

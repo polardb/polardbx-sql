@@ -29,6 +29,42 @@ import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.E_DEC_DIV_ZER
 
 public class DecimalCalculatorTest {
 
+    private static final int TEST_SCALE_INCR = 5;
+    private static final Random R = new Random();
+    private static final String NUMBER_STR = "0123456789";
+
+    private static byte[] generateDecimal() {
+        return generateDecimal(65);
+    }
+
+    private static byte[] generateDecimal(int maxPrc) {
+        int precision = R.nextInt(maxPrc) + 1;
+        int scale = R.nextInt(precision) + 1;
+        if (precision == scale) {
+            scale--;
+        }
+
+        boolean isNeg = R.nextInt() % 2 == 0;
+
+        byte[] res = new byte[(scale == 0 ? precision : precision + 1) + (isNeg ? 1 : 0)];
+        int i = 0;
+        if (isNeg) {
+            res[i++] = '-';
+        }
+        res[i++] = (byte) NUMBER_STR.charAt(R.nextInt(9) + 1);
+        for (; i < precision - scale + (isNeg ? 1 : 0); i++) {
+            res[i] = (byte) NUMBER_STR.charAt(R.nextInt(10));
+        }
+        if (scale == 0) {
+            return res;
+        }
+        res[i++] = '.';
+        for (; i < precision + 1 + (isNeg ? 1 : 0); i++) {
+            res[i] = (byte) NUMBER_STR.charAt(R.nextInt(10));
+        }
+        return res;
+    }
+
     @Test
     public void testDes() {
         IntStream.range(0, 1 << 5).forEach(i -> {
@@ -184,16 +220,17 @@ public class DecimalCalculatorTest {
     @Test
     public void testHash() {
         doTestHash(100000992, "1.1", "1.1000", "1.1000000", "1.10000000000", "01.1", "0001.1", "001.1000000");
-        doTestHash(-100000992,"-1.1", "-1.1000", "-1.1000000", "-1.10000000000", "-01.1", "-0001.1", "-001.1000000");
-        doTestHash(100000031,".1", "0.1", "0.10", "000000.1", ".10000", "0000.10000", "000000000000000000.1");
+        doTestHash(-100000992, "-1.1", "-1.1000", "-1.1000000", "-1.10000000000", "-01.1", "-0001.1", "-001.1000000");
+        doTestHash(100000031, ".1", "0.1", "0.10", "000000.1", ".10000", "0000.10000", "000000000000000000.1");
         doTestHash(1, "0", "0000", ".0", ".00000", "00000.00000", "-0", "-0000", "-.0", "-.00000", "-00000.00000");
-        doTestHash(-344349087,".123456789123456789", ".1234567891234567890", ".12345678912345678900", ".123456789123456789000",
+        doTestHash(-344349087, ".123456789123456789", ".1234567891234567890", ".12345678912345678900",
+            ".123456789123456789000",
             ".1234567891234567890000", "0.123456789123456789",
             ".1234567891234567890000000000", "0000000.123456789123456789000");
-        doTestHash(12376,"12345", "012345", "0012345", "0000012345", "0000000012345", "00000000000012345", "12345.",
+        doTestHash(12376, "12345", "012345", "0012345", "0000012345", "0000000012345", "00000000000012345", "12345.",
             "12345.00", "12345.000000000", "000012345.0000");
-        doTestHash(12300031,"123E5", "12300000", "00123E5", "000000123E5", "12300000.00000000");
-        doTestHash(230000992,"123E-2", "1.23", "00000001.23", "1.2300000000000000", "000000001.23000000000000");
+        doTestHash(12300031, "123E5", "12300000", "00123E5", "000000123E5", "12300000.00000000");
+        doTestHash(230000992, "123E-2", "1.23", "00000001.23", "1.2300000000000000", "000000001.23000000000000");
     }
 
     @Test
@@ -215,6 +252,28 @@ public class DecimalCalculatorTest {
         HiveDecimalWritable h = new HiveDecimalWritable(s);
         DecimalStructure d = DecimalOrcConverter.transform(h);
         Assert.assertEquals(h.toString(), d.toString());
+    }
+
+    @Test
+    public void testSetLongWithScale() {
+        DecimalStructure bufferDec = new DecimalStructure();
+        DecimalStructure resultDec = new DecimalStructure();
+        final int[] scales = new int[] {0, 2, 8};
+        final int COUNT = 256;
+        for (int scale : scales) {
+            for (int i = 0; i < COUNT; i++) {
+                long val = (i == 0) ? 0 : R.nextLong();
+
+                FastDecimalUtils.setLongWithScale(bufferDec, resultDec, val, scale);
+                Decimal resultDecimal = new Decimal(resultDec);
+
+                Decimal targetUnscaled = Decimal.fromLong(val);
+                FastDecimalUtils.doShift(resultDecimal.getDecimalStructure(), scale);
+                Assert.assertEquals(String.format("scale=%d, val=%d", scale, val), 0,
+                    FastDecimalUtils.compare(targetUnscaled.getDecimalStructure(),
+                        resultDecimal.getDecimalStructure()));
+            }
+        }
     }
 
     private void doTestHash(int hashCode, String... decimalStrings) {
@@ -241,8 +300,6 @@ public class DecimalCalculatorTest {
 
         return result;
     }
-
-    private static final int TEST_SCALE_INCR = 5;
 
     private void doTestDiv(String dividend, String divisor, String quotient, int error) {
         DecimalStructure d1 = new DecimalStructure();
@@ -294,40 +351,5 @@ public class DecimalCalculatorTest {
         int myRes = FastDecimalUtils.compare(d1, d2);
 
         Assert.assertEquals(result, myRes);
-    }
-
-    private static final Random R = new Random();
-    private static final String NUMBER_STR = "0123456789";
-
-    private static byte[] generateDecimal() {
-        return generateDecimal(65);
-    }
-
-    private static byte[] generateDecimal(int maxPrc) {
-        int precision = R.nextInt(maxPrc) + 1;
-        int scale = R.nextInt(precision) + 1;
-        if (precision == scale) {
-            scale--;
-        }
-
-        boolean isNeg = R.nextInt() % 2 == 0;
-
-        byte[] res = new byte[(scale == 0 ? precision : precision + 1) + (isNeg ? 1 : 0)];
-        int i = 0;
-        if (isNeg) {
-            res[i++] = '-';
-        }
-        res[i++] = (byte) NUMBER_STR.charAt(R.nextInt(9) + 1);
-        for (; i < precision - scale + (isNeg ? 1 : 0); i++) {
-            res[i] = (byte) NUMBER_STR.charAt(R.nextInt(10));
-        }
-        if (scale == 0) {
-            return res;
-        }
-        res[i++] = '.';
-        for (; i < precision + 1 + (isNeg ? 1 : 0); i++) {
-            res[i] = (byte) NUMBER_STR.charAt(R.nextInt(10));
-        }
-        return res;
     }
 }

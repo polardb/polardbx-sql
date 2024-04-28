@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractScalarFunction;
@@ -36,19 +39,23 @@ public class Collation extends AbstractScalarFunction {
         if (FunctionUtils.isNull(arg)) {
             return null;
         }
-        return Optional.ofNullable(operandTypes)
+        CollationName collationName = Optional.ofNullable(operandTypes)
             .map(types -> types.get(0))
             .map(DataType::getCollationName)
-            .map(Enum::name)
-            .map(String::toLowerCase)
             .orElseGet(
                 () -> Optional.ofNullable(ec.getEncoding())
                     .map(CharsetName::of)
                     .map(CharsetName::getDefaultCollationName)
-                    .map(Enum::name)
-                    .map(String::toLowerCase)
-                    .orElse("utf8mb4_general_ci")
+                    .orElse(CollationName.defaultCollation())
             );
+
+        boolean isMySQL80 = InstanceVersion.isMYSQL80();
+
+        if (isMySQL80 && CollationName.getCharsetOf(collationName) == CharsetName.UTF8) {
+            return collationName.getAlias();
+        } else {
+            return collationName.name().toLowerCase();
+        }
     }
 
     @Override

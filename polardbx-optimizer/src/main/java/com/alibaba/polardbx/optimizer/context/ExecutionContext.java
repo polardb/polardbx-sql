@@ -33,6 +33,7 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
@@ -56,14 +57,17 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.optimizer.statis.SQLRecorder;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
+import com.alibaba.polardbx.optimizer.statis.XplanStat;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.alibaba.polardbx.util.ValueHolder;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
@@ -79,6 +83,7 @@ import org.apache.commons.lang.StringUtils;
 import java.io.InputStream;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collections;
 import java.util.HashMap;
@@ -87,6 +92,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.TSO_TRANSACTION;
@@ -105,7 +111,7 @@ public class ExecutionContext {
     public static final String SUCCESS_MESSAGE = "SUCCESS_MESSAGE";
     public static final String FAILED_MESSAGE = "FAILED_MESSAGE";
     public static final String WARNING_MESSAGE = "WARNING_MESSAGE";
-    public static final String LAST_FAILED_MESSAGE = "Last_FAILED_MESSAGE";
+    public static final String LAST_FAILED_MESSAGE = "LAST_FAILED_MESSAGE";
 
     /**
      * 当前事务
@@ -179,6 +185,8 @@ public class ExecutionContext {
     private SQLRecorder recorder;
 
     private SQLTracer tracer;
+
+    private ColumnarTracer columnarTracer;
 
     private boolean enableTrace;
 
@@ -302,9 +310,16 @@ public class ExecutionContext {
     private AsyncDDLContext asyncDDLContext = new AsyncDDLContext();
     private DdlContext ddlContext = null;
     private PhyDdlExecutionRecord phyDdlExecutionRecord = null;
+
+    public boolean isEnableTwoPhaseDdl() {
+        return enableTwoPhaseDdl;
+    }
+
+    private boolean enableTwoPhaseDdl = false;
     private MultiDdlContext multiDdlContext = new MultiDdlContext();
     private boolean randomPhyTableEnabled = true;
     private boolean phyTableRenamed = true;
+    private boolean runOnNewDdlEngine = false;
     // End of DDL Related Parameters
 
     private TableInfoManager tableInfoManager = null;
@@ -364,9 +379,13 @@ public class ExecutionContext {
      */
     private long ruleCount = 0;
 
+    private volatile XplanStat xplanStat = null;
     private volatile Integer blockBuilderCapacity = null;
     private volatile Boolean enableOssCompatible = null;
     private volatile Boolean enableOssDelayMaterializationOnExchange = null;
+
+    private int columnarMaxShard = -1;
+
     private boolean executingPreparedStmt = false;
     private PreparedStmtCache preparedStmtCache = null;
 
@@ -392,6 +411,12 @@ public class ExecutionContext {
     private boolean visitDBBuildIn;
 
     private boolean needAutoSavepoint = false;
+
+    private Map<String, List<Object[]>> driverStatistics;
+
+    private boolean checkingCci = false;
+
+    private List<String> readOrcFiles = null;
 
     private String partitionName;
 
@@ -871,6 +896,14 @@ public class ExecutionContext {
         this.visitDBBuildIn = visitDBBuildIn;
     }
 
+    public ColumnarTracer getColumnarTracer() {
+        return columnarTracer;
+    }
+
+    public void setColumnarTracer(ColumnarTracer columnarTracer) {
+        this.columnarTracer = columnarTracer;
+    }
+
     public static class ErrorMessage {
 
         final int code;
@@ -1102,6 +1135,10 @@ public class ExecutionContext {
         this.phyDdlExecutionRecord = phyDdlExecutionRecord;
     }
 
+    public void setEnableTwoPhaseDdl(final Boolean enableTwoPhaseDdl) {
+        this.enableTwoPhaseDdl = enableTwoPhaseDdl;
+    }
+
     public Long getDdlJobId() {
         return getDdlContext() == null ? null : getDdlContext().getJobId();
     }
@@ -1115,23 +1152,11 @@ public class ExecutionContext {
     }
 
     public boolean isRandomPhyTableEnabled() {
-        return randomPhyTableEnabled && paramManager.getBoolean(ConnectionParams.ENABLE_RANDOM_PHY_TABLE_NAME);
-    }
-
-    public void setRandomPhyTableEnabled(boolean randomPhyTableEnabled) {
-        this.randomPhyTableEnabled = randomPhyTableEnabled;
-    }
-
-    public boolean isPhyTableRenamed() {
-        return phyTableRenamed;
-    }
-
-    public void setPhyTableRenamed(boolean phyTableRenamed) {
-        this.phyTableRenamed = phyTableRenamed;
+        return paramManager.getBoolean(ConnectionParams.ENABLE_RANDOM_PHY_TABLE_NAME);
     }
 
     public boolean needToRenamePhyTables() {
-        return !isRandomPhyTableEnabled() || isPhyTableRenamed();
+        return !isRandomPhyTableEnabled();
     }
 
     public TableInfoManager getTableInfoManager() {
@@ -1213,6 +1238,7 @@ public class ExecutionContext {
         ec.phyDdlExecutionRecord = getPhyDdlExecutionRecord();
         ec.multiDdlContext = getMultiDdlContext();
         ec.phyTableRenamed = isPhyTableRenamed();
+        ec.runOnNewDdlEngine = isRunOnNewDdlEngine();
         ec.tableInfoManager = getTableInfoManager();
         ec.cluster = getCluster();
         ec.timeZone = getTimeZone();
@@ -1233,6 +1259,7 @@ public class ExecutionContext {
         ec.runtimeStatistics = getRuntimeStatistics();
         ec.isApplyingSubquery = isApplyingSubquery();
         ec.subqueryId = getSubqueryId();
+        ec.xplanStat = getXplanStat();
         ec.memoryPoolHolder = option.getMemoryPoolHolder().getOrElse(() -> this.memoryPoolHolder);
         ec.dmlRelScaleOutWriteFlagMap = getDmlRelScaleOutWriteFlagMap();
         ec.hasScaleOutWrite = isHasScaleOutWrite();
@@ -1271,6 +1298,8 @@ public class ExecutionContext {
         ec.logicalSqlStartTimeInMs = getLogicalSqlStartTimeInMs();
         ec.logicalSqlStartTime = getLogicalSqlStartTime();
         ec.needAutoSavepoint = isNeedAutoSavepoint();
+        ec.setColumnarTracer(getColumnarTracer());
+        ec.columnarMaxShard = getColumnarMaxShard();
         return ec;
     }
 
@@ -1348,6 +1377,13 @@ public class ExecutionContext {
         this.hintCmds.putAll(hintCmds);
         if (this.extraCmds != null && hintCmds != null) {
             this.extraCmds.putAll(hintCmds);
+        }
+    }
+
+    public void putIntoHintCmds(String key, Object value) {
+        this.hintCmds.put(key, value);
+        if (this.extraCmds != null) {
+            this.extraCmds.put(key, value);
         }
     }
 
@@ -1446,6 +1482,15 @@ public class ExecutionContext {
             }
         }
         messages.add(message);
+    }
+
+    public synchronized void clearMessage(String type) {
+        @SuppressWarnings("unchecked")
+        List<ErrorMessage> messages = (List<ErrorMessage>) extraDatas.get(type);
+
+        if (messages != null) {
+            messages.clear();
+        }
     }
 
     public long getTxId() {
@@ -1621,6 +1666,20 @@ public class ExecutionContext {
         this.unOptimizedPlan = unOptimizedPlan;
     }
 
+    public XplanStat getXplanStat() {
+        return xplanStat;
+    }
+
+    public void setXplanIndex(String xplanIndex) {
+        if (xplanStat != null) {
+            this.xplanStat.setXplanIndex(xplanIndex);
+        }
+    }
+
+    public void setXplanStat(boolean forbidXplan) {
+        this.xplanStat = new XplanStat(forbidXplan);
+    }
+
     public CclContext getCclContext() {
         return this.cclContext;
     }
@@ -1734,6 +1793,7 @@ public class ExecutionContext {
 
         // reset use hint flag
         useHint = false;
+        xplanStat = null;
     }
 
     /**
@@ -1784,6 +1844,7 @@ public class ExecutionContext {
         correlateRowMap = Maps.newHashMap();
         correlateFieldInViewMap = Maps.newHashMap();
         explain = null;
+        xplanStat = null;
         sqlType = null;
         hasScanWholeTable = false;
         hasUnpushedJoin = false;
@@ -1819,6 +1880,7 @@ public class ExecutionContext {
         multiDdlContext = new MultiDdlContext();
         randomPhyTableEnabled = true;
         phyTableRenamed = true;
+        runOnNewDdlEngine = false;
         tableInfoManager = null;
         dmlRelScaleOutWriteFlagMap = new HashMap<>();
         hasScaleOutWrite = false;
@@ -1850,6 +1912,7 @@ public class ExecutionContext {
         blockBuilderCapacity = null;
         enableOssCompatible = null;
         enableOssDelayMaterializationOnExchange = null;
+        columnarMaxShard = -1;
     }
 
     public boolean useReturning() {
@@ -1904,6 +1967,14 @@ public class ExecutionContext {
         return clientFoundRows;
     }
 
+    public boolean isPhyTableRenamed() {
+        return phyTableRenamed;
+    }
+
+    public boolean isRunOnNewDdlEngine() {
+        return runOnNewDdlEngine;
+    }
+
     public void setClientFoundRows(boolean clientFoundRows) {
         this.clientFoundRows = clientFoundRows;
     }
@@ -1951,12 +2022,25 @@ public class ExecutionContext {
         return enableOssCompatible;
     }
 
+    @VisibleForTesting
+    public void setEnableOssCompatible(Boolean enableOssCompatible) {
+        this.enableOssCompatible = enableOssCompatible;
+    }
+
     public boolean isEnableOssDelayMaterializationOnExchange() {
         if (enableOssDelayMaterializationOnExchange == null) {
             enableOssDelayMaterializationOnExchange =
                 paramManager.getBoolean(ConnectionParams.ENABLE_OSS_DELAY_MATERIALIZATION_ON_EXCHANGE);
         }
         return enableOssDelayMaterializationOnExchange;
+    }
+
+    public int getColumnarMaxShard() {
+        return columnarMaxShard;
+    }
+
+    public void setColumnarMaxShard(int columnarMaxShard) {
+        this.columnarMaxShard = columnarMaxShard;
     }
 
     /**
@@ -2003,6 +2087,10 @@ public class ExecutionContext {
 
     public boolean isSuperUser() {
         return this.getPrivilegeContext().getPolarUserInfo().getAccountType().isSuperUser();
+    }
+
+    public boolean isGod() {
+        return this.getPrivilegeContext().getPolarUserInfo().getAccountType().isGod();
     }
 
     public boolean isSuperUserOrAllPrivileges() {
@@ -2117,5 +2205,130 @@ public class ExecutionContext {
 
     public boolean isNeedAutoSavepoint() {
         return needAutoSavepoint;
+    }
+
+    public boolean isIgnoreSettingNoTransaction() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION);
+        }
+        return false;
+    }
+
+    public Set<String> skipDdlTasks() {
+        final Set<String> result = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        result.addAll(
+            Arrays.asList(
+                TStringUtil.split(
+                    this.getParamManager().getString(ConnectionParams.SKIP_DDL_TASKS),
+                    ",")));
+        return result;
+    }
+
+    public Map<String, List<Object[]>> getDriverStatistics() {
+        return driverStatistics;
+    }
+
+    public void setDriverStatistics(Map<String, List<Object[]>> driverStatistics) {
+        this.driverStatistics = driverStatistics;
+    }
+
+    public long getSnapshotTs() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getLong(ConnectionParams.SNAPSHOT_TS);
+        }
+        return -1L;
+    }
+
+    public boolean isCheckingCci() {
+        if (checkingCci) {
+            return true;
+        }
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.FORCE_CCI_VISIBLE);
+        }
+        return false;
+    }
+
+    public void setCheckingCci(boolean checkingCci) {
+        this.checkingCci = checkingCci;
+    }
+
+    public boolean isEnableOrcDeletedScan() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_ORC_DELETED_SCAN);
+        }
+        return false;
+    }
+
+    public boolean isEnableOrcRawTypeBlock() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_ORC_RAW_TYPE_BLOCK);
+        }
+        return false;
+    }
+
+    public boolean isReadCsvOnly() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.READ_CSV_ONLY);
+        }
+        return false;
+    }
+
+    public String getForceReadOrcFile() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getString(ConnectionParams.FORCE_READ_ORC_FILE);
+        }
+        return null;
+    }
+
+    public List<String> getReadOrcFiles() {
+        return readOrcFiles;
+    }
+
+    public void setReadOrcFiles(List<String> readOrcFiles) {
+        this.readOrcFiles = readOrcFiles;
+    }
+
+    public boolean isReadOrcOnly() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.READ_ORC_ONLY);
+        }
+        return false;
+    }
+
+    public boolean isEnableFastCciChecker() {
+        if (null != this.getParamManager()) {
+            return getParamManager().getBoolean(ConnectionParams.ENABLE_FAST_CCI_CHECKER);
+        }
+        return false;
+    }
+
+    public boolean isEnableFastParseOrcRawType() {
+        if (null != this.getParamManager()) {
+            return getParamManager().getBoolean(ConnectionParams.ENABLE_FAST_PARSE_ORC_RAW_TYPE);
+        }
+        // Default true.
+        return true;
+    }
+
+    public boolean isForce2pcDuringCciCheck() {
+        if (null != this.getParamManager()) {
+            return getParamManager().getBoolean(ConnectionParams.FORCE_2PC_DURING_CCI_CHECK);
+        }
+        return false;
+    }
+
+    public boolean isEnableXaTso() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_XA_TSO);
+        }
+        return false;
+    }
+
+    public boolean isEnableAutoCommitTso() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTO_COMMIT_TSO);
+        }
+        return false;
     }
 }

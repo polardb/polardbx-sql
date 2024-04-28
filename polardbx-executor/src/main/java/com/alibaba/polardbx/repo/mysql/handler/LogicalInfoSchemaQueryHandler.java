@@ -380,11 +380,13 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
                 infoSchemaContext.getExecutionContext());
 
             boolean needRemoveGsi = false;
+            boolean needRemoveColumnar = false;
             boolean needRemoveNonPublic = false;
 
                 try {
                     TableMeta tableMeta = schemaManager.getTable(tableName);
                     needRemoveGsi = tableMeta.isGsi();
+                    needRemoveColumnar = tableMeta.isColumnar();
                     needRemoveNonPublic = tableMeta.getStatus() != TableStatus.PUBLIC;
                     tablesAutoPartInfo.put(tableName, tableMeta.isAutoPartition());
                 } catch (Throwable t) {
@@ -393,7 +395,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
             }
 
             if (isRecycleBinTable || isTableWithoutPrivileges || needRemoveGsi || needRemoveNonPublic
-                || isTruncateTmpTable) {
+                || isTruncateTmpTable || needRemoveColumnar) {
                 iter.remove();
             }
         }
@@ -1055,8 +1057,6 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
     }
 
     private TGroupDataSource getGroupDataSource(String groupName, LogicalInfoSchemaContext infoSchemaContext) {
-        TGroupDataSource defaultGroupDataSource = null;
-
         OptimizerContext optimizerContext = infoSchemaContext.getOptimizerContext();
 
         if (TStringUtil.isEmpty(groupName)) {
@@ -1064,9 +1064,7 @@ public abstract class LogicalInfoSchemaQueryHandler extends HandlerCommon {
         }
 
         DataSource dataSource = infoSchemaContext.getRealRepo().getDataSource(groupName);
-
-        defaultGroupDataSource = (TGroupDataSource) dataSource;
-        return defaultGroupDataSource;
+        return (TGroupDataSource) dataSource;
     }
 
     private TAtomDsConfDO getAtomRuntimeConfig(TGroupDataSource groupDataSource) {

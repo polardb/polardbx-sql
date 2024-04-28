@@ -109,4 +109,18 @@
             ) DEFAULT CHARSET=utf8;
         ]]></Create>
     </SystemTable>
+    <SystemTable name="trx_log_status">
+        <Create><![CDATA[
+            CREATE TABLE if not exists `trx_log_status` (
+              `id` int(11) not null,
+              `status` int(11) not null,
+              `current_table_name` varchar(512) not null default 'polarx_global_trx_log',
+              `gmt_created` timestamp not null default current_timestamp,
+              `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
+              `remark` text,
+              `flag` int(11) not null default '1' COMMENT '0 for legacy method, 1 for A/B table',
+              PRIMARY KEY (`id`)
+            ) DEFAULT CHARSET=utf8;
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

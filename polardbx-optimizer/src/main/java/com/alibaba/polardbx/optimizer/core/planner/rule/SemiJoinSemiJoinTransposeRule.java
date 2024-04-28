@@ -56,6 +56,20 @@ public class SemiJoinSemiJoinTransposeRule extends RelOptRule {
     }
 
     @Override
+    public boolean matches(RelOptRuleCall call) {
+        final LogicalSemiJoin topJoin = call.rel(0);
+        final LogicalSemiJoin bottomJoin = call.rel(1);
+        if (bottomJoin.getJoinReorderContext().isHasTopPushThrough()
+            || bottomJoin.getJoinReorderContext().isHasSemiFilter()) {
+            return false;
+        }
+        if (topJoin.getJoinReorderContext().isHasSemiFilter()) {
+            return false;
+        }
+        return true;
+    }
+
+    @Override
     public void onMatch(RelOptRuleCall call) {
         final LogicalSemiJoin topJoin = call.rel(0);
         final LogicalSemiJoin bottomJoin = call.rel(1);
@@ -83,14 +97,15 @@ public class SemiJoinSemiJoinTransposeRule extends RelOptRule {
             return;
         }
 
-        final Join newBottomJoin =
+        final LogicalSemiJoin newBottomJoin =
             topJoin.copy(topJoin.getTraitSet(), topJoin.getCondition(), relA,
                 relC, newJoinTypePair.getKey(), topJoin.isSemiJoinDone());
 
-        final Join newTopJoin =
+        final LogicalSemiJoin newTopJoin =
             bottomJoin.copy(bottomJoin.getTraitSet(), bottomJoin.getCondition(), newBottomJoin,
                 relB, newJoinTypePair.getValue(), bottomJoin.isSemiJoinDone());
 
+        newBottomJoin.getJoinReorderContext().setHasTopPushThrough(true);
         final RelBuilder relBuilder = call.builder();
         relBuilder.push(newTopJoin);
         call.transformTo(relBuilder.build());

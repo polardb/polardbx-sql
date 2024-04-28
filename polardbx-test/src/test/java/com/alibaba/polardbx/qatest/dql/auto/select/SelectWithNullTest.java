@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.qatest.dql.auto.select;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.qatest.ColumnarIgnore;
+import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import org.junit.Ignore;
@@ -113,6 +115,7 @@ public class SelectWithNullTest extends AutoReadBaseTestCase {
      * @since 5.3.12
      */
     @Test
+    @ColumnarIgnore
     public void shardingKeyIsNullTest() throws Exception {
         String sql = String.format("explain sharding select * from select_base_one_multi_db_multi_tb where pk is null");
         try {
@@ -130,6 +133,7 @@ public class SelectWithNullTest extends AutoReadBaseTestCase {
      * @since 5.3.12
      */
     @Test
+    @ColumnarIgnore
     public void shardingKeyEqualNullTest() throws Exception {
         String sql = String.format("explain sharding select * from select_base_one_multi_db_multi_tb where pk = null");
         try {

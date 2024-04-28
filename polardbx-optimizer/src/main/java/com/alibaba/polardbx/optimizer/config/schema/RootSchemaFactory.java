@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.optimizer.config.schema;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
@@ -24,9 +27,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import org.apache.calcite.DataContext;
 import org.apache.calcite.jdbc.CalciteSchema;
 import org.apache.calcite.linq4j.tree.Expression;
@@ -36,7 +36,6 @@ import org.apache.calcite.schema.SchemaPlus;
 import org.apache.calcite.schema.impl.AbstractSchema;
 import org.apache.calcite.util.BuiltInMethod;
 
-import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -78,19 +77,11 @@ public class RootSchemaFactory {
     }
 
     public static CalciteSchema createRootSchema(String schemaName, ExecutionContext ec) {
-        return createRootSchema(schemaName, ec.getSchemaManagers());
-    }
-
-    public static CalciteSchema createRootSchema(String schemaName, Map<String, SchemaManager> schemaManagerMap) {
         final Schema schema = new RootSchema();
-        final SchemaPlus rootSchema = new TddlCalciteSchema(schemaName, schemaManagerMap, null, schema, "").plus();
-        SchemaManager schemaManager = null;
-        if (schemaManagerMap != null && schemaManagerMap.containsKey(schemaName)) {
-            schemaManager = schemaManagerMap.get(schemaName);
-        } else {
-            schemaManager = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        }
-        rootSchema.add(schemaName, getSchema(schemaManager));
+        final SchemaPlus rootSchema =
+            new TddlCalciteSchema(schemaName, ec.getSchemaManagers(), null, schema, "").plus();
+
+        rootSchema.add(schemaName, getSchema(ec.getSchemaManager(schemaName)));
         rootSchema.add(InformationSchema.NAME, InformationSchema.getInstance());
         rootSchema.add(PerformanceSchema.NAME, PerformanceSchema.getInstance());
         rootSchema.add(MysqlSchema.NAME, MysqlSchema.getInstance());

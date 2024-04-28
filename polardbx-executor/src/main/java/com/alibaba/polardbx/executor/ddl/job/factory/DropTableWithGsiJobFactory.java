@@ -95,7 +95,8 @@ public class DropTableWithGsiJobFactory extends DdlJobFactory {
             preparedData.getPrimaryTablePreparedData().getTableVersion());
 
         PhysicalPlanData physicalPlanData =
-            DdlJobDataConverter.convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans);
+            DdlJobDataConverter.convertToPhysicalPlanData(primaryTableTopology, primaryTablePhysicalPlans,
+                executionContext);
         ExecutableDdlJob4DropTable dropPrimaryTableJob =
             (ExecutableDdlJob4DropTable) new DropTableJobFactory(physicalPlanData).create();
         result.combineTasks(dropPrimaryTableJob);

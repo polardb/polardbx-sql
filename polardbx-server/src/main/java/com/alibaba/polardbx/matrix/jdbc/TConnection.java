@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.matrix.jdbc;
 
+import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
@@ -26,7 +27,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.ShareReadViewPolicy;
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
-import com.alibaba.polardbx.common.lock.LockingFunctionManager;
+import com.alibaba.polardbx.server.lock.LockingFunctionManager;
 import com.alibaba.polardbx.common.logical.ITConnection;
 import com.alibaba.polardbx.common.logical.ITPrepareStatement;
 import com.alibaba.polardbx.common.logical.ITStatement;
@@ -59,6 +60,7 @@ import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.group.utils.GroupHintParser;
 import com.alibaba.polardbx.matrix.jdbc.utils.ByteStringUtil;
@@ -92,6 +94,7 @@ import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.planmanager.PreparedStmtCache;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
 import com.alibaba.polardbx.optimizer.utils.ExecutionPlanProperties;
 import com.alibaba.polardbx.optimizer.utils.FailureInjectionFlag;
@@ -103,10 +106,11 @@ import com.alibaba.polardbx.repo.mysql.cursor.ResultSetCursor;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
-import com.alibaba.polardbx.transaction.ITsoTransaction;
-import com.alibaba.polardbx.transaction.ReadOnlyTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.ITsoTransaction;
+import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
 import org.apache.calcite.rel.AbstractRelNode;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlCreateIndex;
@@ -189,6 +193,7 @@ public class TConnection implements ITConnection {
      */
     private long affectedRows = -1;
     private SQLTracer tracer;
+    private ColumnarTracer columnarTracer;
     private int socketTimeout = -1;
     // 下推到下层的系统变量，全部小写
     private Map<String, Object> serverVariables = null;
@@ -355,6 +360,7 @@ public class TConnection implements ITConnection {
             if (trace > 0) {
                 sql = sql.slice(trace);
                 this.tracer = new SQLTracer();
+                this.columnarTracer = new ColumnarTracer();
                 executionContext.setEnableTrace(true);
             } else if (executionContext.getLoadDataContext() != null && executionContext.getLoadDataContext()
                 .getParamManager()
@@ -366,6 +372,7 @@ public class TConnection implements ITConnection {
             }
 
             executionContext.setTracer(this.tracer);
+            executionContext.setColumnarTracer(this.columnarTracer);
             returnedLastInsertId = 0;
             this.generatedKeys.clear();
 
@@ -581,6 +588,7 @@ public class TConnection implements ITConnection {
         ExecutionPlan plan = Planner.getInstance().plan(sql, executionContext);
 
         databaseReadOnlyCheck(plan);
+        instanceReadOnlyCheck();
 
         // [mysql behavior]
         // comment can be executed, sql example :  "-- I can execute"
@@ -638,6 +646,7 @@ public class TConnection implements ITConnection {
         // If parameter 'trxPolicyModified' is provided,
         // Update transaction policy for modify of broadcast table and
         // of table with global secondary index
+        // Or Update transaction policy for columnar read
         if (trxPolicyModified != null) {
             trxPolicyModified.set(updateTransactionAndConcurrentPolicy(plan, executionContext));
             if (PlanManagerUtil.canOptByForcePrimary(plan, executionContext) && executionContext.isTsoTransaction()) {
@@ -711,9 +720,11 @@ public class TConnection implements ITConnection {
             ((ITsoTransaction) trx).updateSnapshotTimestamp();
         }
 
+        executionContext.setXplanStat(plan.isForbidXplan());
         executionContext.setFinalPlan(plan);
         if (!executionContext.isExecutingPreparedStmt()) {
             PolarPrivilegeUtils.checkPrivilege(plan, executionContext);
+            PolarPrivilegeUtils.checkLBACColumnAccess(plan, executionContext);
         }
         ScaleOutPlanUtil.checkDDLPermission(plan, executionContext);
         invalidInventoryMode(plan);
@@ -919,7 +930,7 @@ public class TConnection implements ITConnection {
      *
      * @return is transaction policy updated
      */
-    private boolean updateTransactionAndConcurrentPolicy(ExecutionPlan plan, ExecutionContext ec) {
+    private boolean updateTransactionAndConcurrentPolicyForDml(ExecutionPlan plan, ExecutionContext ec) {
 
         final BitSet properties = plan.getPlanProperties();
         final boolean currentModifyBroadcast = properties.get(ExecutionPlanProperties.MODIFY_BROADCAST_TABLE);
@@ -994,10 +1005,39 @@ public class TConnection implements ITConnection {
         }
 
         // create new transaction object
-        ITransaction trx = forceInitTransaction(ec);
+        ITransaction trx = forceInitTransaction(ec, false);
         ec.setTransaction(trx);
 
         return true;
+    }
+
+    /**
+     * update transaction and concurrent policy for columnar read
+     *
+     * @return is transaction policy updated
+     */
+    private boolean updateTransactionAndConcurrentPolicyForColumnar(ExecutionPlan plan, ExecutionContext ec) {
+        if (!plan.isUseColumnar()) {
+            return false;
+        }
+
+        ITransaction trx = forceInitTransaction(ec, true);
+        ec.setTransaction(trx);
+
+        return true;
+    }
+
+    /**
+     * update transaction and concurrent policy
+     *
+     * @return is transaction policy updated
+     */
+    private boolean updateTransactionAndConcurrentPolicy(ExecutionPlan plan, ExecutionContext ec) {
+        if (updateTransactionAndConcurrentPolicyForColumnar(plan, ec)) {
+            return true;
+        }
+
+        return updateTransactionAndConcurrentPolicyForDml(plan, ec);
     }
 
     /**
@@ -1074,6 +1114,44 @@ public class TConnection implements ITConnection {
         return 0;
     }
 
+    private boolean instanceReadOnly() {
+//        Object val = DynamicConfig.getInstance().isInstanceReadOnly();
+//        if (val != null) {
+//            return "1".equals(val) || "true".equalsIgnoreCase(val.toString()) || "on".equalsIgnoreCase(val.toString());
+//        }
+        return DynamicConfig.getInstance().isInstanceReadOnly();
+    }
+
+    private void instanceReadOnlyCheck() {
+        boolean isDML = isDML(executionContext.getSqlType());
+        boolean isDDL = isDDL(executionContext.getSqlType());
+        if (!isDML && !isDDL) {
+            return;
+        }
+        if (!instanceReadOnly()) {
+            return;
+        }
+
+        // inner ddl
+        if (!executionContext.isPrivilegeMode()) {
+            return;
+        }
+
+        // root
+        if (executionContext.isGod()) {
+            return;
+        }
+
+        // carry super_write session variables
+        String superWriteValue =
+            StringUtils.upperCase(executionContext.getParamManager().getString(ConnectionParams.SUPER_WRITE));
+        if ("1".equals(superWriteValue) || "ON".equals(superWriteValue) || "TRUE".equals(superWriteValue)) {
+            return;
+        }
+
+        throw new TddlRuntimeException(ErrorCode.ERR_INSTANCE_READ_ONLY_OPTION_NOT_SUPPORT);
+    }
+
     //when database status is readOnly, we forbid all dml sql
     private void databaseReadOnlyCheck(final ExecutionPlan plan) {
         boolean isDML = isDML(executionContext.getSqlType());
@@ -1082,7 +1160,7 @@ public class TConnection implements ITConnection {
             return;
         }
 
-        if (ConfigDataMode.isSlaveMode()) {
+        if (ConfigDataMode.isReadOnlyMode()) {
             if (isDML || isDDL) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TRANS_CANNOT_EXECUTE_IN_RO_TRX);
             }
@@ -1096,7 +1174,7 @@ public class TConnection implements ITConnection {
                 }
                 if (DbInfoManager.getInstance().ifDatabaseIsReadOnly(schemaName)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                        String.format("dml error because database [%s] is read only now", schemaName));
+                        String.format("dml/ddl error because database [%s] is read only now", schemaName));
                 }
 
             }
@@ -1231,7 +1309,8 @@ public class TConnection implements ITConnection {
         this.executionContext.setTxId(txId);
         this.executionContext.setTraceId(traceId);
         this.executionContext.setPhySqlId(phySqlId);
-        this.executionContext.setCluster(ConfigDataMode.getCluster());
+        this.executionContext.setCluster(
+            CobarServer.getInstance().getConfig().getCluster());
         this.executionContext.setRescheduled(rescheduled);
         this.executionContext.setReturning(null);
         this.executionContext.setOptimizedWithReturning(false);
@@ -1286,7 +1365,11 @@ public class TConnection implements ITConnection {
                     throw ex;
                 }
             } finally {
-                this.trx.close();
+                try {
+                    this.trx.close();
+                } catch (Throwable t) {
+                    logger.error("Trx closed failed in TConnection.setAutoCommit", t);
+                }
                 this.trx = null;
                 refreshTableMeta();
                 releaseTransactionalMdl(getExecutionContext());
@@ -1327,7 +1410,11 @@ public class TConnection implements ITConnection {
                     }
                 }
 
-                this.trx.close();
+                try {
+                    this.trx.close();
+                } catch (Throwable t) {
+                    logger.error("Trx closed failed in TConnection.commit", t);
+                }
                 this.trx = null;
                 // TODO: what if we are in async commit, and we release share lock before all branches are committed.
                 refreshTableMeta();
@@ -1350,7 +1437,11 @@ public class TConnection implements ITConnection {
                 if (isAutoCommit) {
                     this.trxPolicy = null;
                 }
-                this.trx.close();
+                try {
+                    this.trx.close();
+                } catch (Throwable t) {
+                    logger.error("Trx closed failed in TConnection.rollback", t);
+                }
                 this.trx = null;
                 refreshTableMeta();
                 releaseTransactionalMdl(executionContext);
@@ -1399,18 +1490,16 @@ public class TConnection implements ITConnection {
                 this.dataSource.releaseExecutorService(executorService);
             }
 
-            try {
-                releaseAllLocksHeldByTConn();
-            } catch (SQLException e) {
-                exceptions.add(e);
-            }
-
             ExceptionUtils.throwSQLException(exceptions, "close tconnection", Collections.EMPTY_LIST);
         } finally {
             try {
                 cleanHints();
                 if (this.trx != null) {
-                    this.trx.close();
+                    try {
+                        this.trx.close();
+                    } catch (Throwable t) {
+                        logger.error("Trx closed failed in TConnection.close()", t);
+                    }
                     releaseTransactionalMdl(executionContext);
                     refreshTableMeta();
                 }
@@ -1594,8 +1683,6 @@ public class TConnection implements ITConnection {
                     trx.kill();
                 }
 
-                releaseAllLocksHeldByTConn();
-
             } catch (SQLException e) {
                 exceptions.add(e);
             }
@@ -1669,7 +1756,7 @@ public class TConnection implements ITConnection {
             }
 
             boolean readOnly =
-                this.readOnly || (ConfigDataMode.isSlaveMode() && executionContext.getParamManager().getBoolean(
+                this.readOnly || (ConfigDataMode.isReadOnlyMode() && executionContext.getParamManager().getBoolean(
                     ConnectionParams.ENABLE_CONSISTENT_REPLICA_READ));
             TransactionClass trxConfig = trxPolicy.getTransactionType(autoCommit, readOnly);
             if (logicalTimeZone != null) {
@@ -1692,7 +1779,7 @@ public class TConnection implements ITConnection {
         }
     }
 
-    private ITransaction forceInitTransaction(ExecutionContext executionContext) {
+    private ITransaction forceInitTransaction(ExecutionContext executionContext, boolean isColumnarRead) {
         lock.lock();
 
         try {
@@ -1707,14 +1794,21 @@ public class TConnection implements ITConnection {
                 groupParallelism = this.executionContext.getParamManager().getLong(ConnectionParams.GROUP_PARALLELISM);
             }
 
-            boolean isSingleShard = false;
-            if (executionContext.getFinalPlan() != null) {
-                RelNode plan = executionContext.getFinalPlan().getPlan();
-                isSingleShard = plan instanceof SingleTableOperation || plan instanceof DirectTableOperation
-                    || plan instanceof DirectShardingKeyTableOperation;
+            TransactionClass trxConfig;
+            if (!isColumnarRead) {
+                boolean isSingleShard = false;
+                if (executionContext.getFinalPlan() != null) {
+                    RelNode plan = executionContext.getFinalPlan().getPlan();
+                    isSingleShard = plan instanceof SingleTableOperation || plan instanceof DirectTableOperation
+                        || plan instanceof DirectShardingKeyTableOperation;
+                }
+
+                trxConfig = trxPolicy.getTransactionType(false, executionContext.isReadOnly(),
+                    isSingleShard);
+            } else {
+                trxConfig = TransactionClass.COLUMNAR_READ_ONLY_TRANSACTION;
             }
-            TransactionClass trxConfig = trxPolicy.getTransactionType(false, executionContext.isReadOnly(),
-                isSingleShard);
+
             if (logicalTimeZone != null) {
                 setTimeZoneVariable(serverVariables);
             }
@@ -1851,7 +1945,11 @@ public class TConnection implements ITConnection {
             // Fix #33255974: Should close transaction after write into table with GSI
             if (isAutoCommit && trxPolicy != ITransactionPolicy.NO_TRANSACTION) {
                 if (this.trx != null) {
-                    this.trx.close();
+                    try {
+                        this.trx.close();
+                    } catch (Throwable t) {
+                        logger.error("Trx closed failed in TConnection.tryClose", t);
+                    }
                     refreshTableMeta();
                 }
             }
@@ -1912,17 +2010,13 @@ public class TConnection implements ITConnection {
 
     public int getWarningCount() {
         int warningCount = 0;
-        if (executionContext.getExtraDatas().get(ExecutionContext.FAILED_MESSAGE) != null) {
+        if (executionContext.getExtraDatas().get(ExecutionContext.WARNING_MESSAGE) != null) {
             warningCount += ((List) executionContext.getExtraDatas()
-                .get(ExecutionContext.FAILED_MESSAGE)).size();
+                .get(ExecutionContext.WARNING_MESSAGE)).size();
         }
         if (executionContext.getExtraDatas().get(ExecutionContext.LAST_FAILED_MESSAGE) != null) {
             warningCount += ((List) executionContext.getExtraDatas()
                 .get(ExecutionContext.LAST_FAILED_MESSAGE)).size();
-        }
-        if (executionContext.getExtraDatas().get(ExecutionContext.WARNING_MESSAGE) != null) {
-            warningCount += ((List) executionContext.getExtraDatas()
-                .get(ExecutionContext.WARNING_MESSAGE)).size();
         }
         return warningCount;
     }
@@ -2024,16 +2118,9 @@ public class TConnection implements ITConnection {
             return null;
         }
         if (lockHandle == null) {
-            lockHandle = LockingFunctionManager.getInstance().getHandle(this, id);
+            lockHandle = LockingFunctionManager.getInstance().getHandle(id);
         }
         return lockHandle;
-    }
-
-    private void releaseAllLocksHeldByTConn() throws SQLException {
-        // release all locks hold by this connection.
-        if (lockHandle != null) {
-            lockHandle.releaseAllLocks();
-        }
     }
 
     /**

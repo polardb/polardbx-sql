@@ -152,8 +152,9 @@ public class PartitionSpec extends PartSpecBase {
         boolean needExpandBoundVal = true;
         switch (partStrategy) {
         case HASH:
+        case DIRECT_HASH:
         case KEY:
-            if (partStrategy == PartitionStrategy.HASH) {
+            if (partStrategy == PartitionStrategy.HASH || partStrategy == PartitionStrategy.DIRECT_HASH) {
                 /**
                  * Because the length of all the bound values of hash is 1
                  */
@@ -174,6 +175,20 @@ public class PartitionSpec extends PartSpecBase {
              * show the full bound values of udf_hash
              */
             needExpandBoundVal = true;
+            sb.append(" VALUES LESS THAN (");
+            break;
+        case CO_HASH:
+            /**
+             * Because the length of all the bound values of co_hash is always 1
+             */
+            bndValPrefixColCnt = 1;
+            /**
+             * show the full bound values of co_hash
+             */
+            if (!showHashByRange) {
+                needExpandBoundVal = false;
+                break;
+            }
             sb.append(" VALUES LESS THAN (");
             break;
         case RANGE:
@@ -407,7 +422,8 @@ public class PartitionSpec extends PartSpecBase {
             if (prefixPartColCnt == PartitionInfoUtil.FULL_PART_COL_COUNT) {
                 isEqual = boundSpec.equals(((PartitionSpec) obj).getBoundSpec());
             } else {
-                if (strategy == PartitionStrategy.HASH) {
+                if (strategy == PartitionStrategy.HASH || strategy == PartitionStrategy.DIRECT_HASH
+                    || strategy == PartitionStrategy.CO_HASH) {
                     /**
                      * Both single-part-columns hash or mulit-part-columns hash, their bound value col has only one,
                      * and not support prefix partition column comparing, so must use full-part-col equal method
@@ -417,7 +433,6 @@ public class PartitionSpec extends PartSpecBase {
                 } else {
                     isEqual = boundSpec.equals(((PartitionSpec) obj).getBoundSpec(), prefixPartColCnt);
                 }
-
             }
         }
 

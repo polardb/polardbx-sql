@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.balancer.action;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.ddl.job.MockDdlJob;
 import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -34,6 +33,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.UnArchiveJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
@@ -60,7 +60,6 @@ import org.apache.calcite.rel.ddl.RefreshTopology;
 import org.apache.calcite.rel.ddl.UnArchive;
 import org.apache.calcite.sql.SqlDdl;
 import org.apache.calcite.sql.SqlNode;
-import org.apache.commons.lang3.StringUtils;
 
 /**
  * @since 2021/03
@@ -132,7 +131,8 @@ public class ActionUtils {
         } else if (ddl instanceof AlterTableGroupMovePartition) {
             LogicalAlterTableGroupMovePartition movePartition = LogicalAlterTableGroupMovePartition.create(ddl);
             movePartition.setSchemaName(schema);
-            movePartition.preparedData(ec);
+            boolean usePhysicalBackfill = PhysicalBackfillUtils.isSupportForPhysicalBackfill(schema, ec);
+            movePartition.preparedData(ec, usePhysicalBackfill);
             ddlContext.setDdlType(movePartition.getDdlType());
             return AlterTableGroupMovePartitionJobFactory.create(ddl, movePartition.getPreparedData(), ec);
         } else if (ddl instanceof UnArchive) {
@@ -179,5 +179,9 @@ public class ActionUtils {
 
     public static String genRebalanceClusterName() {
         return LockUtil.genRebalanceClusterName();
+    }
+
+    public static String genRebalanceTenantResourceName(String tenantName) {
+        return LockUtil.genRebalanceResourceName(RebalanceTarget.TENANT, tenantName);
     }
 }

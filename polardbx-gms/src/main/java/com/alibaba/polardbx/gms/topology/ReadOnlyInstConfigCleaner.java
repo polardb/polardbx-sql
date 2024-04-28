@@ -20,14 +20,16 @@ import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.node.LeaderStatusBridge;
 import com.alibaba.polardbx.gms.privilege.quarantine.QuarantineConfigAccessor;
-import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -49,14 +51,24 @@ public class ReadOnlyInstConfigCleaner extends AbstractLifecycle {
     protected static class ReadOnlyInstConfigCleanTask implements Runnable {
         @Override
         public void run() {
+            if (!LeaderStatusBridge.getInstance().hasLeadership()) {
+                return;
+            }
 
             try {
 
                 try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
 
+                    List<String> removedInstIdList = new ArrayList<>();
+                    //find the removed columnar read only instId
+                    ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
+                    serverInfoAccessor.setConnection(metaDbConn);
+                    removedInstIdList.addAll(serverInfoAccessor.getAllRemovedColumnarReadOnlyInstIdList());
+
+                    //find the removed row read only instId
                     StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
                     storageInfoAccessor.setConnection(metaDbConn);
-                    List<String> removedInstIdList = storageInfoAccessor.getAllRemovedReadOnlyInstIdList();
+                    removedInstIdList.addAll(storageInfoAccessor.getAllRemovedReadOnlyInstIdList());
                     if (removedInstIdList.isEmpty()) {
                         return;
                     }
@@ -87,7 +99,7 @@ public class ReadOnlyInstConfigCleaner extends AbstractLifecycle {
     protected void doInit() {
 
         // Only Master inst allow to do the clean task of removed read-only inst task
-        if (!ServerInstIdManager.instance.isMasterInstId(InstIdUtil.getInstId())) {
+        if (!ConfigDataMode.isMasterMode()) {
             return;
         }
 

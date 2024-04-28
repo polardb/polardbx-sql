@@ -73,8 +73,6 @@ public class RenameGsiJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
-        executionContext.setPhyTableRenamed(false);
-
         TableMeta tableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(gsiName);
         String primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
@@ -82,7 +80,7 @@ public class RenameGsiJobFactory extends DdlJobFactory {
         DdlTask validateTask = new RenameTableValidateTask(schemaName, gsiName, newGsiName);
         DdlTask addMetaTask = new RenameTableAddMetaTask(schemaName, gsiName, newGsiName);
 
-        DdlTask updateMetaTask = new RenameGsiUpdateMetaTask(schemaName, primaryTableName, gsiName, newGsiName);
+        DdlTask updateMetaTask = new RenameGsiUpdateMetaTask(schemaName, primaryTableName, gsiName, newGsiName, false);
         DdlTask syncTask = new TableSyncTask(schemaName, primaryTableName);
 
         List<DdlTask> taskList = new ArrayList<>();

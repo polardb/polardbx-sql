@@ -1,0 +1,85 @@
+## DISABLE_FAST_SQL_PARSER
+
+
+CREATE TABLE `orders_tbl` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` bigint(11) NOT NULL,
+`user_id` bigint(11) NOT NULL,
+`item_id` bigint(11) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(RIGHT(`order_id`, 5),RIGHT(`user_id`, 5))
+PARTITIONS 16;
+
+
+CREATE TABLE `user_tbl` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`user_id` bigint(11) NOT NULL,
+`user_name` varchar(32) NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`user_id`)
+PARTITIONS 16;
+
+
+CREATE TABLE `orders_detail_tbl` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` bigint(11) NOT NULL,
+`item_id` bigint(11) NOT NULL,
+`order_time` datetime NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`order_id`）
+PARTITIONS 16;
+
+
+
+begin;
+
+#explain insert into user_tbl (user_id,user_name) values (1001111,'1001111'), (1001233, '1001233'), (1001234, '1001234'),(1001244, '1001244');
+insert into user_tbl (user_id,user_name) values (1111,'1001111'), (1233, '1001233'), (1234, '1001234'),(1244, '1001244');
+
+#explain insert into orders_tbl (order_id, user_id, item_id) values (10001001111, 1001111, 9000),(10001001233, 1001233, 9002),(10001001234, 1001234, 9001),(10001001244, 1001244, 9003);
+insert into orders_tbl (order_id, user_id, item_id) values (10001001111, 1111, 9000),(10001001233, 1233, 9002),(10001001234, 1234, 9001),(10001001244, 1244, 9003);
+
+#explain insert into orders_detail_tbl (order_id, item_id, order_time) values (10001001111, 9000, '2023-11-23'), (10001001233, 9002, '2022-11-22'), (10001001234, 9001, '2023-10-11' ), (10001001244, 9003, '2023-10-13');
+insert into orders_detail_tbl (order_id, item_id, order_time) values (10001001111, 9000, '2023-11-23'), (10001001233, 9002, '2022-11-22'), (10001001234, 9001, '2023-10-11' ), (10001001244, 9003, '2023-10-13');
+
+select part_route('', 'user_tbl', user_id) from user_tbl order by user_id;
+select part_route('', 'orders_detail_tbl', order_id) from orders_detail_tbl order by order_id;
+
+explain select user_id, order_id from orders_tbl where user_id=01111;
+explain select user_id, order_id from orders_tbl where user_id=01233;
+explain select user_id, order_id from orders_tbl where user_id=01234;
+explain select user_id, order_id from orders_tbl where user_id=01244;
+
+explain select user_id, order_id from orders_tbl where order_id=10001001111;
+explain select user_id, order_id from orders_tbl where order_id=10001001233;
+explain select user_id, order_id from orders_tbl where order_id=10001001234;
+explain select user_id, order_id from orders_tbl where order_id=10001001244;
+
+select user_id from user_tbl where user_id=1111;
+select order_id from orders_detail_tbl where order_id=10001001111;
+select user_id, order_id from orders_tbl where user_id=1111;
+select user_id, order_id from orders_tbl where order_id=10001001111;
+
+select user_id from user_tbl where user_id=1233;
+select order_id from orders_detail_tbl where order_id=10001001233;
+select user_id, order_id from orders_tbl where user_id=1233;
+select user_id, order_id from orders_tbl where order_id=10001001233;
+
+select user_id from user_tbl where user_id=1234;
+select order_id from orders_detail_tbl where order_id=10001001234;
+select user_id, order_id from orders_tbl where user_id=1234;
+select user_id, order_id from orders_tbl where order_id=10001001234;
+
+select user_id from user_tbl where user_id=1244;
+select order_id from orders_detail_tbl where order_id=10001001244;
+select user_id, order_id from orders_tbl where user_id=1244;
+select user_id, order_id from orders_tbl where order_id=10001001244;
+
+rollback;
+
+drop table orders_tbl;
+drop table user_tbl;
+drop table orders_detail_tbl;

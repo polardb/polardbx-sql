@@ -27,7 +27,7 @@ public class RplStatMetrics implements SystemTableRecord {
     private Long taskId;
     private String channel;
     private String subChannel;
-    private Integer taskType;
+    private String taskType;
     private Timestamp gmtCreated;
     private Timestamp gmtModified;
     private Long inEps;
@@ -57,7 +57,7 @@ public class RplStatMetrics implements SystemTableRecord {
         this.taskId = rs.getLong("task_id");
         this.channel = rs.getString("channel");
         this.subChannel = rs.getString("sub_channel");
-        this.taskType = rs.getInt("task_type");
+        this.taskType = rs.getString("task_type");
         this.gmtCreated = rs.getTimestamp("gmt_created");
         this.gmtModified = rs.getTimestamp("gmt_modified");
         this.inEps = rs.getLong("in_eps");
@@ -187,7 +187,7 @@ public class RplStatMetrics implements SystemTableRecord {
         return subChannel;
     }
 
-    public Integer getTaskType() {
+    public String getTaskType() {
         return taskType;
     }
 }

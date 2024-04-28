@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.properties;
 
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.statementsummary.StatementSummaryManager;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -85,6 +86,9 @@ public class DynamicConfig {
             case ConnectionProperties.OPTIMIZER_ALERT_LOG_INTERVAL:
                 optimizerAlertLogInterval = parseValue(value, Long.class, 600000L);
                 break;
+            case ConnectionProperties.ENABLE_TP_SLOW_ALERT_THRESHOLD:
+                tpSlowAlertThreshold = parseValue(value, Integer.class, 10);
+                break;
             case ConnectionProperties.STORAGE_BUSY_THRESHOLD:
                 busyThreshold = parseValue(value, Integer.class, 100);
                 break;
@@ -125,6 +129,11 @@ public class DynamicConfig {
                     learnerMode = tempLearnerMode;
                 }
                 break;
+
+            case ConnectionProperties.BLOCK_CACHE_MEMORY_SIZE_FACTOR:
+                blockCacheMemoryFactor = parseValue(value, Float.class, 0.6f);
+                break;
+
             case ConnectionProperties.PURGE_HISTORY_MS: {
                 long tempPurgeHistoryMs = parseValue(value, Long.class, 600 * 1000L);
                 if (tempPurgeHistoryMs > 0 && tempPurgeHistoryMs < purgeHistoryMs) {
@@ -141,6 +150,9 @@ public class DynamicConfig {
 
             case ConnectionProperties.MAX_SESSION_PREPARED_STMT_COUNT:
                 maxSessionPreparedStmtCount = parseValue(value, Integer.class, maxSessionPreparedStmtCountDefault);
+                break;
+            case ConnectionProperties.STATISTIC_IN_DEGRADATION_NUMBER:
+                inDegradationNum = parseValue(value, Integer.class, 100);
                 break;
 
             case ConnectionProperties.ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX:
@@ -190,6 +202,21 @@ public class DynamicConfig {
                 break;
             case ConnectionProperties.FOREIGN_KEY_CHECKS:
                 foreignKeyChecks = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_XPROTO_RESULT_DECIMAL64:
+                enableXResultDecimal64 = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_COLUMNAR_DECIMAL64:
+                enableColumnarDecimal64 = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.MAX_CONNECTIONS:
+                maxConnections = parseValue(value, Integer.class, 20000);
+                break;
+            case ConnectionProperties.MAX_ALLOWED_PACKET:
+                maxAllowedPacket = parseValue(value, Integer.class, 16 * 1024 * 1024);
+                break;
+            case ConnectionProperties.PHYSICAL_DDL_MDL_WAITING_TIMEOUT:
+                phyiscalMdlWaitTimeout = parseValue(value, Integer.class, 15);
                 break;
             case ConnectionProperties.ENABLE_STATEMENTS_SUMMARY:
                 int enableStatementsSummary = parseValue(value, Boolean.class, true) ? 1 : 0;
@@ -260,8 +287,72 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_2PC_OPT:
                 enable2pcOpt = parseValue(value, Boolean.class, false);
                 break;
+            case ConnectionProperties.COMPATIBLE_CHARSET_VARIABLES:
+                compatibleCharsetVariables = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.VERSION_PREFIX:
+                String versionPrefix = parseValue(value, String.class, null);
+                InstanceVersion.reloadVersion(versionPrefix);
+                break;
+            case ConnectionProperties.TRX_LOG_METHOD:
+                trxLogMethod = parseValue(value, Integer.class, 0);
+                break;
+            case ConnectionProperties.TRX_LOG_CLEAN_INTERVAL:
+                trxLogCleanInterval = parseValue(value, Integer.class, 30);
+                break;
+            case ConnectionProperties.SKIP_LEGACY_LOG_TABLE_CLEAN:
+                skipLegacyLogTableClean = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.WARM_UP_DB_PARALLELISM:
+                warmUpDbParallelism = parseValue(value, Integer.class, 1);
+                break;
+            case ConnectionProperties.WARM_UP_DB_INTERVAL:
+                warmUpDbInterval = parseValue(value, Long.class, 60L);
+                break;
+            case ConnectionProperties.MAX_PARTITION_NAME_LENGTH: {
+                int newPartNameLength = parseValue(value, Integer.class,
+                    Integer.valueOf(ConnectionParams.MAX_PARTITION_NAME_LENGTH.getDefault()));
+                /**
+                 * For protect partition meta. The max allowed length of (sub)partition name in metadb is 64
+                 * , but subpartName = partName+subpartTempName, so the max allowed length of partition name
+                 * should be 32.
+                 */
+                if (newPartNameLength > 32) {
+                    newPartNameLength = 32;
+                }
+                if (newPartNameLength < 0) {
+                    newPartNameLength = Integer.valueOf(ConnectionParams.MAX_PARTITION_NAME_LENGTH.getDefault());
+                }
+                maxPartitionNameLength = newPartNameLength;
 
+            }
+            break;
+            case ConnectionProperties.ENABLE_HLL:
+                enableHll = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_TRX_EVENT_LOG:
+                enableTrxEventLog = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_TRX_DEBUG_MODE:
+                enableTrxDebugMode = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_MQ_CACHE_COST_BY_THREAD:
+                enableMQCacheByThread = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.INSTANCE_READ_ONLY:
+                instanceReadOnly = parseValue(value, Boolean.class, false);
+                break;
+            case ConnectionProperties.ENABLE_1PC_OPT:
+                enable1PcOpt = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.MIN_SNAPSHOT_KEEP_TIME:
+                minSnapshotKeepTime = parseValue(value, Integer.class, 5 * 60 * 1000);
+                break;
+            case ConnectionProperties.FORBID_AUTO_COMMIT_TRX:
+                forbidAutoCommitTrx = parseValue(value, Boolean.class, false);
+                break;
             default:
+                FileConfig.getInstance().loadValue(logger, key, value);
                 break;
             }
         }
@@ -337,8 +428,24 @@ public class DynamicConfig {
         parseValue(ConnectionParams.AUTO_PARTITION_PARTITIONS.getDefault(), Long.class, 64L);
     private volatile long autoPartitionPartitions = autoPartitionPartitionsDefault;
 
-    public long getAutoPartitionPartitions() {
-        return autoPartitionPartitions;
+    private static final long autoPartitionCciPartitionsDefault =
+        parseValue(ConnectionParams.COLUMNAR_DEFAULT_PARTITIONS.getDefault(), Long.class, 64L);
+    private volatile long autoPartitionCciPartitions = autoPartitionCciPartitionsDefault;
+
+    private static final float blockCacheMemoryFactorDefault =
+        parseValue(ConnectionParams.BLOCK_CACHE_MEMORY_SIZE_FACTOR.getDefault(), Float.class, 0.6f);
+    private volatile float blockCacheMemoryFactor = blockCacheMemoryFactorDefault;
+
+    public float getBlockCacheMemoryFactor() {
+        return blockCacheMemoryFactor;
+    }
+
+    public long getAutoPartitionPartitions(boolean isColumnar) {
+        return isColumnar ? autoPartitionCciPartitions : autoPartitionPartitions;
+    }
+
+    public long getAutoPartitionCciPartitions() {
+        return autoPartitionCciPartitions;
     }
 
     private volatile int delayThreshold = 3;
@@ -364,6 +471,12 @@ public class DynamicConfig {
 
     public long getOptimizerAlertLogInterval() {
         return optimizerAlertLogInterval;
+    }
+
+    private volatile int tpSlowAlertThreshold = 10;
+
+    public int getTpSlowAlertThreshold() {
+        return tpSlowAlertThreshold;
     }
 
     private volatile int busyThreshold = 100;
@@ -476,10 +589,41 @@ public class DynamicConfig {
         return useJdkDefaultSer;
     }
 
+    private volatile boolean enableXResultDecimal64 = false;
+
+    public boolean enableXResultDecimal64() {
+        return enableXResultDecimal64;
+    }
+
+    private volatile boolean enableColumnarDecimal64 = true;
+
+    public boolean enableColumnarDecimal64() {
+        return enableColumnarDecimal64;
+    }
+
     private volatile boolean enableOrOpt = true;
 
     public boolean useOrOpt() {
         return enableOrOpt;
+    }
+
+    private volatile boolean enableHll = true;
+
+    public boolean enableHll() {
+        return enableHll;
+    }
+
+    private volatile boolean enableMQCacheByThread = true;
+
+    public boolean isEnableMQCacheByThread() {
+        return enableMQCacheByThread;
+    }
+
+    private volatile int inDegradationNum =
+        parseValue(ConnectionParams.STATISTIC_IN_DEGRADATION_NUMBER.getDefault(), Integer.class, 100);
+
+    public int getInDegradationNum() {
+        return inDegradationNum;
     }
 
     private static final int maxSessionPreparedStmtCountDefault =
@@ -596,6 +740,12 @@ public class DynamicConfig {
         return databaseDefaultSingle;
     }
 
+    private volatile boolean compatibleCharsetVariables = false;
+
+    public boolean isCompatibleCharsetVariables() {
+        return compatibleCharsetVariables;
+    }
+
     private volatile ConfigDataMode.LearnerMode learnerMode = ConfigDataMode.LearnerMode.ONLY_READ;
 
     public ConfigDataMode.LearnerMode learnerMode() {
@@ -606,6 +756,148 @@ public class DynamicConfig {
 
     public boolean isEnable2pcOpt() {
         return enable2pcOpt;
+    }
+
+    //---------------  the followed setting is for test -------------------
+    private boolean supportSingleDbMultiTbs = false;
+    private boolean supportRemoveDdl = false;
+    private boolean supportDropAutoSeq = false;
+    private boolean allowSimpleSequence = false;
+
+    public boolean isSupportSingleDbMultiTbs() {
+        return supportSingleDbMultiTbs;
+    }
+
+    public void setSupportSingleDbMultiTbs(boolean supportSingleDbMultiTbs) {
+        this.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
+    }
+
+    public boolean isSupportRemoveDdl() {
+        return supportRemoveDdl;
+    }
+
+    public void setSupportRemoveDdl(boolean supportRemoveDdl) {
+        this.supportRemoveDdl = supportRemoveDdl;
+    }
+
+    public boolean isSupportDropAutoSeq() {
+        return supportDropAutoSeq;
+    }
+
+    public void setSupportDropAutoSeq(boolean supportDropAutoSeq) {
+        this.supportDropAutoSeq = supportDropAutoSeq;
+    }
+
+    public boolean isAllowSimpleSequence() {
+        return allowSimpleSequence;
+    }
+
+    public void setAllowSimpleSequence(boolean allowSimpleSequence) {
+        this.allowSimpleSequence = allowSimpleSequence;
+    }
+
+    private volatile int trxLogMethod = 0;
+
+    public int getTrxLogMethod() {
+        return trxLogMethod;
+    }
+
+    private volatile long trxLogCleanInterval = 30;
+
+    public long getTrxLogCleanInterval() {
+        return trxLogCleanInterval;
+    }
+
+    private volatile boolean skipLegacyLogTableClean = false;
+
+    public boolean isSkipLegacyLogTableClean() {
+        return skipLegacyLogTableClean;
+    }
+
+    private volatile int warmUpDbParallelism = 1;
+
+    public int getWarmUpDbParallelism() {
+        return warmUpDbParallelism < 0 ? 1 : warmUpDbParallelism;
+    }
+
+    private String columnarOssDirectory;
+
+    public String getColumnarOssDirectory() {
+        return columnarOssDirectory;
+    }
+
+    public void setColumnarOssDirectory(String columnarOssDirectory) {
+        this.columnarOssDirectory = columnarOssDirectory;
+    }
+
+    /**
+     * Default 60s.
+     */
+    private volatile long warmUpDbInterval = 60;
+
+    public long getWarmUpDbInterval() {
+        return warmUpDbInterval;
+    }
+
+    public int maxPartitionNameLength = Integer.valueOf(ConnectionParams.MAX_PARTITION_NAME_LENGTH.getDefault());
+
+    public int getMaxPartitionNameLength() {
+        return maxPartitionNameLength;
+    }
+
+    private volatile int maxConnections = 20000;
+
+    public int getMaxConnections() {
+        return maxConnections;
+    }
+
+    private volatile int maxAllowedPacket = 16 * 1024 * 1024;
+
+    public int getMaxAllowedPacket() {
+        return maxAllowedPacket;
+    }
+
+    private volatile boolean enableTrxEventLog = true;
+
+    public boolean isEnableTrxEventLog() {
+        return enableTrxEventLog;
+    }
+
+    private volatile boolean enableTrxDebugMode = false;
+
+    public boolean isEnableTrxDebugMode() {
+        return enableTrxDebugMode;
+    }
+
+    private volatile int phyiscalMdlWaitTimeout = 15;
+
+    public int getPhyiscalMdlWaitTimeout() {
+        return phyiscalMdlWaitTimeout;
+    }
+
+    private volatile boolean instanceReadOnly = false;
+
+    public boolean isInstanceReadOnly() {
+        return instanceReadOnly;
+    }
+
+    private volatile boolean enable1PcOpt = true;
+
+    public boolean isEnable1PcOpt() {
+        return enable1PcOpt;
+    }
+
+    // 5 min.
+    private volatile long minSnapshotKeepTime = 5 * 60 * 1000;
+
+    public long getMinSnapshotKeepTime() {
+        return minSnapshotKeepTime;
+    }
+
+    private volatile boolean forbidAutoCommitTrx = false;
+
+    public boolean isForbidAutoCommitTrx() {
+        return forbidAutoCommitTrx;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

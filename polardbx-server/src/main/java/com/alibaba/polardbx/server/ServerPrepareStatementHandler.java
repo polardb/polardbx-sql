@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.server;
 
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
@@ -52,15 +51,11 @@ import com.alibaba.polardbx.server.parser.ServerParse;
 import com.alibaba.polardbx.server.util.LogUtils;
 import com.alibaba.polardbx.server.util.PrepareUtils;
 import com.alibaba.polardbx.server.util.StringUtil;
-import com.alibaba.polardbx.stats.MatrixStatistics;
 
 import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.locks.Lock;
 
 /**
@@ -115,7 +110,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             stmtIdStr = Integer.toString(stmtId);
             spp.read(data); // convert into spp format
 
-            String javaCharset = CharsetUtil.getJavaCharset(c.getCharset());
+            String javaCharset = CharsetUtil.getJavaCharset(c.getResultSetCharset());
             Charset cs = null;
             try {
                 cs = Charset.forName(javaCharset);
@@ -123,7 +118,8 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 // do nothing
             }
             if (cs == null) {
-                c.writeErrMessage(ErrorCode.ER_UNKNOWN_CHARACTER_SET, "Unknown charset '" + c.getCharset() + "'");
+                c.writeErrMessage(ErrorCode.ER_UNKNOWN_CHARACTER_SET,
+                    "Unknown charset '" + c.getResultSetCharset() + "'");
                 return;
             }
 
@@ -181,7 +177,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 c.getSchema(),
                 fieldMetaDataList,
                 stmt.getPrepareParamCount(),
-                c.getCharset(), c);
+                c.getResultSetCharset(), c);
 
             // send back response to client
             c.savePrepareStmtCache(preparedStmtCache, true);
@@ -238,7 +234,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
         c.resetTrxLastActiveTime();
         try {
             StmtExecutePacket packet = new StmtExecutePacket();
-            packet.charset = CharsetUtil.getJavaCharset(c.getCharset());
+            packet.charset = CharsetUtil.getJavaCharset(c.getResultSetCharset());
             // read stmt_id firstly then find num_params
             MySQLMessage msg = packet.readBeforeStmtId(data);
 
@@ -304,7 +300,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
                 c.getSchema(),
                 new ArrayList<>(),
                 0,
-                c.getCharset(), c);
+                c.getResultSetCharset(), c);
 
             // send back response to client
             packet.write(PacketOutputProxyFactory.getInstance().createProxy(c, c.allocate()));
@@ -348,7 +344,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
             StmtClosePacket packet = new StmtClosePacket();
             packet.read(data);
             String stmt_id = String.valueOf(packet.stmt_id);
-            c.removePreparedCache(stmt_id);
+            c.removePreparedCache(stmt_id, true);
             // Close and remove the cached result set when statement is closed.
             c.closeCacheResultSet(packet.stmt_id);
             // no response for STMT_CLOSE
@@ -393,7 +389,7 @@ public class ServerPrepareStatementHandler implements StatementHandler {
 
         try {
             StmtLongDataPacket packet = new StmtLongDataPacket();
-            packet.charset = CharsetUtil.getJavaCharset(c.getCharset());
+            packet.charset = CharsetUtil.getJavaCharset(c.getResultSetCharset());
             MySQLMessage mm = packet.readBeforeParamId(data);
 
             String stmtId = String.valueOf(packet.stmt_id);

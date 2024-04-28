@@ -123,6 +123,9 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
 
         String showTrace = String.format("show trace");
 
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "show variables like 'ENABLE_XA_TSO'");
+        boolean isXaTsoTrx = rs.next() && rs.getBoolean("Value");
+
         tddlConnection.setAutoCommit(false);
         JdbcUtil.setTxPolicy(transPolicy, tddlConnection);
         if (transPolicy == ITransactionPolicy.XA) {
@@ -139,7 +142,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
                 statement1.execute(sql1);
                 throw new RuntimeException("Don't expect here!");
             } catch (Throwable t) {
-                if (transPolicy == ITransactionPolicy.TSO) {
+                if (transPolicy == ITransactionPolicy.TSO || (transPolicy == ITransactionPolicy.XA && isXaTsoTrx)) {
                     Assert.assertTrue(t.getMessage()
                         .contains("Don't support the Inventory Hint on current Transaction Policy"));
                 } else {
@@ -176,7 +179,7 @@ public class InventorHintUpdateTest extends CrudBasedLockTestCase {
                 statement1.execute(sql1);
                 statement1.close();
             } catch (Throwable t) {
-                if (transPolicy == ITransactionPolicy.TSO) {
+                if (transPolicy == ITransactionPolicy.TSO || (transPolicy == ITransactionPolicy.XA && isXaTsoTrx)) {
                     Assert.assertTrue(t.getMessage()
                         .contains("Don't support the Inventory Hint on current Transaction Policy"));
                     statement1.close();

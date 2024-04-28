@@ -19,7 +19,6 @@ package com.alibaba.polardbx.optimizer.utils;
 import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
-import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -241,6 +240,7 @@ public class OptimizerUtils {
         case DROP_SCHEDULE:
         case ALTER_FILESTORAGE:
         case DROP_FILESTORAGE:
+        case CLEAR_FILESTORAGE:
         case CREATE_FILESTORAGE:
         case PAUSE_SCHEDULE:
         case CONTINUE_SCHEDULE:
@@ -254,6 +254,19 @@ public class OptimizerUtils {
         case DROP_STORAGE_POOL:
         case ALTER_STORAGE_POOL:
         case INSPECT_INDEX:
+        case IMPORT_DATABASE:
+        case IMPORT_SEQUENCE:
+        case CREATE_SECURITY_LABEL_COMPONENT:
+        case DROP_SECURITY_LABEL_COMPONENT:
+        case CREATE_SECURITY_LABEL:
+        case DROP_SECURITY_LABEL:
+        case CREATE_SECURITY_POLICY:
+        case DROP_SECURITY_POLICY:
+        case CREATE_SECURITY_ENTITY:
+        case DROP_SECURITY_ENTITY:
+        case GRANT_SECURITY_LABEL:
+        case REVOKE_SECURITY_LABEL:
+        case ALTER_INSTANCE:
             return true;
         default:
             if (ast.isA(SqlKind.DAL)) {

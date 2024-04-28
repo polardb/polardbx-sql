@@ -32,6 +32,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.config.impl.ConnPoolConfig;
 import com.alibaba.polardbx.gms.ha.HaSwitchParams;
 import com.alibaba.polardbx.gms.ha.HaSwitcher;
@@ -112,17 +113,27 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
     }
 
     protected void initGroupDataSourceByMetaDb() {
-
         Set<String> instIds = new HashSet<>();
-        instIds.add(InstIdUtil.getInstId());
-        if (ServerInstIdManager.getInstance().isMasterInst()) {
+
+        if (ConfigDataMode.isMasterMode()) {
+            instIds.add(InstIdUtil.getInstId());
             //ignore the buildInDB which needn't the separation of reading and writing!
             if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName())) {
                 instIds.addAll(ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet());
             }
-        } else {
+        } else if (ConfigDataMode.isRowSlaveMode()) {
+            instIds.add(InstIdUtil.getInstId());
             instIds.add(InstIdUtil.getMasterInstId());
+        } else if (ConfigDataMode.isColumnarMode() && SystemDbHelper.isDBBuildInExceptCdc(
+            groupDataSource.getSchemaName())) {
+            //here still need create information_schema group datasource for columnar mode.
+            instIds.add(InstIdUtil.getInstId());
         }
+
+        if (instIds.isEmpty()) {
+            return;
+        }
+
         this.listenerInstIds.clear();
         this.listenerInstIds.addAll(instIds);
 
@@ -255,7 +266,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         Set<String> careInstIds = new HashSet<>();
         Set<String> careStorageInstIds = new HashSet<>();
 
-        if (ServerInstIdManager.getInstance().isMasterInst()) {
+        if (ConfigDataMode.isMasterMode()) {
             Set<String> htapIds = ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet();
             ServerInstIdManager.getInstance().getInstId2StorageIds().entrySet().stream().forEach(t -> {
                     String inst = t.getKey();
@@ -265,7 +276,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
                     }
                 }
             );
-        } else {
+        } else if (ConfigDataMode.isRowSlaveMode()) {
             careInstIds.add(ServerInstIdManager.getInstance().getMasterInstId());
             careInstIds.add(ServerInstIdManager.getInstance().getInstId());
             ServerInstIdManager.getInstance().getInstId2StorageIds().entrySet().stream().forEach(t -> {
@@ -275,7 +286,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
             });
         }
 
-        if (ServerInstIdManager.getInstance().isMasterInst()) {
+        if (ConfigDataMode.isMasterMode()) {
             //ignore the buildInDB which needn't the separation of reading and writing!
             if (!SystemDbHelper.isDBBuildIn(groupDataSource.getSchemaName())) {
                 Set<String> newInstIdSet = Sets.difference(
@@ -371,20 +382,25 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         @Override
         public void onHandleConfig(String dataId, long newOpVersion) {
             HashSet<String> careInstIds = Sets.newHashSet();
-            careInstIds.add(instId);
-            if (ServerInstIdManager.getInstance().isMasterInst()) {
+            if (ConfigDataMode.isMasterMode()) {
+                careInstIds.add(instId);
                 //ignore the buildInDB which needn't the separation of reading and writing!
                 if (!SystemDbHelper.isDBBuildIn(dbName)) {
                     ServerInstIdManager.getInstance().getAllHTAPReadOnlyInstIdSet().stream().forEach(t -> {
                         careInstIds.add(t);
                     });
                 }
-            } else {
+                this.groupConfigManager.loadGroupDataSourceByMetaDb(careInstIds);
+            } else if (ConfigDataMode.isRowSlaveMode()) {
+                careInstIds.add(instId);
                 careInstIds.add(ServerInstIdManager.getInstance().getMasterInstId());
                 careInstIds.add(ServerInstIdManager.getInstance().getInstId());
+                this.groupConfigManager.loadGroupDataSourceByMetaDb(careInstIds);
+            } else if (ConfigDataMode.isColumnarMode() && SystemDbHelper.isDBBuildInExceptCdc(dbName)) {
+                //here still need create information_schema group datasource for columnar mode.
+                careInstIds.add(instId);
+                this.groupConfigManager.loadGroupDataSourceByMetaDb(careInstIds);
             }
-
-            this.groupConfigManager.loadGroupDataSourceByMetaDb(careInstIds);
         }
     }
 
@@ -615,7 +631,7 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
             // build DatasourceWrapper for the instIds
             dataSourceWrapperLists =
                 buildDataSource(appName, unitName, instIds, dbName, groupName, outputHaSwitchParamsWithReadLock,
-                    ServerInstIdManager.getInstance().isMasterInst());
+                    ConfigDataMode.isMasterMode());
             if (dataSourceWrapperLists.size() == 0) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                     String.format("instId[%s] is NOT available", instIds));
@@ -826,6 +842,8 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
         try {
             unregisterHaSwitcher();
             unbindGroupConfigListener();
+            //clean the cache datasource for physical backfill
+            PhysicalBackfillUtils.destroyDataSources();
         } catch (Exception e) {
             logger.error("we got exception when close datasource .", e);
         }
@@ -843,11 +861,11 @@ public class OptimizedGroupConfigManager extends AbstractLifecycle implements Li
     }
 
     public TAtomDataSource getDataSource(MasterSlave masterSlave) {
+        if (groupDataSourceHolder == null && ConfigDataMode.isColumnarMode()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SCHEMA,
+                "don't support query the table without columnar index!", new NullPointerException());
+        }
         return this.groupDataSourceHolder.getDataSource(masterSlave);
-    }
-
-    public GroupDataSourceHolder getGroupDataSourceHolder() {
-        return groupDataSourceHolder;
     }
 
     protected String getServerInstIdForGroupDataSource() {

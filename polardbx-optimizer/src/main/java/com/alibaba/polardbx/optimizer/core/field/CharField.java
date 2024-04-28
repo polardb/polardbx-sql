@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.field;
 import com.alibaba.polardbx.common.SQLMode;
 import com.alibaba.polardbx.common.SQLModeFlags;
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -27,6 +28,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
+import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
@@ -40,14 +42,20 @@ import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.google.common.base.Preconditions;
 import com.google.protobuf.ByteString;
 import com.mysql.cj.polarx.protobuf.PolarxResultset;
+import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceInput;
+import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
+import io.airlift.slice.XxHash64;
 
 import java.nio.charset.CharacterCodingException;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.Types;
 import java.util.Arrays;
+
+import static com.alibaba.polardbx.common.charset.MySQLUnicodeUtils.LATIN1_TO_UTF8_BYTES;
 
 /**
  * MySQL char(n) data type.
@@ -58,6 +66,8 @@ public class CharField extends AbstractStorageField {
     protected static final int MAX_ERROR_STRING_SIZE = 1 << 4;
 
     protected byte[] packedBinary;
+
+    private int realLength;
 
     public CharField(DataType<?> fieldType) {
         super(fieldType);
@@ -217,6 +227,35 @@ public class CharField extends AbstractStorageField {
             CollationHandler collationHandler = getCollationHandler();
             collationHandler.hashcode(packedBinary, length, numbers);
         }
+    }
+
+    @Override
+    public long xxHashCode() {
+        if (isNull()) {
+            return NULL_HASH_CODE;
+        }
+        if (isLatin1CharSet() && !isBinaryCollation()) {
+            return getCollationHandler().hashcode(convertLatin1ToUtf8(packedBinary, 0, realLength));
+        } else {
+            return getCollationHandler().hashcode(Slices.wrappedBuffer(packedBinary, 0, realLength));
+        }
+    }
+
+    protected boolean isLatin1CharSet() {
+        return getCharsetHandler().getName() == CharsetName.LATIN1;
+    }
+
+    protected boolean isBinaryCollation() {
+        return getCollationHandler().getName() == CollationName.BINARY || getCollationHandler().getName().name()
+            .endsWith("_BIN");
+    }
+
+    protected Slice convertLatin1ToUtf8(byte[] packedBinary, int startPos, int length) {
+        SliceOutput sliceOutput = new DynamicSliceOutput(length);
+        for (int i = 0; i < length; ++i) {
+            sliceOutput.writeBytes(LATIN1_TO_UTF8_BYTES[((int) packedBinary[i + startPos]) & 0xFF]);
+        }
+        return sliceOutput.slice();
     }
 
     @Override
@@ -406,7 +445,10 @@ public class CharField extends AbstractStorageField {
     protected void postHandle(int lengthOfCopy) {
         // Append spaces if the string was shorter than the field
         if (lengthOfCopy < packetLength()) {
+            realLength = lengthOfCopy;
             Arrays.fill(packedBinary, lengthOfCopy, packedBinary.length, getCollationHandler().padChar());
+        } else {
+            realLength = packetLength();
         }
     }
 

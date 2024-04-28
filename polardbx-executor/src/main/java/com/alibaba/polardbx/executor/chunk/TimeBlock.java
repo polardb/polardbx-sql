@@ -21,9 +21,11 @@ import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTime;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import io.airlift.slice.XxHash64;
 
 import org.openjdk.jol.info.ClassLayout;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Time;
 import java.util.TimeZone;
 
@@ -43,12 +45,28 @@ public class TimeBlock extends AbstractCommonBlock {
     private final long[] packed;
     private final TimeZone timezone;
 
-    TimeBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] packed,
-              DataType<? extends Time> dataType, TimeZone timezone) {
+    // random access
+    public TimeBlock(DataType dataType, int positionCount, TimeZone timezone) {
+        super(dataType, positionCount);
+        this.packed = new long[positionCount];
+        this.timezone = timezone;
+        updateSizeInfo();
+    }
+
+    public TimeBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, long[] packed,
+                     DataType<? extends Time> dataType, TimeZone timezone) {
         super(dataType, positionCount, valueIsNull, valueIsNull != null);
         this.packed = packed;
         this.timezone = timezone;
         updateSizeInfo();
+    }
+
+    public static TimeBlock from(TimeBlock other, int selSize, int[] selection) {
+        return new TimeBlock(0, selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyLongArray(other.packed, selection, selSize),
+            other.dataType,
+            other.timezone);
     }
 
     @Override
@@ -128,6 +146,16 @@ public class TimeBlock extends AbstractCommonBlock {
         }
     }
 
+    @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            byte[] rawBytes = getTime(pos).toString().getBytes(StandardCharsets.UTF_8);
+            return XxHash64.hash(rawBytes, 0, rawBytes.length);
+        }
+    }
+
     public DataType<? extends Time> getDataType() {
         return dataType;
     }
@@ -135,7 +163,7 @@ public class TimeBlock extends AbstractCommonBlock {
     @Override
     public boolean equals(int position, Block other, int otherPosition) {
         if (other instanceof TimeBlock) {
-            return equals(position, (TimeBlock) other, otherPosition);
+            return equals(position, other.cast(TimeBlock.class), otherPosition);
         } else if (other instanceof TimeBlockBuilder) {
             return equals(position, (TimeBlockBuilder) other, otherPosition);
         } else {

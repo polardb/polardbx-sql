@@ -96,7 +96,7 @@ public abstract class AbstractSimpleSelect {
         proxy = eof.write(proxy);
 
         // write rows
-        initRowData(c.getCharset());
+        initRowData(c.getResultSetCharset());
         proxy = row.write(proxy);
 
         // write last eof

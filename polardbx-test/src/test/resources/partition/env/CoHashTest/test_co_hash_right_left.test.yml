@@ -1,0 +1,258 @@
+## DISABLE_FAST_SQL_PARSER
+
+create table k_r4
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by hash( right(order_id, 4) )
+partitions 8;
+
+insert into k_r4 (sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+create table k_ssn4
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by hash( substr(order_id, -4) )
+partitions 8;
+
+insert into k_ssn4 (sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+select sid, user_id, order_id, part_route('','k_r4', order_id ) from k_r4 order by sid;
+select sid, user_id, order_id, part_route('','k_ssn4', order_id ) from k_ssn4 order by sid;
+
+create table k_l4
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by hash( left(order_id, 4) )
+partitions 8;
+
+insert into k_l4 (sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+create table k_ss14
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by hash( substr(order_id,1,4) )
+partitions 8;
+
+insert into k_ss14 (sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+select sid, user_id, order_id, part_route('','k_l4', order_id ) from k_l4 order by sid;
+select sid, user_id, order_id, part_route('','k_ss14', order_id ) from k_ss14 order by sid;
+
+create table ch_r4_r4
+(
+  sid int,
+  user_id varchar(64),
+  order_id varchar(64),
+  order_time datetime
+)
+partition by co_hash( right(order_id, 4), right(user_id, 4) )
+partitions 8;
+
+insert into ch_r4_r4(sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+create table ch_ssn4_ssn4
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by co_hash( substr(order_id, -4), substr(user_id, -4) )
+partitions 8;
+
+insert into ch_ssn4_ssn4(sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+
+select sid, user_id, order_id, part_route('','ch_r4_r4', order_id, user_id ) from ch_r4_r4 order by sid;
+select sid, user_id, order_id, part_route('','ch_ssn4_ssn4', order_id, user_id ) from ch_ssn4_ssn4 order by sid;
+
+explain select sid,user_id, order_id from ch_r4_r4
+where user_id='1234ABC12340' or user_id='2345ABC23450' or user_id='3456ABC34560'
+or user_id='4567ABC45670' or user_id='5678ABC56780' or user_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_r4_r4
+where order_id='1234ABC12340' or order_id='2345ABC23450' or order_id='3456ABC34560'
+or order_id='4567ABC45670' or order_id='5678ABC56780' or order_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_ssn4_ssn4
+where user_id='1234ABC12340' or user_id='2345ABC23450' or user_id='3456ABC34560'
+or user_id='4567ABC45670' or user_id='5678ABC56780' or user_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_ssn4_ssn4
+where order_id='1234ABC12340' or order_id='2345ABC23450' or order_id='3456ABC34560'
+or order_id='4567ABC45670' or order_id='5678ABC56780' or order_id='6789ABC67890' order by sid;
+
+create table ch_l4_l4
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by co_hash( left(order_id, 4), left(user_id, 4) )
+partitions 8;
+
+insert into ch_l4_l4 (sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+create table ch_ss14_ss14
+(
+sid int,
+user_id varchar(64),
+order_id varchar(64),
+order_time datetime
+)
+partition by co_hash( substr(order_id, 1, 4), substr(user_id, 1, 4) )
+partitions 8;
+
+insert into ch_ss14_ss14(sid, user_id, order_id,order_time ) values
+(1, '1234abc12340', '1234ABC12340', '2020-11-11'),
+(2, '2345abc23450', '2345ABC23450', '2020-11-12'),
+(3, '3456abc34560', '3456ABC34560', '2020-11-13'),
+(4, '4567abc45670', '4567ABC45670', '2020-11-14'),
+(5, '5678abc56780', '5678ABC56780', '2020-11-15'),
+(6, '6789abc67890', '6789ABC67890', '2020-11-16');
+
+select sid, user_id, order_id, part_route('','ch_l4_l4', order_id, user_id ) from ch_ss14_ss14 order by sid;
+select sid, user_id, order_id, part_route('','ch_ss14_ss14', order_id, user_id ) from ch_ss14_ss14 order by sid;
+
+explain select sid,user_id, order_id from ch_l4_l4
+where user_id='1234ABC12340' or user_id='2345ABC23450' or user_id='3456ABC34560'
+or user_id='4567ABC45670' or user_id='5678ABC56780' or user_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_l4_l4
+where order_id='1234ABC12340' or order_id='2345ABC23450' or order_id='3456ABC34560'
+or order_id='4567ABC45670' or order_id='5678ABC56780' or order_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_ss14_ss14
+where user_id='1234ABC12340' or user_id='2345ABC23450' or user_id='3456ABC34560'
+or user_id='4567ABC45670' or user_id='5678ABC56780' or user_id='6789ABC67890' order by sid;
+
+explain select sid,user_id, order_id from ch_ss14_ss14
+where order_id='1234ABC12340' or order_id='2345ABC23450' or order_id='3456ABC34560'
+or order_id='4567ABC45670' or order_id='5678ABC56780' or order_id='6789ABC67890' order by sid;
+
+
+create table r_r4
+(
+sid int,
+user_id varchar(64) collate utf8mb4_bin,
+order_id varchar(64) collate utf8mb4_bin,
+order_time datetime
+)
+partition by range( right(order_id, 4) )
+(
+ partition p1 values less than('ABDE'),
+ partition p2 values less than('ABDe'),
+ partition p3 values less than('ABde'),
+ partition p4 values less than('Abde'),
+ partition p5 values less than('abde'),
+ partition p6 values less than(maxvalue)
+);
+
+insert into r_r4 (sid, user_id, order_id, order_time)
+values
+(0, '1234####ABDE', '1234####ABDD', '2021-01-01'),
+(1, '1234####ABDE', '1234####ABDE', '2022-01-01'),
+(2, '1234####ABDe', '1234####ABDe', '2022-01-02'),
+(3, '1234####ABde', '1234####ABde', '2022-01-03'),
+(4, '1234####Abde', '1234####Abde', '2022-01-04'),
+(5, '1234####abde', '1234####abde', '2022-01-05')
+;
+
+show create table r_r4;
+select sid,order_id, right(order_id,4),part_route('','r_r4',order_id) from r_r4 order by sid;
+
+create table r_l4
+(
+sid int,
+user_id varchar(64) collate utf8mb4_bin,
+order_id varchar(64) collate utf8mb4_bin,
+order_time datetime
+)
+partition by range( left(order_id, 4) )
+(
+partition p1 values less than('ABDE'),
+partition p2 values less than('ABDe'),
+partition p3 values less than('ABde'),
+partition p4 values less than('Abde'),
+partition p5 values less than('abde'),
+partition p6 values less than(maxvalue)
+);
+
+insert into r_l4 (sid, user_id, order_id, order_time)
+values
+(0, 'ABDD####1234', 'ABDD####1234', '2021-01-01'),
+(1, 'ABDE####1234', 'ABDE####1234', '2022-01-01'),
+(2, 'ABDe####1234', 'ABDe####1234', '2022-01-02'),
+(3, 'ABde####1234', 'ABde####1234', '2022-01-03'),
+(4, 'Abde####1234', 'Abde####1234', '2022-01-04'),
+(5, 'abde####1234', 'abde####1234', '2022-01-05')
+;
+
+show create table r_l4;
+select sid,order_id, left(order_id,4),part_route('','r_l4',order_id) from r_l4 order by sid;
+
+
+
+
+
+
+

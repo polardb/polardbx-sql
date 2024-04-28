@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.qatest.entity.ColumnEntity;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.truth.Truth;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -56,6 +57,8 @@ import static com.google.common.truth.Truth.assertWithMessage;
 public class JdbcUtil {
 
     private static final Log log = LogFactory.getLog(JdbcUtil.class);
+
+    public static final String READ_ONLY_EXCEPTION_MSG = "Could not retrieve transation read-only status server";
 
     /**
      * 关闭statment
@@ -131,6 +134,23 @@ public class JdbcUtil {
         } finally {
             close(statement);
         }
+    }
+
+    public static void executeAndRetry(Connection conn, String sql, int retryTime) {
+        String errorMs = null;
+        for (int count = 0; count < retryTime; count++) {
+            Statement statement = createStatement(conn);
+            try {
+                statement.execute(sql);
+                return;
+            } catch (SQLException e) {
+                errorMs = "[Statement execute] failed:" + sql;
+                log.error(errorMs, e);
+            } finally {
+                close(statement);
+            }
+        }
+        Assert.fail(errorMs + " \n, retry time is : " + retryTime);
     }
 
     /**
@@ -826,7 +846,7 @@ public class JdbcUtil {
                 for (int i = 1; i < columnCount + 1; i++) {
                     try {
                         if (ignoreColumn == null || ignoreColumn.size() == 0 || !ignoreColumn.contains(i)) {
-                            if (metaData.getColumnTypeName(i).equalsIgnoreCase("tinyint")) {
+                            if (metaData.getColumnTypeName(i).toLowerCase().contains("tinyint")) {
                                 if (rs.getObject(i) == null) {
                                     oneResult.add(null);
                                 } else {
@@ -1265,6 +1285,9 @@ public class JdbcUtil {
                 return false;
             }
             if (getClass() != obj.getClass()) {
+                if (obj instanceof String) {
+                    return toString().equals(obj);
+                }
                 String errorMS = "[类型不一致]" + this.getClass() + "  " + obj.getClass();
                 log.error(errorMS);
                 Assert.fail(errorMS);
@@ -1313,6 +1336,9 @@ public class JdbcUtil {
                 return false;
             }
             if (getClass() != obj.getClass()) {
+                if (obj instanceof String) {
+                    return toString().equals(obj);
+                }
                 String errorMS = "[类型不一致]" + this.getClass() + "  " + obj.getClass();
                 log.error(errorMS);
                 if (assertTypeMatch) {
@@ -1466,13 +1492,17 @@ public class JdbcUtil {
             stmt.execute(sql);
             assertWithMessage("语句并未按照预期执行失败,sql is :" + sql).fail();
         } catch (Exception e) {
-            log.error(e.getMessage(), e);
+            Throwable t = e;
+            if (e.getMessage().equals(READ_ONLY_EXCEPTION_MSG)) {
+                t = e.getCause();
+            }
+            log.error(t.getMessage(), t);
             final ImmutableSet.Builder<String> builder = ImmutableSet.<String>builder().add(errMessage.toLowerCase());
             if (TStringUtil.isNotBlank(errMessage2)) {
                 builder.add(errMessage2.toLowerCase());
             }
             final ImmutableSet<String> errMsgSet = builder.build();
-            Assert.assertTrue(e.getMessage(), errMsgSet.stream().anyMatch(e.getMessage().toLowerCase()::contains));
+            Assert.assertTrue(t.getMessage(), errMsgSet.stream().anyMatch(t.getMessage().toLowerCase()::contains));
         } finally {
             close(stmt);
         }
@@ -1497,6 +1527,11 @@ public class JdbcUtil {
             close(stmt);
         }
         return "";
+    }
+
+    public static void executeUpdateWithException(Connection conn, String sql) throws SQLException {
+        Statement stmt = conn.createStatement();
+        stmt.execute(sql);
     }
 
     /**
@@ -1559,7 +1594,10 @@ public class JdbcUtil {
                     }
                 }
             }
-            Assert.assertTrue(contains);
+            if (!contains) {
+                // Print error message
+                Truth.assertThat(errorMsg).asList().contains(message);
+            }
         } finally {
             close(resultSet);
             close(stmt);
@@ -1569,7 +1607,7 @@ public class JdbcUtil {
     /**
      * 普通语句执行失败
      */
-    public static void executeFaied(Connection conn, String sql, String[] errorMsg) {
+    public static void executeFailed(Connection conn, String sql, String[] errorMsg) {
         Statement stmt = null;
         try {
             stmt = conn.createStatement();
@@ -1597,8 +1635,8 @@ public class JdbcUtil {
         executeQueryFaied(conn, sql, new String[] {errorMsg});
     }
 
-    public static void executeFaied(Connection conn, String sql, String errorMsg) {
-        executeFaied(conn, sql, new String[] {errorMsg});
+    public static void executeFailed(Connection conn, String sql, String errorMsg) {
+        executeFailed(conn, sql, new String[] {errorMsg});
     }
 
     public static DruidDataSource getDruidDataSource(String url, String user, String password) {
@@ -1805,15 +1843,6 @@ public class JdbcUtil {
         }
     }
 
-    public static void createPartDatabaseUsingUtf8(Connection polarxConn, String logDb) {
-        String createDbSql =
-            String.format(
-                "/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto' DEFAULT CHARSET = utf8;",
-                logDb);
-        JdbcUtil.executeUpdate(polarxConn, createDbSql);
-        useDb(polarxConn, logDb);
-    }
-
     public static void createPartDatabase(Connection polarxConn, String logDb) {
         String createDbSql =
             String.format(
@@ -1902,6 +1931,72 @@ public class JdbcUtil {
         values.append(") ");
         sql.append(values);
         return sql.toString();
+    }
+
+    public static String getExplainResult(Connection tddlConnection, String sql) {
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "explain " + sql);
+        try {
+            return JdbcUtil.resultsStr(rs);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
+
+    public static List<String> getTableColumns(Connection conn, String tableName) throws SQLException {
+        List<String> columns = new ArrayList<>();
+        ResultSet resultSet = JdbcUtil.executeQuery("desc " + tableName, conn);
+        try {
+            while (resultSet.next()) {
+                String column = resultSet.getString(1);
+                columns.add(column);
+            }
+        } finally {
+            JdbcUtil.close(resultSet);
+        }
+
+        return columns;
+    }
+
+    public static void createColumnarIndex(Connection tddlConnection, String indexName, String tableName,
+                                           String sortKey, String partKey, int partCount) {
+        final String createColumnarIdx = "create clustered columnar index %s on %s(%s) "
+            + " engine='EXTERNAL_DISK' partition by hash(%s) partitions %s";
+        JdbcUtil.executeSuccess(tddlConnection,
+            String.format(createColumnarIdx, indexName, tableName, sortKey, partKey, partCount));
+    }
+
+    public static void waitUntilVariableChanged(Connection conn, String varKey, String expectedVal, int timeoutSec)
+        throws SQLException, InterruptedException {
+        long time = 0;
+        while (true) {
+            ResultSet rs = executeQuerySuccess(conn,
+                String.format("show variables like '%s'", varKey));
+            if (rs.next() && rs.getString("Value").equalsIgnoreCase(expectedVal)) {
+                break;
+            }
+            if (time++ > timeoutSec * 10L) {
+                throw new RuntimeException("Timeout.");
+            }
+            Thread.sleep(100);
+        }
+    }
+
+    public static void executeIgnoreErrors(Connection conn, String sql) {
+        try (Statement statement = createStatement(conn)) {
+            statement.execute(sql);
+        } catch (SQLException e) {
+            String errorMs = "[Statement execute] failed:" + sql;
+            log.error(errorMs, e);
+        }
+    }
+
+    public static void createPartDatabaseUsingUtf8(Connection polarxConn, String logDb) {
+        String createDbSql =
+            String.format(
+                "/*+TDDL:AUTO_PARTITION_PARTITIONS=3*/create database if not exists %s mode='auto' DEFAULT CHARSET = utf8;",
+                logDb);
+        JdbcUtil.executeUpdate(polarxConn, createDbSql);
+        useDb(polarxConn, logDb);
     }
 
 }

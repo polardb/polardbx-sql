@@ -21,14 +21,18 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.table.BaselineInfoRecord;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.JsonBuilder;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,6 +46,7 @@ import java.util.stream.Stream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_MAX_ACCEPTED_PLAN_SIZE_PER_BASELINE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL;
+import static com.alibaba.polardbx.common.utils.GeneralUtil.printlnToStringBuilder;
 import static com.alibaba.polardbx.common.utils.GeneralUtil.unixTimeStamp;
 import static com.alibaba.polardbx.optimizer.planmanager.PlanInfo.INVAILD_HASH_CODE;
 
@@ -171,6 +176,10 @@ public class BaselineInfo {
         for (Map.Entry<Integer, PlanInfo> entry : baselineInfo.getAcceptedPlans().entrySet()) {
             Integer planInfoId = entry.getKey();
             PlanInfo planInfo = entry.getValue();
+            RelNode planRel = planInfo.getPlan(null, null);
+            if (planRel != null && !PlanManagerUtil.baselineSupported(planRel)) {
+                continue;
+            }
             if (simpleMode) {
                 if (planInfo.getChooseCount() > InstConfUtil.getInt(SPM_OLD_PLAN_CHOOSE_COUNT_LEVEL)) {
                     acceptedPlansMap.put(planInfoId.toString(), PlanInfo.serializeToJson(planInfo));
@@ -413,6 +422,10 @@ public class BaselineInfo {
             return false;
         }
 
+        if (!PlanManagerUtil.baselineSupported(p.getPlan(null, null))) {
+            return true;
+        }
+
         boolean isRecentlyUsed = PlanManager.isRecentlyExecuted(p);
         int tblHashcode = PlanManagerUtil.computeTablesVersion(tableSet, schema, null);
         boolean isTableVersionMatch = p.getTablesHashCode() == tblHashcode;
@@ -473,5 +486,46 @@ public class BaselineInfo {
         extendMap.put(EXTEND_USE_POST_PLANNER, usePostPlanner);
         extendMap.put(EXTEND_REBUILD_AT_LOAD, rebuildAtLoad);
         return jsonBuilder.toJsonString(extendMap);
+    }
+
+    public BaselineInfoRecord buildBaselineRecord(String schemaName, String instId) {
+        BaselineInfoRecord baselineInfoRecord = new BaselineInfoRecord();
+        baselineInfoRecord.setInstId(instId);
+        baselineInfoRecord.setSchemaName(schemaName);
+        baselineInfoRecord.setId(this.id);
+        baselineInfoRecord.setSql(this.parameterSql);
+        baselineInfoRecord.setTableSet(serializeTableSet(this.tableSet));
+        baselineInfoRecord.setExtendField(this.encodeExtend());
+
+        return baselineInfoRecord;
+    }
+
+    public List<BaselineInfoRecord> buildPlanRecord(String schemaName, String instId) {
+        if (this.isRebuildAtLoad()) {
+            return Collections.emptyList();
+        }
+        List<BaselineInfoRecord> rs = Lists.newArrayList();
+        for (PlanInfo planInfo : acceptedPlans.values()) {
+            BaselineInfoRecord baselineInfoRecord = new BaselineInfoRecord();
+            baselineInfoRecord.setInstId(instId);
+            baselineInfoRecord.setSchemaName(schemaName);
+            baselineInfoRecord.setId(this.getId());
+
+            baselineInfoRecord.setTablesHashCode(planInfo.getTablesHashCode());
+            baselineInfoRecord.setPlanId(planInfo.getId());
+            baselineInfoRecord.setPlan(planInfo.getPlanJsonString());
+            baselineInfoRecord.setLastExecuteTime(
+                planInfo.getLastExecuteTime() == null ? -1 : planInfo.getLastExecuteTime());
+            baselineInfoRecord.setChooseCount(planInfo.getChooseCount());
+            baselineInfoRecord.setCost(planInfo.getCost());
+            baselineInfoRecord.setEstimateExecutionTime(planInfo.getEstimateExecutionTime());
+            baselineInfoRecord.setFixed(planInfo.isFixed());
+            baselineInfoRecord.setTraceId(planInfo.getTraceId());
+            baselineInfoRecord.setCreateTime(planInfo.getCreateTime());
+            baselineInfoRecord.setOrigin(planInfo.getOrigin());
+            baselineInfoRecord.setPlanExtend(planInfo.getExtend());
+            rs.add(baselineInfoRecord);
+        }
+        return rs;
     }
 }

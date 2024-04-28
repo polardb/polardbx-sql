@@ -101,6 +101,16 @@ public class MySQLTimeConverter {
         return convertDatetimeToTimestampInternal(t, status, zoneId);
     }
 
+    public static MySQLTimeVal convertValidDatetimeToTimestamp(MysqlDateTime t, TimeParseStatus status, ZoneId zoneId) {
+        // check_date(TIME_NO_ZERO_IN_DATE)
+        boolean isNonZeroDate = t.getYear() != 0 || t.getMonth() != 0 || t.getDay() != 0;
+        boolean isInvalid = MySQLTimeTypeUtil.isDateInvalid(t, isNonZeroDate, FLAG_TIME_NO_ZERO_IN_DATE);
+        if (isInvalid) {
+            throw new AssertionError("Invalid timestamp value");
+        }
+        return convertDatetimeToTimestampInternal(t, status, zoneId);
+    }
+
     public static MySQLTimeVal convertDatetimeToTimestampWithoutCheck(MysqlDateTime t, TimeParseStatus status,
                                                                       ZoneId zoneId) {
         return convertDatetimeToTimestampInternal(t, status, zoneId);

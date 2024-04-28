@@ -29,11 +29,11 @@
  */
 package com.alibaba.polardbx.executor.mpp;
 
+import com.alibaba.polardbx.util.MoreObjects;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonValue;
 import com.google.common.collect.ImmutableMap;
-import com.alibaba.polardbx.util.MoreObjects;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -23,11 +23,17 @@ import java.nio.ByteBuffer;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.Key;
+import java.text.MessageFormat;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
 import org.apache.hadoop.hive.common.io.DiskRangeList;
 import org.apache.orc.CompressionCodec;
 import org.apache.orc.EncryptionAlgorithm;
+import org.apache.orc.customized.ORCDataOutput;
+import org.apache.orc.customized.ORCMemoryAllocator;
+import org.apache.orc.customized.ORCProfile;
+import org.apache.orc.customized.Recyclable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,7 +44,7 @@ import javax.crypto.ShortBufferException;
 import javax.crypto.spec.IvParameterSpec;
 
 public abstract class InStream extends InputStream {
-
+  private static final Logger LOGGER = LoggerFactory.getLogger("oss");
   private static final Logger LOG = LoggerFactory.getLogger(InStream.class);
   public static final int PROTOBUF_MESSAGE_MAX_LIMIT = 1024 << 20; // 1GB
 
@@ -49,15 +55,40 @@ public abstract class InStream extends InputStream {
   // position in the stream (0..length)
   protected long position;
 
+  protected ORCProfile memoryCounter;
+  protected ORCProfile decompressTimer;
+
   public InStream(Object name, long offset, long length) {
     this.name = name;
     this.offset = offset;
     this.length = length;
   }
 
+  public DiskRangeList getBytes() {
+    return bytes;
+  }
+
+  public long getOffset() {
+    return offset;
+  }
+
+  public long getLength() {
+    return length;
+  }
+
+  public void setMemoryCounter(ORCProfile memoryCounter) {
+    this.memoryCounter = memoryCounter;
+  }
+
+  public void setDecompressTimer(ORCProfile decompressTimer) {
+    this.decompressTimer = decompressTimer;
+  }
+
   public String toString() {
     return name.toString();
   }
+
+  public abstract int read(ORCDataOutput dataOutput, int length) throws IOException;
 
   @Override
   public abstract void close();
@@ -169,6 +200,21 @@ public abstract class InStream extends InputStream {
     }
 
     @Override
+    public int read(ORCDataOutput dataOutput, int length) throws IOException {
+      if (decrypted == null || decrypted.remaining() == 0) {
+        if (position == this.length) {
+          return -1;
+        }
+        setCurrent(currentRange.next, false);
+      }
+      int actualLength = Math.min(length, decrypted.remaining());
+
+      dataOutput.read(decrypted, actualLength);
+      position += actualLength;
+      return actualLength;
+    }
+
+    @Override
     public int available() {
       if (decrypted != null && decrypted.remaining() > 0) {
         return decrypted.remaining();
@@ -232,12 +278,15 @@ public abstract class InStream extends InputStream {
     }
   }
 
-  private static ByteBuffer allocateBuffer(int size, boolean isDirect) {
-    // TODO: use the same pool as the ORC readers
+  protected ByteBuffer allocateBuffer(int size, boolean isDirect) {
     if (isDirect) {
-      return ByteBuffer.allocateDirect(size);
+      return ORCMemoryAllocator.getInstance().allocateOffHeap(size);
     } else {
-      return ByteBuffer.allocate(size);
+      if (memoryCounter != null) {
+        return ORCMemoryAllocator.getInstance().allocateOnHeap(size, memoryCounter);
+      } else {
+        return ORCMemoryAllocator.getInstance().allocateOnHeap(size);
+      }
     }
   }
 
@@ -319,7 +368,7 @@ public abstract class InStream extends InputStream {
     ByteBuffer decrypt(ByteBuffer encrypted)  {
       int length = encrypted.remaining();
       if (decrypted == null || decrypted.capacity() < length) {
-        decrypted = ByteBuffer.allocate(length);
+        decrypted = ORCMemoryAllocator.getInstance().allocateOnHeap(length);
       } else {
         decrypted.clear();
       }
@@ -395,13 +444,16 @@ public abstract class InStream extends InputStream {
     }
   }
 
-  private static class CompressedStream extends InStream {
+  public static class CompressedStream extends InStream {
     private final int bufferSize;
     private ByteBuffer uncompressed;
     private final CompressionCodec codec;
     protected ByteBuffer compressed;
     protected DiskRangeList currentRange;
     private boolean isUncompressedOriginal;
+
+    // hold the reference of arrowBuf
+    private ConcurrentLinkedQueue<Recyclable<ByteBuffer>> recyclables = new ConcurrentLinkedQueue<>();
 
     /**
      * Create the stream without resetting the input stream.
@@ -439,6 +491,12 @@ public abstract class InStream extends InputStream {
     }
 
     private void allocateForUncompressed(int size, boolean isDirect) {
+      if (ORCMemoryAllocator.useArrow()) {
+        Recyclable<ByteBuffer> recyclable = ORCMemoryAllocator.getInstance().pooledDirect(size);
+        recyclables.add(recyclable);
+        uncompressed = recyclable.get();
+        return;
+      }
       uncompressed = allocateBuffer(size, isDirect);
     }
 
@@ -492,7 +550,19 @@ public abstract class InStream extends InputStream {
         } else {
           uncompressed.clear();
         }
-        codec.decompress(slice, uncompressed);
+
+        // need metrics for decompress processing.
+        long start = System.nanoTime();
+        try {
+          codec.decompress(slice, uncompressed);
+        } catch (Throwable t) {
+          LOGGER.error(MessageFormat.format("chunkLength={0}, slice={1}, uncompressed={2}, InStream={3}",
+              chunkLength, slice.toString(), uncompressed.toString(), this.toString()));
+          throw t;
+        }
+        if (decompressTimer != null) {
+          decompressTimer.update(System.nanoTime() - start);
+        }
       }
     }
 
@@ -511,6 +581,17 @@ public abstract class InStream extends InputStream {
       }
       int actualLength = Math.min(length, uncompressed.remaining());
       uncompressed.get(data, offset, actualLength);
+      return actualLength;
+    }
+
+    @Override
+    public int read(ORCDataOutput dataOutput, int length) throws IOException {
+      if (!ensureUncompressed()) {
+        return -1;
+      }
+      int actualLength = Math.min(length, uncompressed.remaining());
+
+      dataOutput.read(uncompressed, actualLength);
       return actualLength;
     }
 
@@ -539,6 +620,11 @@ public abstract class InStream extends InputStream {
       currentRange = null;
       position = length;
       bytes = null;
+
+      // recycle the byte buffers held by arrow buf
+      if (recyclables != null && !recyclables.isEmpty()) {
+        recyclables.forEach(Recyclable::recycle);
+      }
     }
 
     @Override
@@ -587,7 +673,15 @@ public abstract class InStream extends InputStream {
 
       // we need to consolidate 2 or more buffers into 1
       // first copy out compressed buffers
-      ByteBuffer copy = allocateBuffer(chunkLength, compressed.isDirect());
+      ByteBuffer copy;
+      if (ORCMemoryAllocator.useArrow()) {
+        Recyclable<ByteBuffer> recyclable = ORCMemoryAllocator.getInstance().pooledDirect(chunkLength);
+        recyclables.add(recyclable);
+        copy = recyclable.get();
+      } else {
+        copy = allocateBuffer(chunkLength, compressed.isDirect());
+      }
+
       position += compressed.remaining();
       len -= compressed.remaining();
       copy.put(compressed);
@@ -663,6 +757,11 @@ public abstract class InStream extends InputStream {
           (uncompressed == null ? "" :
               " uncompressed: " + uncompressed.position() + " to " +
                   uncompressed.limit());
+    }
+
+    // for test
+    public ByteBuffer getCompressed() {
+      return compressed;
     }
   }
 

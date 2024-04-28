@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.operator.factory;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.executor.operator.Executor;
 import com.alibaba.polardbx.executor.operator.NonBlockGeneralSourceExec;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.RelNode;
 
 public class NonBlockGeneralExecFactory extends ExecutorFactory {
@@ -35,4 +35,5 @@ public class NonBlockGeneralExecFactory extends ExecutorFactory {
         Preconditions.checkArgument(index < 1, "NonBlockGeneralSourceExec's parallism must be 1!");
         return new NonBlockGeneralSourceExec(relNode, context);
     }
+
 }

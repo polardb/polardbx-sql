@@ -16,25 +16,30 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableRenamePartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRenamePartitionChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableRenamePartitionChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.CleanupEmptyTableGroupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
-import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupBasePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupRenamePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableRenamePartitionPreparedData;
 import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
@@ -50,18 +55,13 @@ import java.util.concurrent.TimeUnit;
 /**
  * @author luoyanxin
  */
-public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
-
-    @Deprecated
-    protected final DDL ddl;
-    protected final AlterTableRenamePartitionPreparedData preparedData;
-    protected final ExecutionContext executionContext;
+public class AlterTableRenamePartitionJobFactory extends AlterTableGroupBaseJobFactory {
 
     public AlterTableRenamePartitionJobFactory(DDL ddl, AlterTableRenamePartitionPreparedData preparedData,
                                                ExecutionContext executionContext) {
-        this.preparedData = preparedData;
-        this.ddl = ddl;
-        this.executionContext = executionContext;
+        super(ddl, preparedData, null, null, null,
+            null, null, null,
+            null, executionContext);
     }
 
     @Override
@@ -71,12 +71,19 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
+        AlterTableGroupRenamePartitionPreparedData renamePartitionPreparedData =
+            (AlterTableGroupRenamePartitionPreparedData) preparedData;
+        if (renamePartitionPreparedData.isRenameNothing()) {
+            return new TransientDdlJob();
+        }
         if (preparedData.isRemainInOriginalTableGroup()) {
             return renameInOriginTableGroup();
         } else if (preparedData.isMoveToExistTableGroup()) {
             return renameAndMoveToExistTableGroup();
         } else if (preparedData.isCreateNewTableGroup()) {
             return renameInNewTableGroup();
+        } else if (org.apache.commons.lang.StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            return withImplicitTableGroup(executionContext);
         } else {
             throw new RuntimeException("unexpected");
         }
@@ -90,9 +97,12 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
 
         Map<String, Long> tablesVersion = getTablesVersion();
 
+        AlterTableRenamePartitionPreparedData alterTableRenamePartitionPreparedData =
+            (AlterTableRenamePartitionPreparedData) preparedData;
         DdlTask changeMetaTask = new AlterTableRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
-            preparedData.getTargetTableGroup(), preparedData.getTableName(), preparedData.getChangePartitionsPair(),
-            preparedData.isSubPartitionRename());
+            preparedData.getTargetTableGroup(), preparedData.getTableName(),
+            alterTableRenamePartitionPreparedData.getChangePartitionsPair(),
+            alterTableRenamePartitionPreparedData.isSubPartitionRename());
         DdlTask syncTask = new TableSyncTask(preparedData.getSchemaName(), tablesVersion.keySet().iterator().next(),
             enablePreemptiveMdl, initWait, interval,
             TimeUnit.MILLISECONDS);
@@ -106,11 +116,11 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         DdlTask validateSourceTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 sourceTableGroup, tablesVersion, false,
-                /*todo*/null);
+                /*todo*/null, false);
         DdlTask validateTargetTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 targetTableGroup, preparedData.getFirstTableVersionInTargetTableGroup(), false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         executableDdlJob.addTask(emptyTask);
         executableDdlJob.addTask(validateSourceTableGroup);
@@ -129,25 +139,29 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         executableDdlJob.addTaskRelationship(validateSourceTableGroup, changeMetaTask);
         executableDdlJob.addTaskRelationship(validateTargetTableGroup, changeMetaTask);
 
+        DdlTask cdcAlterTableRenamePartitionMarkTask = buildCdcDdlMarkTask();
+
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
+            cdcAlterTableRenamePartitionMarkTask,
             syncTask,
             cleanupEmptyTableGroupTask,
             synTargetTableGroup,
             synSourceTableGroup
         ));
-        executableDdlJob.addTaskRelationship(changeMetaTask, syncTask);
+        executableDdlJob.addTaskRelationship(changeMetaTask, cdcAlterTableRenamePartitionMarkTask);
 
         return executableDdlJob;
     }
 
     protected ExecutableDdlJob renameInNewTableGroup() {
+        executionContext.getDdlContext().setDdlType(DdlType.ALTER_TABLE_RENAME_PARTITION);
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         Map<String, Long> tablesVersion = getTablesVersion();
         String schemaName = preparedData.getSchemaName();
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 preparedData.getTableGroupName(), tablesVersion, false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         SubJobTask subJobMoveTableToNewGroup = new SubJobTask(schemaName,
             String.format(AlterTableGroupBaseJobFactory.SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
@@ -174,8 +188,7 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+        for (String tableName : tableGroupConfig.getAllTables()) {
             String primaryTableName;
             TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
             if (tableMeta.isGsi()) {
@@ -191,9 +204,11 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
             tablesVersion.put(primaryTableName, tableMeta.getVersion());
         }
 
+        AlterTableRenamePartitionPreparedData alterTableRenamePartitionPreparedData =
+            (AlterTableRenamePartitionPreparedData) preparedData;
         DdlTask changeMetaTask = new AlterTableGroupRenamePartitionChangeMetaTask(preparedData.getSchemaName(),
-            preparedData.getTableGroupName(), preparedData.getChangePartitionsPair(),
-            preparedData.isSubPartitionRename());
+            preparedData.getTableGroupName(), alterTableRenamePartitionPreparedData.getChangePartitionsPair(),
+            alterTableRenamePartitionPreparedData.isSubPartitionRename());
         DdlTask syncTask =
             new TablesSyncTask(preparedData.getSchemaName(), logicalTableNames, enablePreemptiveMdl, initWait, interval,
                 TimeUnit.MILLISECONDS);
@@ -203,16 +218,21 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         DdlTask validateTask =
             new AlterTableGroupValidateTask(preparedData.getSchemaName(), preparedData.getTableGroupName(),
                 tablesVersion,
-                true, null);
+                true, null, false);
 
         DdlTask reloadTableGroup =
             new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
+
+        DdlTask cdcAlterTableRenamePartitionMarkTask = buildCdcDdlMarkTask();
+
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
             changeMetaTask,
+            cdcAlterTableRenamePartitionMarkTask,
             syncTask,
             reloadTableGroup
         ));
+
         return executableDdlJob;
     }
 
@@ -229,6 +249,9 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()));
         if (preparedData.isMoveToExistTableGroup() && StringUtils.isNotBlank(preparedData.getTargetTableGroup())) {
             resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTargetTableGroup()));
+        }
+        if (StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTargetImplicitTableGroupName()));
         }
         for (String relatedPart : preparedData.getRelatedPartitions()) {
             resources.add(concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()),
@@ -254,4 +277,46 @@ public class AlterTableRenamePartitionJobFactory extends DdlJobFactory {
         return tablesVersion;
     }
 
+    private DdlTask buildCdcDdlMarkTask() {
+        boolean placeHolder;
+
+        if (executionContext.getDdlContext().isSubJob()) {
+            if (isFromSetTableGroup(executionContext) || isFromAlterTableGroup(executionContext)) {
+                placeHolder = true;
+            } else if (isFromRenamePartition(executionContext)) {
+                placeHolder = false;
+            } else {
+                DdlType parentDdlType = getRootParentDdlContext(executionContext.getDdlContext()).getDdlType();
+                throw new RuntimeException("unexpected parent ddl job , " + parentDdlType);
+            }
+        } else {
+            placeHolder = false;
+        }
+
+        return new CdcAlterTableRenamePartitionMarkTask(preparedData.getSchemaName(),
+            preparedData.getTableName(), placeHolder);
+    }
+
+    private boolean isFromSetTableGroup(ExecutionContext executionContext) {
+        DdlType parentDdlType = getRootParentDdlContext(executionContext.getDdlContext()).getDdlType();
+        return parentDdlType == DdlType.ALTER_TABLE_SET_TABLEGROUP;
+    }
+
+    private boolean isFromAlterTableGroup(ExecutionContext executionContext) {
+        DdlType parentDdlType = getRootParentDdlContext(executionContext.getDdlContext()).getDdlType();
+        return parentDdlType == DdlType.ALTER_TABLEGROUP;
+    }
+
+    private boolean isFromRenamePartition(ExecutionContext executionContext) {
+        DdlType parentDdlType = getRootParentDdlContext(executionContext.getDdlContext()).getDdlType();
+        return parentDdlType == DdlType.ALTER_TABLE_RENAME_PARTITION;
+    }
+
+    private DdlContext getRootParentDdlContext(DdlContext ddlContext) {
+        if (ddlContext.getParentDdlContext() != null) {
+            return getRootParentDdlContext(ddlContext.getParentDdlContext());
+        } else {
+            return ddlContext;
+        }
+    }
 }

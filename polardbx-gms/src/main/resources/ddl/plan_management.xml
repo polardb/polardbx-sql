@@ -9,7 +9,6 @@
               `gmt_modified` timestamp not null default current_timestamp on update current_timestamp,
               `sql` mediumtext not null,
               `table_set` text not null,
-              `tables_hashcode` bigint not null,
               `extend_field` longtext comment 'Json string extend field',
               primary key (`schema_name`, `id`)
             ) charset=utf8

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -88,7 +89,7 @@ public class GsiUpdateIndexVisibilityTask extends BaseGmsTask {
             beforeVisibility
         );
 
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
 
         LOGGER.info(
             String.format("Rollback Update GSI table visibility. schema:%s, table:%s, index:%s, from:%s to:%s",

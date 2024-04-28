@@ -11,6 +11,10 @@ import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
@@ -492,7 +496,7 @@ public abstract class BasePlannerTest {
                                           Map<String, TableRule> gsiTableRules,
                                           Map<String, SqlIndexDefinition> gsiIndexDefs) {
         ExecutionContext ec = new ExecutionContext();
-        ec.setRandomPhyTableEnabled(false);
+        ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
         TableRule tableRule = TableRuleUtil.buildShardingTableRule(indexTableName,
             tableToSchema,
             indexDef.getDbPartitionBy(),
@@ -500,6 +504,7 @@ public abstract class BasePlannerTest {
             indexDef.getTbPartitionBy(),
             indexDef.getTbPartitions(),
             OptimizerContext.getContext(appName), ec);
+
 
         List<List<TargetDB>> targetDBs = DataNodeChooser.shardCreateTable(this.appName,
             indexTableName,
@@ -647,7 +652,7 @@ public abstract class BasePlannerTest {
                                                          PartitionTableType tblType,
                                                          PlannerContext plannerContext) {
         ConfigDataMode.Mode mode = ConfigDataMode.getMode();
-        ConfigDataMode.setConfigServerMode(ConfigDataMode.Mode.GMS);
+        ConfigDataMode.setMode(ConfigDataMode.Mode.GMS);
         LogicalCreateTable logicalCreateTable;
         SqlConverter converter = SqlConverter.getInstance(appName, ec);
         SqlNode validatedNode = converter.validate(sqlCreateTable);
@@ -673,7 +678,7 @@ public abstract class BasePlannerTest {
             new PartitionInfoManager.PartInfoCtx(partitionInfoManager, logicalTableName.toLowerCase(),
                 partitionInfo.getTableGroupId(),
                 partitionInfo));
-        ConfigDataMode.setConfigServerMode(mode);
+        ConfigDataMode.setMode(mode);
         return logicalCreateTable;
     }
 
@@ -750,7 +755,6 @@ public abstract class BasePlannerTest {
 
             TableRule indexTr = null;
             final TableMeta indexTm;
-
             if (partitionInfo == null) {
                 indexTr = gsiTableRules.get(indexTableName);
 
@@ -781,7 +785,7 @@ public abstract class BasePlannerTest {
                 List<ColumnMeta> pkColMetas = new ArrayList<>(primaryTbMeta.getPrimaryKey());
                 primaryTbMeta.setSchemaName(schema);
                 PartitionInfo indexPartitionInfo = PartitionInfoBuilder
-                    .buildPartitionInfoByPartDefAst(schema, indexTableName, null, null,
+                    .buildPartitionInfoByPartDefAst(schema, indexTableName, null, false, null,
                         (SqlPartitionBy) createGlobalIndexPreparedData.getIndexDefinition().getPartitioning(),
                         createGlobalIndexPreparedData.getPartBoundExprInfo(),
                         pkColMetas, allColMetas, PartitionTableType.GSI_TABLE,
@@ -792,7 +796,7 @@ public abstract class BasePlannerTest {
                 CreatePartitionGlobalIndexBuilder builder =
                     new CreatePartitionGlobalIndexBuilder(logicalCreateTable.relDdl,
                         logicalCreateTable.getCreateTableWithGsiPreparedData()
-                            .getIndexTablePreparedData(entry.getKey()), ec);
+                            .getIndexTablePreparedData(entry.getKey()), Maps.newHashMap(), false, ec);
                 builder.buildSqlTemplate();
                 final MySqlCreateTableStatement indexStat =
                     (MySqlCreateTableStatement) FastsqlUtils
@@ -871,7 +875,7 @@ public abstract class BasePlannerTest {
         if (sqlCreateTable.isBroadCast()) {
             tr = TableRuleUtil.buildBroadcastTableRuleWithoutRandomPhyTableName(logicalTableName, tm);
         } else if (sqlCreateTable.getDbpartitionBy() != null || sqlCreateTable.getTbpartitionBy() != null) {
-            ec.setRandomPhyTableEnabled(false);
+            ec.getExtraCmds().put(ConnectionProperties.ENABLE_RANDOM_PHY_TABLE_NAME, false);
             tr = TableRuleUtil.buildShardingTableRule(logicalTableName,
                 tm,
                 sqlCreateTable.getDbpartitionBy(),
@@ -1439,7 +1443,7 @@ public abstract class BasePlannerTest {
         pkColMetas = new ArrayList<>(tableMeta.getPrimaryKey());
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
-                null,
+                false, null,
                 (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(), pkColMetas,
                 allColMetas, tblType, executionContext);
 

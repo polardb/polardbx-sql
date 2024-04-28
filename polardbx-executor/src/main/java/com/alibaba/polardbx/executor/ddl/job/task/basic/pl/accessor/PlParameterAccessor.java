@@ -35,7 +35,12 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.*;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.DEF_ROUTINE_CATALOG;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.FUNCTION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_CHARACTER_SET_CLIENT;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_COLLATION_CONNECTION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MYSQL;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.PROCEDURE;
 
 /**
  * @author yuehan.wcf

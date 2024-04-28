@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterJoinGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterJoinGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterJoinGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -31,6 +32,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterJoinGroupPreparedData;
 import com.google.common.collect.Lists;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -78,11 +80,15 @@ public class AlterJoinGroupJobFactory extends DdlJobFactory {
             preparedData.isAdd(),
             preparedData.getTableGroupInfos());
 
-        TablesSyncTask syncTask =
-            new TablesSyncTask(preparedData.getSchemaName(), preparedData.getTablesVersion().keySet().stream().collect(
-                Collectors.toList()), true, initWait, interval, TimeUnit.MILLISECONDS);
+        CdcAlterJoinGroupMarkTask cdcAlterJoinGroupMarkTask =
+            new CdcAlterJoinGroupMarkTask(preparedData.getSchemaName(), preparedData.getJoinGroupName());
 
-        executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, alterJoinGroupAddMetaTask, syncTask));
+        TablesSyncTask syncTask =
+            new TablesSyncTask(preparedData.getSchemaName(), new ArrayList<>(preparedData.getTablesVersion().keySet()),
+                true, initWait, interval, TimeUnit.MILLISECONDS);
+
+        executableDdlJob.addSequentialTasks(
+            Lists.newArrayList(validateTask, alterJoinGroupAddMetaTask, cdcAlterJoinGroupMarkTask, syncTask));
 
         return executableDdlJob;
     }

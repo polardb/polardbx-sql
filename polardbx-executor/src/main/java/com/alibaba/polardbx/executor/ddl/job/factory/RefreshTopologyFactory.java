@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshDbTopologyPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RefreshTopologyPreparedData;
+import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.Map;

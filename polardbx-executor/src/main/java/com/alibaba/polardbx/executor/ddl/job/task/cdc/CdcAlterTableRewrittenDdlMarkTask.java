@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -35,7 +35,7 @@ import java.sql.Connection;
 
 import static com.alibaba.polardbx.common.cdc.ICdcManager.FOREIGN_KEYS_DDL;
 import static com.alibaba.polardbx.common.cdc.ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE;
-import static com.alibaba.polardbx.common.cdc.ICdcManager.USE_ORGINAL_DDL;
+import static com.alibaba.polardbx.common.cdc.ICdcManager.USE_ORIGINAL_DDL;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 @TaskName(name = "CdcAlterTableRewrittenDdlMarkTask")
@@ -76,7 +76,7 @@ public class CdcAlterTableRewrittenDdlMarkTask extends BaseDdlTask {
             if (isAddColumns || isDropColumns) {
                 executionContext.getExtraCmds().put(REFRESH_CREATE_SQL_4_PHY_TABLE, "true");
                 if (CollectionUtils.isNotEmpty(alterTablePreparedData.getAddedIndexes())) {
-                    executionContext.getExtraCmds().put(USE_ORGINAL_DDL, "true");
+                    executionContext.getExtraCmds().put(USE_ORIGINAL_DDL, "true");
                 }
             }
         }
@@ -86,7 +86,7 @@ public class CdcAlterTableRewrittenDdlMarkTask extends BaseDdlTask {
 
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData.getKind().name(),
-                logicalSql, DdlType.ALTER_TABLE, ddlContext.getJobId(), getTaskId(), DdlVisibility.Public,
+                logicalSql, DdlType.ALTER_TABLE, ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public,
                 buildExtendParameter(executionContext));
     }
 

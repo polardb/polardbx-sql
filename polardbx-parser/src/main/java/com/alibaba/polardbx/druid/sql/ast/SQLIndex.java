@@ -23,5 +23,7 @@ import java.util.List;
 public interface SQLIndex extends SQLObject {
     List<SQLName> getCovering();
 
+    List<SQLName> getClusteredKeys();
+
     List<SQLSelectOrderByItem> getColumns();
 }

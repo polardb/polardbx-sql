@@ -162,6 +162,8 @@ public class AlterTableGroupWithForeignKeyTest extends MoveDatabaseBaseTest {
             return;
         }
 
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
         // create table
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(createParentSql, parent));
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(createChildSql, child, parent));

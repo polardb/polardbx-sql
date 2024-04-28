@@ -34,7 +34,6 @@ public class ResourceBundleUtil {
     private static final ResourceBundleUtil instance = new ResourceBundleUtil("res/ErrorCode");
     public static final String DEFAULT_PLACEHOLDER_PREFIX = "${";
     public static final String DEFAULT_PLACEHOLDER_SUFFIX = "}";
-    public static final int SYSTEM_PROPERTIES_MODE_NEVER = 0;
     public static final int SYSTEM_PROPERTIES_MODE_FALLBACK = 1;
     public static final int SYSTEM_PROPERTIES_MODE_OVERRIDE = 2;
 
@@ -189,8 +188,7 @@ public class ResourceBundleUtil {
 
     protected String getString(String key) {
         String value = null;
-
-        if (value == null && bundle.containsKey(key)) {
+        if (bundle.containsKey(key)) {
             value = bundle.getString(key);
         }
         if (value == null) {

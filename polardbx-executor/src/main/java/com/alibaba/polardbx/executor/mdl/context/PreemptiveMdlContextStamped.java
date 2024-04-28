@@ -27,12 +27,12 @@ import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.google.common.primitives.Longs;
-
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
@@ -146,6 +146,6 @@ public class PreemptiveMdlContextStamped extends MdlContextStamped {
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
-        SyncManagerHelper.sync(killSyncAction, schemaName);
+        SyncManagerHelper.sync(killSyncAction, schemaName, SyncScope.ALL);
     }
 }

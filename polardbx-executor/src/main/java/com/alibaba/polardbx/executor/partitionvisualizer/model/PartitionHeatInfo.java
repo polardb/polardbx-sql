@@ -16,13 +16,12 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer.model;
 
-import java.io.Serializable;
-
 import lombok.Data;
+
+import java.io.Serializable;
 
 /**
  * @author ximing.yd
- * @date 2021/12/20 上午11:13
  */
 @Data
 public class PartitionHeatInfo implements Serializable {

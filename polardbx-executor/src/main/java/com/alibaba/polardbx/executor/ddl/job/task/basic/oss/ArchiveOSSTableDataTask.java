@@ -136,7 +136,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
     protected void deleteUncommitted(List<FilesRecord> files, List<ColumnMetasRecord> columnMetas) {
         // delete remote oss files and local tmp files
         for (FilesRecord record : files) {
-            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.targetTableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.targetTableEngine, false);
             File tmpFile = new File(record.getLocalPath());
             if (tmpFile.exists()) {
                 if (!tmpFile.delete()) {
@@ -150,7 +150,7 @@ public class ArchiveOSSTableDataTask extends BaseGmsTask {
 
         // delete column meta and bf files
         for (ColumnMetasRecord record : columnMetas) {
-            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.targetTableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.targetTableEngine, false);
         }
     }
 

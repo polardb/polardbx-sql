@@ -121,7 +121,7 @@ public final class ShowDataSource {
     public static void execute(ManagerConnection c, String name) {
         Map<String, SchemaConfig> schemas = CobarServer.getInstance().getConfig().getSchemas();
         MysqlResultSetPacket packet = new MysqlResultSetPacket();
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
         ByteBufferHolder buffer = c.allocate();
         IPacketOutputProxy proxy = PacketOutputProxyFactory.getInstance().createProxy(c, buffer);
         proxy.packetBegin();

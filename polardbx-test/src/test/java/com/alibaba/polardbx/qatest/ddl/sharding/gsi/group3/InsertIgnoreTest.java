@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group3;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.calcite.util.Pair;
@@ -2337,6 +2338,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly() {
         final String tableName = "test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -2417,6 +2419,7 @@ public class InsertIgnoreTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly_usingGsi() {
         final String tableName = "test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);

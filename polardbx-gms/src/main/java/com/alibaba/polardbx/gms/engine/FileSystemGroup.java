@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.gms.engine;
 
-
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
@@ -32,7 +31,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
@@ -48,7 +46,8 @@ public class FileSystemGroup {
     private DeletePolicy deletePolicy;
     private boolean readOnly;
 
-    public FileSystemGroup(FileSystem master, List<FileSystem> slaves, ThreadPoolExecutor executor, DeletePolicy deletePolicy, boolean readOnly) {
+    public FileSystemGroup(FileSystem master, List<FileSystem> slaves, ThreadPoolExecutor executor,
+                           DeletePolicy deletePolicy, boolean readOnly) {
         this.master = master;
         this.slaves = slaves;
         this.executor = executor;
@@ -81,7 +80,7 @@ public class FileSystemGroup {
         }
     }
 
-    public void writeFile(File localFile, String ossKey) throws IOException {
+    public void writeFile(File localFile, Path path) throws IOException {
         if (readOnly) {
             throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_READ_ONLY);
         }
@@ -95,9 +94,8 @@ public class FileSystemGroup {
             Future future = executor.submit(new Runnable() {
                 @Override
                 public void run() {
-                    Path path = FileSystemUtils.buildPath(fileSystem, ossKey.toString());
                     try (OutputStream outputStream = fileSystem.create(path);
-                         InputStream inputStream = new FileInputStream(localFile)) {
+                        InputStream inputStream = new FileInputStream(localFile)) {
                         IOUtils.copy(inputStream, outputStream);
                     } catch (IOException e) {
                         throw GeneralUtil.nestedException(e);
@@ -110,22 +108,22 @@ public class FileSystemGroup {
         AsyncUtils.waitAll(futures);
     }
 
-    public boolean exists(String ossKey) throws IOException {
-        return master.exists(FileSystemUtils.buildPath(master, ossKey));
+    public boolean exists(String fileName, boolean isColumnar) throws IOException {
+        return master.exists(FileSystemUtils.buildPath(master, fileName, isColumnar));
     }
 
-    public boolean delete(String ossKey, boolean recursive) throws IOException {
+    public boolean delete(String fileName, boolean recursive, boolean isColumnar) throws IOException {
         if (readOnly) {
             throw new TddlRuntimeException(ErrorCode.ERR_FILE_STORAGE_READ_ONLY);
         }
 
-        Path path = FileSystemUtils.buildPath(master, ossKey);
+        Path path = FileSystemUtils.buildPath(master, fileName, isColumnar);
         if (deletePolicy == DeletePolicy.NEVER) {
             LOGGER.info("success: delete " + path + " with policy " + deletePolicy);
             return true;
         }
 
-        boolean ok = master.delete(FileSystemUtils.buildPath(master, ossKey), recursive);
+        boolean ok = master.delete(path, recursive);
         if (deletePolicy == DeletePolicy.MASTER_ONLY) {
             LOGGER.info((ok ? "success" : "fail") + ": delete " + path + " with policy " + deletePolicy);
             return ok;
@@ -138,7 +136,7 @@ public class FileSystemGroup {
                     @Override
                     public void run() {
                         boolean ok = false;
-                        Path path = FileSystemUtils.buildPath(slave, ossKey);
+                        Path path = FileSystemUtils.buildPath(slave, fileName, isColumnar);
                         try {
                             ok = slave.delete(path, recursive);
                         } catch (IOException e) {
@@ -146,7 +144,8 @@ public class FileSystemGroup {
                             ok = false;
                             throw GeneralUtil.nestedException(e);
                         } finally {
-                            LOGGER.info((ok ? "success" : "fail") + ": delete " + path + " with policy " + deletePolicy);
+                            LOGGER.info(
+                                (ok ? "success" : "fail") + ": delete " + path + " with policy " + deletePolicy);
                         }
                     }
                 });

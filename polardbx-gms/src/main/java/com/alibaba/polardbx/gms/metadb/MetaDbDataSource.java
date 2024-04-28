@@ -603,7 +603,8 @@ public class MetaDbDataSource extends AbstractLifecycle {
 
         @Override
         public Connection getConnection() throws SQLException {
-            return physicalDataSource.getConnection();
+            Connection connection = physicalDataSource.getConnection();
+            return connection;
         }
 
         @Override

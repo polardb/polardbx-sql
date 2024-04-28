@@ -68,9 +68,9 @@ public class CheckOSSArchiveUtil {
 
         // check table one by one
         try {
-            for (TablePartRecordInfoContext table : tableGroupConfig.getAllTables()) {
+            for (String tableName : tableGroupConfig.getAllTables()) {
                 LocalPartitionDefinitionInfo localPartitionDefinitionInfo =
-                    sm.getTable(table.getLogTbRec().getTableName())
+                    sm.getTable(tableName)
                         .getLocalPartitionDefinitionInfo();
                 if (localPartitionDefinitionInfo == null) {
                     continue;

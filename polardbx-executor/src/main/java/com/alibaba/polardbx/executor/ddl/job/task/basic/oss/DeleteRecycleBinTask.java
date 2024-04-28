@@ -53,7 +53,8 @@ public class DeleteRecycleBinTask extends BaseDdlTask {
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         updateSupportedCommands(true, false, metaDbConnection);
         try (Statement statement = metaDbConnection.createStatement()) {
-            statement.executeUpdate(String.format("delete from %s where `schema_name` = '%s' and `name` = '%s'", GmsSystemTables.RECYCLE_BIN, schemaName, binName));
+            statement.executeUpdate(String.format("delete from %s where `schema_name` = '%s' and `name` = '%s'",
+                GmsSystemTables.RECYCLE_BIN, schemaName, binName));
         } catch (Throwable t) {
             throw new TddlRuntimeException(ErrorCode.ERR_RECYCLEBIN_EXECUTE, "delete from recycle bin error", t);
         }

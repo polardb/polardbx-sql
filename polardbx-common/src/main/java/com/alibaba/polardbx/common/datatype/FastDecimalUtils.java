@@ -16,6 +16,12 @@
 
 package com.alibaba.polardbx.common.datatype;
 
+import com.alibaba.polardbx.common.utils.BigDecimalUtil;
+import com.google.common.annotations.VisibleForTesting;
+
+import java.math.BigInteger;
+
+import static com.alibaba.polardbx.common.datatype.Decimal.MAX_128_BIT_PRECISION;
 import static com.alibaba.polardbx.common.datatype.DecimalRoundMod.HALF_UP;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_BASE;
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DIG_MASK;
@@ -183,6 +189,102 @@ public class FastDecimalUtils {
         to.reset();
 
         return doDecimalRound(from, to, scale, mode);
+    }
+
+    /**
+     * @param buffer Buffer pre-allocated by caller
+     */
+    public static int setLongWithScale(DecimalStructure buffer, DecimalStructure result,
+                                       long longVal, int scale) {
+        buffer.reset();
+        // parse long & set scale.
+        DecimalConverter.longToDecimal(longVal, buffer);
+        // shift by scale value.
+        shift(buffer, buffer, -scale);
+
+        return round(buffer, result, scale, HALF_UP);
+    }
+
+    /**
+     * @param lowBits unsigned long
+     * @param buffer Buffer pre-allocated by caller
+     */
+    public static int setDecimal128WithScale(DecimalStructure buffer, DecimalStructure result,
+                                             long lowBits, long highBits, int scale) {
+        buffer.reset();
+        result.reset();
+        byte[] int128Bytes = BigDecimalUtil.fastInt128ToBytes(lowBits, highBits);
+        DecimalConverter.parseString(int128Bytes, buffer, false);
+        // shift by scale value.
+        shift(buffer, buffer, -scale);
+        return round(buffer, result, scale, HALF_UP);
+    }
+
+    @VisibleForTesting
+    public static long[] convertToDecimal128(Decimal decimal) {
+        long[] decimal128 = new long[2];
+        convertToDecimal128(decimal, decimal128);
+        return decimal128;
+    }
+
+    @VisibleForTesting
+    public static Decimal convert128ToDecimal(long[] decimal128, int scale) {
+        DecimalStructure buffer = new DecimalStructure();
+        DecimalStructure result = new DecimalStructure();
+        setDecimal128WithScale(buffer, result, decimal128[0], decimal128[1], scale);
+        return new Decimal(result);
+    }
+
+    /**
+     * low performance, should be used in test only
+     */
+    @VisibleForTesting
+    public static void convertToDecimal128(Decimal decimal, long[] result) {
+        if (!DecimalConverter.isDecimal128(decimal.precision())) {
+            throw new IllegalArgumentException("Decimal precision: " + decimal.precision()
+                + " exceeds range of decimal128: " + MAX_128_BIT_PRECISION);
+        }
+        DecimalStructure bufferStructure = new DecimalStructure();
+        Decimal unscaledDecimal = decimal;
+        if (decimal.scale() != 0) {
+            unscaledDecimal = new Decimal(bufferStructure);
+            FastDecimalUtils.shift(decimal.getDecimalStructure(), bufferStructure,
+                decimal.scale());
+        }
+        BigInteger bigInteger;
+        if (decimal.getDecimalStructure().isZero()) {
+            bigInteger = BigInteger.ZERO;
+        } else {
+            bigInteger = new BigInteger(unscaledDecimal.toString());
+        }
+        boolean isNeg = bigInteger.signum() < 0;
+        bigInteger = bigInteger.abs();
+        long low = 0L, high = 0L;
+        byte[] byteArray = bigInteger.toByteArray();
+        if (byteArray.length <= 8) {
+            for (int i = 0; i < byteArray.length; i++) {
+                low = (low << 8) | (byteArray[i] & 0xFF);
+            }
+        } else if (byteArray.length <= 16) {
+            int lowStart = byteArray.length - 8;
+            for (int i = 0; i < lowStart; i++) {
+                high = (high << 8) | (byteArray[i] & 0xFF);
+            }
+            for (int i = lowStart; i < byteArray.length; i++) {
+                low = (low << 8) | (byteArray[i] & 0xFF);
+            }
+        } else {
+            throw new IllegalArgumentException("Decimal representation is larger than 128 bits");
+        }
+        if (isNeg) {
+            low = ~low + 1;
+            high = ~high;
+            if (low == 0) {
+                high += 1;
+            }
+        }
+        result[0] = low;
+        result[1] = high;
     }
 
     protected static int doAdd(DecimalStructure from1, DecimalStructure from2, DecimalStructure to) {

@@ -29,9 +29,9 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.Optional;
 import java.util.Set;

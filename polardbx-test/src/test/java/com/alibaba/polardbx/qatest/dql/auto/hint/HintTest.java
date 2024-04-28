@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.dql.auto.hint;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.ColumnarIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
@@ -28,6 +29,7 @@ public class HintTest extends AutoReadBaseTestCase {
      * by every statement closing
      */
     @Test
+    @ColumnarIgnore
     public void testHintFlag() throws SQLException {
         String hint = "/*TDDL:a()*/ ";
         String sql = "select * from " + baseOneTableName;
@@ -50,6 +52,7 @@ public class HintTest extends AutoReadBaseTestCase {
     }
 
     @Test
+    @ColumnarIgnore
     public void testHintFlagInsideTran() throws SQLException {
         String hint = "/*TDDL:a()*/ ";
         String sql = "select * from " + baseOneTableName;

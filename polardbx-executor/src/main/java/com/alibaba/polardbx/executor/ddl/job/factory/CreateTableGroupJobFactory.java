@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateTableGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -29,6 +30,7 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.google.common.collect.Lists;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlCreateTableGroup;
 
@@ -75,12 +77,16 @@ public class CreateTableGroupJobFactory extends DdlJobFactory {
         }
         CreateTableGroupValidateTask createTableGroupValidateTask =
             new CreateTableGroupValidateTask(preparedData.getSchemaName(),
-                preparedData.getTableGroupName());
+                Lists.newArrayList(preparedData.getTableGroupName()));
         taskList.add(createTableGroupValidateTask);
         CreateTableGroupAddMetaTask createTableGroupAddMetaTask = new CreateTableGroupAddMetaTask(
             preparedData.getSchemaName(), preparedData.getTableGroupName(), preparedData.getLocality(),
-            preparedData.getPartitionBy());
+            preparedData.getPartitionBy(), preparedData.isSingle(), false);
         taskList.add(createTableGroupAddMetaTask);
+        CdcCreateTableGroupMarkTask cdcCreateTableGroupMarkTask = new CdcCreateTableGroupMarkTask(
+            preparedData.getSchemaName(), preparedData.getTableGroupName()
+        );
+        taskList.add(cdcCreateTableGroupMarkTask);
         TableGroupSyncTask tableGroupSyncTask =
             new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
         taskList.add(tableGroupSyncTask);

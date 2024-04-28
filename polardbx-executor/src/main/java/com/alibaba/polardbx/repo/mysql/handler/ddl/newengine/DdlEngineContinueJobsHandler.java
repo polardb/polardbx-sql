@@ -42,50 +42,63 @@ public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
         SqlContinueDdlJob command = (SqlContinueDdlJob) logicalPlan.getNativeSqlNode();
-        return doContinue(command.isAll(), command.getJobIds(), executionContext);
+
+        if (command.isAll()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        if (command.getJobIds() == null || command.getJobIds().isEmpty()) {
+            return new AffectRowCursor(0);
+        }
+
+        if (command.getJobIds().size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        return doContinue(command.getJobIds().get(0), executionContext);
     }
 
-    public Cursor doContinue(boolean isAll, List<Long> jobIds, ExecutionContext executionContext) {
+    public Cursor doContinue(Long jobId, ExecutionContext executionContext) {
         boolean enableOperateSubJob =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OPERATE_SUBJOB);
-        List<DdlEngineRecord> records =
-            fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
-        records.stream().forEach(e -> {
-            DdlState state = DdlState.valueOf(e.state);
-            if (!(state == DdlState.PAUSED || state == DdlState.ROLLBACK_PAUSED)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
-                    "Only PAUSED/ROLLBACK_PAUSED jobs can be continued, but job %s is in %s state", e.jobId, e.state));
-            }
-            if (!e.isSupportContinue()) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
-                    "Continue/recover is not supported for job %s. Please try: cancel ddl %s", e.jobId, e.jobId));
-            }
-            if (e.isSubJob() && !enableOperateSubJob) {
-                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
-            }
-        });
+        DdlEngineRecord record = schedulerManager.fetchRecordByJobId(jobId);
+        if (record == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "The ddl job does not exist");
+        }
+
+        DdlState state = DdlState.valueOf(record.state);
+        if (!(state == DdlState.PAUSED || state == DdlState.ROLLBACK_PAUSED)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
+                "Only PAUSED/ROLLBACK_PAUSED jobs can be continued, but job %s is in %s state", record.jobId,
+                record.state));
+        }
+        if (!record.isSupportContinue()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, String.format(
+                "Continue/recover is not supported for job %s. Please try: cancel ddl %s", record.jobId, record.jobId));
+        }
+        if (record.isSubJob() && !enableOperateSubJob) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
+        }
 
         int countDone = 0;
         List<Long> jobIdList = new ArrayList<>();
-        for (DdlEngineRecord record : records) {
-            if (DdlState.PAUSED == DdlState.valueOf(record.state)) {
-                if (schedulerManager.tryUpdateDdlState(
-                    record.schemaName,
-                    record.jobId,
-                    DdlState.PAUSED,
-                    DdlState.RUNNING)) {
-                    jobIdList.add(record.jobId);
-                    countDone++;
-                }
-            } else if (DdlState.ROLLBACK_PAUSED == DdlState.valueOf(record.state)) {
-                if (schedulerManager.tryUpdateDdlState(
-                    record.schemaName,
-                    record.jobId,
-                    DdlState.ROLLBACK_PAUSED,
-                    DdlState.ROLLBACK_RUNNING)) {
-                    jobIdList.add(record.jobId);
-                    countDone++;
-                }
+        if (DdlState.PAUSED == DdlState.valueOf(record.state)) {
+            if (schedulerManager.tryUpdateDdlState(
+                record.schemaName,
+                record.jobId,
+                DdlState.PAUSED,
+                DdlState.RUNNING)) {
+                jobIdList.add(record.jobId);
+                countDone++;
+            }
+        } else if (DdlState.ROLLBACK_PAUSED == DdlState.valueOf(record.state)) {
+            if (schedulerManager.tryUpdateDdlState(
+                record.schemaName,
+                record.jobId,
+                DdlState.ROLLBACK_PAUSED,
+                DdlState.ROLLBACK_RUNNING)) {
+                jobIdList.add(record.jobId);
+                countDone++;
             }
         }
 
@@ -95,12 +108,11 @@ public class DdlEngineContinueJobsHandler extends DdlEngineJobsHandler {
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
         boolean checkResponseInMemory
             = executionContext.getParamManager().getBoolean(ConnectionParams.CHECK_RESPONSE_IN_MEM);
-        if (!asyncMode && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
-            DdlEngineRecord record = records.get(0);
+        if (!asyncMode) {
             respond(record.schemaName, record.jobId, executionContext, checkResponseInMemory, true);
         }
 
-        return new AffectRowCursor(new int[] {countDone});
+        return new AffectRowCursor(countDone);
     }
 
 }

@@ -81,7 +81,7 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
         Map<String, Long> tablesVersion = getTablesVersion();
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableGroupAddPartitionPreparedData.getTableGroupName(),
-                tablesVersion, true, alterTableGroupAddPartitionPreparedData.getTargetPhysicalGroups());
+                tablesVersion, true, alterTableGroupAddPartitionPreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupAddPartitionPreparedData.getTableGroupName());
 
@@ -125,6 +125,7 @@ public class AlterTableGroupAddPartitionJobFactory extends AlterTableGroupBaseJo
 
         // TODO(luoyanxin)
         // executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
+        attacheCdcFinalMarkTask(executableDdlJob);
         return executableDdlJob;
     }
 

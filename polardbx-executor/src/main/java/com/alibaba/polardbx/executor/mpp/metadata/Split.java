@@ -29,9 +29,9 @@
  */
 package com.alibaba.polardbx.executor.mpp.metadata;
 
+import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.executor.mpp.spi.ConnectorSplit;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
@@ -39,8 +39,8 @@ import static java.util.Objects.requireNonNull;
 public final class Split {
 
     public static final Split EMPTY_SPLIT = new Split(true, null);
-    private final boolean remoteSplit;
-    private final ConnectorSplit connectorSplit;
+    protected final boolean remoteSplit;
+    protected final ConnectorSplit connectorSplit;
 
     @JsonCreator
     public Split(

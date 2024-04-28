@@ -58,11 +58,12 @@ public class MockDdlJob extends DdlJobFactory {
     @Override
     protected ExecutableDdlJob doCreate() {
         ExecutableDdlJob executableDdlJob = generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob);
-        FailPoint.inject(FailPointKey.FP_HIJACK_DDL_JOB_FORMAT, (k, v)->{
-            if(StringUtils.equalsIgnoreCase(v, "SEQUELTIAL")){
+        FailPoint.inject(FailPointKey.FP_HIJACK_DDL_JOB_FORMAT, (k, v) -> {
+            if (StringUtils.equalsIgnoreCase(v, "SEQUELTIAL")) {
                 executableDdlJob.overrideTasks(generateSequentialDag(expectNodeCount, mockSubJob));
-            }else {
-                executableDdlJob.overrideTasks(generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob));
+            } else {
+                executableDdlJob.overrideTasks(
+                    generateRandomDag(expectNodeCount, maxOutEdgeCount, edgeRate, mockSubJob));
             }
         });
         return executableDdlJob;

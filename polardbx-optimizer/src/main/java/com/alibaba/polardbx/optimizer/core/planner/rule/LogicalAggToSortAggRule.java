@@ -16,16 +16,16 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.SortAgg;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelTraitSet;
-import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelFieldCollation;
 import org.apache.calcite.rel.RelNode;
@@ -54,6 +54,9 @@ public class LogicalAggToSortAggRule extends ConverterRule {
 
     @Override
     public boolean matches(RelOptRuleCall call) {
+        if (CBOUtil.containUnpushableAgg(call.rel(0))) {
+            return false;
+        }
         return enable(PlannerContext.getPlannerContext(call));
     }
 
@@ -62,7 +65,8 @@ public class LogicalAggToSortAggRule extends ConverterRule {
         LogicalAggregate agg = (LogicalAggregate) rel;
         RelNode input = agg.getInput();
 
-        if (agg.getAggOptimizationContext().isFromDistinctAgg() || PlannerUtils.haveAggWithDistinct(agg.getAggCallList())) {
+        if (agg.getAggOptimizationContext().isFromDistinctAgg() || PlannerUtils.haveAggWithDistinct(
+            agg.getAggCallList())) {
             return null;
         }
         List<Integer> groupSet = Lists.newArrayList(agg.getGroupSet().asList());

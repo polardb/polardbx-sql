@@ -19,10 +19,12 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
@@ -146,8 +148,12 @@ public class LogicalAlterTableMergePartition extends BaseDdlOperation {
                 preparedData.setTemplatePartNames(templatePartNames);
 
             } else {
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                List<String> partNames = new ArrayList<>();
+                List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                PartitionInfoUtil.getPartitionName(curPartitionInfo, partNames, subPartNamePairs);
                 List<String> newPhyPartNames =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 1,
                         new TreeSet<>(String::compareToIgnoreCase), true);
                 preparedData.setNewPhysicalPartName(newPhyPartNames.get(0));
             }
@@ -204,37 +210,42 @@ public class LogicalAlterTableMergePartition extends BaseDdlOperation {
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION);
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
 
-        List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
-        Map<String, Pair<String, String>> mockOrderedTargetTableLocations = new TreeMap<>(String::compareToIgnoreCase);
-        int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
-        int i = 0;
-        for (int j = 0; j < newPartitionGroups.size(); j++) {
-            String mockTableName = "";
-            mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
-                GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
+        preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
+
+        if (preparedData.needFindCandidateTableGroup()) {
+            List<PartitionGroupRecord> newPartitionGroups = preparedData.getInvisiblePartitionGroups();
+            Map<String, Pair<String, String>> mockOrderedTargetTableLocations =
+                new TreeMap<>(String::compareToIgnoreCase);
+            int flag = PartitionInfoUtil.COMPARE_EXISTS_PART_LOCATION;
+            int i = 0;
+            for (int j = 0; j < newPartitionGroups.size(); j++) {
+                String mockTableName = "";
+                mockOrderedTargetTableLocations.put(newPartitionGroups.get(j).partition_name, new Pair<>(mockTableName,
+                    GroupInfoUtil.buildGroupNameFromPhysicalDb(newPartitionGroups.get(j).partition_name)));
+
+            }
+            if (preparedData.isHasSubPartition() && !preparedData.isUseTemplatePart()
+                && !preparedData.isMergeSubPartition()) {
+                flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
+            }
+            PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
+                .getNewPartitionInfo(
+                    preparedData,
+                    curPartitionInfo,
+                    false,
+                    sqlAlterTableMergePartition,
+                    preparedData.getOldPartitionNames(),
+                    ImmutableList.of(targetPartitionName),
+                    preparedData.getTableGroupName(),
+                    null,
+                    preparedData.getInvisiblePartitionGroups(),
+                    mockOrderedTargetTableLocations,
+                    ec);
+
+            preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
+                null, flag, ec);
 
         }
-        if (preparedData.isHasSubPartition() && !preparedData.isUseTemplatePart()
-            && !preparedData.isMergeSubPartition()) {
-            flag |= PartitionInfoUtil.IGNORE_PARTNAME_LOCALITY;
-        }
-        PartitionInfo newPartInfo = AlterTableGroupSnapShotUtils
-            .getNewPartitionInfo(
-                preparedData,
-                curPartitionInfo,
-                false,
-                sqlAlterTableMergePartition,
-                preparedData.getOldPartitionNames(),
-                ImmutableList.of(targetPartitionName),
-                preparedData.getTableGroupName(),
-                null,
-                preparedData.getInvisiblePartitionGroups(),
-                mockOrderedTargetTableLocations,
-                ec);
-
-        preparedData.findCandidateTableGroupAndUpdatePrepareDate(tableGroupConfig, newPartInfo, null,
-            null, flag, ec);
-
     }
 
     public AlterTableGroupMergePartitionPreparedData getPreparedData() {

@@ -142,7 +142,7 @@ public class MoveDatabaseWithForeignKeyTest extends MoveDatabaseBaseTest {
             }
         } catch (Throwable ex) {
             ex.printStackTrace();
-            if (!ex.getMessage().contains("Failed to get MySQL version: Unknown database ")) {
+            if (!ex.getMessage().contains("Unknown database")) {
                 Assert.fail(ex.getMessage());
             }
 

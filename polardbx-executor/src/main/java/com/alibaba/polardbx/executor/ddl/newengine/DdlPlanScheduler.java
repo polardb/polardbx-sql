@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+
 import static com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper.getInstConfigAsLong;
 
 public class DdlPlanScheduler {
@@ -78,11 +79,11 @@ public class DdlPlanScheduler {
                     return;
                 }
                 synchronized (DdlPlanScheduler.class) {
-                    for (DdlPlanRecord record: ddlPlanRecordList){
+                    for (DdlPlanRecord record : ddlPlanRecordList) {
                         try {
                             RebalanceDdlPlanManager rebalanceDdlPlanManager = new RebalanceDdlPlanManager();
                             rebalanceDdlPlanManager.process(record);
-                        }catch (Exception e){
+                        } catch (Exception e) {
                             LOGGER.error("process ddl plan error, planId:" + record.getPlanId(), e);
                         }
                     }

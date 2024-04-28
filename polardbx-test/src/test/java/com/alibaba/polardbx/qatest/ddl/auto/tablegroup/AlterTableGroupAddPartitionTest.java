@@ -98,7 +98,7 @@ public class AlterTableGroupAddPartitionTest extends AlterTableGroupTestBase {
     @Before
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, false, false, false);
+            setUp(true, partitionRuleInfo, false, false, false, false);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

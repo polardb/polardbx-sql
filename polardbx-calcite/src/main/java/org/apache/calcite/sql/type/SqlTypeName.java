@@ -17,6 +17,7 @@
 package org.apache.calcite.sql.type;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -477,7 +478,7 @@ public enum SqlTypeName {
     public int getDefaultScale() {
         switch (this) {
         case DECIMAL:
-            return 0;
+            return DecimalTypeBase.DEFAULT_SCALE;
         case INTERVAL_YEAR:
         case INTERVAL_YEAR_MONTH:
         case INTERVAL_MONTH:

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -29,6 +30,8 @@ import io.airlift.slice.Slice;
 
 import java.math.BigInteger;
 import java.util.List;
+import java.sql.Blob;
+import java.sql.SQLException;
 import java.util.Optional;
 
 /**
@@ -69,6 +72,13 @@ public class Hex extends AbstractScalarFunction {
         if (DataTypeUtil.equalsSemantically(DataTypes.BytesType, operandType)) {
             byte[] bytes = DataTypes.BytesType.convertFrom(args[0]);
             return octetToHex(bytes);
+        } else if (DataTypeUtil.equalsSemantically(DataTypes.BlobType, operandType)) {
+            Blob blob = DataTypes.BlobType.convertFrom(args[0]);
+            try {
+                return octetToHex(blob.getBytes(1, (int) blob.length()));
+            } catch (SQLException e) {
+                throw GeneralUtil.nestedException(e);
+            }
         } else if (DataTypeUtil.equalsSemantically(DataTypes.VarcharType, operandType)
             && operandType.getCharsetName() == CharsetName.BINARY) {
             byte[] bytes = ((Slice) args[0]).getBytes();

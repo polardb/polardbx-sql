@@ -30,8 +30,6 @@ import java.util.Map;
 @Data
 public class FilesRecord implements SystemTableRecord {
 
-    public static String TABLE_FORMAT_TYPE = "TABLE FORMAT";
-
     public long fileId;
     public String fileName;
     public String fileType;
@@ -69,17 +67,23 @@ public class FilesRecord implements SystemTableRecord {
     public String updateTime;
     public String checkTime;
     public long checksum;
+    public Long deletedChecksum;
     public String status;
     public String extra;
     public long taskId;
     public long lifeCycle;
     public String localPath;
     public String logicalSchemaName;
+    /**
+     * After supporting DDL, logicalTableName here means table id
+     */
     public String logicalTableName;
     public Long commitTs;
     public Long removeTs;
     public Long fileHash;
     public String localPartitionName;
+    public String partitionName;
+    public Long schemaTs;
 
     @Override
     public FilesRecord fill(ResultSet rs) throws SQLException {
@@ -120,6 +124,7 @@ public class FilesRecord implements SystemTableRecord {
         this.updateTime = rs.getString("update_time");
         this.checkTime = rs.getString("check_time");
         this.checksum = rs.getLong("checksum");
+        this.deletedChecksum = rs.getLong("deleted_checksum");
         this.status = rs.getString("status");
         this.extra = rs.getString("extra");
         this.taskId = rs.getLong("task_id");
@@ -137,6 +142,11 @@ public class FilesRecord implements SystemTableRecord {
         }
         this.fileHash = rs.getLong("file_hash");
         this.localPartitionName = rs.getString("local_partition_name");
+        this.partitionName = rs.getString("partition_name");
+        this.schemaTs = rs.getLong("schema_ts");
+        if (rs.wasNull()) {
+            this.schemaTs = null;
+        }
         return this;
     }
 
@@ -186,6 +196,7 @@ public class FilesRecord implements SystemTableRecord {
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.logicalTableName);
 
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.localPartitionName);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.partitionName);
         return params;
     }
 }

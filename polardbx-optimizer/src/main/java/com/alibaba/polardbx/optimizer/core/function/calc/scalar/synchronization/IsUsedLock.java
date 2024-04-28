@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.synchronization;
 
 import com.alibaba.polardbx.common.lock.LockingFunctionHandle;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -35,13 +34,7 @@ public class IsUsedLock extends AbstractScalarFunction {
     public Object compute(Object[] args, ExecutionContext ec) {
         String lockName = DataTypes.StringType.convertFrom(args[0]);
         LockingFunctionHandle lockHandle = ec.getConnection().getLockHandle(ec);
-        String res = null;
-        try {
-            res = lockHandle.isUsedLock(lockName);
-        } catch (SQLException e) {
-            GeneralUtil.nestedException("fail to call is_used_lock", e);
-        }
-        return res;
+        return lockHandle.isUsedLock(lockName);
     }
 
     @Override

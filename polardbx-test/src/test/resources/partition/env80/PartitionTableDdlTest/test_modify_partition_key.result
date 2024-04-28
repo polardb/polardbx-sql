@@ -251,7 +251,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`)
 		PARTITIONS #@#,
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#
 /* tablegroup = `tg` */
@@ -287,7 +287,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`)
 		PARTITIONS #@#,
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#
 /* tablegroup = `tg` */
@@ -313,7 +313,7 @@ t_order,CREATE TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`)
 		PARTITIONS #@#,
 	LOCAL KEY `auto_shard_key_order_id` USING BTREE (`order_id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100006 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`order_id`)
 PARTITIONS #@#
 /* tablegroup = `tg` */

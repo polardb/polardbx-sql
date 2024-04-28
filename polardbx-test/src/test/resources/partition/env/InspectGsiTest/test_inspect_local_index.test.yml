@@ -88,3 +88,40 @@ CREATE TABLE `tb7` (
 ) PARTITION BY KEY(`id`);
 
 inspect full index from tb7;
+
+# larger primary key(has same effect as primary key)
+create table tb8(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(id, name, addr),
+  local index idx1(id, name)
+) partition by hash(id);
+
+inspect full index from tb8;
+  
+# same unique key and logical key
+create table tb9(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(name),
+  unique key key1(id, name, addr),
+  local index idx2(id, name, addr)
+) partition by hash(id);
+
+inspect full index from tb9;
+  
+# same unique key and logical key(different order)
+create table tb10(
+  id int,
+  name varchar(20),
+  addr varchar(20),
+  primary key(addr),
+  local index idx1(id, name, addr),
+  unique key key2(id, name, addr)
+) partition by hash(id);
+
+inspect full index from tb10;
+
+

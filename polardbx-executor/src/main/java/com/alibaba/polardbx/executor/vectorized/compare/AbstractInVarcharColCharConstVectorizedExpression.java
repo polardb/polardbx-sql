@@ -23,6 +23,10 @@ import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.ReferenceBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
+import com.alibaba.polardbx.executor.chunk.columnar.CommonLazyBlock;
+import com.alibaba.polardbx.executor.operator.scan.BlockDictionary;
+import com.alibaba.polardbx.executor.operator.scan.impl.DictionaryMapping;
+import com.alibaba.polardbx.executor.operator.scan.impl.MultiDictionaryMapping;
 import com.alibaba.polardbx.executor.vectorized.AbstractVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
@@ -32,7 +36,13 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 import io.airlift.slice.Slice;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public abstract class AbstractInVarcharColCharConstVectorizedExpression extends AbstractVectorizedExpression {
     protected final CollationHandler collationHandler;
@@ -40,6 +50,8 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
     protected final boolean[] operandIsNulls;
     protected final Slice[] operands;
     protected Comparable[] operandSortKeys;
+
+    protected DictionaryMapping mapping;
 
     public AbstractInVarcharColCharConstVectorizedExpression(
         int outputIndex,
@@ -52,16 +64,32 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
         this.operandIsNulls = new boolean[operandCount()];
         this.operands = new Slice[operandCount()];
 
+        Set<Slice> dictSet = new HashSet<>();
+        List<Slice> dictList = new ArrayList<>();
         for (int operandIndex = 1; operandIndex <= operandCount(); operandIndex++) {
             Object operand1Value = ((LiteralVectorizedExpression) children[operandIndex]).getConvertedValue();
-            if (operand1Value  == null) {
+            if (operand1Value == null) {
                 operandIsNulls[operandIndex - 1] = true;
                 operands[operandIndex - 1] = null;
             } else {
                 operandIsNulls[operandIndex - 1] = false;
-                operands[operandIndex - 1] = sliceType.convertFrom(operand1Value);
+                Slice operand = sliceType.convertFrom(operand1Value);
+                operands[operandIndex - 1] = operand;
+
+                // collect dictionary id
+                if (!dictSet.contains(operand)) {
+                    dictSet.add(operand);
+                    dictList.add(operand);
+                }
             }
         }
+
+        if (!dictSet.isEmpty()) {
+            mapping = new MultiDictionaryMapping(dictList);
+        } else {
+            mapping = null;
+        }
+
     }
 
     abstract int operandCount();
@@ -115,7 +143,7 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (anyOperandsNull()) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -126,30 +154,59 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
         }
 
+        // Try to use dictionary
+        BlockDictionary blockDictionary;
+        if (mapping != null
+            && !compatible
+            && (leftInputVectorSlot instanceof SliceBlock || leftInputVectorSlot instanceof CommonLazyBlock)
+            && (blockDictionary = leftInputVectorSlot.cast(SliceBlock.class).getDictionary()) != null) {
+            SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
+
+            int[] reMapping = mapping.merge(blockDictionary);
+
+            if (isSelectionInUse) {
+                for (int i = 0; i < batchSize; i++) {
+                    int j = sel[i];
+                    int dictId = sliceBlock.getDictId(j);
+                    output[j] = (dictId >= 0 && reMapping[dictId] >= 0)
+                        ? LongBlock.TRUE_VALUE
+                        : LongBlock.FALSE_VALUE;
+                }
+            } else {
+                for (int i = 0; i < batchSize; i++) {
+                    int dictId = sliceBlock.getDictId(i);
+                    output[i] = (dictId >= 0 && reMapping[dictId] >= 0)
+                        ? LongBlock.TRUE_VALUE
+                        : LongBlock.FALSE_VALUE;
+                }
+            }
+
+            return;
+        }
 
         if (!compatible && leftInputVectorSlot instanceof SliceBlock) {
-            SliceBlock sliceBlock = (SliceBlock) leftInputVectorSlot;
+            SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
             // best case.
             if (operandCount() == 1) {
                 if (isSelectionInUse) {
                     for (int i = 0; i < batchSize; i++) {
                         int j = sel[i];
-                        output[j] = sliceBlock.equals(j, (Slice) operandSortKeys[0]) ;
+                        output[j] = sliceBlock.equals(j, (Slice) operandSortKeys[0]);
                     }
                 } else {
                     for (int i = 0; i < batchSize; i++) {
-                        output[i] = sliceBlock.equals(i, (Slice) operandSortKeys[0]) ;
+                        output[i] = sliceBlock.equals(i, (Slice) operandSortKeys[0]);
                     }
                 }
             } else if (operandCount() == 2) {
                 if (isSelectionInUse) {
                     for (int i = 0; i < batchSize; i++) {
                         int j = sel[i];
-                        output[j] = sliceBlock.anyMatch(j, (Slice) operandSortKeys[0], (Slice) operandSortKeys[1]) ;
+                        output[j] = sliceBlock.anyMatch(j, (Slice) operandSortKeys[0], (Slice) operandSortKeys[1]);
                     }
                 } else {
                     for (int i = 0; i < batchSize; i++) {
-                        output[i] = sliceBlock.anyMatch(i, (Slice) operandSortKeys[0], (Slice) operandSortKeys[1]) ;
+                        output[i] = sliceBlock.anyMatch(i, (Slice) operandSortKeys[0], (Slice) operandSortKeys[1]);
                     }
                 }
             } else if (operandCount() == 3) {
@@ -180,7 +237,7 @@ public abstract class AbstractInVarcharColCharConstVectorizedExpression extends 
         } else {
             if (leftInputVectorSlot instanceof SliceBlock) {
                 // normal case.
-                SliceBlock sliceBlock = (SliceBlock) leftInputVectorSlot;
+                SliceBlock sliceBlock = leftInputVectorSlot.cast(SliceBlock.class);
 
                 if (isSelectionInUse) {
                     for (int i = 0; i < batchSize; i++) {

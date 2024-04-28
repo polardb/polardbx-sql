@@ -56,6 +56,8 @@ public abstract class SqlNode implements Cloneable {
 
   protected final SqlParserPos pos;
 
+  protected Boolean async = null;
+
   //~ Constructors -----------------------------------------------------------
 
   /**
@@ -337,6 +339,14 @@ public abstract class SqlNode implements Cloneable {
       }
     }
     return litmus.succeed();
+  }
+
+  public Boolean getAsync() {
+    return async;
+  }
+
+  public void setAsync(Boolean async) {
+    this.async = async;
   }
 }
 

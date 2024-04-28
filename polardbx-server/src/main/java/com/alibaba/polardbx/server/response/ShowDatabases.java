@@ -20,7 +20,6 @@ import com.alibaba.polardbx.CobarConfig;
 import com.alibaba.polardbx.CobarServer;
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -88,7 +87,7 @@ public class ShowDatabases {
         boolean enableLowerCase = InstConfUtil.getBool(ConnectionParams.ENABLE_LOWER_CASE_TABLE_NAMES);
         for (String name : schemaSet) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(enableLowerCase ? StringUtils.lowerCase(name) : name, c.getCharset()));
+            row.add(StringUtil.encode(enableLowerCase ? StringUtils.lowerCase(name) : name, c.getResultSetCharset()));
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
@@ -147,5 +146,4 @@ public class ShowDatabases {
         schemaSet.remove(SystemDbHelper.CDC_DB_NAME);
         return schemaSet;
     }
-
 }

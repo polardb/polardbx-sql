@@ -32,6 +32,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.eclipse.jetty.util.StringUtil;
+import org.jetbrains.annotations.Nullable;
 
 import java.sql.Timestamp;
 import java.util.ArrayList;
@@ -66,18 +67,27 @@ public class OSSColumnTransformer {
     public OSSColumnTransformer(List<ColumnMeta> columnMetas,
                                 List<ColumnMeta> fileColumnMetas,
                                 List<ColumnMeta> initColumnMetas,
-                                List<Timestamp> timestamps) {
+                                List<Timestamp> timestamps,
+                                List<Integer> locInOrc) {
         Preconditions.checkArgument(columnMetas.size() == fileColumnMetas.size(),
             "target and source should have the same size");
         this.sourceColumnMetas = fileColumnMetas;
         this.initColumnMetas = initColumnMetas;
         this.targetColumnMetas = columnMetas;
         this.timestamps = timestamps;
-        this.locInOrc = new ArrayList<>(sourceColumnMetas.size());
-        int cnt = 0;
-        for (ColumnMeta meta : sourceColumnMetas) {
-            locInOrc.add((meta == null) ? null : cnt++);
+
+        if (locInOrc == null) {
+            this.locInOrc = new ArrayList<>(sourceColumnMetas.size());
+            int cnt = 0;
+            for (ColumnMeta meta : sourceColumnMetas) {
+                this.locInOrc.add((meta == null) ? null : cnt++);
+            }
+        } else {
+            Preconditions.checkArgument(locInOrc.size() == fileColumnMetas.size(),
+                "orc location list and source list should have the same size");
+            this.locInOrc = locInOrc;
         }
+
         this.targetColumnMap = Maps.newTreeMap(String::compareToIgnoreCase);
         for (int i = 0; i < targetColumnMetas.size(); i++) {
             this.targetColumnMap.put(targetColumnMetas.get(i).getName().toLowerCase(), i);
@@ -92,6 +102,10 @@ public class OSSColumnTransformer {
                 this.comparisonResults.add(type);
             }
         }
+    }
+
+    public int columnCount() {
+        return targetColumnMetas.size();
     }
 
     String[] getTargetColumns() {
@@ -152,8 +166,13 @@ public class OSSColumnTransformer {
             .filter(x -> x.getName().equals(column)).findFirst().get();
     }
 
+    @Nullable
     public Integer getLocInOrc(int loc) {
         return locInOrc.get(loc);
+    }
+
+    public List<Integer> getLocInOrc() {
+        return locInOrc;
     }
 
     /**

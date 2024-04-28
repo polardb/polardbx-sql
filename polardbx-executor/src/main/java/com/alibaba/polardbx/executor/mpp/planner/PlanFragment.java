@@ -29,25 +29,26 @@
  */
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.util.MoreObjects;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
@@ -79,28 +80,50 @@ public class PlanFragment {
 
     private Integer bkaJoinParallelism = -1;
 
+    private Boolean localBloomFilter = false;
+
+    private Boolean localPairWise;
+
+    private final Boolean remotePairWise;
+
+    private Integer localPartitionCount = -1;
+    private Integer totalPartitionCount = -1;
+
+    // collect the logical table name and its split count.
+    private Map<String, Integer> splitCountMap;
+
+    private final boolean pruneExchangePartition;
+
     public PlanFragment(
         Integer id,
         RelNode root,
         List<SerializeDataType> outputTypes,
         PartitionHandle partitioning,
+        Boolean remotePairWise,
         List<Integer> partitionSources,
         List<Integer> expandSources,
         PartitioningScheme partitioningScheme,
         Integer bkaJoinParallelism,
         List<Integer> consumeFilterIds,
-        List<Integer> produceFilterIds) {
+        List<Integer> produceFilterIds,
+        Boolean localPairWise,
+        Map<String, Integer> splitCountMap,
+        boolean pruneExchangePartition) {
         this.id = id;
         this.root = root;
         this.partitioning = partitioning;
         this.outputTypes = outputTypes;
         this.partitionSources = partitionSources;
         this.partitioningScheme = partitioningScheme;
+        this.remotePairWise = remotePairWise;
         this.rootId = root.getRelatedId();
         this.expandSources.addAll(expandSources);
         this.consumeFilterIds.addAll(consumeFilterIds);
         this.produceFilterIds.addAll(produceFilterIds);
         this.bkaJoinParallelism = bkaJoinParallelism;
+        this.localPairWise = localPairWise;
+        this.splitCountMap = splitCountMap;
+        this.pruneExchangePartition = pruneExchangePartition;
     }
 
     @JsonCreator
@@ -111,24 +134,47 @@ public class PlanFragment {
         @JsonProperty("partitionedSources") List<Integer> partitionSources,
         @JsonProperty("partitioningScheme") PartitioningScheme partitioningScheme,
         @JsonProperty("partitioning") PartitionHandle partitioning,
+        @JsonProperty("remotePairWise") Boolean remotePairWise,
         @JsonProperty("rootId") Integer rootId,
         @JsonProperty("driverParallelism") Integer driverParallelism,
         @JsonProperty("prefetch") Integer prefetch,
         @JsonProperty("bkaJoinParallelism") Integer bkaJoinParallelism,
         @JsonProperty("consumeFilterIds") List<Integer> consumeFilterIds,
-        @JsonProperty("produceFilterIds") List<Integer> produceFilterIds) {
+        @JsonProperty("produceFilterIds") List<Integer> produceFilterIds,
+        @JsonProperty("localBloomFilter") Boolean localBloomFilter,
+        @JsonProperty("localPairWise") Boolean localPairWise,
+        @JsonProperty("localPartitionCount") Integer localPartitionCount,
+        @JsonProperty("totalPartitionCount") Integer totalPartitionCount,
+        @JsonProperty("splitCountMap") Map<String, Integer> splitCountMap,
+        @JsonProperty("pruneExchangePartition") boolean pruneExchangePartition) {
         this.id = requireNonNull(id, "id is null");
         this.relNodeJson = requireNonNull(relNodeJson, "relNodeJson is null");
         this.outputTypes = outputTypes;
         this.partitionSources = partitionSources;
         this.partitioning = partitioning;
         this.partitioningScheme = partitioningScheme;
+        this.remotePairWise = remotePairWise;
         this.rootId = rootId;
         this.driverParallelism = driverParallelism;
         this.prefetch = prefetch;
         this.bkaJoinParallelism = bkaJoinParallelism;
         this.consumeFilterIds = consumeFilterIds;
         this.produceFilterIds = produceFilterIds;
+        this.localBloomFilter = localBloomFilter;
+        this.localPairWise = localPairWise;
+        this.localPartitionCount = localPartitionCount;
+        this.totalPartitionCount = totalPartitionCount;
+        this.splitCountMap = splitCountMap;
+        this.pruneExchangePartition = pruneExchangePartition;
+    }
+
+    @JsonProperty
+    public Map<String, Integer> getSplitCountMap() {
+        return splitCountMap;
+    }
+
+    public void setSplitCountMap(Map<String, Integer> splitCountMap) {
+        this.splitCountMap = splitCountMap;
     }
 
     @JsonProperty
@@ -166,6 +212,52 @@ public class PlanFragment {
 
     public void setBkaJoinParallelism(Integer bkaJoinParallelism) {
         this.bkaJoinParallelism = bkaJoinParallelism;
+    }
+
+    @JsonProperty
+    public Boolean isLocalBloomFilter() {
+        return localBloomFilter;
+    }
+
+    public void setLocalBloomFilter(boolean localBloomFilter) {
+        this.localBloomFilter = localBloomFilter;
+    }
+
+    @JsonProperty
+    public Boolean isLocalPairWise() {
+        return localPairWise;
+    }
+
+    public void setLocalPairWise(Boolean localPairWise) {
+        this.localPairWise = localPairWise;
+    }
+
+    @JsonProperty
+    public Integer getLocalPartitionCount() {
+        return localPartitionCount;
+    }
+
+    public void setLocalPartitionCount(Integer localPartitionCount) {
+        this.localPartitionCount = localPartitionCount;
+    }
+
+    @JsonProperty
+    public Integer getTotalPartitionCount() {
+        return totalPartitionCount;
+    }
+
+    public void setTotalPartitionCount(Integer totalPartitionCount) {
+        this.totalPartitionCount = totalPartitionCount;
+    }
+
+    @JsonProperty
+    public Boolean isRemotePairWise() {
+        return remotePairWise;
+    }
+
+    @JsonProperty
+    public boolean isPruneExchangePartition() {
+        return pruneExchangePartition;
     }
 
     @JsonProperty
@@ -279,6 +371,7 @@ public class PlanFragment {
             .add("id", id)
             .add("plan", relNodeJson)
             .add("partitioningScheme", partitioningScheme)
+            .add("pruneExchangePartition", pruneExchangePartition)
             .toString();
     }
 

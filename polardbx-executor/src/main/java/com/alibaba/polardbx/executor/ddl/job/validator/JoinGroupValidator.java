@@ -68,24 +68,25 @@ public class JoinGroupValidator {
         }
     }
 
-    public static void validateJoinGroupInfo(String schemaName, String tableGroupName, String joinGroupName, String errMsg, ExecutionContext ec, Connection metaDbConn) {
+    public static void validateJoinGroupInfo(String schemaName, String tableGroupName, String joinGroupName,
+                                             String errMsg, ExecutionContext ec, Connection metaDbConn) {
         TableGroupInfoManager tableGroupInfoManager =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
         TableGroupConfig tableGroupConfig =
             tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         if (tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getTables())) {
-            TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupConfig.getTables().get(0);
-            String tableName = tablePartRecordInfoContext.getTableName();
+            String tableName = tableGroupConfig.getTables().get(0);
             TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(tableName);
             if (tableMeta.isGsi()) {
                 tableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
             }
             JoinGroupInfoRecord
                 record = JoinGroupUtils.getJoinGroupInfoByTable(schemaName, tableName, metaDbConn);
-            if (record==null && StringUtils.isEmpty(joinGroupName)) {
+            if (record == null && StringUtils.isEmpty(joinGroupName)) {
                 return;
             }
-            if ((record == null && StringUtils.isNotEmpty(joinGroupName)) || (record != null && StringUtils.isEmpty(joinGroupName))) {
+            if ((record == null && StringUtils.isNotEmpty(joinGroupName)) || (record != null && StringUtils.isEmpty(
+                joinGroupName))) {
                 throw new TddlRuntimeException(ErrorCode.ERR_JOIN_GROUP_NOT_MATCH, errMsg);
             }
             boolean isValid = joinGroupName.equalsIgnoreCase(record.joinGroupName);

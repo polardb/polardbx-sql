@@ -21,6 +21,7 @@ package org.apache.orc.impl.writer;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.orc.TypeDescription;
+import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -61,6 +62,9 @@ public class StringTreeWriter extends StringBaseTreeWriter {
           }
           bloomFilterUtf8.addBytes(vec.vector[0], vec.start[0], vec.length[0]);
         }
+      } else {
+        //有null值更新
+        indexStatistics.updateNull();
       }
     } else {
       for (int i = 0; i < length; ++i) {
@@ -73,6 +77,19 @@ public class StringTreeWriter extends StringBaseTreeWriter {
                 vec.start[offset + i], vec.length[offset + i]);
             lengthOutput.write(vec.length[offset + i]);
           }
+          updateBitmapIndexBuildingFlag();
+          if(bitmapIndexBuildingFlag){
+            // build bitmap index
+            bitmapIndexEntryMap.compute(new String(vec.vector[offset + i]),
+                (s, roaringBitmap) -> {
+                  RoaringBitmap newVal = RoaringBitmap.bitmapOf(savedRowIndex.size());
+                  if (roaringBitmap == null) {
+                    return newVal;
+                  }
+                  return RoaringBitmap.or(roaringBitmap, newVal);
+                });
+          }
+
           indexStatistics.updateString(vec.vector[offset + i],
               vec.start[offset + i], vec.length[offset + i], 1);
           if (createBloomFilter) {
@@ -85,6 +102,9 @@ public class StringTreeWriter extends StringBaseTreeWriter {
             bloomFilterUtf8.addBytes(vec.vector[offset + i],
                 vec.start[offset + i], vec.length[offset + i]);
           }
+        } else if (i == 0 || i == length - 1) {
+          //只用更新第一行和最后一行为null的情况
+          indexStatistics.updateNull();
         }
       }
     }

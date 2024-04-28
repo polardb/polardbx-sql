@@ -20,6 +20,8 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.config.meta.TableScanIOEstimator;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -28,6 +30,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OSSMergeIndexRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.plan.RelOptCost;
@@ -88,6 +91,7 @@ public class OSSTableScan extends LogicalView {
                 relInput.setLastRel(oldLastRel);
             }
         }
+        traitSet = traitSet.replace(relInput.getPartitionWise());
     }
 
     public OSSTableScan(TableScan scan, SqlSelect.LockMode lockMode) {
@@ -112,6 +116,11 @@ public class OSSTableScan extends LogicalView {
     public OSSTableScan(RelNode rel, RelOptTable table, SqlNodeList hints,
                         SqlSelect.LockMode lockMode, SqlNode indexNode) {
         super(rel, table, hints, lockMode, indexNode);
+    }
+
+    public boolean isColumnarIndex() {
+        TableMeta tableMeta = CBOUtil.getTableMeta(getTable());
+        return tableMeta != null && tableMeta.isColumnar();
     }
 
     public static RelNode fromPhysicalTableOperation(PhyTableOperation extractPlan, ExecutionContext context,
@@ -269,6 +278,9 @@ public class OSSTableScan extends LogicalView {
      * @return true if the agg can be push down to the table scan
      */
     public boolean canPushAgg() {
+        if (isColumnarIndex()) {
+            return false;
+        }
         if (withAgg()) {
             return false;
         }
@@ -385,6 +397,9 @@ public class OSSTableScan extends LogicalView {
             tableMeta,
             allColumns,
             null);
+        if (generateContext == null) {
+            return;
+        }
         indexContext = andIndexContext(filter.getCondition(), generateContext, -1);
 
         orcNode.setIndexAble(indexContext);
@@ -489,6 +504,13 @@ public class OSSTableScan extends LogicalView {
             return this.getCluster().getPlanner().getCostFactory()
                 .makeTinyCost();
         }
+
+        if (isColumnarIndex() || PlannerContext.getPlannerContext(this).getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_OSS_MOCK_COLUMNAR)) {
+            double estimateRowCount = mq.getRowCount(this);
+            return planner.getCostFactory().makeCost(estimateRowCount, estimateRowCount, 0, 0, 0);
+        }
+
         // MetaQuery will compute the pushed node cumulative cost
         OrcTableScan orcNode = getOrcNode();
         // index selection
@@ -499,7 +521,8 @@ public class OSSTableScan extends LogicalView {
         int totalShardCount = getTotalShardCount();
 
         double estimateRowCount = mq.getRowCount(this);
-        double totalRowCount = getTable().getRowCount() * shardUpperBound / totalShardCount;
+        double totalRowCount = TableTopologyUtil.isShard(CBOUtil.getTableMeta(getTable())) ?
+            getTable().getRowCount() * shardUpperBound / totalShardCount : getTable().getRowCount();
         // get total stripe number
         double rowSize = (double) TableScanIOEstimator.estimateRowSize(getTable().getRowType());
         int avgStripeLen = (int) ((64 << 20) / rowSize);
@@ -514,7 +537,6 @@ public class OSSTableScan extends LogicalView {
             readCost = readCost.plus(planner.getCostFactory().makeCost(
                 0, totalStripeRows * base * CostModelWeight.BLOOM_FILTER_READ_COST, 0, 0, 0));
         }
-
         return readCost;
     }
 
@@ -663,6 +685,7 @@ public class OSSTableScan extends LogicalView {
     @Override
     public RelWriter explainTerms(RelWriter pw) {
         return super.explainTerms(pw)
-            .itemIf("ossRuntimeFilter", this.runtimeFilter, this.runtimeFilter != null);
+            .itemIf("ossRuntimeFilter", this.runtimeFilter, this.runtimeFilter != null)
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
     }
 }

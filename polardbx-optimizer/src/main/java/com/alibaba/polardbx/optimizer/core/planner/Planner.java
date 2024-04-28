@@ -56,11 +56,12 @@ import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbVariableConfigManager;
+import com.alibaba.polardbx.gms.lbac.LBACPrivilegeCheckUtils;
 import com.alibaba.polardbx.gms.locality.PrimaryZoneInfo;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
@@ -81,37 +82,44 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.CBOPushSemiJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsAggregateJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsCorrelateConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsFilterConvertRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsLogicalViewConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsOutFileConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsProjectConvertRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortConvertRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortJoinTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.DrdsSortProjectTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.ExpandLogicalJoinToBKAJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.FilterReorderRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalAggToHashAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.GenXplanRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.JoinConditionPruningRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalAggToSortAggRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalJoinToBKAJoinRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalJoinToHashJoinRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalJoinToNLJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalJoinToSortMergeJoinRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalSemiJoinToMaterializedSemiJoinRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalSemiJoinToSemiHashJoinRule;
-import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalSemiJoinToSemiNLJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.LogicalSemiJoinToSemiSortMergeJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OptimizeLogicalViewRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OptimizePhySqlRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OuterJoinAssocRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.OuterJoinLAsscomRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.ProjectCorrelateTransposeRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.ProjectSortTransitiveRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.PushCorrelateRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushFilterRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushProjectRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.PushSortRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.RuleToUse;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SQL_REWRITE_RULE_PHASE;
 import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinSemiJoinTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.columnar.COLProjectHashJoinTransposeRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalAggToHashAggRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToBKAJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalJoinToNLJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalSemiJoinToMaterializedSemiJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalSemiJoinToSemiHashJoinRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.implement.LogicalSemiJoinToSemiNLJoinRule;
 import com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter.PushBloomFilterRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.smp.SMPLogicalViewConvertRule;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CheapestFractionalPlanReplacer;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.ExecutionStrategy;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.PartitionWiseAssigner;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.SubQueryPlanEnumerator;
 import com.alibaba.polardbx.optimizer.core.profiler.RuntimeStat;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
@@ -123,10 +131,12 @@ import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ForceIndexSingleVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ForceIndexVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.LBACRowAccessChecker;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOpBuildParams;
+import com.alibaba.polardbx.optimizer.core.rel.RemoveFixedCostVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.RemoveSchemaNameVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceDifferentDBSingleTblWithPhyTblVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceSingleTblOrBroadcastTblWithPhyTblVisitor;
@@ -136,6 +146,7 @@ import com.alibaba.polardbx.optimizer.core.rel.UserHintPassThroughVisitor;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.hint.HintPlanner;
 import com.alibaba.polardbx.optimizer.hint.operator.HintCmdOperator;
+import com.alibaba.polardbx.optimizer.hint.util.CheckJoinHint;
 import com.alibaba.polardbx.optimizer.hint.util.HintConverter;
 import com.alibaba.polardbx.optimizer.hint.util.HintUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
@@ -170,10 +181,12 @@ import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.mppchecker.MppPlanCheckers;
 import com.alibaba.polardbx.optimizer.variable.VariableManager;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+import com.alibaba.polardbx.optimizer.workload.ExchangeOptimizerType;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptPlanner;
 import org.apache.calcite.plan.RelOptRule;
@@ -189,10 +202,12 @@ import org.apache.calcite.rel.SingleRel;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.logical.LogicalOutFile;
 import org.apache.calcite.rel.logical.LogicalTableScan;
-import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.rules.AggregateProjectMergeRule;
+import org.apache.calcite.rel.rules.ProjectFilterTransposeRule;
 import org.apache.calcite.rel.rules.ProjectMergeRule;
 import org.apache.calcite.rel.rules.ProjectRemoveRule;
+import org.apache.calcite.rel.rules.ProjectWindowTransposeRule;
 import org.apache.calcite.rel.rules.SemiJoinProjectTransposeRule;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexDynamicParam;
@@ -340,8 +355,6 @@ public class Planner {
                                SqlNodeList sqlNodeList,
                                boolean forPrepare) {
         executionContext.setOriginSql(sql.toString());
-        // metaquery init
-        RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
 
         // prepare statement with parameters
         Parameters parameters = executionContext.getParams();
@@ -469,6 +482,13 @@ public class Planner {
             ForeignKeyUtils.buildForeignKeySubPlans(executionContext, plan, plannerContext);
         }
 
+        // 如果hint和async同时指定了异步模式，已async的为准
+        if (ast.getAsync() != null) {
+            executionContext.getParamManager().setBooleanVal(executionContext.getParamManager().getProps(),
+                ConnectionParams.PURE_ASYNC_DDL_MODE, ast.getAsync(), true);
+            executionContext.getParamManager().setBooleanVal(executionContext.getParamManager().getProps(),
+                ConnectionParams.ASYNC_PAUSE, ast.getAsync(), true);
+        }
         Map<String, TableMeta> tableMetas = PlanManagerUtil.getTableMetaSetByTableSet(tableSet, executionContext);
         plan.saveCacheState(tableSet, 0, null, tableMetas);
         return plan;
@@ -542,7 +562,7 @@ public class Planner {
             } else if ("read_only".equals(name)) {
                 if (ConfigDataMode.isMasterMode()) {
                     return 0;
-                } else if (ConfigDataMode.isSlaveMode()) {
+                } else if (ConfigDataMode.isReadOnlyMode()) {
                     return 1;
                 }
             } else if ("auto_increment_increment".equalsIgnoreCase(name) &&
@@ -553,7 +573,8 @@ public class Planner {
                 // correct behavior of generated keys.
                 return 1;
             } else {
-                if (!ServerVariables.contains(name) && !ServerVariables.isExtra(name)) {
+                if (!ServerVariables.contains(name) && !ServerVariables.isExtra(name) && !ServerVariables.isCdcGlobal(
+                    name)) {
                     throw new TddlNestableRuntimeException("Unknown system variable " + name);
                 }
                 VariableManager variableManager =
@@ -566,11 +587,14 @@ public class Planner {
                         MetaDbInstConfigManager.getInstance().getCnVariableConfigMap();
                     Map<String, Object> dnProperties =
                         MetaDbVariableConfigManager.getInstance().getDnVariableConfigMap();
-                    if (cnProperties.containsKey(name)) {
+                    Map<String, String> cdcProperties =
+                            MetaDbVariableConfigManager.getInstance().getCdcVariableConfigMap();if (cnProperties.containsKey(name)) {
                         v = cnProperties.getProperty(name);
                     } else if (dnProperties.containsKey(name)) {
-                        v = dnProperties.get(name);
-                    }
+                        v = dnProperties.get(name);} else if (cdcProperties.containsKey(name)) {
+                            v = cdcProperties.get(name);
+                        }
+
                     if ("server_id".equalsIgnoreCase(name) && cnProperties.containsKey(name.toUpperCase())) {
                         v = cnProperties.getProperty(name.toUpperCase());
                     }
@@ -863,7 +887,8 @@ public class Planner {
         SqlNode validatedNode = converter.validate(ast);
         // sqlNode to relNode
         RelNode relNode = converter.toRel(validatedNode, plannerContext);
-
+        //LBAC check
+        relNode = checkLBACRowAccess(relNode, validatedNode, plannerContext.getExecutionContext());
         // relNode to drdsRelNode
         ToDrdsRelVisitor toDrdsRelVisitor = new ToDrdsRelVisitor(validatedNode, plannerContext);
         RelNode drdsRelNode = relNode.accept(toDrdsRelVisitor);
@@ -946,6 +971,25 @@ public class Planner {
             toDrdsRelVisitor.existsCannotPushDown());
 
         return executionPlan;
+    }
+
+    private RelNode checkLBACRowAccess(RelNode relNode, SqlNode sqlNode, ExecutionContext executionContext) {
+        if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_LBAC)) {
+            return relNode;
+        }
+
+        //for unit test
+        if (MetaDbDataSource.getInstance() == null) {
+            return relNode;
+        }
+
+        Set<Pair<String, String>> accessTables = PlanManagerUtil.getTableSetFromAst(sqlNode);
+        if (!LBACPrivilegeCheckUtils.isNeedLBACCheck(accessTables, executionContext.getSchemaName())) {
+            return relNode;
+        }
+
+        LBACRowAccessChecker lbacChecker = new LBACRowAccessChecker();
+        return relNode.accept(lbacChecker);
     }
 
     private void initConverterAutoPartFlag(PlannerContext plannerContext, boolean enableStorageTrigger,
@@ -1126,25 +1170,18 @@ public class Planner {
         }
     }
 
-    /**
-     * Optimize a Plan that support scale out
-     */
-    public RelNode optimizeScaleOutPlan(RelNode input, PlannerContext plannerContext) {
-        // To be impl, now just use the method of optimize() instead
-        return optimize(input, plannerContext);
-    }
-
     private RelNode sqlRewriteAndPlanEnumerate(RelNode input, PlannerContext plannerContext) {
         plannerContext.getCalcitePlanOptimizerTrace()
             .ifPresent(x -> {
                 plannerContext.setEvalFuncFromExecutionContext();
                 x.addSnapshot("Start", input, plannerContext);
             });
+
         RelNode logicalOutput = optimizeBySqlWriter(input, plannerContext);
         plannerContext.getCalcitePlanOptimizerTrace()
             .ifPresent(x -> x.addSnapshot("PlanEnumerate", logicalOutput, plannerContext));
 
-        RelNode bestPlan = optimizeByPlanEnumerator(logicalOutput, plannerContext);
+        RelNode bestPlan = optimizeByPlanEnumerator(input, logicalOutput, plannerContext);
 
         // finally we should clear the planner to release memory
         bestPlan.getCluster().getPlanner().clear();
@@ -1182,7 +1219,7 @@ public class Planner {
         return planner.findBestExp();
     }
 
-    public RelNode optimizeByPlanEnumerator(RelNode input, PlannerContext plannerContext) {
+    public RelNode optimizeByPlanEnumerator(RelNode originInput, RelNode input, PlannerContext plannerContext) {
         VolcanoPlanner volcanoPlanner = (VolcanoPlanner) input.getCluster().getPlanner();
         volcanoPlanner.clear();
 
@@ -1190,25 +1227,86 @@ public class Planner {
         CountVisitor countVisitor = new CountVisitor();
         input.accept(countVisitor);
 
+        // cbo config, e.g. pass_through
+        configureCBO(volcanoPlanner, countVisitor, paramManager, plannerContext);
+
+        // add rules used by cbo
+        addCBORule(volcanoPlanner, countVisitor, paramManager, plannerContext);
+
+        // optimize
+        RelNode output = optimizeByCBO(input, volcanoPlanner, plannerContext);
+
+        // transform table lookup to bka join
+        output = optimizeByExpandTableLookup(output, plannerContext);
+
+        // determine workload of the query
+        ExchangeOptimizerType exchangeOptimizerType = determineWorkload(originInput, output, plannerContext);
+        switch (exchangeOptimizerType) {
+        case MPP:
+            output = optimizeByMppPlan(output, plannerContext);
+            break;
+        case COLUMNAR:
+            // in columnar optimizer, there will be no tableLookup
+            output = optimizeByColumnarPlan(originInput, paramManager, plannerContext);
+            break;
+        case SMP:
+        default:
+            output = optimizeBySmpPlan(output, plannerContext);
+        }
+
+        // last step rbo in optimizer, e.g. physical sql optimize
+        output = optimizeByExpandViewPlan(output, plannerContext);
+
+        if (exchangeOptimizerType == ExchangeOptimizerType.COLUMNAR) {
+            output = addPartitionWiseTrait(output,
+                plannerContext.getParamManager().getBoolean(ConnectionParams.JOIN_KEEP_PARTITION));
+        }
+        // deal with subquery
+        SubQueryPlanEnumerator subQueryPlanEnumerator = new SubQueryPlanEnumerator(plannerContext.isInSubquery());
+        output = output.accept(subQueryPlanEnumerator);
+
+        PlanManagerUtil.applyCache(output);
+        return output;
+    }
+
+    private void configureCBO(VolcanoPlanner volcanoPlanner,
+                              CountVisitor countVisitor,
+                              ParamManager paramManager,
+                              PlannerContext plannerContext) {
         volcanoPlanner.setTopDownOpt(true);
+
+        int joinCount = countVisitor.getJoinCount();
+        plannerContext.setJoinCount(joinCount);
+        if (joinCount > 0) {
+            plannerContext.enableSPM(true);
+        }
+
         boolean enableBranchAndBoundOptimization =
             paramManager.getBoolean(ConnectionParams.ENABLE_BRANCH_AND_BOUND_OPTIMIZATION);
         int volcanoStartUpCostJoinLimit = paramManager.getInt(ConnectionParams.CBO_START_UP_COST_JOIN_LIMIT);
         volcanoPlanner.setStartUpCostOpt(countVisitor.getLimitCount() > 0
-            && countVisitor.getJoinCount() <= volcanoStartUpCostJoinLimit);
+            && joinCount <= volcanoStartUpCostJoinLimit);
         volcanoPlanner.setEnableBranchAndBound(enableBranchAndBoundOptimization);
         boolean enablePassThrough = paramManager.getBoolean(ConnectionParams.ENABLE_PASS_THROUGH_TRAIT);
         volcanoPlanner.setEnablePassThrough(enablePassThrough);
         boolean enableDerive = paramManager.getBoolean(ConnectionParams.ENABLE_DERIVE_TRAIT);
         volcanoPlanner.setEnableDerive(enableDerive);
+        volcanoPlanner.setEnableColumnar(false);
         // CBO_RESTRICT_PUSH_JOIN_LIMIT < 0 means disable the restriction
         boolean enableRestrictCBOPushJoin = paramManager.getInt(ConnectionParams.CBO_RESTRICT_PUSH_JOIN_LIMIT) >= 0
-            && countVisitor.getJoinCount() >= paramManager
+            && joinCount >= paramManager
             .getInt(ConnectionParams.CBO_RESTRICT_PUSH_JOIN_LIMIT);
         plannerContext.setRestrictCboPushJoin(enableRestrictCBOPushJoin);
 
-        addCBORule(volcanoPlanner, countVisitor, paramManager, plannerContext);
+        // try to prune gsi if there is no join
+        if (paramManager.getBoolean(ConnectionParams.ENABLE_INDEX_SELECTION_PRUNE)) {
+            plannerContext.setGsiPrune(countVisitor.getJoinCount() == 0);
+        }
+    }
 
+    private RelNode optimizeByCBO(RelNode input,
+                                  VolcanoPlanner volcanoPlanner,
+                                  PlannerContext plannerContext) {
         RelNode newInput;
         if (!input.getTraitSet().contains(DrdsConvention.INSTANCE)) {
             newInput =
@@ -1233,19 +1331,26 @@ public class Planner {
             plannerContext.getExecutionContext().setRuleCount(volcanoPlanner.getRuleCount());
         }
 
-        output = optimizeByExpandTableLookup(output, plannerContext);
-
-        if (countVisitor.getJoinCount() > 0) {
+        if (plannerContext.getJoinCount() > 0) {
             plannerContext.enableSPM(true);
         }
+        return output;
+    }
 
-        boolean enableMppCBO = MppPlanCheckers.supportsMppPlan(output, plannerContext, MppPlanCheckers.BASIC_CHECKERS,
-            MppPlanCheckers.SIMPLE_QUERY_PLAN_CHECKER);
-
+    /**
+     * determine the workload of the sql and the optimizer to be used
+     *
+     * @param input a physical plan optimized
+     * @param plannerContext context of planner
+     * @return optimizer to be used for the sql
+     */
+    private ExchangeOptimizerType determineWorkload(RelNode originInput,
+                                                    RelNode input,
+                                                    PlannerContext plannerContext) {
         // determine TP or AP
         String workloadType = plannerContext.getParamManager().getString(ConnectionParams.WORKLOAD_TYPE);
         if (workloadType == null) {
-            plannerContext.setWorkloadType(determineWorkloadType(output, output.getCluster().getMetadataQuery()));
+            plannerContext.setWorkloadType(determineWorkloadType(input, input.getCluster().getMetadataQuery()));
         } else {
             try {
                 plannerContext.setWorkloadType(WorkloadType.valueOf(workloadType.toUpperCase()));
@@ -1254,28 +1359,51 @@ public class Planner {
             }
         }
 
-        if (enableMppCBO && WorkloadType.AP == plannerContext.getWorkloadType() && plannerContext.getSqlKind()
-            .belongsTo(QUERY)) {
-            output = optimizeByMppPlan(output, plannerContext);
-        } else if (output instanceof LogicalInsert && ((LogicalInsert) output).isSourceSelect()
-            && ((LogicalInsert) output).getInsertSelectMode() == LogicalInsert.InsertSelectMode.MPP) {
-            //insert select 使用mpp执行时，select部分过一遍mpp优化器
-            LogicalInsert logicalInsert = (LogicalInsert) output;
-            RelNode select = logicalInsert.getInput();
-            RelNode outputSelect = optimizeByMppPlan(select, plannerContext);
-            output = logicalInsert.copy(logicalInsert.getTraitSet(), ImmutableList.of(outputSelect));
+        //use hint
+        if (ConfigDataMode.isColumnarMode()) {
+            if ((!MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.BASIC_CHECKERS))) {
+                return ExchangeOptimizerType.SMP;
+            } else {
+                if ((MppPlanCheckers.supportsMppPlan(input, plannerContext,
+                    MppPlanCheckers.SAMPLE_HINT_CHECKER,
+                    MppPlanCheckers.ENABLE_COLUMNAR_CHECKER,
+                    MppPlanCheckers.COLUMNAR_TRANSACTION_CHECKER,
+                    MppPlanCheckers.UPDATE_CHECKER) &&
+                    CBOUtil.allTablesHaveColumnar(originInput, plannerContext.getExecutionContext()))) {
+                    return ExchangeOptimizerType.COLUMNAR;
+                }
+                return ExchangeOptimizerType.SMP;
+            }
         } else {
-            output = optimizeBySmpPlan(output, plannerContext);
+            ExchangeOptimizerType specificType = ExchangeOptimizerType.getType(
+                plannerContext.getParamManager().getString(ConnectionParams.OPTIMIZER_TYPE));
+            if (specificType != null) {
+                return specificType;
+            }
+
+            // firstly, smp or columnar_smp
+            if ((WorkloadType.AP != plannerContext.getWorkloadType()) ||
+                (!MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.BASIC_CHECKERS))) {
+                if (CBOUtil.planWithColumnar(originInput) &&
+                    !MppPlanCheckers.supportsMppPlan(input, plannerContext, MppPlanCheckers.QUERY_CHECKER)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "Can't use columnar in SMP planner");
+                }
+                return ExchangeOptimizerType.SMP;
+            }
+
+            // secondly, columnar
+            if ((MppPlanCheckers.supportsMppPlan(input, plannerContext,
+                MppPlanCheckers.SAMPLE_HINT_CHECKER,
+                MppPlanCheckers.ENABLE_COLUMNAR_CHECKER,
+                MppPlanCheckers.COLUMNAR_TRANSACTION_CHECKER,
+                MppPlanCheckers.UPDATE_CHECKER) &&
+                CBOUtil.allTablesHaveColumnar(originInput, plannerContext.getExecutionContext()))) {
+                return ExchangeOptimizerType.COLUMNAR;
+            }
+
+            // finally, mpp
+            return ExchangeOptimizerType.MPP;
         }
-
-        output = optimizeByExpandViewPlan(output, plannerContext);
-
-        // deal with subquery
-        SubQueryPlanEnumerator subQueryPlanEnumerator = new SubQueryPlanEnumerator(plannerContext.isInSubquery());
-        output = output.accept(subQueryPlanEnumerator);
-
-        PlanManagerUtil.applyCache(output);
-        return output;
     }
 
     private static RelNode getCheapestFractionalPlan(VolcanoPlanner volcanoPlanner) {
@@ -1303,8 +1431,7 @@ public class Planner {
         boolean enableSemiJoinReorder = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_JOIN_REORDER);
         boolean enableOuterJoinReorder = paramManager.getBoolean(ConnectionParams.ENABLE_OUTER_JOIN_REORDER);
 
-        int joinCount = countVisitor.getJoinCount();
-        plannerContext.setJoinCount(joinCount);
+        int joinCount = plannerContext.getJoinCount();
 
         List<RelOptRule> cboReorderRuleSet = new ArrayList<>();
 
@@ -1434,6 +1561,159 @@ public class Planner {
         }
     }
 
+    private RelNode optimizeByColumnarPlan(RelNode input,
+                                           ParamManager paramManager,
+                                           PlannerContext plannerContext) {
+        RelNode columnarOutput = optimizeByColumnarRBO(input, paramManager, plannerContext);
+        CBOUtil.ColumnarShardFinder columnarShardFinder = new CBOUtil.ColumnarShardFinder();
+        columnarOutput.accept(columnarShardFinder);
+        plannerContext.setColumnarMaxShardCnt(columnarShardFinder.getMaxShard());
+
+        // cbo
+        plannerContext.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("Columnar CBO", columnarOutput, plannerContext));
+        VolcanoPlanner volcanoPlanner = (VolcanoPlanner) columnarOutput.getCluster().getPlanner();
+        volcanoPlanner.clear();
+
+        CountVisitor countVisitor = new CountVisitor();
+        columnarOutput.accept(countVisitor);
+
+        addColumnarCBORule(volcanoPlanner, paramManager, countVisitor);
+        volcanoPlanner.setStartUpCostOpt(false);
+        volcanoPlanner.setEnableColumnar(true);
+        volcanoPlanner.setEnableBranchAndBound(
+            paramManager.getBoolean(ConnectionParams.ENABLE_BRANCH_AND_BOUND_OPTIMIZATION)
+                && (!CheckJoinHint.useJoinHint(plannerContext)));
+
+        plannerContext.setUseColumnar(true);
+        plannerContext.enableSPM(false);
+
+        RelTraitSet newTraitSet = columnarOutput.getTraitSet().simplify().replace(DrdsConvention.INSTANCE);
+        RelNode newInput = volcanoPlanner.changeTraits(columnarOutput, newTraitSet);
+        volcanoPlanner.setRoot(newInput);
+
+        RelNode output;
+        try {
+            output = volcanoPlanner.findBestExp();
+        } catch (RelOptPlanner.CannotPlanException e) {
+            logger.error(e);
+            throw new RuntimeException("Columnar Sql could not be implemented");
+        } finally {
+            volcanoPlanner.clear();
+            volcanoPlanner.setEnableColumnar(false);
+        }
+
+        // Don't use runtime filter in columnar mode if there is no hint for it.
+        if (plannerContext.getExtraCmds() != null
+            && plannerContext.getExtraCmds().containsKey(ConnectionProperties.ENABLE_RUNTIME_FILTER)) {
+            output = optimizeWithRuntimeFilter(output, plannerContext);
+        }
+
+        if (plannerContext.getParamManager().getBoolean(
+            ConnectionParams.ENABLE_COLUMNAR_AFTER_CBO_PLANNER)) {
+            output = optimizeColumnarAfterCBO(output, plannerContext);
+        }
+
+        output = output.accept(new RemoveFixedCostVisitor());
+        plannerContext.getExtraCmds().put(ConnectionProperties.JOIN_HINT, null);
+
+        return output;
+    }
+
+    private RelNode optimizeByColumnarRBO(RelNode input,
+                                          ParamManager paramManager,
+                                          PlannerContext plannerContext) {
+        // rbo
+        plannerContext.getCalcitePlanOptimizerTrace()
+            .ifPresent(x -> x.addSnapshot("Columnar RBO", input, plannerContext));
+
+        HepProgramBuilder hepPgmBuilder = new HepProgramBuilder();
+        hepPgmBuilder.addMatchOrder(HepMatchOrder.ARBITRARY);
+
+        Map<String, Object> valueRecords = configureColumnarRBO(paramManager, plannerContext);
+        for (SQL_REWRITE_RULE_PHASE r : SQL_REWRITE_RULE_PHASE.values()) {
+            hepPgmBuilder.addMatchOrder(r.getMatchOrder());
+            hepPgmBuilder.addGroupBegin();
+            for (ImmutableList<RelOptRule> relOptRuleList : r.getCollectionList()) {
+                hepPgmBuilder.addRuleCollection(relOptRuleList);
+            }
+            for (RelOptRule relOptRule : r.getSingleList()) {
+                hepPgmBuilder.addRuleInstance(relOptRule);
+            }
+            hepPgmBuilder.addGroupEnd();
+        }
+        final HepPlanner planner = new HepPlanner(hepPgmBuilder.build(), plannerContext);
+        planner.setRoot(input);
+        RelNode rboOutput = planner.findBestExp();
+        cleanConfigureColumnarRBO(valueRecords, plannerContext);
+
+        // replace table scan to columnar table scan
+        final CBOUtil.ColumnarScanReplacer columnarScanReplacer = new CBOUtil.ColumnarScanReplacer(plannerContext);
+        return CBOUtil.optimizeByPullProject(rboOutput.accept(columnarScanReplacer), plannerContext);
+    }
+
+    private Map<String, Object> configureColumnarRBO(ParamManager paramManager,
+                                                     PlannerContext plannerContext) {
+        Map<String, Object> valueRecords = Maps.newHashMap();
+        valueRecords.put(ConnectionProperties.ENABLE_PUSH_JOIN,
+            paramManager.getBoolean(ConnectionParams.ENABLE_PUSH_JOIN));
+        valueRecords.put(ConnectionProperties.ENABLE_PUSH_CORRELATE,
+            paramManager.getBoolean(ConnectionParams.ENABLE_PUSH_CORRELATE));
+        valueRecords.put(ConnectionProperties.ENABLE_PUSH_AGG,
+            paramManager.getBoolean(ConnectionParams.ENABLE_PUSH_AGG));
+        valueRecords.put(ConnectionProperties.ENABLE_PUSH_SORT,
+            paramManager.getBoolean(ConnectionParams.ENABLE_PUSH_SORT));
+        valueRecords.put(ConnectionProperties.ENABLE_EXPAND_DISTINCTAGG,
+            paramManager.getBoolean(ConnectionParams.ENABLE_EXPAND_DISTINCTAGG));
+        valueRecords.put(ConnectionProperties.PUSH_CORRELATE_MATERIALIZED_LIMIT,
+            paramManager.getInt(ConnectionParams.PUSH_CORRELATE_MATERIALIZED_LIMIT));
+
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_JOIN, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_CORRELATE, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_AGG, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_PUSH_SORT, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.ENABLE_EXPAND_DISTINCTAGG, false);
+        plannerContext.getExtraCmds().put(ConnectionProperties.PUSH_CORRELATE_MATERIALIZED_LIMIT, 0);
+        plannerContext.setShouldUseHeuOrder(false);
+        return valueRecords;
+    }
+
+    private Map<String, Object> cleanConfigureColumnarRBO(Map<String, Object> valueRecords,
+                                                          PlannerContext plannerContext) {
+
+        for (Map.Entry<String, Object> entry : valueRecords.entrySet()) {
+            plannerContext.getExtraCmds().put(entry.getKey(), entry.getValue());
+        }
+        return valueRecords;
+    }
+
+    private void addColumnarCBORule(RelOptPlanner relOptPlanner, ParamManager paramManager, CountVisitor countVisitor) {
+        boolean enableSemiJoinReorder = paramManager.getBoolean(ConnectionParams.ENABLE_SEMI_JOIN_REORDER);
+        boolean enableOuterJoinReorder = paramManager.getBoolean(ConnectionParams.ENABLE_OUTER_JOIN_REORDER);
+
+        if (countVisitor.getJoinCount() <= paramManager.getInt(ConnectionParams.COLUMNAR_CBO_TOO_MANY_JOIN_LIMIT)) {
+            for (RelOptRule rule : RuleToUse.CBO_BUSHY_TREE_JOIN_REORDER_RULE) {
+                /* remove SemiJoinReorderRule when disable semi join reorder */
+                if ((!enableSemiJoinReorder)
+                    && (rule instanceof CBOLogicalSemiJoinLogicalJoinTransposeRule
+                    || rule instanceof SemiJoinSemiJoinTransposeRule || rule instanceof SemiJoinProjectTransposeRule)) {
+                    continue;
+                }
+
+                /* remove OuterJoinReorderRule when disable outer join reorder */
+                if ((!enableOuterJoinReorder)
+                    && (rule instanceof OuterJoinAssocRule || rule instanceof OuterJoinLAsscomRule)) {
+                    continue;
+                }
+                relOptPlanner.addRule(rule);
+            }
+        }
+
+        for (RelOptRule rule : RuleToUse.COLUMNAR_CBO_RULE) {
+            relOptPlanner.addRule(rule);
+        }
+    }
+
     private RelNode optimizeByMppPlan(RelNode input, PlannerContext plannerContext) {
         plannerContext.getCalcitePlanOptimizerTrace()
             .ifPresent(x -> x.addSnapshot("MPP", input, plannerContext));
@@ -1493,6 +1773,40 @@ public class Planner {
         return output;
     }
 
+    private RelNode optimizeColumnarAfterCBO(RelNode input, PlannerContext plannerContext) {
+        final int inputRefThreshold = plannerContext.getParamManager().getInt(
+            ConnectionParams.PUSH_PROJECT_INPUT_REF_THRESHOLD);
+
+        ImmutableList<RelOptRule> afterCBORules = ImmutableList.of(
+            // To prune the join keys.
+            JoinConditionPruningRule.INSTANCE,
+
+            // To transpose the project with join/project/agg
+            new COLProjectHashJoinTransposeRule(inputRefThreshold),
+            AggregateProjectMergeRule.INSTANCE,
+            ProjectCorrelateTransposeRule.INSTANCE,
+            ProjectFilterTransposeRule.INSTANCE,
+            ProjectWindowTransposeRule.INSTANCE,
+            ProjectSortTransitiveRule.INSTANCE,
+            PushProjectRule.INSTANCE,
+            PushCorrelateRule.INSTANCE,
+
+            // To merge and remove redundant projects.
+            ProjectMergeRule.INSTANCE,
+            ProjectRemoveRule.INSTANCE
+        );
+
+        HepProgramBuilder builder = new HepProgramBuilder();
+        builder.addGroupBegin();
+        builder.addRuleCollection(afterCBORules);
+        builder.addGroupEnd();
+        HepPlanner planner = new HepPlanner(builder.build());
+        planner.setRoot(input);
+        RelNode output = planner.findBestExp();
+
+        return output;
+    }
+
     private RelNode optimizeByExpandViewPlan(RelNode input, PlannerContext plannerContext) {
         HepProgramBuilder builder = new HepProgramBuilder();
         builder.addGroupBegin();
@@ -1509,6 +1823,9 @@ public class Planner {
         builder.addGroupEnd();
         builder.addGroupBegin();
         builder.addRuleInstance(OptimizePhySqlRule.INSTANCE);
+        builder.addGroupEnd();
+        builder.addGroupBegin();
+        builder.addRuleInstance(GenXplanRule.INSTANCE);
         builder.addGroupEnd();
         HepPlanner hepPlanner = new HepPlanner(builder.build(), plannerContext);
         hepPlanner.setRoot(input);
@@ -1538,6 +1855,10 @@ public class Planner {
         return output;
     }
 
+    private RelNode addPartitionWiseTrait(RelNode input, boolean joinKeepPartition) {
+        return new PartitionWiseAssigner(input, joinKeepPartition).assign();
+    }
+
     private RelNode optimizeByExpandTableLookup(RelNode input, PlannerContext plannerContext) {
         HepProgramBuilder builder = new HepProgramBuilder();
         // expand table lookup
@@ -1557,13 +1878,13 @@ public class Planner {
         // NOTE: we should preserve bottom up order to convert while using cbo convert rule.
         builder.addMatchOrder(HepMatchOrder.BOTTOM_UP);
         builder.addGroupBegin();
-        builder.addRuleInstance(DrdsLogicalViewConvertRule.INSTANCE);
-        builder.addRuleInstance(LogicalJoinToBKAJoinRule.LOGICALVIEW_RIGHT_FOR_EXPAND);
-        builder.addRuleInstance(LogicalJoinToBKAJoinRule.LOGICALVIEW_NOT_RIGHT_FOR_EXPAND);
-        builder.addRuleInstance(DrdsProjectConvertRule.INSTANCE);
-        builder.addRuleInstance(DrdsFilterConvertRule.INSTANCE);
-        builder.addRuleInstance(DrdsCorrelateConvertRule.INSTANCE);
-        builder.addRuleInstance(DrdsSortConvertRule.INSTANCE);
+        builder.addRuleInstance(SMPLogicalViewConvertRule.INSTANCE);
+        builder.addRuleInstance(ExpandLogicalJoinToBKAJoinRule.LOGICALVIEW_RIGHT);
+        builder.addRuleInstance(ExpandLogicalJoinToBKAJoinRule.LOGICALVIEW_NOT_RIGHT);
+        builder.addRuleInstance(SMPLogicalViewConvertRule.INSTANCE);
+        builder.addRuleInstance(DrdsProjectConvertRule.SMP_INSTANCE);
+        builder.addRuleInstance(DrdsFilterConvertRule.SMP_INSTANCE);
+        builder.addRuleInstance(DrdsCorrelateConvertRule.SMP_INSTANCE);
         builder.addRuleInstance(DrdsOutFileConvertRule.INSTANCE);
         builder.addGroupEnd();
         builder.addGroupBegin();
@@ -1621,6 +1942,14 @@ public class Planner {
         }
 
         if (toDrdsRelVisitor.isExistsCheckSum()) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
+        if (toDrdsRelVisitor.isExistsUnpushableAgg()) {
+            return ExecutionPlan.DirectMode.NONE;
+        }
+
+        if (toDrdsRelVisitor.isExistsCheckSumV2()) {
             return ExecutionPlan.DirectMode.NONE;
         }
 
@@ -1735,6 +2064,7 @@ public class Planner {
                 toDrdsRelVisitor.isShouldRemoveSchemaName(),
                 plannerContext,
                 converter.getValidator());
+
             break;
         case NONE:
             if (validatedNode.isA(DML) || optimizedNode instanceof LogicalOutFile) {
@@ -1779,6 +2109,10 @@ public class Planner {
 
         result = new ExecutionPlan(validatedNode, optimizedNode, cursorMeta);
         result.setDirectShardingKey(directPlanMode == ExecutionPlan.DirectMode.SHARDING_KEY_DIRECT);
+        if (direct) {
+            // disable tp slow check in direct mode
+            result.disableCheckTpSlow();
+        }
         ExplainResult explainResult = plannerContext.getExecutionContext().getExplain();
         if (isExplainAdvisor(explainResult) || isExplainStatistics(explainResult)) {
             plannerContext.getExecutionContext().setUnOptimizedPlan(unoptimizedNode);
@@ -1793,6 +2127,7 @@ public class Planner {
 
         // If this plan can be optimized but not yet optimized, set this flag to true.
         result.setCanOptByForcePrimary(plannerContext.isCanOptByForcePrimary() && !plannerContext.isAddForcePrimary());
+        result.setUseColumnar(plannerContext.isUseColumnar());
 
         return result;
     }
@@ -2055,8 +2390,8 @@ public class Planner {
                 return new BroadcastTableModify(directTableScan);
             }
         }
-        if (canUseXPlan(sqlNode)) {
-            setXTemplate(directTableScan, relNode, pc.getExecutionContext());
+        if (RelXPlanOptimizer.canUseXPlan(sqlNode)) {
+            RelXPlanOptimizer.setXTemplate(directTableScan, relNode, pc.getExecutionContext());
         }
         // Init sql digest.
         try {
@@ -2128,8 +2463,8 @@ public class Planner {
             directTableScan.setKind(kind);
             directTableScan.setHintContext(((TableModify) relNode).getHintContext());
         }
-        if (canUseXPlan(sqlNode)) {
-            setXTemplate(directTableScan, relNode, pc.getExecutionContext());
+        if (RelXPlanOptimizer.canUseXPlan(sqlNode)) {
+            RelXPlanOptimizer.setXTemplate(directTableScan, relNode, pc.getExecutionContext());
         }
         // Init sql digest.
         try {
@@ -2200,8 +2535,8 @@ public class Planner {
             directTableScan.setLockMode(((SqlSelect) sqlNode).getLockMode());
         }
 
-        if (canUseXPlan(sqlNode)) {
-            setXTemplate(directTableScan, relNode, pc.getExecutionContext());
+        if (RelXPlanOptimizer.canUseXPlan(sqlNode)) {
+            RelXPlanOptimizer.setXTemplate(directTableScan, relNode, pc.getExecutionContext());
         }
         // Init sql digest.
         try {
@@ -2380,7 +2715,12 @@ public class Planner {
             }
         }
 
-        PlannerContext.getPlannerContext(executionPlan.getPlan()).setExecutionContext(executionContext);
+        PlannerContext plannerContext = PlannerContext.getPlannerContext(executionPlan.getPlan());
+        if (plannerContext.isUseColumnar()) {
+            executionContext.setColumnarMaxShard(plannerContext.getColumnarMaxShardCnt());
+        }
+
+        plannerContext.setExecutionContext(executionContext);
         executionContext.setFinalPlan(executionPlan);
         return executionPlan;
     }
@@ -2391,10 +2731,10 @@ public class Planner {
         if (!SqlTypeUtils.isDmlAndDqlSqlType(sqlType)) {
             // Optimize the performance for GSI
             executionContext.setOnlyUseTmpTblPool(true);
-            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 0);
+            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.DEFAULT.metricLevel);
         } else {
             if (!SqlTypeUtils.isSelectSqlType(sqlType)) {
-                executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 1);
+                executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
             }
         }
 

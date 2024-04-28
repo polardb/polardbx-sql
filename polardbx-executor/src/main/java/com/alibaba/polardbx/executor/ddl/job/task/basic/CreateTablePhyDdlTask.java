@@ -17,32 +17,15 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
-import com.alibaba.polardbx.executor.ddl.job.builder.DropPartitionTableBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.DropPhyTableBuilder;
-import com.alibaba.polardbx.executor.ddl.job.builder.DropTableBuilder;
-import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.gms.topology.DbInfoManager;
-import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
-import com.alibaba.polardbx.optimizer.core.rel.ReplaceTableNameWithQuestionMarkVisitor;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import lombok.Getter;
-import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.ddl.DropTable;
-import org.apache.calcite.sql.SqlDdlNodes;
-import org.apache.calcite.sql.SqlDropTable;
-import org.apache.calcite.sql.SqlIdentifier;
-import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.List;
 
@@ -66,6 +49,10 @@ public class CreateTablePhyDdlTask extends BasePhyDdlTask {
             .createBuilder(schemaName, logicalTableName, true, this.physicalPlanData.getTableTopology(),
                 executionContext).build();
         List<PhyDdlTableOperation> physicalPlans = dropPhyTableBuilder.getPhysicalPlans();
+        // delete redundant params in foreign key
+        physicalPlans.forEach(physicalPlan -> {
+            physicalPlan.getParam().entrySet().removeIf(entry -> !entry.getKey().equals(1));
+        });
         return convertToRelNodes(physicalPlans);
     }
 

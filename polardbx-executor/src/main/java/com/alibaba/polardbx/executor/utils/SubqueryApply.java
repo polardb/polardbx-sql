@@ -16,10 +16,6 @@
 
 package com.alibaba.polardbx.executor.utils;
 
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -27,15 +23,17 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.core.CorrelationId;
@@ -171,9 +169,6 @@ public class SubqueryApply {
             if (useCursorExecutorMode(plan) && !hasApplyInLogicalView) {
                 //不是apply子查询尽量用cursor
                 cursor = ExecutorHelper.executeByCursor(plan, subQueryEc, false);
-                if (cursor instanceof MultiCursorAdapter) {
-                    cursor = new GatherCursor(((MultiCursorAdapter) cursor).getSubCursors(), subQueryEc);
-                }
             } else {
                 localMode = true;
                 cursor = ExecutorHelper.executeLocal(plan, subQueryEc, false, false);

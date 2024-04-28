@@ -86,12 +86,10 @@ public class ReplaceRelocateWriter extends RelocateWriter {
             final List<Object> before = row.before;
             final Map<Integer, ParameterContext> after = row.insertParam;
 
-            // Use delete + insert to avoid dup key error while adding column
-            final boolean isOnlineModifyColumn = TableColumnUtils.isModifying(schemaName, tableName, ec);
             // If this table contains all local/global uk and sk does not modified, do REPLACE
             final boolean pushReplace =
                 row.duplicated && row.doReplace && canPushReplace(ec) && identicalSk.test(this, Pair.of(before, after))
-                    && (!canWriteForScaleout || isReadyToPublishForScaleout) && !isOnlineModifyColumn;
+                    && (!canWriteForScaleout || isReadyToPublishForScaleout);
             addResult(before, after, row.duplicated, pushReplace, row.doInsert, ec, result);
         });
 

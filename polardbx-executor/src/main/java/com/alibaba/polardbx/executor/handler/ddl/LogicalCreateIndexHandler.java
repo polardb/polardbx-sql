@@ -33,6 +33,7 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLExprTableSource;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.CreateColumnarIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.StatisticSampleTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
@@ -41,6 +42,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
@@ -89,8 +91,12 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
 
         boolean globalIndex = logicalCreateIndex.isClustered() || logicalCreateIndex.isGsi();
         boolean expressionIndex = isExpressionIndex(logicalCreateIndex, executionContext);
+        boolean isColumnar = logicalCreateIndex.isColumnar();
+        final Long versionId = DdlUtils.generateVersionId(executionContext);
 
-        if (expressionIndex) {
+        if (isColumnar) {
+            return buildCreateColumnarIndexJob(logicalCreateIndex, versionId, executionContext);
+        } else if (expressionIndex) {
             if (!executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CREATE_EXPRESSION_INDEX)) {
                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "create expression index is not enabled");
             }
@@ -98,13 +104,13 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
             if (globalIndex) {
                 return buildCreateGlobalExpressionIndexJob();
             } else {
-                return buildCreateLocalExpressionIndexJob(logicalCreateIndex, executionContext);
+                return buildCreateLocalExpressionIndexJob(logicalCreateIndex, versionId, executionContext);
             }
         } else {
             if (globalIndex) {
-                return buildCreateGsiJob(logicalCreateIndex, executionContext);
+                return buildCreateGsiJob(logicalCreateIndex, versionId, executionContext);
             } else {
-                return buildCreateLocalIndexJob(logicalCreateIndex, executionContext);
+                return buildCreateLocalIndexJob(logicalCreateIndex, versionId, executionContext);
             }
         }
     }
@@ -124,8 +130,11 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         return false;
     }
 
-    private DdlJob buildCreateLocalIndexJob(LogicalCreateIndex logicalCreateIndex, ExecutionContext executionContext) {
+    private DdlJob buildCreateLocalIndexJob(LogicalCreateIndex logicalCreateIndex,
+                                            Long ddlVersionId,
+                                            ExecutionContext executionContext) {
         logicalCreateIndex.prepareData();
+        logicalCreateIndex.setDdlVersionId(ddlVersionId);
 
         ExecutableDdlJob localIndexJob = CreateIndexJobFactory.createLocalIndex(
             logicalCreateIndex.relDdl, logicalCreateIndex.getNativeSqlNode(),
@@ -151,11 +160,34 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         return localIndexJob;
     }
 
-    private DdlJob buildCreateGsiJob(LogicalCreateIndex logicalCreateIndex, ExecutionContext executionContext) {
+    private DdlJob buildCreateColumnarIndexJob(LogicalCreateIndex logicalCreateIndex,
+                                               Long ddlVersionId,
+                                               ExecutionContext executionContext) {
         initPrimaryTableDefinition(logicalCreateIndex, executionContext);
 
         // Should prepare data after initializing the primary table definition.
         logicalCreateIndex.prepareData();
+        logicalCreateIndex.setDdlVersionId(ddlVersionId);
+
+        CreateIndexWithGsiPreparedData preparedData = logicalCreateIndex.getCreateIndexWithGsiPreparedData();
+        CreateGlobalIndexPreparedData globalIndexPreparedData = preparedData.getGlobalIndexPreparedData();
+
+        ExecutableDdlJob cciJob = CreateColumnarIndexJobFactory.create4CreateCci(
+            logicalCreateIndex.relDdl,
+            globalIndexPreparedData,
+            executionContext);
+
+        return cciJob;
+    }
+
+    private DdlJob buildCreateGsiJob(LogicalCreateIndex logicalCreateIndex,
+                                     Long ddlVersionId,
+                                     ExecutionContext executionContext) {
+        initPrimaryTableDefinition(logicalCreateIndex, executionContext);
+
+        // Should prepare data after initializing the primary table definition.
+        logicalCreateIndex.prepareData();
+        logicalCreateIndex.setDdlVersionId(ddlVersionId);
 
         CreateIndexWithGsiPreparedData preparedData = logicalCreateIndex.getCreateIndexWithGsiPreparedData();
         CreateGlobalIndexPreparedData globalIndexPreparedData = preparedData.getGlobalIndexPreparedData();
@@ -184,7 +216,7 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         }
         gsiJob.addSequentialTasksAfter(gsiJob.getTail(), Lists.newArrayList(new StatisticSampleTask(
             globalIndexPreparedData.getSchemaName(),
-            globalIndexPreparedData.getIndexTableName()
+            globalIndexPreparedData.getPrimaryTableName()
         )));
         return gsiJob;
     }
@@ -200,6 +232,10 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
 
         // TODO(moyi) these two AST is duplicated, choose one of them, but right row somehow both of them are used
         sqlCreateIndex = logicalDdlPlan.getSqlCreateIndex();
+        sqlCreateIndex.setPrimaryTableDefinition(primaryTableInfo.getKey());
+        sqlCreateIndex.setPrimaryTableNode(primaryTableInfo.getValue());
+
+        sqlCreateIndex = logicalDdlPlan.getNormalizedOriginalDdl();
         sqlCreateIndex.setPrimaryTableDefinition(primaryTableInfo.getKey());
         sqlCreateIndex.setPrimaryTableNode(primaryTableInfo.getValue());
     }
@@ -252,6 +288,7 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
     }
 
     private DdlJob buildCreateLocalExpressionIndexJob(LogicalCreateIndex logicalCreateIndex,
+                                                      Long ddlVersionId,
                                                       ExecutionContext executionContext) {
         String schemaName = logicalCreateIndex.getSchemaName();
         String tableName = logicalCreateIndex.getTableName();
@@ -290,7 +327,7 @@ public class LogicalCreateIndexHandler extends LogicalCommonDdlHandler {
         logicalAlterTable.setRewrittenAlterSql(true);
 
         LogicalAlterTableHandler logicalAlterTableHandler = new LogicalAlterTableHandler(repo);
-        return logicalAlterTableHandler.buildDdlJob(logicalAlterTable, executionContext);
+        return logicalAlterTableHandler.doBuildDdlJob(logicalAlterTable, ddlVersionId, executionContext);
     }
 
     private DdlJob buildCreateGlobalExpressionIndexJob() {

@@ -18,14 +18,15 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.hash.HashResult128;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.chunk.columnar.CommonLazyBlock;
+import com.alibaba.polardbx.executor.operator.util.VectorUtils;
 import com.alibaba.polardbx.optimizer.core.row.AbstractRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.alibaba.polardbx.optimizer.utils.VectorUtils;
-
-import com.google.common.hash.HashCode;
+import com.google.common.annotations.VisibleForTesting;
 import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -63,6 +64,18 @@ public class Chunk implements Iterable<Row> {
      */
     protected boolean selectionInUse;
 
+    /**
+     * partition index in storage layer, used by local partition wise join
+     * default -1, means no partition info
+     */
+    private int partIndex = -1;
+
+    /**
+     * partitions scheduled to this computer node, used by local partition wise join
+     * default -1, means no partition info
+     */
+    private int partCount = -1;
+
     public Chunk(int positionCount, Block... blocks) {
         this.positionCount = positionCount;
         this.blocks = blocks;
@@ -87,6 +100,10 @@ public class Chunk implements Iterable<Row> {
         } else {
             this.selectionInUse = false;
         }
+    }
+
+    public Block[] getBlocks() {
+        return blocks;
     }
 
     public Block getBlock(int i) {
@@ -121,6 +138,28 @@ public class Chunk implements Iterable<Row> {
         return h;
     }
 
+    public void hashCodeVector(int[] hashCodeResults, int[] intermediates, int[] blockHashCodes, int positionCount) {
+        if (blocks.length == 1) {
+            // short circuit for single block
+            blocks[0].hashCodeVector(hashCodeResults, positionCount);
+            return;
+        }
+
+        Arrays.fill(hashCodeResults, 0);
+        Arrays.fill(intermediates, 0);
+        Arrays.fill(blockHashCodes, 0);
+        for (int c = 0; c < getBlockCount(); c++) {
+            // overwrite intermediates array.
+            VectorUtils.multiplyInt(intermediates, hashCodeResults, 31, positionCount);
+
+            // overwrite blockHashCodes array.
+            blocks[c].hashCodeVector(blockHashCodes, positionCount);
+
+            // overwrite hashCodeResults array.
+            VectorUtils.addInt(hashCodeResults, intermediates, blockHashCodes, positionCount);
+        }
+    }
+
     public int hashCode(int position) {
         int h = 0;
         for (int c = 0; c < getBlockCount(); c++) {
@@ -129,11 +168,24 @@ public class Chunk implements Iterable<Row> {
         return h;
     }
 
+    @VisibleForTesting
+    public long hashCodeUseXxhash(int position) {
+        long h = 0;
+        for (int c = 0; c < getBlockCount(); c++) {
+            h = h * 31 + blocks[c].hashCodeUseXxhash(position);
+        }
+        return h;
+    }
+
     public boolean equals(int position, Chunk otherChunk, int otherPosition) {
         assert getBlockCount() == otherChunk.getBlockCount();
         for (int i = 0; i < getBlockCount(); ++i) {
             final Block block = blocks[i];
-            final Block otherBlock = otherChunk.blocks[i];
+            Block otherBlock = otherChunk.blocks[i];
+            if (otherBlock instanceof CommonLazyBlock) {
+                ((CommonLazyBlock) otherBlock).load();
+                otherBlock = ((CommonLazyBlock) otherBlock).getLoaded();
+            }
             if (!block.equals(position, otherBlock, otherPosition)) {
                 return false;
             }
@@ -280,4 +332,28 @@ public class Chunk implements Iterable<Row> {
         this.selection = newSel;
     }
 
+    public int getPartIndex() {
+        return partIndex;
+    }
+
+    public void setPartIndex(int partIndex) {
+        this.partIndex = partIndex;
+    }
+
+    public int getPartCount() {
+        return partCount;
+    }
+
+    public void setPartCount(int partCount) {
+        this.partCount = partCount;
+    }
+
+    public void recycle() {
+        for (int blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
+            Block block = blocks[blockIndex];
+            if (block.isRecyclable()) {
+                blocks[blockIndex].recycle();
+            }
+        }
+    }
 }

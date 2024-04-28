@@ -16,12 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.utils;
 
+import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.build.Rex2ExprVisitor;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexFieldAccess;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
@@ -36,9 +38,12 @@ public abstract class DrdsRexFolder {
     private static final Logger logger = LoggerFactory.getLogger(DrdsRexFolder.class);
 
     public static Object fold(RexNode rex, PlannerContext plannerContext) {
-        // FIXME: too hacky!
+        Parameters parameters = RelMetadataQuery.THREAD_PARAMETERS.get();
+        if (parameters == null) {
+            parameters = plannerContext.getParams();
+        }
         ExecutionContext context = new ExecutionContext();
-        context.setParams(plannerContext.getParams());
+        context.setParams(parameters);
         return fold(rex, context);
     }
 

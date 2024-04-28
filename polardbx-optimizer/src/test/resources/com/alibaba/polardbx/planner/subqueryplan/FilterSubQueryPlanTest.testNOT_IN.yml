@@ -81,23 +81,13 @@
                 )
 
   plan: |
+    materializedsemijoin(condition="id = id", type="anti")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` not in (...))")
+      project(id="id")
+        mergesort(sort="int_col3 asc")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, `int_col3` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024) order by `int_col3`")
 
-
-    project(id="id")
-      filter(condition="apply_boolean")
-        correlateapply(cor=$cor, leftconditions=[$0], opkind=not_equals, type=anti)
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-          project($f0="$f0")
-            mergesort(sort="$f1 asc")
-              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` as `$f0`, `int_col3` as `$f1` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024) order by `int_col3`")
-    cache node:
-
-    gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-    project($f0="$f0")
-      mergesort(sort="$f1 asc")
-        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` as `$f0`, `int_col3` as `$f1` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024) order by `int_col3`")
 - #// @desc
   #// IN,?????????????, ?????? where ?????? order by?? ???? ????
   sql: |
@@ -130,20 +120,12 @@
                 )
 
   plan: |
+    materializedsemijoin(condition="id = id", type="anti")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` not in (...))")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024)")
 
-    project(id="id")
-      filter(condition="apply_boolean")
-        correlateapply(cor=$cor, leftconditions=[$0], opkind=not_equals, type=anti)
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-          mergesort(sort="$f0 asc")
-            logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` as `$f0` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024) order by `id`")
-    cache node:
-
-    gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-    mergesort(sort="$f0 asc")
-      logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id` as `$f0` from `test_hash_tb2` as `test_hash_tb2` where (`int_col4` > 1024) order by `id`")
 - #// @desc
   #// IN,?????????????, ?????? where ?????? order by ?? agg ?? limit?? ??? ???
   sql: |
@@ -248,7 +230,7 @@
 
   plan: |
 
-    SemiHashJoin(condition="id = int_col1", type="anti")
+    SemiHashJoin(condition="id = int_col1", type="anti", build="inner")
       Gather(concurrent=true)
         LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
       Gather(concurrent=true)
@@ -326,22 +308,13 @@
                 )
 
   plan: |
+    materializedsemijoin(condition="id = count(*)", type="anti")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` not in (...))")
+      project(count(*)="count(*)")
+        mergesort(sort="id asc")
+          logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, count(*) as `count(*)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 3) group by `id` order by `id`")
 
-    project(id="id")
-      filter(condition="apply_boolean")
-        correlateapply(cor=$cor, leftconditions=[$0], opkind=not_equals, type=anti)
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-          project($f0="count(*)")
-            mergesort(sort="id asc")
-              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, count(*) as `count(*)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 3) group by `id` order by `id`")
-    cache node:
-
-    gather(concurrent=true)
-      logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb`")
-    project($f0="count(*)")
-      mergesort(sort="id asc")
-        logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `id`, count(*) as `count(*)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 3) group by `id` order by `id`")
 - #// @desc
   #// IN,???????????????, where , agg , order by?? ????
   sql: |
@@ -763,23 +736,14 @@
                 )
 
   plan: |
-    Project(id="id")
-      Filter(condition="APPLY_BOOLEAN")
-        CorrelateApply(cor=$cor0, leftConditions=[$0], opKind=NOT_EQUALS, type=ANTI)
-          Gather(concurrent=true)
-            LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
-          Project($f0="sum(int_col2)")
-            MemSort(sort="int_col1 ASC")
-              HashAgg(group="int_col1", sum(int_col2)="SUM(int_col2)")
-                Filter(condition="$cor0.int_col1 = int_col1")
-                  Gather(concurrent=true)
-                    LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
-    cache node:
-
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `int_col1` FROM `test_hash_tb` AS `test_hash_tb`")
-    Gather(concurrent=true)
-      LogicalView(tables="[0000-0003].test_hash_tb2", shardCount=4, sql="SELECT `int_col1`, `int_col2` FROM `test_hash_tb2` AS `test_hash_tb2` WHERE (`int_col1` > 2048)")
+    project(id="id")
+      seminljoin(condition="id = sum(int_col2) and int_col1 = int_col1", type="anti")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `int_col1` from `test_hash_tb` as `test_hash_tb`")
+        project(sum(int_col2)="sum(int_col2)", int_col1="int_col1")
+          sortagg(group="int_col1", sum(int_col2)="sum(sum(int_col2))")
+            mergesort(sort="int_col1 asc")
+              logicalview(tables="[0000-0003].test_hash_tb2", shardcount=4, sql="select `int_col1`, sum(`int_col2`) as `sum(int_col2)` from `test_hash_tb2` as `test_hash_tb2` where (`int_col1` > 2048) group by `int_col1` order by `int_col1`")
 
 - #// @desc
   #// IN,??????????????, where , group by , order by?? ????

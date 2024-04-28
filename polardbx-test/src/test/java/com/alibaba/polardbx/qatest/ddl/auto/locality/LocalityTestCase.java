@@ -153,6 +153,17 @@ public class LocalityTestCase extends LocalityTestBase {
         runTestCase("alter_locality_empty.test.yml");
     }
 
+    @Test
+    public void testAlterBalanceSingleTablePrimaryKey()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("alter_single_table_balance_primary_key.test.yml");
+    }
+
+    @Test
+    public void testSecondaryTableOperation()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("secondary_table_operation.test.yml");
+    }
 //    @Test
 //    public void testDatabaseLocality() throws FileNotFoundException, InterruptedException, SQLException {
 //        runTestCase("database_locality.test.yml");

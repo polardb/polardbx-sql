@@ -58,6 +58,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class AlterTableGeneratedColumnJobFactory extends DdlJobFactory {
     private final PhysicalPlanData physicalPlanData;
     private final String schemaName;
@@ -112,6 +114,8 @@ public class AlterTableGeneratedColumnJobFactory extends DdlJobFactory {
             }
             if (!notNullableColumns.isEmpty()) {
                 alterTableStmt.setName(new SQLIdentifierExpr("?"));
+                alterTableStmt.setTargetImplicitTableGroup(null);
+                alterTableStmt.getIndexTableGroupPair().clear();
                 physicalPlanData.setSqlTemplate(alterTableStmt.toString());
             }
 
@@ -153,7 +157,8 @@ public class AlterTableGeneratedColumnJobFactory extends DdlJobFactory {
 
         List<DdlTask> nullableTasks = genNullableTask();
 
-        DdlTask cdcTask = new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, false);
+        DdlTask cdcTask =
+            new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, false, prepareData.getDdlVersionId());
 
         DdlTask hideColumnsTask =
             new ChangeColumnStatusTask(schemaName, logicalTableName, targetColumns, ColumnStatus.WRITE_ONLY,
@@ -173,7 +178,7 @@ public class AlterTableGeneratedColumnJobFactory extends DdlJobFactory {
                 prepareData.isPrimaryKeyDropped(), prepareData.getAddedPrimaryKeyColumns(),
                 prepareData.getColumnAfterAnother(), prepareData.isLogicalColumnOrder(), prepareData.getTableComment(),
                 prepareData.getTableRowFormat(), physicalPlanData.getSequence(),
-                prepareData.isOnlineModifyColumnIndexTask());
+                prepareData.isOnlineModifyColumnIndexTask(), DEFAULT_DDL_VERSION_ID);
         DdlTask updateMetaSyncTask = new TableSyncTask(schemaName, logicalTableName);
 
         List<DdlTask> allTasks =
@@ -213,7 +218,8 @@ public class AlterTableGeneratedColumnJobFactory extends DdlJobFactory {
         }
         List<DdlTask> notNullableTasks = genNotNullableTask();
 
-        DdlTask cdcTask = new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, false);
+        DdlTask cdcTask =
+            new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, false, prepareData.getDdlVersionId());
 
         DdlTask showColumnsTask =
             new ChangeColumnStatusTask(schemaName, logicalTableName, targetColumns, ColumnStatus.WRITE_ONLY,

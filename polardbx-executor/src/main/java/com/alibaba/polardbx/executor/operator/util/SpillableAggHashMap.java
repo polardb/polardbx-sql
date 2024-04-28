@@ -1,29 +1,5 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.AbstractAggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.CountRow;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2LongSum0;
-import com.google.common.collect.AbstractIterator;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
@@ -39,8 +15,14 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
+import com.google.common.collect.AbstractIterator;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import org.apache.calcite.rel.RelFieldCollation;
 
 import java.util.ArrayList;
@@ -97,7 +79,7 @@ public class SpillableAggHashMap implements AggHashMap {
         this.memoryAllocator = memoryAllocator;
 
         aggHashMap = new AggOpenHashMap(groupKeyType, aggregators, aggValueType, inputType,
-            expectedSize, chunkSize, context);
+            expectedSize, chunkSize, context, memoryAllocator);
         this.spillerFactory = spillerFactory;
         this.spillTypes = new ArrayList<>();
         blockBuilders = new BlockBuilder[groupKeyType.length + aggValueType.length];
@@ -112,9 +94,9 @@ public class SpillableAggHashMap implements AggHashMap {
     }
 
     @Override
-    public int[] putChunk(Chunk keyChunk, Chunk inputChunk) {
+    public void putChunk(Chunk keyChunk, Chunk inputChunk, IntArrayList groupIdResult) {
         checkState(spillInProgress.isDone());
-        return aggHashMap.putChunk(keyChunk, inputChunk);
+        aggHashMap.putChunk(keyChunk, inputChunk, groupIdResult);
     }
 
     @Override
@@ -182,14 +164,13 @@ public class SpillableAggHashMap implements AggHashMap {
         List<Aggregator> aggList = new ArrayList<>(aggregators.size());
         int groupKeySize = groupKeyType.length;
         for (Aggregator aggCall : aggregators) {
-            if (aggCall instanceof Count || aggCall instanceof CountRow) {
-                aggList.add(
-                    new Long2LongSum0(groupKeySize + aggList.size(), ((AbstractAggregator) aggCall).isDistinct(),
-                        DataTypes.LongType, DataTypes.DecimalType,
-                        ((AbstractAggregator) aggCall).getFilterArg()));
+            Aggregator newAgg = aggCall.getNew();
+            if (newAgg instanceof CountV2) {
+                aggList.add(new SumV2(groupKeySize + aggList.size(), newAgg.isDistinct(), memoryAllocator,
+                    newAgg.getFilterArg()));
             } else {
-                ((AbstractAggregator) aggCall).setAggIndexInChunk(new int[] {groupKeySize + aggList.size()});
-                aggList.add(aggCall);
+                newAgg.setAggTargetIndexes(new int[] {groupKeySize + aggList.size()});
+                aggList.add(newAgg);
             }
         }
         return aggList;
@@ -212,7 +193,7 @@ public class SpillableAggHashMap implements AggHashMap {
                 aggHashMap.close();
             }
             aggHashMap = new AggOpenHashMap(groupKeyType, aggregators, aggValueType, inputType,
-                expectedSize, chunkSize, context);
+                expectedSize, chunkSize, context, memoryAllocator);
         };
         return spillInProgress;
     }

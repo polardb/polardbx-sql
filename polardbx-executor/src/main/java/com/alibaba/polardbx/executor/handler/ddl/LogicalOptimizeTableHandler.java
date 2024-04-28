@@ -18,20 +18,15 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.IntConfigParam;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.OptimizeTablePhyDdlTask;
-import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
-import com.alibaba.polardbx.executor.gsi.GsiManager;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
@@ -49,7 +44,6 @@ import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -70,17 +64,19 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
     protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext ec) {
         LogicalOptimizeTable logicalOptimizeTable = (LogicalOptimizeTable) logicalDdlPlan;
         SqlOptimizeTableDdl sqlOptimizeTableDdl = (SqlOptimizeTableDdl) logicalOptimizeTable.getNativeSqlNode();
-        List<Pair<String, String>> tableNameList = extractTableList(sqlOptimizeTableDdl.getTableNames(), ec.getSchemaName(), ec);
+        List<Pair<String, String>> tableNameList =
+            extractTableList(sqlOptimizeTableDdl.getTableNames(), ec.getSchemaName(), ec);
         final int parallelism = ec.getParamManager().getInt(ConnectionParams.OPTIMIZE_TABLE_PARALLELISM);
-        if(parallelism < 1 || parallelism > 4096){
+        if (parallelism < 1 || parallelism > 4096) {
             throw new TddlNestableRuntimeException("OPTIMIZE_TABLE_PARALLELISM must in range 0-4096");
         }
 
         ExecutableDdlJob result = new ExecutableDdlJob();
 
-        for (Pair<String, String> targetTable: tableNameList){
+        for (Pair<String, String> targetTable : tableNameList) {
             OptimizeTablePhyDdlTask phyDdlTask =
-                    genPhyDdlTask(logicalDdlPlan.relDdl, targetTable.getKey(), targetTable.getValue(), OPTIMIZE_TABLE_DDL_TEMPLATE, ec);
+                genPhyDdlTask(logicalDdlPlan.relDdl, targetTable.getKey(), targetTable.getValue(),
+                    OPTIMIZE_TABLE_DDL_TEMPLATE, ec);
             final String fullTableName = DdlJobFactory.concatWithDot(targetTable.getKey(), targetTable.getValue());
             ExecutableDdlJob job = new ExecutableDdlJob();
             job.addSequentialTasks(Lists.newArrayList(phyDdlTask.partition(parallelism)));
@@ -101,44 +97,47 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
 
         LogicalOptimizeTable logicalOptimizeTable = (LogicalOptimizeTable) logicalDdlPlan;
         SqlOptimizeTableDdl sqlOptimizeTableDdl = (SqlOptimizeTableDdl) logicalOptimizeTable.getNativeSqlNode();
-        List<Pair<String, String>> tableNameList = extractTableList(sqlOptimizeTableDdl.getTableNames(), ec.getSchemaName(), ec);
+        List<Pair<String, String>> tableNameList =
+            extractTableList(sqlOptimizeTableDdl.getTableNames(), ec.getSchemaName(), ec);
 
-        for (Pair<String, String> targetTable: tableNameList){
+        for (Pair<String, String> targetTable : tableNameList) {
             final String fullTableName = DdlJobFactory.concatWithDot(targetTable.getKey(), targetTable.getValue());
-            result.addRow(new Object[]{
-                    fullTableName,
-                    "optimize",
-                    "note",
-                    "Table does not support optimize, doing recreate + analyze instead"
+            result.addRow(new Object[] {
+                fullTableName,
+                "optimize",
+                "note",
+                "Table does not support optimize, doing recreate + analyze instead"
             });
-            result.addRow(new Object[]{
-                    fullTableName,
-                    "optimize",
-                    "status",
-                    "OK"
+            result.addRow(new Object[] {
+                fullTableName,
+                "optimize",
+                "status",
+                "OK"
             });
         }
 
         return result;
     }
 
-    private OptimizeTablePhyDdlTask genPhyDdlTask(DDL ddl, String schemaName, String tableName, String phySql, ExecutionContext executionContext){
-        ddl.sqlNode = SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
+    private OptimizeTablePhyDdlTask genPhyDdlTask(DDL ddl, String schemaName, String tableName, String phySql,
+                                                  ExecutionContext executionContext) {
+        ddl.sqlNode =
+            SqlPhyDdlWrapper.createForAllocateLocalPartition(new SqlIdentifier(tableName, SqlParserPos.ZERO), phySql);
         DirectPhysicalSqlPlanBuilder builder = new DirectPhysicalSqlPlanBuilder(
-                ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
+            ddl, new ReorganizeLocalPartitionPreparedData(schemaName, tableName), executionContext
         );
         builder.build();
         OptimizeTablePhyDdlTask phyDdlTask = new OptimizeTablePhyDdlTask(schemaName, builder.genPhysicalPlanData());
         return phyDdlTask;
     }
 
-
-    private List<Pair<String, String>> extractTableList(List<SqlNode> tableNameSqlNodeList, String currentSchemaName, ExecutionContext ec){
-        if(CollectionUtils.isEmpty(tableNameSqlNodeList)){
+    private List<Pair<String, String>> extractTableList(List<SqlNode> tableNameSqlNodeList, String currentSchemaName,
+                                                        ExecutionContext ec) {
+        if (CollectionUtils.isEmpty(tableNameSqlNodeList)) {
             return new ArrayList<>();
         }
         List<Pair<String, String>> result = new ArrayList<>();
-        for(SqlNode sqlNode: tableNameSqlNodeList){
+        for (SqlNode sqlNode : tableNameSqlNodeList) {
             String schema = currentSchemaName;
             if (!((SqlIdentifier) sqlNode).isSimple()) {
                 schema = ((SqlIdentifier) sqlNode).names.get(0);
@@ -147,8 +146,8 @@ public class LogicalOptimizeTableHandler extends LogicalCommonDdlHandler {
             result.add(Pair.of(schema, table));
 
             List<String> gsiNames = GlobalIndexMeta.getPublishedIndexNames(table, schema, ec);
-            if(CollectionUtils.isNotEmpty(gsiNames)){
-                for(String gsi: gsiNames){
+            if (CollectionUtils.isNotEmpty(gsiNames)) {
+                for (String gsi : gsiNames) {
                     result.add(Pair.of(schema, gsi));
                 }
             }

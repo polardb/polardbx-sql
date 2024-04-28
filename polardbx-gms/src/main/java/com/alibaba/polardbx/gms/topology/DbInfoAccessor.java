@@ -23,10 +23,14 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.util.DdlMetaLogUtil;
+import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +72,9 @@ public class DbInfoAccessor extends AbstractAccessor {
     protected static final String UPDATE_DB_READ_WRITE_STATUS_BY_DB_NAME =
         "update `" + DB_INFO_TABLE + "` set read_write_status=? where db_name=?";
 
+    private static final String QUERY_EXISTS_USER_DB = "select count(0) from " + DB_INFO_TABLE
+        + " where db_name not in ('polardbx', 'information_schema', '__cdc__')";
+
     public int deleteDbInfoByDbName(String dbName) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
@@ -102,6 +109,7 @@ public class DbInfoAccessor extends AbstractAccessor {
             List<DbInfoRecord> records;
             Map<Integer, ParameterContext> params = new HashMap<>();
             MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            DdlMetaLogUtil.logSql(SELECT_DB_INFO_BY_DB_NAME_FOR_UPDATE, params);
             records = MetaDbUtil.query(SELECT_DB_INFO_BY_DB_NAME_FOR_UPDATE, params, DbInfoRecord.class, connection);
             if (records.size() == 0) {
                 return null;
@@ -235,6 +243,21 @@ public class DbInfoAccessor extends AbstractAccessor {
                 DB_INFO_TABLE,
                 e.getMessage());
         }
+    }
+
+    /**
+     * @return true if there is at least one user schema.
+     */
+    public boolean existsUserDb() {
+        try (Statement stmt = connection.createStatement()) {
+            ResultSet rs = stmt.executeQuery(QUERY_EXISTS_USER_DB);
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        } catch (Exception e) {
+            logger.error("Failed to update the system table '" + DB_INFO_TABLE + "'", e);
+        }
+        return true;
     }
 
 }

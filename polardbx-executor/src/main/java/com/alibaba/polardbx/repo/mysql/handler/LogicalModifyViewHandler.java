@@ -19,6 +19,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -136,7 +137,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
         if (!logicalModifyView.hasHint() && executionContext.getParams() != null
             && GlobalIndexMeta.hasIndex(logicalModifyView.getLogicalTableName(), schemaName, executionContext)) {
             // TODO add this back
-            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 1);
+            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
 
             // If target column does not occur in any GSI index columns,
             // the index updating is not needed.
@@ -170,7 +171,7 @@ public class LogicalModifyViewHandler extends HandlerCommon {
                 tableNameAndIndexMetas.put(tableName, indexMetas);
             }
             for (TableMeta indexMeta : indexMetas) {
-                if (indexMeta.getColumnIgnoreCase(columName) != null) {
+                if (indexMeta.containsColumn(columName)) {
                     return true;
                 }
             }

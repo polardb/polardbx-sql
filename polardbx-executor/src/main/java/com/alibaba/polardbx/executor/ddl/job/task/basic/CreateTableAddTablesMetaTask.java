@@ -48,6 +48,8 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
     private List<ForeignKeyData> addedForeignKeys;
     private Map<String, String> specialDefaultValues;
     private Map<String, Long> specialDefaultValueFlags;
+    private Map<String, String> columnMapping;
+    private List<String> addNewColumns;
 
     @JSONCreator
     public CreateTableAddTablesMetaTask(String schemaName, String logicalTableName, String dbIndex, String phyTableName,
@@ -56,7 +58,9 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
                                         List<ForeignKeyData> addedForeignKeys,
                                         boolean hasTimestampColumnDefault,
                                         Map<String, String> specialDefaultValues,
-                                        Map<String, Long> specialDefaultValueFlags) {
+                                        Map<String, Long> specialDefaultValueFlags,
+                                        Map<String, String> columnMapping,
+                                        List<String> addNewColumns) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -69,6 +73,8 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
         this.hasTimestampColumnDefault = hasTimestampColumnDefault;
         this.specialDefaultValues = specialDefaultValues;
         this.specialDefaultValueFlags = specialDefaultValueFlags;
+        this.columnMapping = columnMapping;
+        this.addNewColumns = addNewColumns;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -80,7 +86,8 @@ public class CreateTableAddTablesMetaTask extends BaseGmsTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         TableMetaChanger.addTableMeta(metaDbConnection, phyInfoSchemaContext, hasTimestampColumnDefault,
-            executionContext, specialDefaultValues, specialDefaultValueFlags, addedForeignKeys);
+            executionContext, specialDefaultValues, specialDefaultValueFlags, addedForeignKeys, columnMapping,
+            addNewColumns);
     }
 
     @Override

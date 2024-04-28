@@ -60,7 +60,5 @@ PARTITION BY KEY(`clist`,`id`,`stuid`)
 PARTITIONS 3;
 insert into elective(id,stuid,clist) values (1,1,100),(3,3,300);
 
-explain select int_test,id from test   where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
-
 ## exec sql no error
-select int_test,id from test where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id) ORDER BY int_test,id,timestamp_test;
+select int_test,id from test where int_test=972 and  id in(select g1.id from  student g1 left join grade on g1.id =grade.sid left join elective on elective.id=g1.id order by g1.id limit 2,5) ORDER BY int_test,id,timestamp_test;

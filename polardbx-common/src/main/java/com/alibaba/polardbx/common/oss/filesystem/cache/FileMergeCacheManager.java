@@ -31,24 +31,23 @@
 package com.alibaba.polardbx.common.oss.filesystem.cache;
 
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
-import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
-import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
+import com.google.common.cache.Weigher;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Range;
 import com.google.common.collect.RangeMap;
 import com.google.common.collect.TreeRangeMap;
 import io.airlift.slice.DataSize;
-import io.airlift.slice.Duration;
+import io.airlift.slice.SizeOf;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.fs.Path;
 import org.eclipse.jetty.util.ConcurrentHashSet;
@@ -56,15 +55,18 @@ import org.eclipse.jetty.util.ConcurrentHashSet;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.math.BigInteger;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -74,15 +76,14 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.common.oss.filesystem.cache.CacheQuotaScope.GLOBAL;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.collect.Iterators.getOnlyElement;
-import static io.airlift.slice.DataSize.Unit.GIGABYTE;
 import static io.airlift.slice.DataSize.Unit.MEGABYTE;
 import static java.lang.StrictMath.toIntExact;
 import static java.nio.file.StandardOpenOption.APPEND;
@@ -90,16 +91,17 @@ import static java.nio.file.StandardOpenOption.CREATE_NEW;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
 import static java.util.concurrent.Executors.newScheduledThreadPool;
-import static java.util.concurrent.TimeUnit.DAYS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class FileMergeCacheManager implements CacheManager {
-    private static final Logger log = LoggerFactory.getLogger(FileMergeCacheManager.class);
+    private static final Logger log = LoggerFactory.getLogger("oss");
 
     private static final String EXTENSION = ".cache";
 
     private static final int FILE_MERGE_BUFFER_SIZE = toIntExact(new DataSize(8, MEGABYTE).toBytes());
+
+    // for generation of packet.
+    private static final int CACHE_STATS_FIELD_COUNT = 13;
 
     private final ThreadLocal<byte[]> buffers = ThreadLocal.withInitial(() -> new byte[FILE_MERGE_BUFFER_SIZE]);
 
@@ -113,7 +115,10 @@ public class FileMergeCacheManager implements CacheManager {
     // Path and its corresponding cacheScope identifier
     private Cache<Path, Long> cache;
 
-    private final Cache<FileReadRequest, byte[]> hotCache;
+    // To cache the compressed bytes array of local cached file.
+    private Cache<LocalCacheFile, byte[]> compressedBytesCache;
+    private long maxSizeOfCompressedBytes;
+    private CacheStats compressedBytesCacheStats = new CacheStats();
 
     // CacheScope identifier to its cached files mapping
     private final Map<Long, Set<Path>> cacheScopeFiles = new ConcurrentHashMap<>();
@@ -121,15 +126,16 @@ public class FileMergeCacheManager implements CacheManager {
 
     // stats
     private final CacheStats stats;
-
+    private volatile boolean building = false;
+    private volatile boolean enableCache = true;
     // config
     private final Path baseDirectory;
-    private final long maxInflightBytes;
+    private long maxInflightBytes;
+    private CacheQuota cacheQuota;
 
-    private final CacheConfig cacheConfig;
-    private final FileMergeCacheConfig fileMergeCacheConfig;
+    // bytes cache
+    private boolean useBytesCache;
 
-    private static final String CACHE_FILE_PREFIX = "cache";
     private static final String OSS_CACHE_FLUSHER_THREAD_NAME_FORMAT = "%s-cache-flusher";
     private static final String OSS_CACHE_REMOVER_THREAD_NAME_FORMAT = "%s-cache-remover";
     private static final String OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME_FORMAT = "%s-cache-size-calculator";
@@ -141,30 +147,35 @@ public class FileMergeCacheManager implements CacheManager {
         ExecutorService cacheFlushExecutor,
         ExecutorService cacheRemovalExecutor,
         ScheduledExecutorService cacheSizeCalculateExecutor) {
+        this(cacheConfig, fileMergeCacheConfig, stats, cacheFlushExecutor, cacheRemovalExecutor,
+            cacheSizeCalculateExecutor,
+            Engine.OSS);
+    }
+
+    public FileMergeCacheManager(
+        CacheConfig cacheConfig,
+        FileMergeCacheConfig fileMergeCacheConfig,
+        CacheStats stats,
+        ExecutorService cacheFlushExecutor,
+        ExecutorService cacheRemovalExecutor,
+        ScheduledExecutorService cacheSizeCalculateExecutor,
+        Engine engine) {
         requireNonNull(cacheConfig, "directory is null");
         this.cacheFlushExecutor = cacheFlushExecutor;
         this.cacheRemovalExecutor = cacheRemovalExecutor;
         this.cacheSizeCalculateExecutor = cacheSizeCalculateExecutor;
 
-        this.cacheConfig = cacheConfig;
-        this.fileMergeCacheConfig = fileMergeCacheConfig;
-
-        this.cache = CacheBuilder.newBuilder()
-            .maximumSize(fileMergeCacheConfig.getMaxCachedEntries())
-            .expireAfterAccess(fileMergeCacheConfig.getCacheTtl().toMillis(), MILLISECONDS)
-            .removalListener(new CacheRemovalListener())
-            .recordStats()
-            .build();
-
-        this.hotCache = CacheBuilder.newBuilder()
-            .maximumSize(fileMergeCacheConfig.getMaxHotCachedEntries())
-            .expireAfterAccess(fileMergeCacheConfig.getHotCacheTtl().toMillis(), MILLISECONDS)
-            .build();
-
         this.stats = requireNonNull(stats, "stats is null");
-        this.baseDirectory = new Path(cacheConfig.getBaseDirectory());
-        checkArgument(fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes() >= 0, "max In-flight Bytes is negative");
-        this.maxInflightBytes = fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes();
+        this.useBytesCache = fileMergeCacheConfig.isUseByteCache();
+
+        this.baseDirectory = new Path(new Path(cacheConfig.getBaseDirectory()), engine.name());
+        checkArgument(
+            fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes() >= 0, "max In-flight Bytes is negative");
+
+        this.maxSizeOfCompressedBytes =
+            (long) (Runtime.getRuntime().maxMemory() * fileMergeCacheConfig.getMemoryRatioOfBytesCache());
+
+        rebuildCache(fileMergeCacheConfig);
 
         File target = new File(baseDirectory.toUri());
         if (!target.exists()) {
@@ -184,6 +195,7 @@ public class FileMergeCacheManager implements CacheManager {
                     Files.delete(file.toPath());
                 } catch (IOException e) {
                     // ignore
+                    log.debug(file.getPath(), e);
                 }
             }));
         }
@@ -203,6 +215,50 @@ public class FileMergeCacheManager implements CacheManager {
             TimeUnit.SECONDS);
     }
 
+    @Override
+    public void rebuildCache(FileMergeCacheConfig fileMergeCacheConfig) {
+        // clear old cache.
+        try {
+            this.building = true;
+            this.enableCache = fileMergeCacheConfig.isEnableCache();
+            clear();
+
+            this.maxInflightBytes = fileMergeCacheConfig.getMaxInMemoryCacheSize().toBytes();
+
+            this.cacheQuota = new CacheQuota(
+                "NO_IDENTITY", Optional.of(fileMergeCacheConfig.getMaxInDiskCacheSize()));
+
+            this.cache = CacheBuilder.newBuilder()
+                .maximumSize(fileMergeCacheConfig.getMaxCachedEntries())
+                .expireAfterAccess(fileMergeCacheConfig.getCacheTtl().toMillis(), MILLISECONDS)
+                .removalListener(new CacheRemovalListener())
+                .recordStats()
+                .build();
+
+            this.compressedBytesCache = CacheBuilder.newBuilder()
+                .maximumWeight(maxSizeOfCompressedBytes)
+                .weigher((Weigher<LocalCacheFile, byte[]>) (key, value) ->
+                    // The case of invalidating compressed bytes cache:
+                    //  The total size of compressed bytes array exceeds the given threshold.
+
+                    // calculate compressed bytes array size for cache weight.
+                    LocalCacheFile.BASE_SIZE_IN_BYTES + (int) SizeOf.sizeOf(value)
+                )
+                .removalListener(notification -> {
+                        // decrement memory size when invalidate compressed bytes cache.
+                        compressedBytesCacheStats.addInMemoryRetainedBytes(
+                            -(LocalCacheFile.BASE_SIZE_IN_BYTES + (int) SizeOf.sizeOf(notification.getValue()))
+                        );
+                        compressedBytesCacheStats.incrementQuotaExceed();
+                    }
+                )
+                .build();
+
+        } finally {
+            this.building = false;
+        }
+    }
+
     public void destroy() {
         // Wait util all cache files removed.
         cacheFlushExecutor.shutdown();
@@ -213,9 +269,9 @@ public class FileMergeCacheManager implements CacheManager {
 
     @Override
     public CacheResult get(FileReadRequest request, byte[] buffer, int offset, CacheQuota cacheQuota) {
-        // try to hit hot cache
-        if (readHotCache(request, buffer, offset)) {
-            return CacheResult.HIT_HOT_CACHE;
+        if (building || !enableCache) {
+            stats.incrementCacheUnavailable();
+            return CacheResult.CACHE_IS_UNAVAILABLE;
         }
 
         boolean result = read(request, buffer, offset);
@@ -241,22 +297,6 @@ public class FileMergeCacheManager implements CacheManager {
         return CacheResult.MISS;
     }
 
-    private boolean readHotCache(FileReadRequest request, byte[] buffer, int offset) {
-        byte[] readBuffer;
-        if (request.getLength() > 0
-            && offset == 0
-            && (readBuffer = this.hotCache.getIfPresent(request)) != null) {
-            System.arraycopy(
-                readBuffer,
-                0,
-                buffer,
-                0,
-                request.getLength());
-            return true;
-        }
-        return false;
-    }
-
     private boolean ifExceedQuota(CacheQuota cacheQuota, FileReadRequest request) {
         DataSize cacheSize = DataSize
             .succinctBytes(cacheScopeSizeInBytes.getOrDefault(cacheQuota.getIdentifier(), 0L) + request.getLength());
@@ -272,6 +312,9 @@ public class FileMergeCacheManager implements CacheManager {
         long bytes = 0;
         for (Path path : paths) {
             CacheRange cacheRange = persistedRanges.get(path);
+            if (cacheRange == null) {
+                continue;
+            }
             Lock readLock = cacheRange.getLock().readLock();
             readLock.lock();
             try {
@@ -285,12 +328,24 @@ public class FileMergeCacheManager implements CacheManager {
         return bytes;
     }
 
+    public List<byte[][]> collectLocalFileStats() {
+        List<byte[][]> cacheStatsResultsList = new ArrayList<>();
+        for (CacheRange cacheRange : persistedRanges.values()) {
+            for (LocalCacheFile cacheFile : cacheRange.getRange().asDescendingMapOfRanges().values()) {
+                byte[][] results = new byte[2][];
+                int pos = 0;
+                results[pos++] =
+                    String.valueOf(cacheFile.getPath().getName()).getBytes();
+                results[pos++] = String.valueOf(cacheFile.hit).getBytes();
+                cacheStatsResultsList.add(results);
+            }
+        }
+        return cacheStatsResultsList;
+    }
+
     @Override
     public void put(FileReadRequest key, Slice data, CacheQuota cacheQuota) {
-        // write hot cache
-        this.hotCache.put(key, data.getBytes());
-
-        if (stats.getInMemoryRetainedBytes() + data.length() >= maxInflightBytes) {
+        if (stats.getInMemoryRetainedBytes() + data.length() >= this.maxInflightBytes) {
             // cannot accept more requests
             return;
         }
@@ -314,30 +369,18 @@ public class FileMergeCacheManager implements CacheManager {
 
     @Override
     public void clear() {
-        this.cache.invalidateAll();
-        this.hotCache.invalidateAll();
-    }
-
-    public void rebuildCache(Map<String, Long> configs) {
-        // clear old cache.
-        clear();
-
-        Duration cacheTTL = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_CACHE_TTL))
-            .map(d -> new Duration(d, DAYS))
-            .orElse(fileMergeCacheConfig.getCacheTtl());
-
-        Long maxEntries = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
-            .orElse((long) fileMergeCacheConfig.getMaxCachedEntries());
-
-        this.fileMergeCacheConfig.setCacheTtl(cacheTTL);
-        this.fileMergeCacheConfig.setMaxCachedEntries(maxEntries.intValue());
-
-        this.cache = CacheBuilder.newBuilder()
-            .maximumSize(maxEntries)
-            .expireAfterAccess(cacheTTL.toMillis(), MILLISECONDS)
-            .removalListener(new CacheRemovalListener())
-            .recordStats()
-            .build();
+        if (this.cache != null) {
+            this.cache.invalidateAll();
+        }
+        if (this.stats != null) {
+            this.stats.reset();
+        }
+        if (this.compressedBytesCache != null) {
+            this.compressedBytesCache.invalidateAll();
+        }
+        if (this.compressedBytesCacheStats != null) {
+            this.compressedBytesCacheStats.reset();
+        }
     }
 
     private boolean read(FileReadRequest request, byte[] buffer, int offset) {
@@ -353,6 +396,7 @@ public class FileMergeCacheManager implements CacheManager {
         }
 
         LocalCacheFile cacheFile;
+        Range<Long> range;
         Lock readLock = cacheRange.getLock().readLock();
         readLock.lock();
         try {
@@ -364,7 +408,31 @@ public class FileMergeCacheManager implements CacheManager {
                 return false;
             }
 
-            cacheFile = getOnlyElement(diskRanges.entrySet().iterator()).getValue();
+            Map.Entry<Range<Long>, LocalCacheFile> values = getOnlyElement(diskRanges.entrySet().iterator());
+            cacheFile = values.getValue();
+            range = values.getKey();
+
+            // Try to use cached bytes firstly.
+            if (useBytesCache) {
+                try {
+                    byte[] cachedBytes = compressedBytesCache.getIfPresent(cacheFile);
+                    if (cachedBytes != null) {
+                        compressedBytesCacheStats.incrementCacheHit();
+
+                        System.arraycopy(cachedBytes,
+                            (int) (request.getOffset() - cacheFile.getOffset()),
+                            buffer, offset,
+                            request.getLength());
+                        return true;
+                    } else {
+                        compressedBytesCacheStats.incrementCacheMiss();
+                    }
+                } catch (Throwable t) {
+                    // there might be a change the file has been deleted
+                    return false;
+                }
+            }
+
         } finally {
             readLock.unlock();
         }
@@ -372,10 +440,26 @@ public class FileMergeCacheManager implements CacheManager {
         try (RandomAccessFile file = new RandomAccessFile(new File(cacheFile.getPath().toUri()), "r")) {
             file.seek(request.getOffset() - cacheFile.getOffset());
             file.readFully(buffer, offset, request.getLength());
+            cacheFile.incrementCacheHit();
             return true;
-        } catch (IOException e) {
-            // there might be a chance the file has been deleted
+        } catch (FileNotFoundException e) {
+            // there might be a change the file has been deleted
+            log.warn(String.format("No such file or directory %s", cacheFile.getPath().getName()));
+            deleteNotExistFile(cacheRange, range);
             return false;
+        } catch (IOException e) {
+            // there might be a change the file has been deleted
+            return false;
+        }
+    }
+
+    private void deleteNotExistFile(CacheRange cacheRange, Range<Long> range) {
+        Lock readLock = cacheRange.getLock().readLock();
+        readLock.lock();
+        try {
+            cacheRange.getRange().remove(range);
+        } finally {
+            readLock.unlock();
         }
     }
 
@@ -383,8 +467,10 @@ public class FileMergeCacheManager implements CacheManager {
         Path targetFile = key.getPath();
         persistedRanges.putIfAbsent(targetFile, new CacheRange());
 
-        LocalCacheFile previousCacheFile;
-        LocalCacheFile followingCacheFile;
+        LocalCacheFile previousCacheFile = null;
+        Range<Long> previousRange = null;
+        LocalCacheFile followingCacheFile = null;
+        Range<Long> followingRange = null;
 
         CacheRange cacheRange = persistedRanges.get(targetFile);
         if (cacheRange == null) {
@@ -396,17 +482,52 @@ public class FileMergeCacheManager implements CacheManager {
         readLock.lock();
         try {
             RangeMap<Long, LocalCacheFile> cache = cacheRange.getRange();
+            while (true) {
+                // check if it can be merged with the previous or following range
+                Map.Entry<Range<Long>, LocalCacheFile> preEntry = cache.getEntry(key.getOffset() - 1);
+                if (preEntry != null) {
+                    previousRange = preEntry.getKey();
+                    previousCacheFile = preEntry.getValue();
+                }
 
-            // check if it can be merged with the previous or following range
-            previousCacheFile = cache.get(key.getOffset() - 1);
-            followingCacheFile = cache.get(key.getOffset() + key.getLength());
+                Map.Entry<Range<Long>, LocalCacheFile> followingEntry =
+                    cache.getEntry(key.getOffset() + key.getLength());
+                if (followingEntry != null) {
+                    followingRange = followingEntry.getKey();
+                    followingCacheFile = followingEntry.getValue();
+                }
+                boolean continueCheck = false;
+                // check if the file is not exist
+                if (previousCacheFile != null &&
+                    !Files.exists(FileSystems.getDefault().getPath(previousCacheFile.getPath().toUri().getPath()))) {
+                    log.warn(String.format("No such file or directory %s", previousCacheFile.getPath().getName()));
+                    deleteNotExistFile(cacheRange, previousRange);
+                    previousCacheFile = null;
+                    continueCheck = true;
+                }
+                if (followingCacheFile != null && !Files.exists(
+                    FileSystems.getDefault().getPath(followingCacheFile.getPath().toUri().getPath()))) {
+                    log.warn(String.format("No such file or directory %s", followingCacheFile.getPath().getName()));
+                    deleteNotExistFile(cacheRange, followingRange);
+                    followingCacheFile = null;
+                    continueCheck = true;
+                }
+                if (!continueCheck) {
+                    break;
+                }
+            }
+
         } finally {
             readLock.unlock();
         }
 
         if (previousCacheFile != null && cacheFileEquals(previousCacheFile, followingCacheFile)) {
-            log.debug(String
-                .format("%s found covered range %s", Thread.currentThread().getName(), previousCacheFile.getPath()));
+            if (log.isDebugEnabled()) {
+                log.debug(String
+                    .format("%s found covered range %s", Thread.currentThread().getName(),
+                        previousCacheFile.getPath()));
+            }
+
             // this range has already been covered by someone else
             return true;
         }
@@ -458,6 +579,7 @@ public class FileMergeCacheManager implements CacheManager {
         // use a flag so that file deletion can be done outside the lock
         boolean updated;
         Set<Path> cacheFilesToDelete = new HashSet<>();
+        Set<LocalCacheFile> localCacheFileToDelete = new HashSet<>();
 
         Lock writeLock = persistedRanges.get(targetFile).getLock().writeLock();
         writeLock.lock();
@@ -475,15 +597,35 @@ public class FileMergeCacheManager implements CacheManager {
                 updated = true;
 
                 // remove all the files that can be covered by the current range
-                cacheFilesToDelete =
-                    cache.subRangeMap(Range.closedOpen(key.getOffset(), key.getOffset() + key.getLength()))
-                        .asMapOfRanges().values().stream()
-                        .map(LocalCacheFile::getPath).collect(Collectors.toSet());
+                localCacheFileToDelete = cache
+                    .subRangeMap(Range.closedOpen(key.getOffset(), key.getOffset() + key.getLength()))
+                    .asMapOfRanges().values().stream().collect(Collectors.toSet());
+
+                cacheFilesToDelete = localCacheFileToDelete.stream()
+                    .map(LocalCacheFile::getPath).collect(Collectors.toSet());
 
                 // update the range
+                LocalCacheFile localCacheFile = new LocalCacheFile(newFileOffset, newFilePath);
                 Range<Long> newRange = Range.closedOpen(newFileOffset, newFileOffset + newFileLength);
                 cache.remove(newRange);
-                cache.put(newRange, new LocalCacheFile(newFileOffset, newFilePath));
+                cache.put(newRange, localCacheFile);
+
+                if (useBytesCache) {
+                    // The cached bytes of this file fragment.
+                    byte[] bytesCache = new byte[newFileLength];
+
+                    // Store the compressed bytes of file into bytes cache.
+                    try (RandomAccessFile file = new RandomAccessFile(new File(newFilePath.toUri()), "r")) {
+                        file.readFully(bytesCache, 0, newFileLength);
+
+                        compressedBytesCache.put(localCacheFile, bytesCache);
+                        compressedBytesCacheStats.addInMemoryRetainedBytes(
+                            LocalCacheFile.BASE_SIZE_IN_BYTES + (int) SizeOf.sizeOf(bytesCache)
+                        );
+                    } catch (Exception e) {
+                        log.warn(e);
+                    }
+                }
             }
         } finally {
             writeLock.unlock();
@@ -491,17 +633,23 @@ public class FileMergeCacheManager implements CacheManager {
 
         // no lock is needed for the following operation
         if (updated) {
-            // remove the the previous or following file as well
+            // remove the previous or following file as well
             if (previousCacheFile != null) {
+                localCacheFileToDelete.add(previousCacheFile);
                 cacheFilesToDelete.add(previousCacheFile.getPath());
             }
             if (followingCacheFile != null) {
+                localCacheFileToDelete.add(followingCacheFile);
                 cacheFilesToDelete.add(followingCacheFile.getPath());
             }
         } else {
+            localCacheFileToDelete = ImmutableSet.of(new LocalCacheFile(newFileOffset, newFilePath));
             cacheFilesToDelete = ImmutableSet.of(newFilePath);
         }
 
+        // The case of invalidating compressed bytes cache:
+        //  Merge previous or following files of given new file.
+        localCacheFileToDelete.forEach(compressedBytesCache::invalidate);
         cacheFilesToDelete.forEach(FileMergeCacheManager::tryDeleteFile);
         return true;
     }
@@ -540,6 +688,8 @@ public class FileMergeCacheManager implements CacheManager {
                 Files.delete(file.toPath());
             }
         } catch (IOException e) {
+            log.warn(String.format("Can't delete the file %s", Thread.currentThread().getName(),
+                path), e);
             // ignore
         }
     }
@@ -558,14 +708,6 @@ public class FileMergeCacheManager implements CacheManager {
 
     public CacheStats getStats() {
         return stats;
-    }
-
-    public CacheConfig getCacheConfig() {
-        return cacheConfig;
-    }
-
-    public FileMergeCacheConfig getFileMergeCacheConfig() {
-        return fileMergeCacheConfig;
     }
 
     public long currentCacheEntries() {
@@ -588,9 +730,34 @@ public class FileMergeCacheManager implements CacheManager {
         destroy();
     }
 
-    private static class LocalCacheFile {
+    public byte[][] generatePacketOfBytesCache() {
+        byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
+        int pos = 0;
+        results[pos++] = "Compressed Bytes Cache".getBytes(); // ENGINE
+        results[pos++] = String.valueOf(compressedBytesCacheStats.getInMemoryRetainedBytes()).getBytes(); // CACHE_SIZE
+        results[pos++] = String.valueOf(compressedBytesCache.size()).getBytes(); // CACHE_ENTRIES
+        results[pos++] = String.valueOf(-1).getBytes(); // IN_FLIGHT_MEMORY_SIZE
+        results[pos++] = String.valueOf(compressedBytesCacheStats.getCacheHit()).getBytes(); // HIT COUNT
+        results[pos++] = String.valueOf(0).getBytes(); // HOT HIT COUNT
+        results[pos++] = String.valueOf(compressedBytesCacheStats.getCacheMiss()).getBytes(); // MISS COUNT
+        results[pos++] = String.valueOf(compressedBytesCacheStats.getQuotaExceed()).getBytes(); // QUOTA_EXCEED
+        results[pos++] = String.valueOf(-1).getBytes(); // UNAVAILABLE_NUM
+        results[pos++] = "".getBytes(); // CACHE_DICTIONARY
+        results[pos++] = String.valueOf(-1).getBytes(); // CACHE_TTL
+        results[pos++] = String.valueOf(-1).getBytes(); // MAX_CACHE_ENTRIES
+
+        // MAX_CACHE_SIZE
+        results[pos] = new StringBuilder().append(maxSizeOfCompressedBytes).append(" BYTES").toString()
+            .getBytes();
+        return results;
+    }
+
+    public static class LocalCacheFile {
+        public static final int BASE_SIZE_IN_BYTES = 64;
+
         private final long offset;  // the original file offset
         private final Path path;    // the cache location on disk
+        private final AtomicLong hit = new AtomicLong();
 
         public LocalCacheFile(long offset, Path path) {
             this.offset = offset;
@@ -603,6 +770,10 @@ public class FileMergeCacheManager implements CacheManager {
 
         public Path getPath() {
             return path;
+        }
+
+        public void incrementCacheHit() {
+            hit.getAndIncrement();
         }
 
         @Override
@@ -677,61 +848,80 @@ public class FileMergeCacheManager implements CacheManager {
                 // There is a chance of the files to be deleted are being read.
                 // We may just fail the cache hit and do it in a simple way given the chance is low.
                 for (LocalCacheFile file : files) {
+
+                    // The case of invalidating compressed bytes cache:
+                    //  Remove the physical file of the local cache file.
+                    compressedBytesCache.invalidate(file);
+
                     try {
                         Files.delete(new File(file.getPath().toUri()).toPath());
                     } catch (IOException e) {
                         // ignore
+                        log.debug(file.getPath().toUri().getPath(), e);
                     }
                 }
             });
         }
     }
 
-    public synchronized static CacheManager createMergeCacheManager(Map<String, Long> globalVariables, Engine engine)
-        throws IOException {
-        CacheConfig cacheConfig = new CacheConfig();
-        FileMergeCacheConfig fileMergeCacheConfig = new FileMergeCacheConfig();
+    public synchronized static CacheManager createMergeCacheManager(
+        Engine engine, CacheConfig cacheConfig, FileMergeCacheConfig fileMergeCacheConfig) {
         CacheStats cacheStats = new CacheStats();
 
-        Long cacheTTL = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_CACHE_TTL))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_CACHE_TTL.getDefault()));
-        Long maxCacheEntries = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_CACHED_ENTRIES))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES.getDefault()));
-
-        cacheConfig.setBaseDirectory(
-            Files.createTempDirectory(Paths.get("../spill/temp"), CACHE_FILE_PREFIX).toUri());
-        cacheConfig.setCacheQuotaScope(GLOBAL);
-        cacheConfig.setCacheType(CacheType.FILE_MERGE);
-
-        cacheConfig.setCachingEnabled(true);
-        cacheConfig.setValidationEnabled(false);
-
-        fileMergeCacheConfig.setCacheTtl(new Duration(cacheTTL, DAYS));
-        fileMergeCacheConfig.setMaxCachedEntries(maxCacheEntries.intValue());
-        fileMergeCacheConfig.setMaxInMemoryCacheSize(new DataSize(2, GIGABYTE));
-
-        fileMergeCacheConfig.setHotCacheTtl(new Duration(3, SECONDS));
-        fileMergeCacheConfig.setMaxHotCachedEntries(1000);
-
-        final int cores = ThreadCpuStatUtil.NUM_CORES;
         ScheduledExecutorService cacheFlushExecutor =
-            newScheduledThreadPool(cores,
+            newScheduledThreadPool(cacheConfig.getFlushCacheThreadNum(),
                 new NamedThreadFactory(String.format(OSS_CACHE_FLUSHER_THREAD_NAME_FORMAT, engine)));
         ScheduledExecutorService cacheRemovalExecutor =
-            newScheduledThreadPool(cores,
+            newScheduledThreadPool(4,
                 new NamedThreadFactory(String.format(OSS_CACHE_REMOVER_THREAD_NAME_FORMAT, engine)));
         ScheduledExecutorService cacheSizeCalculateExecutor =
-            newScheduledThreadPool(cores,
+            newScheduledThreadPool(1,
                 new NamedThreadFactory(String.format(OSS_CACHE_SIZE_CALCULATOR_THREAD_NAME_FORMAT, engine)));
 
-        CacheManager cacheManager = new FileMergeCacheManager(
-            cacheConfig,
-            fileMergeCacheConfig,
-            cacheStats,
-            cacheFlushExecutor,
-            cacheRemovalExecutor,
-            cacheSizeCalculateExecutor
-        );
-        return cacheManager;
+        try {
+            return new FileMergeCacheManager(
+                cacheConfig,
+                fileMergeCacheConfig,
+                cacheStats,
+                cacheFlushExecutor,
+                cacheRemovalExecutor,
+                cacheSizeCalculateExecutor,
+                engine
+            );
+        } catch (Throwable t) {
+            cacheFlushExecutor.shutdown();
+            cacheRemovalExecutor.shutdown();
+            cacheSizeCalculateExecutor.shutdown();
+            throw t;
+        }
+    }
+
+    public synchronized static CacheManager createMergeCacheManager(Engine engine)
+        throws IOException {
+        CacheConfig cacheConfig = FileConfig.getInstance().getCacheConfig();
+        FileMergeCacheConfig fileMergeCacheConfig = FileConfig.getInstance().getMergeCacheConfig();
+        return createMergeCacheManager(engine, cacheConfig, fileMergeCacheConfig);
+    }
+
+    public Cache<LocalCacheFile, byte[]> getCompressedBytesCache() {
+        return compressedBytesCache;
+    }
+
+    public long getMaxSizeOfCompressedBytes() {
+        return maxSizeOfCompressedBytes;
+    }
+
+    public CacheStats getCompressedBytesCacheStats() {
+        return compressedBytesCacheStats;
+    }
+
+    @Override
+    public CacheQuota getMaxCacheQuota() {
+        return cacheQuota;
+    }
+
+    @VisibleForTesting
+    public Path getBaseDirectory() {
+        return baseDirectory;
     }
 }

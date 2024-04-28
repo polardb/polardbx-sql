@@ -29,8 +29,8 @@
  */
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.util.concurrent.FutureCallback;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.google.common.util.concurrent.FutureCallback;
 import io.airlift.http.client.FullJsonResponseHandler;
 import io.airlift.http.client.HttpStatus;
 

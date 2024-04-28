@@ -7,6 +7,5 @@ plan: |
 
   project(count(distinct id)="count(distinct id)")
     hashagg(group="name", count(distinct id)="count(id)")
-      hashagg(group="name,id")
-        gather(concurrent=true)
-          logicalview(tables="[0000-0003].test_hash_tb4", shardcount=4, sql="select `name`, `id` from `test_hash_tb4` as `test_hash_tb4`")
+      gather(concurrent=true)
+        logicalview(tables="[0000-0003].test_hash_tb4", shardcount=4, sql="select `name`, `id` from `test_hash_tb4` as `test_hash_tb4`")

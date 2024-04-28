@@ -16,10 +16,16 @@
 
 package com.alibaba.polardbx.server.handler;
 
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseShow;
 import com.alibaba.polardbx.server.response.ShowArchive;
+import com.alibaba.polardbx.server.response.ShowCacheFileStats;
 import com.alibaba.polardbx.server.response.ShowCacheStats;
+import com.alibaba.polardbx.server.response.ShowColumnarOffset;
+import com.alibaba.polardbx.server.response.ShowColumnarStatus;
+import com.alibaba.polardbx.server.response.ShowColumnarVersion;
+import com.alibaba.polardbx.server.response.ShowCompatibilityLevel;
 import com.alibaba.polardbx.server.response.ShowConnection;
 import com.alibaba.polardbx.server.response.ShowDatabases;
 import com.alibaba.polardbx.server.response.ShowErrors;
@@ -32,16 +38,15 @@ import com.alibaba.polardbx.server.response.ShowFullDatabases;
 import com.alibaba.polardbx.server.response.ShowFileStorage;
 import com.alibaba.polardbx.server.response.ShowGitCommit;
 import com.alibaba.polardbx.server.response.ShowHelp;
-import com.alibaba.polardbx.server.response.ShowMpp;
 import com.alibaba.polardbx.server.response.ShowMdlDeadlockDetectionStatus;
 import com.alibaba.polardbx.server.response.ShowMemoryPool;
+import com.alibaba.polardbx.server.response.ShowMpp;
 import com.alibaba.polardbx.server.response.ShowNode;
 import com.alibaba.polardbx.server.response.ShowParametric;
 import com.alibaba.polardbx.server.response.ShowStatistic;
 import com.alibaba.polardbx.server.response.ShowWarnings;
 import com.alibaba.polardbx.server.response.ShowWorkload;
 import com.alibaba.polardbx.server.util.LogUtils;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 /**
  * @author xianmao.hexm
@@ -85,6 +90,8 @@ public final class ShowHandler {
                 return ShowParametric.response(c);
             case ServerParseShow.CACHE_STATS:
                 return ShowCacheStats.execute(c);
+            case ServerParseShow.CACHE_FILE_STATS:
+                return ShowCacheFileStats.execute(c);
             case ServerParseShow.ARCHIVE:
                 return ShowArchive.execute(c);
             case ServerParseShow.FILE_STORAGE:
@@ -93,6 +100,16 @@ public final class ShowHandler {
                 return ShowFullDatabases.response(c, hasMore);
             case ServerParseShow.FULL_CONNECTION:
                 return ShowFullConnection.execute(c, hasMore);
+            case ServerParseShow.COLUMNAR_VERSION:
+                return ShowColumnarVersion.execute(c);
+            case ServerParseShow.COLUMNAR_STATUS:
+                return ShowColumnarStatus.execute(c, stmt, offset, false);
+            case ServerParseShow.FULL_COLUMNAR_STATUS:
+                return ShowColumnarStatus.execute(c, stmt, offset, true);
+            case ServerParseShow.COLUMNAR_OFFSET:
+                return ShowColumnarOffset.execute(c);
+            case ServerParseShow.COMPATIBILITY_LEVEL:
+                return ShowCompatibilityLevel.execute(c, stmt);
             default:
                 recordSql = false;
                 return c.execute(stmt, hasMore);

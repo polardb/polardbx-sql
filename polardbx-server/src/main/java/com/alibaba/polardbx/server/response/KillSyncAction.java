@@ -36,10 +36,13 @@ import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.server.conn.InnerConnection;
+import com.alibaba.polardbx.server.conn.InnerConnectionManager;
 import com.alibaba.polardbx.server.handler.pl.RuntimeProcedure;
 import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author mengshi.sunmengshi 2015年5月12日 下午1:28:16
@@ -153,6 +156,28 @@ public class KillSyncAction implements ISyncAction {
                 break;
             }
         }
+
+        // Inner connection.
+        InnerConnection innerConnection;
+        if (null != (innerConnection = InnerConnectionManager.getActiveConnections().get(id))) {
+            if (hasAccess(innerConnection)) {
+                found = true;
+                count++;
+                TConnection tc = innerConnection.getTConnection();
+                if (tc != null) {
+                    pauseDdlJobIfNecessary(tc);
+                    ExecutionContext executionContext = tc.getExecutionContext();
+                    traceId = executionContext.getTraceId();
+                    if (ServiceProvider.getInstance().getServer() != null
+                        && traceId != null) {
+                        ServiceProvider.getInstance().getServer().getQueryManager()
+                            .cancelQuery(traceId);
+                    }
+                }
+                innerConnection.close();
+            }
+        }
+
         if (!found) {
             logger.info(String.format("To kill ConnectionId-%d is not found", id));
         }
@@ -203,6 +228,28 @@ public class KillSyncAction implements ISyncAction {
 
         // None of the above cases, target can not be killed.
         logger.warn(String.format("User: %s has no privilege kill ConnectionId-%d",
+            user, id));
+        return false;
+    }
+
+    private boolean hasAccess(InnerConnection conn) {
+        // Case 0: Skip access validation, target can be killed.
+        if (skipValidation) {
+            return true;
+        }
+
+        // Case 1: If kill.user == target.user, target can be killed.
+        if (TStringUtil.equals(user, conn.getUser())) {
+            return true;
+        }
+
+        // Case 2: If kill.user == polardbx_root, target can be killed.
+        if (TStringUtil.equals(PolarPrivUtil.POLAR_ROOT, user)) {
+            return true;
+        }
+
+        // None of the above cases, target can not be killed.
+        logger.warn(String.format("User: %s has no privilege kill Inner-ConnectionId-%d",
             user, id));
         return false;
     }

@@ -84,6 +84,9 @@ public class OSSMergeIndexRule extends RelOptRule {
         if (ossTableScan.withAgg()) {
             return;
         }
+        if (ossTableScan.isColumnarIndex()) {
+            return;
+        }
         RelNode plan = ossTableScan.getPushedRelNode();
 
         plan = CBOUtil.OssTableScanFormat(plan);

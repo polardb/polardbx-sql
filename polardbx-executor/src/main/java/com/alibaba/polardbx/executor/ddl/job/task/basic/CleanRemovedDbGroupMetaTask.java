@@ -58,7 +58,8 @@ public class CleanRemovedDbGroupMetaTask extends BaseDdlTask {
         String dbName = schemaName;
         for (int i = 0; i < targetGroupNames.size(); i++) {
             String targetGrpName = targetGroupNames.get(i);
-            List<GroupDetailInfoRecord> groupDetails = groupDetailInfoAccessor.getGroupDetailInfoByDbNameAndGroup(dbName, targetGrpName);
+            List<GroupDetailInfoRecord> groupDetails =
+                groupDetailInfoAccessor.getGroupDetailInfoByDbNameAndGroup(dbName, targetGrpName);
             /**
              * One group may contain multi group details because of read-only inst of cn
              */

@@ -44,15 +44,17 @@ public class SqlCreateTableGroup extends SqlDdl {
     final String tableGroupName;
     final String schemaName;
     final SqlNode sqlPartition;
+    final boolean single;
 
     public SqlCreateTableGroup(SqlParserPos pos, boolean ifNotExists, String schemaName,
-                               String tableGroupName, String locality, SqlNode sqlPartition) {
+                               String tableGroupName, String locality, SqlNode sqlPartition, boolean single) {
         super(OPERATOR, pos);
         this.ifNotExists = ifNotExists;
         this.schemaName = schemaName;
         this.tableGroupName = tableGroupName;
         this.locality = locality;
         this.sqlPartition = sqlPartition;
+        this.single = single;
     }
 
     @Override
@@ -71,6 +73,8 @@ public class SqlCreateTableGroup extends SqlDdl {
         if (sqlPartition != null) {
             writer.keyword(" ");
             sqlPartition.unparse(writer, 0, 0);
+        } else if (single) {
+            writer.keyword("SINGLE");
         }
         if (TStringUtil.isNotEmpty(locality)) {
             writer.keyword("LOCALITY = ");
@@ -96,6 +100,10 @@ public class SqlCreateTableGroup extends SqlDdl {
 
     public SqlNode getSqlPartition() {
         return sqlPartition;
+    }
+
+    public boolean isSingle() {
+        return single;
     }
 
     @Override

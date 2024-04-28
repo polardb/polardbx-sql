@@ -17,15 +17,12 @@
 package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -40,6 +37,7 @@ import com.alibaba.polardbx.gms.metadb.ccl.CclRuleAccessor;
 import com.alibaba.polardbx.gms.metadb.ccl.CclRuleRecord;
 import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerAccessor;
 import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
@@ -52,10 +50,13 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalCcl;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlShowCclRule;
 import org.apache.calcite.sql.SqlSlowSqlCcl;
-import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSpecialIdentifier;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.collections.CollectionUtils;
@@ -151,8 +152,6 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
         int maxConcurrency = ThreadCpuStatUtil.NUM_CORES / 2;
         int maxCclRule = DEFAULT_MAX_CCL_RULE;
         long slowSqlTime = executionContext.getParamManager().getLong(ConnectionParams.SLOW_SQL_TIME);
-        slowSqlTime = (Long) executionContext.getUserDefVariables().getOrDefault("SLOW_SQL_TIME", slowSqlTime);
-        slowSqlTime = (Long) executionContext.getUserDefVariables().getOrDefault("slow_sql_time", slowSqlTime);
         if (slowSqlTime > (long) Integer.MAX_VALUE) {
             slowSqlTime = Integer.MAX_VALUE;
         }
@@ -213,7 +212,8 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
 
-        List<List<Map<String, Object>>> processListResults = SyncManagerHelper.sync(showProcesslistSyncAction);
+        List<List<Map<String, Object>>> processListResults = SyncManagerHelper.sync(showProcesslistSyncAction,
+            SyncScope.CURRENT_ONLY);
         for (List<Map<String, Object>> nodeRows : processListResults) {
             if (nodeRows == null) {
                 continue;
@@ -280,7 +280,8 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
             } catch (Exception e) {
                 throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
             }
-            List<List<Map<String, Object>>> results = SyncManagerHelper.sync(killSyncAction, schema);
+            List<List<Map<String, Object>>> results = SyncManagerHelper.sync(
+                killSyncAction, schema, SyncScope.CURRENT_ONLY);
             for (List<Map<String, Object>> result : results) {
                 count += (Integer) result.iterator().next().get(ResultCursor.AFFECT_ROW);
             }
@@ -514,7 +515,7 @@ public class LogicalSlowSqlCclHandler extends HandlerCommon {
 
             List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchPlanCacheSyncAction(schemaName,
                     false),
-                schemaName);
+                schemaName, SyncScope.CURRENT_ONLY);
 
             for (List<Map<String, Object>> nodeRows : results) {
                 if (nodeRows == null) {

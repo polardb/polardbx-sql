@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -68,7 +69,8 @@ public class GsiStatisticsInfoSyncTask extends BaseDdlTask {
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
         try {
-            SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, gsiName, newValue, alterKind));
+            SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, gsiName, newValue, alterKind),
+                SyncScope.ALL);
         } catch (Throwable ignore) {
             LOGGER.error(
                 "error occurs while execute GsiStatisticsSyncAction"
@@ -80,9 +82,11 @@ public class GsiStatisticsInfoSyncTask extends BaseDdlTask {
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         try {
             if (alterKind == GsiStatisticsSyncAction.RENAME_RECORD) {
-                SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, newValue, gsiName, alterKind));
+                SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, newValue, gsiName, alterKind),
+                    SyncScope.ALL);
             } else {
-                SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, gsiName, newValue, alterKind));
+                SyncManagerHelper.sync(new GsiStatisticsSyncAction(schemaName, gsiName, newValue, alterKind),
+                    SyncScope.ALL);
             }
         } catch (Throwable ignore) {
             LOGGER.error(

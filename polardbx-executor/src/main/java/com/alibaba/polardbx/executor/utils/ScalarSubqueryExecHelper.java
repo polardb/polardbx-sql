@@ -24,6 +24,7 @@ import java.util.List;
 
 /**
  * Use to dynamic exec scalar subquery
+ *
  * @author chenghui.lch
  */
 public class ScalarSubqueryExecHelper implements IScalarSubqueryExecHelper {

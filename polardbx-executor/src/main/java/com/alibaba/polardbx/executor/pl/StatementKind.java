@@ -25,7 +25,6 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLIfStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLLoopStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLOpenStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLSetStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLShowStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLWhileStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.clause.MySqlCaseStatement;

@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 
@@ -26,6 +26,7 @@ public class LocalExchange {
     public enum LocalExchangeMode {
         RANDOM,
         PARTITION,
+        CHUNK_PARTITION,
         SINGLE,
         DIRECT,
         BORADCAST

@@ -115,14 +115,13 @@ public class ColumnBackfillExecutor extends Extractor {
                                   PhyTableOperation planUpdateReturningWithMax,
                                   PhyTableOperation planUpdateReturningWithMinAndMax,
                                   PhyTableOperation planSelectSample,
-                                  PhyTableOperation planSelectMinAndMaxSample,
                                   List<Integer> primaryKeysId,
                                   List<String> primaryKeys, List<String> selectKeys, List<String> tableColumns,
                                   boolean allExprPushable, PhyTableOperation planUpdateSingleRow,
                                   List<SqlCall> sourceNodes, List<String> targetColumns, ExecutionContext ec) {
-        super(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
-            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
+        super(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, false, null,
+            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, primaryKeysId);
 
         this.planUpdateWithMinAndMax = planUpdateWithMinAndMax;
         this.planUpdateReturningWithMin = planUpdateReturningWithMin;
@@ -248,10 +247,7 @@ public class ColumnBackfillExecutor extends Extractor {
                 true),
             builder.buildUpdateReturningForColumnBackfill(tableMeta, sourceNodes, targetColumns, primaryKeys, true,
                 true),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                false, false),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                true, true),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId(),
             info.getPrimaryKeys(),
             selectKeys,

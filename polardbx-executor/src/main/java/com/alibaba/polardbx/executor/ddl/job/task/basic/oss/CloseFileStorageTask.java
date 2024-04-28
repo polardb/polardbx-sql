@@ -39,11 +39,13 @@ import java.sql.Connection;
 public class CloseFileStorageTask extends BaseDdlTask {
 
     private String engine;
+    private boolean onlyCloseColdData;
 
     @JSONCreator
-    public CloseFileStorageTask(String engine) {
+    public CloseFileStorageTask(String engine, boolean onlyCloseColdData) {
         super(DefaultDbSchema.NAME);
         this.engine = engine;
+        this.onlyCloseColdData = onlyCloseColdData;
     }
 
     @Override
@@ -55,23 +57,21 @@ public class CloseFileStorageTask extends BaseDdlTask {
         updateSupportedCommands(true, false, metaDbConnection);
         Engine fileEngine = Engine.of(engine);
         CommonMetaChanger.invalidateBufferPool();
-        long stamp = FileSystemManager.readLockWithTimeOut(fileEngine);
-        try {
+
+        if (!onlyCloseColdData) {
             FileStorageInfoAccessor fileStorageInfoAccessor = new FileStorageInfoAccessor();
             fileStorageInfoAccessor.setConnection(metaDbConnection);
             fileStorageInfoAccessor.delete(fileEngine);
+        }
 
-            FileStorageMetaStore fileStorageMetaStore = new FileStorageMetaStore(fileEngine);
-            fileStorageMetaStore.setConnection(metaDbConnection);
-            fileStorageMetaStore.deleteAll();
+        FileStorageMetaStore fileStorageMetaStore = new FileStorageMetaStore(fileEngine);
+        fileStorageMetaStore.setConnection(metaDbConnection);
+        fileStorageMetaStore.deleteAll();
 
+        if (!onlyCloseColdData) {
             ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
             configListenerAccessor.setConnection(metaDbConnection);
             configListenerAccessor.updateOpVersion(MetaDbDataIdBuilder.getFileStorageInfoDataId());
-        } catch (Throwable e) {
-            throw GeneralUtil.nestedException(e);
-        } finally {
-            FileSystemManager.unlockRead(fileEngine, stamp);
         }
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

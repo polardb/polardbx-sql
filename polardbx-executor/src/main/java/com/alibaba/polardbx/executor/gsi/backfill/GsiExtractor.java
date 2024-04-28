@@ -35,16 +35,18 @@ public class GsiExtractor extends Extractor {
     public GsiExtractor(String schemaName, String sourceTableName, String targetTableName, long batchSize,
                         long speedMin,
                         long speedLimit,
-                        long parallelism, PhyTableOperation planSelectWithMax,
+                        long parallelism,
+                        boolean useBinary,
+                        List<String> modifyStringColumns,
+                        PhyTableOperation planSelectWithMax,
                         PhyTableOperation planSelectWithMin,
                         PhyTableOperation planSelectWithMinAndMax,
                         PhyTableOperation planSelectMaxPk,
                         PhyTableOperation planSelectSample,
-                        PhyTableOperation planSelectMinAndMaxSample,
                         List<Integer> primaryKeysId) {
-        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
-            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
+        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, useBinary,
+            modifyStringColumns, planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, primaryKeysId);
     }
 
     @Override
@@ -53,9 +55,10 @@ public class GsiExtractor extends Extractor {
     }
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                                   long speedMin, long speedLimit, long parallelism, ExecutionContext ec) {
+                                   long speedMin, long speedLimit, long parallelism, boolean useBinary,
+                                   List<String> modifyStringColumns, ExecutionContext ec) {
         ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, modifyStringColumns, ec);
 
         return new GsiExtractor(schemaName,
             sourceTableName,
@@ -64,6 +67,8 @@ public class GsiExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
+            useBinary,
+            modifyStringColumns,
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
                 false, true, SqlSelect.LockMode.SHARED_LOCK),
@@ -76,10 +81,7 @@ public class GsiExtractor extends Extractor {
                 true, true,
                 SqlSelect.LockMode.SHARED_LOCK),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                false, false),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                true, true),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId());
     }
 }

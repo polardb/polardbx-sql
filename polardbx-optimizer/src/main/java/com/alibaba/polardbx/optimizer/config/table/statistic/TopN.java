@@ -19,21 +19,18 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.DateType;
-import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
-import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
-import org.jetbrains.annotations.Nullable;
 
-import java.sql.Time;
-import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,11 +45,9 @@ public class TopN {
 
     private final DataType dataType;
 
-    /**
-     * result fields
-     */
     private Object[] valueArr;
     private long[] countArr;
+    private long[] prefixCountArr;
     private final double sampleRate;
 
     public TopN(DataType dataType, double sampleRate) {
@@ -61,11 +56,12 @@ public class TopN {
         valueMap = Maps.newHashMap();
     }
 
-    public TopN(Object[] valueArr, long[] countArr, DataType dataType, double sampleRate) {
+    public TopN(Object[] valueArr, long[] countArr, long[] prefixCountArr, DataType dataType, double sampleRate) {
         assert valueArr.length == countArr.length;
         this.dataType = dataType;
         this.valueArr = valueArr;
         this.countArr = countArr;
+        this.prefixCountArr = prefixCountArr;
         this.sampleRate = sampleRate;
         this.build = true;
     }
@@ -90,7 +86,31 @@ public class TopN {
         return (long) (count / sampleRate);
     }
 
+    private int binarySearch(Object key) {
+        int left = 0;
+        int right = valueArr.length - 1;
+        if (dataType.compare(valueArr[right], key) < 0) {
+            return -valueArr.length - 1;
+        }
+        while (left < right) {
+            int mid = left + (right - left) / 2;
+            if (dataType.compare(valueArr[mid], key) < 0) {
+                left = mid + 1;
+            } else {
+                right = mid;
+            }
+        }
+        if (dataType.compare(valueArr[right], key) == 0) {
+            return right;
+        }
+        return -right - 1;
+    }
+
     public long rangeCount(Object lower, boolean lowerInclusive, Object upper, boolean upperInclusive) {
+        if (valueArr.length == 0) {
+            return 0;
+        }
+
         long count = 0;
 
         // lower/upper object type from optimizer were `String`, compare string and date/time/timestamp objects directly
@@ -117,27 +137,119 @@ public class TopN {
         if (lower == null && upper == null) {
             return 0;
         }
+        if (upper != null && lower != null && dataType.compare(lower, upper) > 0) {
+            return 0;
+        }
 
-        for (int i = 0; i < valueArr.length; i++) {
-            Object o = valueArr[i];
-            if (o == null) {
-                continue;
-            }
-            int l = 1;
-            if (lower != null) {
-                l = dataType.compare(o, lower);
-            }
-            int u = -1;
-            if (upper != null) {
-                u = dataType.compare(o, upper);
-            }
-
-            if ((l == 0 && lowerInclusive) || (u == 0 && upperInclusive) || (l > 0 && u < 0)) {
-                count += countArr[i];
+        int lowerIndex;
+        int upperIndex;
+        if (lower == null) {
+            lowerIndex = 0;
+        } else {
+            lowerIndex = binarySearch(lower);
+            if (lowerIndex >= 0) {
+                // found
+                if (!lowerInclusive) {
+                    lowerIndex++;
+                }
+            } else {
+                lowerIndex = -lowerIndex - 1;
             }
         }
 
+        if (upper == null) {
+            upperIndex = valueArr.length - 1;
+        } else {
+            upperIndex = binarySearch(upper);
+            if (upperIndex >= 0) {
+                // found
+                if (!upperInclusive) {
+                    upperIndex--;
+                }
+            } else {
+                upperIndex = -upperIndex - 2;
+            }
+        }
+        if (lowerIndex > upperIndex) {
+            return 0;
+        }
+        count = prefixCountArr[upperIndex];
+        if (lowerIndex > 0) {
+            count -= prefixCountArr[lowerIndex - 1];
+        }
         return (long) (count / sampleRate);
+    }
+
+    public synchronized boolean build(boolean useNew, long rows, double rate) {
+        if (useNew) {
+            int topNSize = InstConfUtil.getInt(ConnectionParams.NEW_TOPN_SIZE);
+            int topNMinNum = (int) Math.max(10, 1e4 * rate / 2);
+            // table is too small, add same topN
+            if (rows <= StatisticUtils.DEFAULT_SAMPLE_SIZE) {
+                topNMinNum = Math.min(topNMinNum, 100);
+            }
+            if (InstConfUtil.getInt(ConnectionParams.NEW_TOPN_MIN_NUM) >= 0) {
+                topNMinNum = InstConfUtil.getInt(ConnectionParams.NEW_TOPN_MIN_NUM);
+            }
+            return buildNew(topNSize, topNMinNum, true);
+        } else {
+            int topNSize = InstConfUtil.getInt(ConnectionParams.TOPN_SIZE);
+            int topNMinNum = InstConfUtil.getInt(ConnectionParams.TOPN_MIN_NUM);
+            return buildDefault(topNSize, topNMinNum);
+        }
+    }
+
+    public boolean buildNew(int maxSize, int minCount, boolean relevantError) {
+        if (build) {
+            return true;
+        }
+        if (valueMap == null) {
+            throw new IllegalStateException("topN cannot build with empty value");
+        }
+
+        List<Map.Entry<Object, Long>> entryList = Lists.newArrayList(valueMap.entrySet());
+        entryList.sort((x, y) -> y.getValue().compareTo(x.getValue()));
+
+        // calculate prefix
+        long sum = 0;
+        for (Map.Entry<Object, Long> objectLongEntry : entryList) {
+            sum += objectLongEntry.getValue();
+        }
+
+        // filter entry
+        int loc = 0;
+        for (; loc < Math.min(maxSize, entryList.size()); loc++) {
+            Map.Entry<Object, Long> entry = entryList.get(loc);
+            if (entry.getValue() < minCount) {
+                break;
+            }
+            sum -= entry.getValue();
+            int left = entryList.size() - loc - 1;
+            if (relevantError && sum * 10 > left * entry.getValue()) {
+                break;
+            }
+        }
+
+        // sort according to datatype
+        List<Object> valueList = new ArrayList(loc);
+        for (int i = 0; i < loc; i++) {
+            valueList.add(entryList.get(i).getKey());
+        }
+        valueList.sort(dataType::compare);
+
+        // record topN
+        valueArr = new Object[loc];
+        countArr = new long[loc];
+        prefixCountArr = new long[loc];
+        for (int i = 0; i < loc; i++) {
+            valueArr[i] = valueList.get(i);
+            countArr[i] = valueMap.get(valueArr[i]);
+            prefixCountArr[i] = (i == 0 ? 0 : prefixCountArr[i - 1]) + countArr[i];
+        }
+
+        this.build = true;
+        valueMap.clear();
+        return true;
     }
 
     /**
@@ -145,7 +257,7 @@ public class TopN {
      * @param min TOPN_MIN_NUM
      * @return is ready to serv
      */
-    public synchronized boolean build(int n, int min) {
+    public boolean buildDefault(int n, int min) {
         if (build) {
             return true;
         }
@@ -189,9 +301,14 @@ public class TopN {
         // sort topn values by value
         Arrays.sort(valueArr);
 
+        // get count array and prefix count array
         countArr = new long[valueArr.length];
         for (int i = 0; i < valueArr.length; i++) {
             countArr[i] = valueMap.get(valueArr[i]);
+        }
+        prefixCountArr = new long[valueArr.length];
+        for (int i = 0; i < valueArr.length; i++) {
+            prefixCountArr[i] = (i == 0 ? 0 : prefixCountArr[i - 1]) + countArr[i];
         }
         this.build = true;
         valueMap.clear();
@@ -239,6 +356,40 @@ public class TopN {
         for (int i = 0; i < countObjArr.length; i++) {
             countArr[i] = Long.parseLong(countObjArr[i].toString());
         }
-        return new TopN(valueArr, countArr, datatype, sampleRate);
+        long[] prefixCountArr = new long[countObjArr.length];
+        for (int i = 0; i < countObjArr.length; i++) {
+            prefixCountArr[i] = (i == 0 ? 0 : prefixCountArr[i - 1]) + countArr[i];
+        }
+        return new TopN(valueArr, countArr, prefixCountArr, datatype, sampleRate);
+    }
+
+    /**
+     * optimize for reading
+     */
+    public String manualReading() {
+        String type = StatisticUtils.encodeDataType(dataType);
+        boolean isDateType = DataTypeUtil.isMysqlTimeType(dataType);
+        StringBuilder sb = new StringBuilder();
+        sb.append("type:" + type).append("\n");
+        sb.append("sampleRate:" + sampleRate).append("\n");
+        for (int i = 0; i < valueArr.length; i++) {
+            Object val = valueArr[i];
+            String valStr = null;
+            if (isDateType && val instanceof Long) {
+                valStr = TimeStorage.readTimestamp((Long) val).toDatetimeString(0);
+            } else {
+                valStr = val.toString();
+            }
+            long count = countArr[i];
+            sb.append(valStr).append(":").append(count).append("\n");
+        }
+        return sb.toString();
+    }
+
+    /**
+     * result fields
+     */
+    public Object[] getValueArr() {
+        return valueArr;
     }
 }

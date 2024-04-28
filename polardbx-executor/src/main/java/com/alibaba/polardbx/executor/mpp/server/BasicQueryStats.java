@@ -30,10 +30,10 @@
 
 package com.alibaba.polardbx.executor.mpp.server;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.execution.QueryStats;
 import com.alibaba.polardbx.executor.mpp.operator.BlockedReason;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.joda.time.DateTime;

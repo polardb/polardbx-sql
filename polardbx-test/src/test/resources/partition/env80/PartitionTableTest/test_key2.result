@@ -50,34 +50,34 @@ a,b
 401,3000
 explain select * from t_ab_hash where a=99 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p3]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p3]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="99")
 explain select * from t_ab_hash where a=100 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="100")
 explain select * from t_ab_hash where a=401 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p10]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p10]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="401")
 explain select * from t_ab_hash where a=99 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p3]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p3]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="99")
 explain select * from t_ab_hash where a=100 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="100")
 explain select * from t_ab_hash where a=401 order by a,b;
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p10]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE (`a` = ?) ORDER BY `a`, `b`")
+PhyTableOperation(tables="t_ab_hash[p10]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="401")
 explain select * from t_ab_hash where (a,b)=(100,102);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="102,100")
 explain select * from t_ab_hash where (a,b)=(100,105);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="105,100")
 explain select * from t_ab_hash where (a,b)=(100,107);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="107,100")
 explain select * from t_ab_hash where (a,b)=(100,103);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[p6]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[p6]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="103,100")
 select * from t_ab_hash where a=99 order by a,b;
 a,b
 99,2000
@@ -170,16 +170,16 @@ Logical ExecutionPlan
 PhyTableOperation(tables="t_ab_hash[p10]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE (`t_ab_hash`.`a` = ?) ORDER BY `a`, `b`", params="401")
 explain select * from t_ab_hash where (a,b)=(100,102);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[v100_1]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[v100_1]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="102,100")
 explain select * from t_ab_hash where (a,b)=(100,105);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[v100_2]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[v100_2]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="105,100")
 explain select * from t_ab_hash where (a,b)=(100,107);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[v100_3]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[v100_3]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="107,100")
 explain select * from t_ab_hash where (a,b)=(100,103);
 Logical ExecutionPlan
-LogicalView(tables="t_ab_hash[v100_4]", sql="SELECT `a`, `b` FROM `t_ab_hash` AS `t_ab_hash` WHERE ((`a`, `b`) =(?, ?))")
+PhyTableOperation(tables="t_ab_hash[v100_4]", sql="SELECT `t_ab_hash`.`a`, `t_ab_hash`.`b` FROM ? AS `t_ab_hash` WHERE ((`t_ab_hash`.`a`, `t_ab_hash`.`b`) =(?, ?))", params="103,100")
 select * from t_ab_hash where a=99 order by a,b;
 a,b
 99,2000
@@ -247,8 +247,8 @@ t_ab_hash,CREATE TABLE `t_ab_hash` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb3
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 17
-(PARTITION p23 VALUES LESS THAN (-8646911284551352305,9223372036854775807) ENGINE = InnoDB,
- PARTITION p24 VALUES LESS THAN (-8070450532247928803,9223372036854775807) ENGINE = InnoDB,
+(PARTITION p17 VALUES LESS THAN (-8646911284551352305,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p18 VALUES LESS THAN (-8070450532247928803,9223372036854775807) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN (-6917529027641081829,9223372036854775807) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN (-5764607523034234855,9223372036854775807) ENGINE = InnoDB,
  PARTITION p4 VALUES LESS THAN (-4611686018427387881,9223372036854775807) ENGINE = InnoDB,
@@ -275,8 +275,8 @@ t_ab_hash,CREATE TABLE `t_ab_hash` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb3
 PARTITION BY KEY(`a`,`b`)
 PARTITIONS 18
-(PARTITION p23 VALUES LESS THAN (-8646911284551352305,9223372036854775807) ENGINE = InnoDB,
- PARTITION p24 VALUES LESS THAN (-8070450532247928803,9223372036854775807) ENGINE = InnoDB,
+(PARTITION p17 VALUES LESS THAN (-8646911284551352305,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p18 VALUES LESS THAN (-8070450532247928803,9223372036854775807) ENGINE = InnoDB,
  PARTITION p2 VALUES LESS THAN (-6917529027641081829,9223372036854775807) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN (-5764607523034234855,9223372036854775807) ENGINE = InnoDB,
  PARTITION p4 VALUES LESS THAN (-4611686018427387881,9223372036854775807) ENGINE = InnoDB,
@@ -291,7 +291,7 @@ PARTITIONS 18
  PARTITION p13 VALUES LESS THAN (5764607523034234885,9223372036854775807) ENGINE = InnoDB,
  PARTITION p14 VALUES LESS THAN (6917529027641081859,9223372036854775807) ENGINE = InnoDB,
  PARTITION p15 VALUES LESS THAN (8070450532247928833,9223372036854775807) ENGINE = InnoDB,
- PARTITION p25 VALUES LESS THAN (8646911284551352320,9223372036854775807) ENGINE = InnoDB,
- PARTITION p26 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
+ PARTITION p1 VALUES LESS THAN (8646911284551352320,9223372036854775807) ENGINE = InnoDB,
+ PARTITION p19 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
 tablegroup = `tb_ab_hash`
 drop table if exists t_ab_hash;

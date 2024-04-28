@@ -65,6 +65,10 @@ public class LogicalDropIndex extends LogicalTableOperation {
         return new LogicalDropIndex(dropIndex);
     }
 
+    public boolean isColumnar() {
+        return this.gsiMetaBean.isColumnar(indexName);
+    }
+
     public boolean isGsi() {
         return this.gsiMetaBean.isGsi(indexName);
     }
@@ -87,7 +91,7 @@ public class LogicalDropIndex extends LogicalTableOperation {
     }
 
     public void prepareData() {
-        if (isGsi()) {
+        if (isGsi() || isColumnar()) {
             prepareLocalIndexWithGsiData();
         } else {
             prepareStandaloneLocalIndexData();
@@ -114,6 +118,7 @@ public class LogicalDropIndex extends LogicalTableOperation {
         SchemaManager sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
         TableMeta tableMeta = sm.getTable(tableName);
         preparedData.setTableVersion(tableMeta.getVersion());
+        preparedData.setOriginalIndexName(sqlDropIndex.getOriginIndexName().getLastName());
 
         dropIndexWithGsiPreparedData = new DropIndexWithGsiPreparedData();
         dropIndexWithGsiPreparedData.setGlobalIndexPreparedData(preparedData);
@@ -212,6 +217,12 @@ public class LogicalDropIndex extends LogicalTableOperation {
                     }
                 }
             }
+        }
+    }
+
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getDropIndexWithGsiPreparedData()) {
+            getDropIndexWithGsiPreparedData().setDdlVersionId(ddlVersionId);
         }
     }
 }

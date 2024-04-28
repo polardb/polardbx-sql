@@ -115,7 +115,7 @@ public final class ShowConnectionSQL {
 
         // write rows
         byte packetId = eof.packetId;
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
             for (FrontendConnection fc : p.getFrontends().values()) {
                 if (fc != null && !fc.isClosed() && fc instanceof ServerConnection) {
@@ -157,7 +157,7 @@ public final class ShowConnectionSQL {
         row.add(LongUtil.toBytes(sc.getPort()));
         row.add(LongUtil.toBytes(sc.getLocalPort()));
         row.add(StringUtil.encode(sc.getSchema(), charset));
-        row.add(StringUtil.encode(sc.getCharset(), charset));
+        row.add(StringUtil.encode(sc.getResultSetCharset(), charset));
         row.add(LongUtil.toBytes(sc.getNetInBytes()));
         row.add(LongUtil.toBytes(sc.getNetOutBytes()));
         row.add(LongUtil.toBytes((TimeUtil.currentTimeMillis() - sc.getStartupTime()) / 1000L));

@@ -51,6 +51,11 @@ public class PolarDBXOrcSchema {
     private TypeDescription bfSchema;
 
     /**
+     * Dict Schema = {column dict schema + redundant dict schema}
+     */
+    private TypeDescription dictSchema;
+
+    /**
      * Column Metas (mapping to column schema)
      */
     private List<ColumnMeta> columnMetas;
@@ -76,7 +81,7 @@ public class PolarDBXOrcSchema {
      */
     private int[] redundantMap;
 
-    public PolarDBXOrcSchema(TypeDescription schema, TypeDescription bfSchema,
+    public PolarDBXOrcSchema(TypeDescription schema, TypeDescription bfSchema, TypeDescription dictSchema,
                              List<ColumnMeta> columnMetas, List<ColumnMeta> bfColumnMetas,
                              List<ColumnMeta> redundantColumnMetas,
                              int redundantId, int[] redundantMap) {
@@ -87,6 +92,7 @@ public class PolarDBXOrcSchema {
         Preconditions.checkArgument(redundantId == columnMetas.size() + 1);
         this.schema = schema;
         this.bfSchema = bfSchema;
+        this.dictSchema = dictSchema;
         this.columnMetas = columnMetas;
         this.bfColumnMetas = bfColumnMetas;
         this.redundantColumnMetas = redundantColumnMetas;
@@ -118,6 +124,10 @@ public class PolarDBXOrcSchema {
 
     public void setBfSchema(TypeDescription bfSchema) {
         this.bfSchema = bfSchema;
+    }
+
+    public TypeDescription getDictSchema() {
+        return dictSchema;
     }
 
     public List<ColumnMeta> getColumnMetas() {

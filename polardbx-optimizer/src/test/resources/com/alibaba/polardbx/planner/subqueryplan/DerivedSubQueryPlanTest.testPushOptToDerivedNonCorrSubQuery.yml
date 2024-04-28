@@ -28,7 +28,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 5)")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id`, `a`.`name` from (select `test_hash_tb`.`id`, `test_hash_tb`.`name`, `test_hash_tb`.`create_time`, `test_hash_tb`.`int_col1`, `test_hash_tb`.`int_col2`, `test_hash_tb`.`int_col3`, `test_hash_tb`.`int_col4`, `test_hash_tb`.`int_col5`, `test_hash_tb`.`int_col6` from ? as `test_hash_tb`) as `a` where (`a`.`id` = 5)")
 
 - sql: |
     select a.id, a.name
@@ -102,11 +102,9 @@
   plan: |
 
     limit(offset=2, fetch=5)
-      hashagg(count(distinct id)="count(id)")
-        hashagg(group="id")
-          gather(concurrent=true)
-            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id` from `test_hash_tb` as `test_hash_tb` where (`id` > 5)")
-
+      hashagg(count(distinct id)="sum(count(distinct id))")
+        gather(concurrent=true)
+          logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select count(`id`) as `count(distinct id)` from `test_hash_tb` as `test_hash_tb` where (`id` > 5)")
 - sql: |
     select count(distinct id)
     from

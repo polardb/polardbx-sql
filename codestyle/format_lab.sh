@@ -2,7 +2,7 @@
 
 baseDir=`pwd`/
 commit=`git merge-base origin/polardbx_opensource HEAD`
-files=`git diff --name-only ${commit} | grep '.java' | grep -v 'polardbx-calcite' | grep -v 'polardbx-rpc/src/main/java/com/mysql/cj'| grep -v 'com/alibaba/polardbx/rpc/cdc'| xargs -I {} echo ${baseDir}{}`
+files=`git diff --name-only ${commit} | grep '.java' | grep -v 'polardbx-calcite' | grep -v 'polardbx-orc' | grep -v 'polardbx-rpc/src/main/java/com/mysql/cj'| grep -v 'com/alibaba/polardbx/rpc/cdc'| xargs -I {} echo ${baseDir}{}`
 count=0
 batchFile=''
 for file in $files; do

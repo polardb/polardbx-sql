@@ -16,17 +16,21 @@
 
 package com.alibaba.polardbx.optimizer.selectivity;
 
+import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.utils.DrdsRexFolder;
+import com.google.common.collect.Lists;
+import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.metadata.RelMdUtil;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.util.ImmutableBitSet;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
 
@@ -46,8 +50,14 @@ public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
     @Override
     public Double visitCall(RexCall call) {
         if (call.getOperator() == SqlStdOperatorTable.AND) {
+
+            // TODO: consider composite primary key
+            Double selectivityAnd = estimateCompositeEqualSelectivity(call);
+            if (selectivityAnd != null) {
+                return selectivityAnd;
+            }
             // TODO: use (a, b) -> a * b instead of (a, b) -> Math.min(a, b)
-            Double selectivityAnd =
+            selectivityAnd =
                 call.getOperands().stream().map(rexNode -> this.evaluate(rexNode))
                     .reduce(1.0, (a, b) -> Math.min(a, b));
             return normalize(selectivityAnd);
@@ -64,6 +74,48 @@ public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
             // TODO: add more predicate
             return RelMdUtil.guessSelectivity(call);
         }
+    }
+
+    private Double estimateCompositeEqualSelectivity(RexCall call) {
+        List<RexNode> conjunctions = RelOptUtil.conjunctions(call);
+
+        List<Integer> leftIndexes = Lists.newArrayList();
+        List<Integer> rightIndexes = Lists.newArrayList();
+        for (RexNode node : conjunctions) {
+            if (!node.isA(SqlKind.EQUALS)) {
+                continue;
+            }
+            if (!(node instanceof RexCall)) {
+                continue;
+            }
+            RexNode leftRexNode = ((RexCall) node).getOperands().get(0);
+            RexNode rightRexNode = ((RexCall) node).getOperands().get(1);
+            if (leftRexNode instanceof RexInputRef && rightRexNode instanceof RexInputRef) {
+                if (((RexInputRef) leftRexNode).getIndex() < leftBound
+                    && ((RexInputRef) rightRexNode).getIndex() >= leftBound) {
+                    leftIndexes.add(((RexInputRef) leftRexNode).getIndex());
+                    rightIndexes.add(((RexInputRef) rightRexNode).getIndex() - leftBound);
+                }
+                if (((RexInputRef) leftRexNode).getIndex() >= leftBound
+                    && ((RexInputRef) rightRexNode).getIndex() < leftBound) {
+                    leftIndexes.add(((RexInputRef) rightRexNode).getIndex());
+                    rightIndexes.add(((RexInputRef) leftRexNode).getIndex() - leftBound);
+                }
+            }
+        }
+        if (leftIndexes.size() <= 1) {
+            return null;
+        }
+
+        // unique column
+        if (metadataQuery.areColumnsUnique(join.getLeft(), ImmutableBitSet.of(leftIndexes))) {
+            return 1.0 / leftRowCount;
+        }
+
+        if (metadataQuery.areColumnsUnique(join.getRight(), ImmutableBitSet.of(rightIndexes))) {
+            return 1.0 / rightRowCount;
+        }
+        return null;
     }
 
     private double estimateEqualSelectivity(RexCall call) {
@@ -121,6 +173,16 @@ public class JoinSelectivityEstimator extends AbstractSelectivityEstimator {
             return 1.0 / rightRowCount;
         }
 
+        if (leftRexNode instanceof RexInputRef) {
+            if ((DrdsRexFolder.fold(rightRexNode, PlannerContext.getPlannerContext(join))) != null) {
+                return 1;
+            }
+        }
+        if (rightRexNode instanceof RexInputRef) {
+            if ((DrdsRexFolder.fold(leftRexNode, PlannerContext.getPlannerContext(join))) != null) {
+                return 1;
+            }
+        }
         return RelMdUtil.guessSelectivity(call);
     }
 }

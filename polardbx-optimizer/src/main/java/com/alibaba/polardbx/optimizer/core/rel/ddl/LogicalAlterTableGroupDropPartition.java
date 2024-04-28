@@ -56,7 +56,7 @@ public class LogicalAlterTableGroupDropPartition extends LogicalAlterTableDropPa
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
                 .getTableGroupConfigByName(tableGroupName);
-        String firstTableInGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String firstTableInGroup = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = ec.getSchemaManager(schemaName).getTable(firstTableInGroup).getPartitionInfo();
 
         List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords =
@@ -102,7 +102,7 @@ public class LogicalAlterTableGroupDropPartition extends LogicalAlterTableDropPa
         AlterTableGroupDropPartition alterTableGroupDropPartition = (AlterTableGroupDropPartition) relDdl;
         String tableGroupName = alterTableGroupDropPartition.getTableGroupName();
         /* check table group */
-        if (TableGroupNameUtil.isOssTg(tableGroupName)) {
+        if (TableGroupNameUtil.isFileStorageTg(tableGroupName)) {
             return true;
         }
 

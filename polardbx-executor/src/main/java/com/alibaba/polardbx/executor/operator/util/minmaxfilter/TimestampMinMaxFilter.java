@@ -27,13 +27,9 @@ import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.TimestampBlock;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.rpc.result.XResultUtil;
-import org.apache.orc.sarg.SearchArgument;
-
-import java.sql.Timestamp;
 
 /**
  * @author chenzilin
- * @date 2021/12/13 16:57
  */
 public class TimestampMinMaxFilter extends MinMaxFilter {
     private Long min;
@@ -67,16 +63,18 @@ public class TimestampMinMaxFilter extends MinMaxFilter {
     @Override
     public void put(Block block, int pos) {
         if (!block.isNull(pos)) {
-            OriginalTimestamp originalTimestamp = ((TimestampBlock)block).getTimestamp(pos);
+            OriginalTimestamp originalTimestamp = ((TimestampBlock) block).getTimestamp(pos);
 
             MysqlDateTime mysqlDateTime = DataTypeUtil.toMySQLDatetimeByFlags(
-                    originalTimestamp,
-                    TimeParserFlags.FLAG_TIME_FUZZY_DATE);
+                originalTimestamp,
+                TimeParserFlags.FLAG_TIME_FUZZY_DATE);
             if (mysqlDateTime == null) {
                 return;
             }
             TimeParseStatus timeParseStatus = new TimeParseStatus();
-            MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus, originalTimestamp.getMysqlDateTime().getTimezone().toZoneId());
+            MySQLTimeVal timeVal =
+                MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus,
+                    originalTimestamp.getMysqlDateTime().getTimezone().toZoneId());
             if (timeVal == null) {
                 return;
             }
@@ -94,9 +92,9 @@ public class TimestampMinMaxFilter extends MinMaxFilter {
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
         return new MinMaxFilterInfo(
-                MinMaxFilterInfo.TYPE.LONG,
-                min == null ? null : min.longValue(),
-                max == null ? null : max.longValue(), null, null, null, null, null, null);
+            MinMaxFilterInfo.TYPE.LONG,
+            min == null ? null : min.longValue(),
+            max == null ? null : max.longValue(), null, null, null, null, null, null);
     }
 
     @Override

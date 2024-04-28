@@ -44,25 +44,35 @@ public class InformationSchemaSPM extends VirtualView {
     protected RelDataType deriveRowType() {
         final RelDataTypeFactory typeFactory = getCluster().getTypeFactory();
         List<RelDataTypeFieldImpl> columns = new LinkedList<>();
-        columns.add(new RelDataTypeFieldImpl("BASELINE_ID", 0, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("SCHEMA_NAME", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PLAN_ID", 2, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("FIXED", 3, typeFactory.createSqlType(SqlTypeName.TINYINT)));
-        columns.add(new RelDataTypeFieldImpl("ACCEPTED", 4, typeFactory.createSqlType(SqlTypeName.TINYINT)));
-        columns.add(new RelDataTypeFieldImpl("CHOOSE_COUNT", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("SELECTIVITY_SPACE", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PARAMS", 7, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        int index = 0;
+        columns.add(new RelDataTypeFieldImpl("HOST", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("INST_ID", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("BASELINE_ID", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("SCHEMA_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PLAN_ID", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("FIXED", index++, typeFactory.createSqlType(SqlTypeName.TINYINT)));
+        columns.add(new RelDataTypeFieldImpl("ACCEPTED", index++, typeFactory.createSqlType(SqlTypeName.TINYINT)));
+        columns.add(new RelDataTypeFieldImpl("CHOOSE_COUNT", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
         columns.add(
-            new RelDataTypeFieldImpl("RECENTLY_CHOOSE_RATE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("EXPECTED_ROWS", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("MAX_ROWS_FEEDBACK", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("MIN_ROWS_FEEDBACK", 11, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("ORIGIN", 12, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("PARAMETERIZED_SQL", 13, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("EXTERNALIZED_PLAN", 14, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("IS_REBUILD_AT_LOAD", 15, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("HINT", 16, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("USE_POST_PLANNER", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            new RelDataTypeFieldImpl("SELECTIVITY_SPACE", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("PARAMS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("RECENTLY_CHOOSE_RATE", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("EXPECTED_ROWS", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(
+            new RelDataTypeFieldImpl("MAX_ROWS_FEEDBACK", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(
+            new RelDataTypeFieldImpl("MIN_ROWS_FEEDBACK", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("ORIGIN", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("PARAMETERIZED_SQL", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("EXTERNALIZED_PLAN", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("IS_REBUILD_AT_LOAD", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("HINT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("USE_POST_PLANNER", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

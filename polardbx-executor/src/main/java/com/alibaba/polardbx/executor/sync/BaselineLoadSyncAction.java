@@ -17,7 +17,13 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
+import com.alibaba.polardbx.gms.module.LogLevel;
+import com.alibaba.polardbx.gms.module.Module;
+import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
+
+import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_END;
+import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.BASELINE_SYNC;
 
 public class BaselineLoadSyncAction implements ISyncAction {
 
@@ -27,6 +33,12 @@ public class BaselineLoadSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         PlanManager.getInstance().forceLoadAll();
+        ModuleLogInfo.getInstance()
+            .logRecord(
+                Module.SPM,
+                PROCESS_END,
+                new String[] {"BaselineLoadSyncAction", ""},
+                LogLevel.NORMAL);
         return null;
     }
 }

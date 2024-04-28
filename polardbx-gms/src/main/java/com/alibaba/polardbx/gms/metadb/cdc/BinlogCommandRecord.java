@@ -28,18 +28,14 @@ import java.sql.Timestamp;
 public class BinlogCommandRecord implements SystemTableRecord {
 
     public enum COMMAND_STATUS {
-        /**
-         * 初始状态
-         */
+        // 刚插入的 command 状态为INITIAL
         INITIAL(0),
-        /**
-         * 成功
-         */
+        // command 成功处理完成
         SUCCESS(1),
-        /**
-         * 失败
-         */
-        FAIL(2);
+        // command 处理过程中出现异常
+        FAIL(2),
+        // command 完成了初步处理
+        READY(3);
 
         COMMAND_STATUS(int value) {
             this.value = value;

@@ -130,60 +130,53 @@ public class BufferPoolManager {
         return cache.get(
             new Key(fileMeta.getLogicalTableSchema(), fileMeta.getLogicalTableName(), fileMeta.getFileName(), column),
             () -> {
-                long stamp = FileSystemManager.readLockWithTimeOut(ossReadOption.getEngine());
-                try {
-                    FileSystem fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
+                FileSystem fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
 
-                    String orcPath = FileSystemUtils.buildUri(fileSystem, fileMeta.getFileName());
+                String orcPath = FileSystemUtils.buildUri(fileSystem, fileMeta.getFileName());
 
-                    Configuration configuration = new Configuration(false);
-                    configuration.setLong(OrcConf.MAX_MERGE_DISTANCE.getAttribute(),
-                        ossReadOption.getMaxMergeDistance());
+                Configuration configuration = new Configuration(false);
+                configuration.setLong(OrcConf.MAX_MERGE_DISTANCE.getAttribute(),
+                    ossReadOption.getMaxMergeDistance());
 
-                    Reader reader = OrcFile.createReader(new Path(URI.create(orcPath)),
-                        OrcFile.readerOptions(configuration).filesystem(fileSystem).orcTail(fileMeta.getOrcTail()));
+                Reader reader = OrcFile.createReader(new Path(URI.create(orcPath)),
+                    OrcFile.readerOptions(configuration).filesystem(fileSystem).orcTail(fileMeta.getOrcTail()));
 
-                    ColumnMeta columnMeta = ossReadOption.getOssColumnTransformer().getTargetColumnMeta(column);
+                ColumnMeta columnMeta = ossReadOption.getOssColumnTransformer().getTargetColumnMeta(column);
 
-                    String fieldId = fileMeta.getTableMeta(executionContext).getColumnFieldId(column);
+                String fieldId = fileMeta.getTableMeta(executionContext).getColumnFieldId(column);
 
-                    Preconditions.checkArgument(fieldId != null, "fix this case");
-                    Integer columnIndex = fileMeta.getColumnNameToIdx(fieldId);
-                    TypeDescription schema = TypeDescription.createStruct();
+                Preconditions.checkArgument(fieldId != null, "fix this case");
+                Integer columnIndex = fileMeta.getColumnNameToIdx(fieldId);
+                TypeDescription schema = TypeDescription.createStruct();
 
-                    schema.addField(
-                        fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
-                        fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
+                schema.addField(
+                    fileMeta.getTypeDescription().getFieldNames().get(columnIndex),
+                    fileMeta.getTypeDescription().getChildren().get(columnIndex).clone());
 
-                    // reader filter options
-                    Reader.Options readerOptions = new Reader.Options(configuration)
-                        .schema(schema);
+                // reader filter options
+                Reader.Options readerOptions = new Reader.Options(configuration)
+                    .schema(schema);
 
-                    RecordReader recordReader = reader.rows(readerOptions);
+                RecordReader recordReader = reader.rows(readerOptions);
 
-                    ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
+                ColumnProvider columnProvider = ColumnProviders.getProvider(columnMeta);
 
-                    SessionProperties sessionProperties = SessionProperties.fromExecutionContext(executionContext);
+                SessionProperties sessionProperties = SessionProperties.fromExecutionContext(executionContext);
 
-                    VectorizedRowBatch buffer = schema.createRowBatch(1000);
+                VectorizedRowBatch buffer = schema.createRowBatch(1000);
 
-                    List<Block> result = new ArrayList<>();
+                List<Block> result = new ArrayList<>();
 
-                    while (recordReader.nextBatch(buffer)) {
-                        if (buffer.size == 0) {
-                            continue;
-                        }
-                        BlockBuilder blockBuilder = BlockBuilders.create(columnMeta.getDataType(), executionContext);
-                        columnProvider.transform(buffer.cols[0], blockBuilder, 0, buffer.size, sessionProperties);
-                        result.add(blockBuilder.build());
+                while (recordReader.nextBatch(buffer)) {
+                    if (buffer.size == 0) {
+                        continue;
                     }
-
-                    return result;
-                } catch (Throwable e) {
-                    throw GeneralUtil.nestedException(e);
-                } finally {
-                    FileSystemManager.unlockRead(ossReadOption.getEngine(), stamp);
+                    BlockBuilder blockBuilder = BlockBuilders.create(columnMeta.getDataType(), executionContext);
+                    columnProvider.transform(buffer.cols[0], blockBuilder, 0, buffer.size, sessionProperties);
+                    result.add(blockBuilder.build());
                 }
+
+                return result;
             });
     }
 

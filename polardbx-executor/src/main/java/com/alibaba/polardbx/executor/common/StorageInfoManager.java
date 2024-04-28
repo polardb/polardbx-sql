@@ -30,6 +30,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.spi.IGroupExecutor;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
+import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.rpc.XConfig;
 import com.alibaba.polardbx.rpc.compatible.XDataSource;
 import com.google.common.base.Preconditions;
@@ -111,6 +112,10 @@ public class StorageInfoManager extends AbstractLifecycle {
     private volatile boolean supportXOptForAutoSp = false;
 
     private volatile boolean supportXRpc = false;
+
+    private volatile boolean supportMarkDistributed = false;
+
+    private volatile boolean supportXOptForPhysicalBackfill = false;
 
     private volatile boolean support2pcOpt = false;
 
@@ -440,6 +445,17 @@ public class StorageInfoManager extends AbstractLifecycle {
         }
     }
 
+    private static boolean checkSupportMarkDistributed(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'innodb_mark_distributed'")) {
+            return rs.next();
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
+                "Failed to check innodb_mark_distributed support: " + ex.getMessage());
+        }
+    }
+
     private static boolean checkSupport2pcOpt(IDataSource dataSource) {
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement();
@@ -462,6 +478,17 @@ public class StorageInfoManager extends AbstractLifecycle {
         } catch (SQLException ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
                 "Failed to get variable lower_case_table_names: " + ex.getMessage());
+        }
+    }
+
+    private static boolean checkSupportXOptForPhysicalBackfill(IDataSource dataSource) {
+        try (Connection conn = dataSource.getConnection();
+            Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("SHOW VARIABLES LIKE 'physical_backfill_opt'")) {
+            return rs.next() && StringUtils.equalsIgnoreCase(rs.getString(2), "ON");
+        } catch (SQLException ex) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OTHER, ex,
+                "Failed to check x-protocol for physical backfill support: " + ex.getMessage());
         }
     }
 
@@ -490,6 +517,10 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean tmpSupportChangeSet = true;
         boolean tmpSupportXOptForAutoSp = true;
         boolean tmpSupportXRpc = true;
+        boolean tmpSupportXOptForPhysicalBackfill = true;
+        boolean tmpSupportMarkDistributed = true;
+
+        boolean storageInfoEmpty = true;
         boolean tmpSupport2pcOpt = true;
         for (Group group : topologyHandler.getMatrix().getGroups()) {
             if (group.getType() != GroupType.MYSQL_JDBC || !DbGroupInfoManager.isNormalGroup(group)) {
@@ -500,6 +531,7 @@ public class StorageInfoManager extends AbstractLifecycle {
 
             final StorageInfo storageInfo = initStorageInfo(group, groupExecutor.getDataSource());
             if (storageInfo != null) {
+                storageInfoEmpty = false;
                 tmpSupportXA &= supportXA(storageInfo);
                 lessMysql56 = lessMysql56 || lessMysql56Version(storageInfo);
                 tmpSupportTso &= storageInfo.supportTso;
@@ -523,11 +555,13 @@ public class StorageInfoManager extends AbstractLifecycle {
                 tmpSupportChangeSet &= storageInfo.supportChangeSet;
                 tmpSupportXOptForAutoSp &= storageInfo.supportXOptForAutoSp;
                 tmpSupportXRpc &= storageInfo.supportXRpc;
+                tmpSupportXOptForPhysicalBackfill &= storageInfo.supportXOptForPhysicalBackfill;
+                tmpSupportMarkDistributed &= storageInfo.supportMarkDistributed;
                 tmpSupport2pcOpt &= storageInfo.support2pcOpt;
             }
         }
 
-        this.readOnly = !ConfigDataMode.needInitMasterModeResource();
+        this.readOnly = !ConfigDataMode.needInitMasterModeResource() && !ConfigDataMode.isFastMock();
 
         // Do not enable XA transaction in read-only instance
         this.supportXA = tmpSupportXA && !readOnly;
@@ -553,9 +587,13 @@ public class StorageInfoManager extends AbstractLifecycle {
         this.supportChangeSet = tmpSupportChangeSet;
         this.supportXOptForAutoSp = tmpSupportXOptForAutoSp && tmpSupportXRpc;
         this.supportXRpc = tmpSupportXRpc;
+        this.supportXOptForPhysicalBackfill = tmpSupportXOptForPhysicalBackfill && tmpSupportXRpc;
+        this.supportMarkDistributed = tmpSupportMarkDistributed;
         this.support2pcOpt = tmpSupport2pcOpt;
 
-        InstanceVersion.setMYSQL80(this.isMysql80);
+        if (!storageInfoEmpty) {
+            InstanceVersion.setMYSQL80(this.isMysql80);
+        }
     }
 
     private boolean metaDbUsesXProtocol() {
@@ -605,6 +643,11 @@ public class StorageInfoManager extends AbstractLifecycle {
     }
 
     private StorageInfo initStorageInfo(Group group, IDataSource dataSource) {
+
+        if (!ConfigDataMode.needDNResource() && !SystemDbHelper.isDBBuildInExceptCdc(group.getSchemaName())) {
+            return null;
+        }
+
         if (group.getType() != GroupType.MYSQL_JDBC) {
             return null;
         }
@@ -806,6 +849,20 @@ public class StorageInfoManager extends AbstractLifecycle {
         return supportXRpc;
     }
 
+    public boolean isSupportMarkDistributed() {
+        if (!isInited()) {
+            init();
+        }
+        return supportMarkDistributed;
+    }
+
+    public boolean supportXOptForPhysicalBackfill() {
+        if (!isInited()) {
+            init();
+        }
+        return supportXOptForPhysicalBackfill;
+    }
+
     public boolean support2pcOpt() {
         if (!isInited()) {
             init();
@@ -838,6 +895,8 @@ public class StorageInfoManager extends AbstractLifecycle {
         boolean supportChangeSet;
         boolean supportXOptForAutoSp;
         boolean supportXRpc;
+        boolean supportXOptForPhysicalBackfill;
+        boolean supportMarkDistributed;
         boolean support2pcOpt;
 
         public StorageInfo(
@@ -864,6 +923,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportChangeSet,
             boolean supportXOptForAutoSp,
             boolean supportXRpc,
+            boolean supportXOptForPhysicalBackfill,
+            boolean supportMarkDistributed,
             boolean support2pcOpt
         ) {
             this.version = version;
@@ -889,6 +950,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             this.supportChangeSet = supportChangeSet;
             this.supportXOptForAutoSp = supportXOptForAutoSp;
             this.supportXRpc = supportXRpc;
+            this.supportXOptForPhysicalBackfill = supportXOptForPhysicalBackfill && supportXRpc;
+            this.supportMarkDistributed = supportMarkDistributed;
             this.support2pcOpt = support2pcOpt;
         }
 
@@ -907,6 +970,8 @@ public class StorageInfoManager extends AbstractLifecycle {
                     false,
                     false,
                     1,
+                    false,
+                    false,
                     false,
                     false,
                     false,
@@ -949,6 +1014,8 @@ public class StorageInfoManager extends AbstractLifecycle {
             boolean supportChangeSet = polarxUDFInfo.map(PolarxUDFInfo::supportChangeSet).orElse(false);
             boolean supportXOptForAutoSp = checkSupportXOptForAutoSp(dataSource);
             boolean supportXRpc = checkSupportXRpc(dataSource);
+            boolean supportXoptForPhysicalBackfill = checkSupportXOptForPhysicalBackfill(dataSource);
+            boolean supportMarkDistributed = checkSupportMarkDistributed(dataSource);
             boolean support2pcOpt = checkSupport2pcOpt(dataSource);
 
             return new StorageInfo(
@@ -975,6 +1042,8 @@ public class StorageInfoManager extends AbstractLifecycle {
                 supportChangeSet,
                 supportXOptForAutoSp,
                 supportXRpc,
+                supportXoptForPhysicalBackfill,
+                supportMarkDistributed,
                 support2pcOpt);
         }
     }

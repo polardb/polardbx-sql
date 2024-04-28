@@ -55,7 +55,6 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -74,20 +73,19 @@ public class ChangeSetExecutor extends Extractor {
     private final PhyTableOperation planSelect;
 
     protected ChangeSetExecutor(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                                long speedMin,
-                                long speedLimit, long parallelism,
+                                long speedMin, long speedLimit, long parallelism, boolean useBinary,
+                                List<String> modifyStringColumns,
                                 PhyTableOperation planSelectWithMax,
                                 PhyTableOperation planSelectWithMin,
                                 PhyTableOperation planSelectWithMinAndMax,
                                 PhyTableOperation planSelect,
                                 PhyTableOperation planSelectMaxPk,
                                 PhyTableOperation planSelectSample,
-                                PhyTableOperation planSelectMinAndMaxSample,
                                 List<Integer> primaryKeysId,
                                 Map<String, Set<String>> sourcePhyTables) {
-        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
-            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
+        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, useBinary,
+            modifyStringColumns, planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
         this.planSelect = planSelect;
     }
@@ -310,8 +308,12 @@ public class ChangeSetExecutor extends Extractor {
 
                 final Map<Integer, ParameterContext> params = new HashMap<>(columns.size());
                 for (int i = 0; i < columns.size(); i++) {
+                    ColumnMeta columnMeta = columns.get(i);
+                    String colName = columnMeta.getName();
+                    boolean canConvert =
+                        useBinary && (notConvertColumns == null || !notConvertColumns.contains(colName));
 
-                    final ParameterContext parameterContext = buildColumnParam(row, i);
+                    final ParameterContext parameterContext = buildColumnParam(row, i, canConvert);
 
                     params.put(i + 1, parameterContext);
                 }
@@ -401,10 +403,10 @@ public class ChangeSetExecutor extends Extractor {
     }
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                                   long speedMin, long speedLimit, long parallelism,
-                                   Map<String, Set<String>> sourcePhyTables,
+                                   long speedMin, long speedLimit, long parallelism, boolean useBinary,
+                                   List<String> modifyStringColumns, Map<String, Set<String>> sourcePhyTables,
                                    ExecutionContext ec) {
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, modifyStringColumns, ec);
 
         ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, false);
 
@@ -417,6 +419,8 @@ public class ChangeSetExecutor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
+            useBinary,
+            modifyStringColumns,
             builder.buildSelectForBackfillNotLimit(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
                 false,
@@ -438,10 +442,7 @@ public class ChangeSetExecutor extends Extractor {
                 false,
                 lockMode),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                false, false),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                true, true),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId(),
             sourcePhyTables);
     }

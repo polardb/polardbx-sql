@@ -18,6 +18,7 @@ package org.apache.calcite.sql.type;
 
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlCall;
@@ -390,7 +391,8 @@ public class MySQLStandardTypeInference {
                     typeFactory.getTypeSystem().getMaxPrecision(SqlTypeName.TIME),
                     scale
                 );
-            } else if (isDatetimeOrTimestamp(operandType1)) {
+            } else if (isDatetimeOrTimestamp(operandType1)
+                || (InstanceVersion.isMYSQL80() && SqlTypeUtil.isDate(operandType1))) {
                 int scale = Math.max(dynamicTemporalScale(operandType1), dynamicTemporalScale(operandType2));
                 return typeFactory.createSqlType(
                     SqlTypeName.DATETIME,

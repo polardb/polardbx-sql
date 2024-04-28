@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
@@ -28,6 +29,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeBatchOnM
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public class UpdateGsiComplexTest extends GsiDMLTest {
     private final static String oneTableName = "update_gsi_complex_test_one";
     private final static String twoTableName = "update_gsi_complex_test_two";

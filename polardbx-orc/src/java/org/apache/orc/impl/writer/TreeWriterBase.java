@@ -18,9 +18,15 @@
 
 package org.apache.orc.impl.writer;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import com.google.protobuf.ByteString;
+import org.apache.commons.compress.utils.CharsetNames;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.ColumnStatistics;
@@ -41,6 +47,7 @@ import org.apache.orc.impl.StreamName;
 import org.apache.orc.util.BloomFilter;
 import org.apache.orc.util.BloomFilterIO;
 import org.apache.orc.util.BloomFilterUtf8;
+import org.roaringbitmap.RoaringBitmap;
 
 /**
  * The parent class of all of the writers for each column. Each column
@@ -69,6 +76,9 @@ public abstract class TreeWriterBase implements TreeWriter {
   private boolean foundNulls;
   private OutStream isPresentOutStream;
   protected final WriterContext context;
+  protected final OrcProto.BitmapIndex.Builder bitmapIndex;
+  protected final Map<String, RoaringBitmap> bitmapIndexEntryMap = new HashMap<>();
+  protected boolean bitmapIndexBuildingFlag = true;
 
   /**
    * Create a tree writer.
@@ -90,9 +100,14 @@ public abstract class TreeWriterBase implements TreeWriter {
     this.foundNulls = false;
     createBloomFilter = context.getBloomFilterColumns()[id];
     boolean proleptic = context.getProlepticGregorian();
-    indexStatistics = ColumnStatisticsImpl.create(schema, proleptic);
-    stripeColStatistics = ColumnStatisticsImpl.create(schema, proleptic);
-    fileStatistics = ColumnStatisticsImpl.create(schema, proleptic);
+    boolean recordFirstAndLatest = false;
+    if (context.getRecordFirstAndLatest() != null) {
+      recordFirstAndLatest = context.getRecordFirstAndLatest()[id];
+    }
+
+    indexStatistics = ColumnStatisticsImpl.create(schema, proleptic, context.isDecimal64(), recordFirstAndLatest);
+    stripeColStatistics = ColumnStatisticsImpl.create(schema, proleptic, context.isDecimal64(), recordFirstAndLatest);
+    fileStatistics = ColumnStatisticsImpl.create(schema, proleptic, context.isDecimal64(), recordFirstAndLatest);
     if (context.buildIndex()) {
       rowIndex = OrcProto.RowIndex.newBuilder();
       rowIndexEntry = OrcProto.RowIndexEntry.newBuilder();
@@ -122,6 +137,7 @@ public abstract class TreeWriterBase implements TreeWriter {
       bloomFilter = null;
       bloomFilterUtf8 = null;
     }
+    bitmapIndex = OrcProto.BitmapIndex.newBuilder();
   }
 
   protected OrcProto.RowIndex.Builder getRowIndex() {
@@ -297,6 +313,25 @@ public abstract class TreeWriterBase implements TreeWriter {
           OrcProto.Stream.Kind.BLOOM_FILTER_UTF8), bloomFilterIndexUtf8);
       bloomFilterIndexUtf8.clear();
     }
+
+    if (bitmapIndexEntryMap.size() > 0 && bitmapIndexBuildingFlag) {
+      for (Map.Entry<String, RoaringBitmap> entry : bitmapIndexEntryMap.entrySet()) {
+        OrcProto.BitmapColumn.Builder bitmapColumn = OrcProto.BitmapColumn.newBuilder();
+        bitmapColumn.setVal(ByteString.copyFrom(entry.getKey(), CharsetNames.UTF_8));
+        bitmapColumn.setBitmap(ByteString.copyFrom(serialise(entry.getValue())));
+        bitmapIndex.addBitMapIndex(bitmapColumn);
+      }
+      context.writeBitmap(new StreamName(id, OrcProto.Stream.Kind.BITMAP_INDEX), bitmapIndex);
+      bitmapIndex.clear();
+      bitmapIndexEntryMap.clear();
+    }
+  }
+
+  public byte[] serialise(final RoaringBitmap object) throws IOException {
+    final ByteArrayOutputStream byteOut = new ByteArrayOutputStream();
+    final DataOutputStream out = new DataOutputStream(byteOut);
+    object.serialize(out);
+    return byteOut.toByteArray();
   }
 
   /**
@@ -411,5 +446,17 @@ public abstract class TreeWriterBase implements TreeWriter {
   @Override
   public void getCurrentStatistics(ColumnStatistics[] output) {
     output[id] = fileStatistics;
+  }
+
+  protected void updateBitmapIndexBuildingFlag(){
+    if(!bitmapIndexBuildingFlag){
+      return;
+    }
+    // magic 1024 for test
+    if(bitmapIndexEntryMap.size()>1024){
+      // stop building bitmap index if its size exceed 1024
+      bitmapIndexBuildingFlag=false;
+      bitmapIndexEntryMap.clear();
+    }
   }
 }

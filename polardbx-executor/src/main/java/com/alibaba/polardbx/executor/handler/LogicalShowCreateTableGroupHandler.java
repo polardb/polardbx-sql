@@ -36,11 +36,13 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.repo.mysql.common.ResultSetHelper;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlShowCreateTable;
 import org.apache.calcite.sql.SqlShowCreateTableGroup;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,8 +77,17 @@ public class LogicalShowCreateTableGroupHandler extends HandlerCommon {
             if (tableGroupConfig == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS, tableGroupName);
             }
+            String partitionDef = TableGroupUtils.getPartitionDefinition(tableGroupConfig, executionContext);
+            String createTableGroup;
+            if (!StringUtils.isEmpty(partitionDef)) {
+                createTableGroup = "CREATE TABLEGROUP `" + tableGroupName.toUpperCase() + "` " + partitionDef;
+            } else {
+                createTableGroup = "CREATE TABLEGROUP `" + tableGroupName.toUpperCase() + "`";
+            }
             result.addRow(
-                new Object[] {tableGroupName, tableGroupConfig.getTableGroupRecord().getPartition_definition()});
+                new Object[] {
+                    tableGroupName,
+                    createTableGroup});
             return result;
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,

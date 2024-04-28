@@ -76,6 +76,7 @@ public class MoveDatabaseBaseTest extends DDLBaseNewDBTestCase {
         storageGroupInfo.clear();
         groupNames.clear();
         storageIDs.clear();
+        groupToStorageIdMap.clear();
         try {
             PreparedStatement stmt = JdbcUtil.preparedStatement(tddlSql, getPolardbxDirectConnection(database));
             ResultSet rs = stmt.executeQuery();
@@ -176,5 +177,34 @@ public class MoveDatabaseBaseTest extends DDLBaseNewDBTestCase {
         Assert.assertTrue(resultSet.next());
         long id = resultSet.getLong(1);
         JdbcUtil.executeQuery("continue ddl " + id, conn);
+    }
+
+    public enum Condition {
+        NONE(0),
+        USE_PARALLEL_BACKFILL(1),
+        USE_PHYSICAL_BACKFILL(2);
+
+        private final int value;
+
+        Condition(int value) {
+            this.value = value;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public static Condition from(int value) {
+            switch (value) {
+            case 0:
+                return NONE;
+            case 1:
+                return USE_PARALLEL_BACKFILL;
+            case 2:
+                return USE_PHYSICAL_BACKFILL;
+            default:
+                return null;
+            }
+        }
     }
 }

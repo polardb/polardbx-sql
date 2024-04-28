@@ -36,6 +36,7 @@ import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -63,6 +64,7 @@ import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.logical.LogicalAggregate;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -118,6 +120,10 @@ public class PlannerUtils {
     public final static int SCALAR_SUBQUERY_PARAM_INDEX = -2;
     public final static int APPLY_SUBQUERY_PARAM_INDEX = -3;
     private final static Logger logger = LoggerFactory.getLogger(PlannerUtils.class);
+
+    public static RelMetadataQuery newMetadataQuery() {
+        return RelMetadataQuery.instance(DrdsRelMetadataProvider.DEFAULT);
+    }
 
     public static Map<String, List<List<String>>> convertTargetDB(List<List<TargetDB>> targetDBs) {
         return convertTargetDB(targetDBs, null, false, null);

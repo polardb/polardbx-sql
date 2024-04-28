@@ -57,6 +57,11 @@ public class FixedCountScheduler implements StageScheduler {
     }
 
     @Override
+    public int requireChildOutputNum() {
+        return getTaskNum();
+    }
+
+    @Override
     public int getDriverParallelism() {
         return driverParallelism;
     }

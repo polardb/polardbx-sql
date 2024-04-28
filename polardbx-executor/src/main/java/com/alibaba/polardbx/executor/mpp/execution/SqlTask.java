@@ -16,13 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.TrxIdGenerator;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.MetricLevel;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
@@ -35,6 +32,7 @@ import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.alibaba.polardbx.executor.mpp.operator.DriverStats;
 import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;
+import com.alibaba.polardbx.executor.mpp.operator.PipelineDepTree;
 import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
@@ -47,7 +45,10 @@ import com.alibaba.polardbx.optimizer.statis.TaskMemoryStatisticsGroup;
 import com.alibaba.polardbx.statistics.ExecuteSQLOperation;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.util.trace.RuntimeStatisticsSketch;
@@ -68,12 +69,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
-import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static java.util.Objects.requireNonNull;
 
 public class SqlTask {
@@ -323,8 +325,8 @@ public class SqlTask {
     private TaskStats getTaskStats(TaskHolder taskHolder) {
         TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
         if (finalTaskInfo != null) {
-            if (finalTaskInfo.getStats() != null) {
-                return finalTaskInfo.getStats();
+            if (finalTaskInfo.getTaskStats() != null) {
+                return finalTaskInfo.getTaskStats();
             }
         }
         SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
@@ -345,7 +347,7 @@ public class SqlTask {
         if (taskHolder != null) {
             TaskInfo finalTaskInfo = taskHolder.getFinalTaskInfo();
             if (finalTaskInfo != null) {
-                return finalTaskInfo.getStats().getEndTime();
+                return finalTaskInfo.getTaskStats().getEndTime();
             }
             SqlTaskExecution taskExecution = taskHolder.getTaskExecution();
             if (taskExecution != null) {
@@ -369,8 +371,10 @@ public class SqlTask {
 
     private TaskInfo createInitialTaskInfo(TaskHolder taskHolder) {
         TaskStats taskStats = getTaskStats(taskHolder);
+
         if (isMPPMetricEnabled) {
             TaskStatus taskStatus = createInitialTaskStatus(Optional.of(taskStats), nodeId);
+
             return new TaskInfo(
                 taskStatus,
                 lastHeartbeat.get(),
@@ -385,11 +389,10 @@ public class SqlTask {
                 taskStats.getMemoryReservation(),
                 System.currentTimeMillis() - createTime,
                 0,
-                taskStats.getElapsedTime(),
-                taskStats.getTotalScheduledTime(),
+                taskStats.getElapsedTimeMillis(),
+                taskStats.getTotalScheduledTimeNanos(),
                 taskStateMachine.getPullDataTime(),
-                taskStats.getDeliveryTime()
-            );
+                taskStats.getDeliveryTimeMillis());
         } else {
             TaskStatus taskStatus = createInitialTaskStatus(Optional.empty(), nodeId);
 
@@ -407,11 +410,10 @@ public class SqlTask {
                 taskStats.getMemoryReservation(),
                 System.currentTimeMillis() - createTime,
                 taskStateMachine.getDriverEndTime(),
-                taskStats.getElapsedTime(),
-                taskStats.getTotalScheduledTime(),
+                taskStats.getElapsedTimeMillis(),
+                taskStats.getTotalScheduledTimeNanos(),
                 taskStateMachine.getPullDataTime(),
-                taskStats.getDeliveryTime()
-            );
+                taskStats.getDeliveryTimeMillis());
         }
     }
 
@@ -435,11 +437,10 @@ public class SqlTask {
                 taskStats.getMemoryReservation(),
                 System.currentTimeMillis() - createTime,
                 0,
-                taskStats.getElapsedTime(),
-                taskStats.getTotalScheduledTime(),
+                taskStats.getElapsedTimeMillis(),
+                taskStats.getTotalScheduledTimeNanos(),
                 taskStateMachine.getPullDataTime(),
-                taskStats.getDeliveryTime()
-            );
+                taskStats.getDeliveryTimeMillis());
         } else {
             return new TaskInfo(
                 taskStatus,
@@ -455,17 +456,16 @@ public class SqlTask {
                 taskStats.getMemoryReservation(),
                 System.currentTimeMillis() - createTime,
                 taskStateMachine.getDriverEndTime(),
-                taskStats.getElapsedTime(),
-                taskStats.getTotalScheduledTime(),
+                taskStats.getElapsedTimeMillis(),
+                taskStats.getTotalScheduledTimeNanos(),
                 taskStateMachine.getPullDataTime(),
-                taskStats.getDeliveryTime());
+                taskStats.getDeliveryTimeMillis());
         }
     }
 
     private TaskInfo createTaskInfoWithTaskStats(TaskHolder taskHolder) {
         TaskStats taskStats = getTaskStats(taskHolder);
         Set<Integer> noMoreSplits = getNoMoreSplits(taskHolder);
-
         TaskStatus taskStatus = createTaskStatus(taskHolder, Optional.empty());
         TaskInfo taskInfo = new TaskInfo(
             taskStatus,
@@ -481,11 +481,10 @@ public class SqlTask {
             taskStats.getMemoryReservation(),
             System.currentTimeMillis() - createTime,
             taskStateMachine.getDriverEndTime(),
-            taskStats.getElapsedTime(),
-            taskStats.getTotalScheduledTime(),
+            taskStats.getElapsedTimeMillis(),
+            taskStats.getTotalScheduledTimeNanos(),
             taskStateMachine.getPullDataTime(),
-            taskStats.getDeliveryTime()
-        );
+            taskStats.getDeliveryTimeMillis());
         return taskInfo;
     }
 
@@ -704,27 +703,44 @@ public class SqlTask {
         List<OperatorStats> operatorStatsList = new ArrayList<>();
 
         List<DriverContext> driverContexts = new ArrayList<>();
+
+        Map<Integer, String> idToName = new HashMap<>();
+        Map<Integer, RuntimeStatisticsSketch> idToStatisticsSketch = new HashMap<>();
+
+        if (context.getContext().getRuntimeStatistics() != null) {
+            Map<RelNode, RuntimeStatisticsSketch> statisticsSketchMap =
+                ((RuntimeStatistics) context.getContext().getRuntimeStatistics()).toSketch();
+
+            for (Map.Entry<RelNode, RuntimeStatisticsSketch> entry : statisticsSketchMap.entrySet()) {
+                idToStatisticsSketch.put(entry.getKey().getRelatedId(), entry.getValue());
+                idToName.put(entry.getKey().getRelatedId(), entry.getKey().getClass().getSimpleName());
+            }
+            for (RuntimeStatisticsSketch statistics : idToStatisticsSketch.values()) {
+                cumulativeMemory += statistics.getMemory();
+            }
+
+        }
         for (PipelineContext pipelineContext : context.getPipelineContexts()) {
             for (DriverContext driverContext : pipelineContext.getDriverContexts()) {
                 driverContexts.add(driverContext);
+                for (Integer operatorId : driverContext.getDriverInputs()) {
+                    RuntimeStatisticsSketch ret = idToStatisticsSketch.get(operatorId);
+                    if (ret != null) {
+                        OperatorStats operatorStats =
+                            new OperatorStats(Optional.empty(), driverContext.getPipelineContext().getPipelineId(),
+                                Optional.of(idToName.get(operatorId)), operatorId, ret.getRowCount(),
+                                ret.getRuntimeFilteredRowCount(),
+                                ret.getOutputBytes(), ret.getStartupDuration(),
+                                ret.getDuration(), ret.getMemory(), ret.getInstances(), ret.getSpillCnt());
+                        operatorStatsList.add(operatorStats);
+                    }
+                }
             }
         }
 
         if (taskStateMachine.getState().isDone()) {
             context.end();
             if (context.getContext().getRuntimeStatistics() != null) {
-                Map<RelNode, RuntimeStatisticsSketch> statisticsSketchMap =
-                    ((RuntimeStatistics) context.getContext().getRuntimeStatistics()).toSketch();
-                Map<Integer, RuntimeStatisticsSketch> idToStatisticsSketch = new HashMap<>();
-                Map<Integer, String> idToName = new HashMap<>();
-                for (Map.Entry<RelNode, RuntimeStatisticsSketch> entry : statisticsSketchMap.entrySet()) {
-                    idToStatisticsSketch.put(entry.getKey().getRelatedId(), entry.getValue());
-                    idToName.put(entry.getKey().getRelatedId(), entry.getKey().getClass().getSimpleName());
-                }
-                for (RuntimeStatisticsSketch statistics : idToStatisticsSketch.values()) {
-                    cumulativeMemory += statistics.getMemory();
-                }
-
                 Set<Integer> finishedStatics = new HashSet<>();
 
                 for (DriverContext driverContext : driverContexts) {
@@ -734,8 +750,9 @@ public class SqlTask {
                             OperatorStats operatorStats =
                                 new OperatorStats(Optional.empty(), driverContext.getPipelineContext().getPipelineId(),
                                     Optional.of(idToName.get(operatorId)), operatorId, ret.getRowCount(),
-                                    ret.getOutputBytes(), ret.getStartupDuration(), ret.getDuration(),
-                                    ret.getMemory(), ret.getInstances(), ret.getSpillCnt());
+                                    ret.getRuntimeFilteredRowCount(),
+                                    ret.getOutputBytes(), ret.getStartupDuration(),
+                                    ret.getDuration(), ret.getMemory(), ret.getInstances(), ret.getSpillCnt());
                             operatorStatsList.add(operatorStats);
                             finishedStatics.add(operatorId);
                         }
@@ -770,6 +787,8 @@ public class SqlTask {
             }
         }
 
+        List<DriverStats> driverStatsList = new ArrayList<>(driverContexts.size());
+
         for (int i = 0; i < driverContexts.size(); i++) {
 
             DriverContext driverContext = driverContexts.get(i);
@@ -789,6 +808,7 @@ public class SqlTask {
             processedInputPositions += driverStats.getInputPositions();
             outputDataSize += driverStats.getOutputDataSize();
             outputPositions += driverStats.getOutputPositions();
+            driverStatsList.add(driverStats);
         }
 
         long startMillis = context.getStartMillis();
@@ -818,14 +838,29 @@ public class SqlTask {
         long peakMemory = taskMemoryPool.getMaxMemoryUsage();
 
         long memoryReservation = taskMemoryPool.getMemoryUsage();
+        Map<Integer, List<Integer>> pipelineDeps = buildPipelineDeps(context.getPipelineDepTree());
 
         return new TaskStats(taskStateMachine.getCreatedTime(), context.getStartTime(),
             context.getEndTime(), elapsedTime, queuedTime, deliveryTime, totalPipeExecs,
             queuedPipeExecs, runningPipeExecs, completePipeExecs, cumulativeMemory, memoryReservation, peakMemory,
             totalScheduledTime, totalCpuTime, totalUserTime, totalBlockedTime, (runningPipeExecs > 0),
             ImmutableSet.of(), processedInputDataSize, processedInputPositions,
-            outputDataSize, outputPositions, operatorStatsList
-        );
+            outputDataSize, outputPositions, operatorStatsList,
+            driverStatsList, pipelineDeps);
+    }
+
+    private Map<Integer, List<Integer>> buildPipelineDeps(PipelineDepTree pipelineDepTree) {
+        if (pipelineDepTree == null) {
+            return null;
+        }
+        Map<Integer, List<Integer>> deps = new HashMap<>(pipelineDepTree.size());
+        for (int i = 0; i < pipelineDepTree.size(); i++) {
+            PipelineDepTree.TreeNode node = pipelineDepTree.getNode(i);
+            List<Integer> depIds = node.getDependChildren().stream()
+                .map(PipelineDepTree.TreeNode::getId).collect(Collectors.toList());
+            deps.put(node.getId(), depIds);
+        }
+        return deps;
     }
 
     public void clean() {

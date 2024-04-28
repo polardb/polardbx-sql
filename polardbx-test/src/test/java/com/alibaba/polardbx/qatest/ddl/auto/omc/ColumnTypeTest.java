@@ -262,8 +262,8 @@ public class ColumnTypeTest extends DDLBaseNewDBTestCase {
             JdbcUtil.executeUpdateSuccess(conn,
                 buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + alterSql + USE_OMC_ALGORITHM);
             setSqlMode("", conn);
-            JdbcUtil.executeUpdateFailed(conn, buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + alterSql + USE_OMC_ALGORITHM,
-                "");
+            JdbcUtil.executeUpdateSuccess(conn,
+                buildCmdExtra(OMC_FORCE_TYPE_CONVERSION) + alterSql + USE_OMC_ALGORITHM);
 
             // Reset sql mode
             setSqlMode(sqlMode, conn);

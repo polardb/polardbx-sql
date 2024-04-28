@@ -18,10 +18,12 @@ package com.alibaba.polardbx.optimizer.core.planner;
 
 import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.eagleeye.EagleeyeHelper;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -30,6 +32,7 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.encdb.EncdbRuleManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
@@ -49,6 +52,8 @@ import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.alibaba.polardbx.optimizer.statis.XplanStat;
+import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import com.alibaba.polardbx.optimizer.utils.ForeignKeyUtils;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -59,6 +64,8 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlSelect;
+import org.apache.calcite.sql.SqlWith;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -74,6 +81,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.alibaba.polardbx.common.eventlogger.EventType.XPLAN_FEEDBACK_DISABLE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.ENABLE_ENCDB;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.PLAN_CACHE_SIZE;
 
 /**
@@ -88,6 +97,8 @@ public final class PlanCache {
     private static final int MAX_ERROR_COUNT = 16;
 
     private long currentCapacity;
+
+    private long planCacheExpireTime;
 
     private static final PlanCache pc = new PlanCache();
 
@@ -106,12 +117,7 @@ public final class PlanCache {
     }
 
     private Cache<CacheKey, ExecutionPlan> buildCache(long maxSize) {
-        int planCacheExpireTime;
-        if (ConfigDataMode.isMasterMode()) {
-            planCacheExpireTime = DynamicConfig.getInstance().planCacheExpireTime(); // 12h
-        } else {
-            planCacheExpireTime = 300 * 1000; // 5min
-        }
+        planCacheExpireTime = DynamicConfig.getInstance().planCacheExpireTime(); // 12h
         return CacheBuilder.newBuilder()
             .recordStats()
             .maximumSize(maxSize)
@@ -149,6 +155,10 @@ public final class PlanCache {
         try {
             ExecutionPlan plan =
                 getFromCache(schema, sqlParameterized, sqlParameterized.getParameters(), ec, testMode);
+
+            if (plan == null) {
+                return null;
+            }
 
             if (PlanManagerUtil.canOptByForcePrimary(plan, ec) && ec.isTsoTransaction()) {
                 // If this plan can be optimized, disable plan cache and re-generate it.
@@ -241,6 +251,20 @@ public final class PlanCache {
                     PlanManagerUtil.getTableMetaSetByTableSet(tableSet, ec);
                 executionPlan.saveCacheState(tableSet, tablesVersion, cacheKey, tableMetaSet);
 
+                //get origin column names for encdb
+                if (InstConfUtil.getBool(ENABLE_ENCDB)) {
+                    try {
+                        if (EncdbRuleManager.getInstance().getRuleMatchTree().fastMatch(tableSet, schema)) {
+                            if (executionPlan.getAst().isA(SqlKind.QUERY)) {
+                                executionPlan.setOriginColumnNames(
+                                    CalciteUtils.buildOriginColumnNames(executionPlan.getPlan()));
+                            }
+                        }
+                    } catch (Exception e) {
+                        //ignore
+                    }
+                }
+
                 // set privilegeVerifyItems to logicalPlan and clear
                 // privilegeVerifyItems in privilegeContext
                 PrivilegeContext pc = ec.getPrivilegeContext();
@@ -250,7 +274,7 @@ public final class PlanCache {
                 }
 
                 // alert if plan cache is full
-                OptimizerAlertUtil.plancacheAlert(ec, currentCapacity);
+                OptimizerAlertUtil.plancacheAlert(ec);
                 return executionPlan;
             }
         };
@@ -268,6 +292,12 @@ public final class PlanCache {
                 throw ex;
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, ex.getMessage());
+            }
+        }
+
+        if (plan.isUseColumnar()) {
+            if (!ec.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_PLAN_CACHE)) {
+                return beCached.get() ? null : plan;
             }
         }
 
@@ -537,41 +567,6 @@ public final class PlanCache {
     }
 
     /**
-     * Combine hash code of multiple objects
-     *
-     * @see java.util.Objects#hash(java.lang.Object...)
-     */
-    private static class HashCombiner {
-        private int hashCode = 1;
-
-        void append(Object element) {
-            hashCode = 31 * hashCode + (element == null ? 0 : element.hashCode());
-        }
-
-        int result() {
-            return hashCode;
-        }
-    }
-
-    private static boolean isAsyncDDLJobPlan(SqlKind sqlKind) {
-        switch (sqlKind) {
-        case SHOW_DDL_JOBS:
-        case REMOVE_DDL_JOB:
-        case RECOVER_DDL_JOB:
-        case CONTINUE_DDL_JOB:
-        case PAUSE_DDL_JOB:
-        case ROLLBACK_DDL_JOB:
-        case CANCEL_DDL_JOB:
-        case CHANGE_DDL_JOB:
-        case INSPECT_DDL_JOB_CACHE:
-        case CLEAR_DDL_JOB_CACHE:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    /**
      * Only SQL that can be pushed down to a single db should build a final
      * plan. Here we just check some simple conditions, BuildFinalPlanVisitor
      * will check again.
@@ -595,13 +590,26 @@ public final class PlanCache {
         return false;
     }
 
-    public void feedBack(ExecutionPlan executionPlan, Throwable ex) {
-        if (ex == null) {
-            return;
-        }
+    public void feedBack(ExecutionPlan executionPlan, ExecutionContext ec, Throwable ex) {
 
         CacheKey cacheKey = executionPlan.getCacheKey();
         if (cacheKey == null) {
+            return;
+        }
+
+        if (ec != null) {
+            // forbid xplan if scans too much
+            if (XplanStat.disableXplanByFeedback(ec.getXplanStat(), ec)) {
+                ExecutionPlan cachePlan = cache.getIfPresent(cacheKey);
+                if (cachePlan != null && (!cachePlan.isForbidXplan())) {
+                    cachePlan.disableXplanByFeedBack();
+                    EventLogger.log(XPLAN_FEEDBACK_DISABLE, String.format("xplan of schema:%s, trace id:%s disabled",
+                        ec.getSchemaName(), ec.getTraceId()));
+                }
+            }
+        }
+
+        if (ex == null) {
             return;
         }
 
@@ -711,5 +719,23 @@ public final class PlanCache {
 
     public long getCurrentCapacity() {
         return currentCapacity;
+    }
+
+    public long getPlanCacheExpireTime() {
+        return planCacheExpireTime;
+    }
+
+    public long getCacheKeyCountForSelect() {
+        long cnt = 0;
+        for (ExecutionPlan plan : cache.asMap().values()) {
+            if (plan.getAst() == null) {
+                cnt++;
+                continue;
+            }
+            if (!plan.getAst().isA(SqlKind.DML)) {
+                cnt++;
+            }
+        }
+        return cnt;
     }
 }

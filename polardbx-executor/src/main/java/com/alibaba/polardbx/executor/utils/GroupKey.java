@@ -129,7 +129,7 @@ public class GroupKey implements Comparable {
         return true;
     }
 
-    public boolean equalsForUpdate(Object obj) {
+    public boolean equalsForUpdate(Object obj, boolean checkJsonByStringCompare) {
         if (this == obj) {
             return true;
         }
@@ -163,7 +163,7 @@ public class GroupKey implements Comparable {
             }
             if (thisObject instanceof String && that.groupKeys[i] instanceof String
                 // we should not compare string when type is json
-                && !(dataType instanceof JsonType)) {
+                && (checkJsonByStringCompare || !(dataType instanceof JsonType))) {
                 if (!thisObject.equals(that.groupKeys[i])) {
                     return false;
                 }

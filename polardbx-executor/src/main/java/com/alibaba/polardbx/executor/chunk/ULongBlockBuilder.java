@@ -73,6 +73,10 @@ public class ULongBlockBuilder extends AbstractBlockBuilder {
             appendNull();
             return;
         }
+        if (value instanceof Long) {
+            writeLong((Long) value);
+            return;
+        }
         Preconditions.checkArgument(value instanceof UInt64);
         writeUInt64((UInt64) value);
     }

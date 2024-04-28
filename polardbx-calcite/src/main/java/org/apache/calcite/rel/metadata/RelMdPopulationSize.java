@@ -57,7 +57,7 @@ public class RelMdPopulationSize
 
   public Double getPopulationSize(Filter rel, RelMetadataQuery mq,
       ImmutableBitSet groupKey) {
-    return mq.getPopulationSize(rel.getInput(), groupKey);
+    return RelMdUtil.numDistinctVals(mq.getPopulationSize(rel.getInput(), groupKey), mq.getRowCount(rel));
   }
 
   public Double getPopulationSize(Correlate rel, RelMetadataQuery mq,

@@ -26,6 +26,7 @@
                 `show_audit_log_priv` int(11) NOT NULL DEFAULT '0',
                 `replication_client_priv` tinyint(1) NOT NULL DEFAULT '0',
                 `replication_slave_priv` tinyint(1) NOT NULL DEFAULT '0',
+                `plugin` varchar(64) COLLATE utf8_bin NOT NULL DEFAULT '',
                 PRIMARY KEY (`id`),
                 UNIQUE KEY `uk` (`user_name`, `host`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci COMMENT='Users and global privileges'
@@ -53,6 +54,9 @@
         ]]></Change>
         <Change><![CDATA[
             UPDATE `user_priv` SET `replication_client_priv` = 1, `replication_slave_priv` = 1 WHERE `account_type` = 2 OR `select_priv` = 1
+        ]]></Change>
+        <Change><![CDATA[
+            ALTER TABLE `user_priv` ADD COLUMN `plugin` varchar(64) COLLATE utf8_bin NOT NULL DEFAULT ''
         ]]></Change>
     </SystemTable>
     <SystemTable name="db_priv">
@@ -193,5 +197,69 @@
         <Change><![CDATA[
             ALTER TABLE `user_login_error_limit` MODIFY COLUMN `max_error_limit` int(11) NOT NULL, MODIFY COLUMN `error_count` int(11) NOT NULL
         ]]></Change>
+    </SystemTable>
+    <SystemTable name="encdb_rule">
+        <Create><![CDATA[
+            CREATE TABLE `encdb_rule` (
+                `name` varchar(128) NOT NULL,
+                `enable` TINYINT(1) DEFAULT 1,
+                `description` varchar(128) DEFAULT NULL,
+                `meta` TEXT DEFAULT NULL,
+                `users` TEXT DEFAULT NULL,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`name`)
+              ) ENGINE=InnoDB AUTO_INCREMENT=57 DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="encdb_key">
+        <Create><![CDATA[
+            CREATE TABLE `encdb_key` (
+                `id` bigint(11) NOT NULL AUTO_INCREMENT,
+                `key` varchar(128) NOT NULL,
+                `type` varchar(128) NOT NULL,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE INDEX `uk_type_key` (`type`)
+              ) ENGINE=InnoDB AUTO_INCREMENT=57 DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="lbac_components">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `lbac_components` (
+                `component_name` varchar(128) not null primary key,
+                `component_type` varchar(16) not null comment 'TREE/ARRAY/SET',
+                `component_content` text
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="lbac_policies">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `lbac_policies` (
+                `policy_name` varchar(128) not null primary key,
+                `policy_components` text not null comment 'component1,component2,component3'
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="lbac_labels">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `lbac_labels` (
+                `label_name` varchar(128) not null primary key,
+                `label_policy` varchar(128) not null,
+                `label_content` text not null comment '(v1,v2):(v3,v4,v5):()'
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
+    </SystemTable>
+    <SystemTable name="lbac_entity">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `lbac_entity`(
+                `entity_id` bigint not null primary key auto_increment,
+                `entity_key` varchar(128) not null,
+                `entity_type` varchar(16) not null comment 'USER_READ/USER_WRITE/TABLE/COLUMN',
+                `security_attr` varchar(255) not null,
+                UNIQUE KEY(`entity_key`, `entity_type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ]]></Create>
     </SystemTable>
 </SystemTables>

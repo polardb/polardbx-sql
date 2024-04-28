@@ -19,16 +19,12 @@ package com.alibaba.polardbx.optimizer.config.table.statistic;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,7 +33,7 @@ import java.util.List;
 
 public class Histogram {
 
-    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
+    private static final Logger logger = LoggerUtil.statisticsLogger;
 
     private List<Bucket> buckets = new ArrayList<>();
 
@@ -251,7 +247,7 @@ public class Histogram {
                 }
                 int result = bucket.preSum;
                 if (max > min) {
-                    result += (v - min) * bucket.count / (max - min);
+                    result += (int) ((v - min) / (max - min) * bucket.count);
                     if (v > min) {
                         result -= bucket.count / bucket.ndv;
                         if (result < 0) {
@@ -446,6 +442,38 @@ public class Histogram {
             logger.error("deserializeFromJson error ", e);
             return null;
         }
+    }
+
+    /**
+     * optimize for reading
+     */
+    public String manualReading() {
+        StringBuilder sb = new StringBuilder();
+        String type = StatisticUtils.encodeDataType(getDataType());
+        sb.append(type).append("\n");
+        sb.append("sampleRate:" + sampleRate).append("\n");
+        int count = 0;
+        boolean isDateType = DataTypeUtil.isMysqlTimeType(dataType);
+        for (Histogram.Bucket bucket : buckets) {
+            if (bucket == null || bucket.upper == null || bucket.lower == null) {
+                continue;
+            }
+            String lower = isDateType ?
+                TimeStorage.readTimestamp((Long) bucket.lower).toDatetimeString(0) :
+                bucket.lower.toString();
+            String upper = isDateType ?
+                TimeStorage.readTimestamp((Long) bucket.upper).toDatetimeString(0) :
+                bucket.upper.toString();
+
+            sb.append("bucket" + count++).append(" ")
+                .append("count:" + bucket.count).append(" ")
+                .append("ndv:" + bucket.ndv).append(" ")
+                .append("preSum:" + bucket.preSum).append(" ")
+                .append("lower:" + lower).append(" ")
+                .append("upper:" + upper).append(" ")
+                .append("\n");
+        }
+        return sb.toString();
     }
 
     private static Object deserializeTimeObject(DataType datatype, Object obj) {

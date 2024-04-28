@@ -41,4 +41,7 @@ public interface DoubleColumnStatistics extends ColumnStatistics {
    * @return the sum
    */
   double getSum();
+  Double getFirst();
+
+  Double getLatest();
 }

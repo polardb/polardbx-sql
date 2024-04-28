@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.config.table.statistic;
 
+import com.alibaba.polardbx.common.datatype.RowValue;
+import com.alibaba.polardbx.common.utils.LoggerUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -30,7 +30,6 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.inf.StatisticResult
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Row;
 import io.airlift.slice.Slice;
 import org.apache.calcite.rel.RelNode;
 
@@ -50,9 +49,10 @@ import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticTra
 
 public class StatisticUtils {
 
-    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
+    private static final Logger logger = LoggerUtil.statisticsLogger;
     public static final int DEFAULT_SAMPLE_SIZE = 100000;
     public static final int DEFAULT_SAMPLE_SIZE_ = 80000;
+    public static final int DATA_MAX_LEN = 128;
 
     public static DataType decodeDataType(String type) {
         DataType datatype;
@@ -99,22 +99,16 @@ public class StatisticUtils {
      * if obj convert to null, return -1
      */
     public static long packDateTypeToLong(DataType dataType, Object obj) {
-        if (DataTypeUtil.equalsSemantically(DataTypes.TimestampType, dataType) ||
-            DataTypeUtil.equalsSemantically(DataTypes.DatetimeType, dataType)) {
+        if (DataTypeUtil.equalsSemantically(DataTypes.TimestampType, dataType) || DataTypeUtil.equalsSemantically(
+            DataTypes.DatetimeType, dataType)) {
             Timestamp timestamp = (Timestamp) dataType.convertFrom(obj);
-            return Optional.ofNullable(timestamp)
-                .map(TimeStorage::packDatetime)
-                .orElse(-1L);
+            return Optional.ofNullable(timestamp).map(TimeStorage::packDatetime).orElse(-1L);
         } else if (DataTypeUtil.equalsSemantically(DataTypes.DateType, dataType)) {
             Date date = (Date) dataType.convertFrom(obj);
-            return Optional.ofNullable(date)
-                .map(TimeStorage::packDate)
-                .orElse(-1L);
+            return Optional.ofNullable(date).map(TimeStorage::packDate).orElse(-1L);
         } else if (DataTypeUtil.equalsSemantically(DataTypes.TimeType, dataType)) {
             Time time = (Time) dataType.convertFrom(obj);
-            return Optional.ofNullable(time)
-                .map(TimeStorage::packTime)
-                .orElse(-1L);
+            return Optional.ofNullable(time).map(TimeStorage::packTime).orElse(-1L);
         }
         throw new IllegalStateException("Unexpected value: " + dataType);
     }
@@ -221,15 +215,19 @@ public class StatisticUtils {
                                                   String logicalTableName) {
         TableMeta tableMeta;
         try {
-            tableMeta =
-                OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(logicalTableName);
+            OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
+            // schema might be not exists
+            if (optimizerContext == null || optimizerContext.getLatestSchemaManager() == null) {
+                return null;
+            }
+            tableMeta = optimizerContext.getLatestSchemaManager().getTable(logicalTableName);
         } catch (Throwable e) {
-            logger.error(e.getMessage());
+            logger.error(e.getMessage(), e);
             return null;
         }
 
         if (tableMeta == null) {
-            logger.error("no tableMeta for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
+            logger.info("no tableMeta for schemaName = " + schemaName + ", logicalTableName = " + logicalTableName);
             return null;
         }
 
@@ -298,12 +296,8 @@ public class StatisticUtils {
         return plannerContext;
     }
 
-    public static StatisticTrace buildTrace(String catalogTarget,
-                                            String action,
-                                            Object value,
-                                            StatisticResultSource source,
-                                            long modifyTime,
-                                            String desc) {
+    public static StatisticTrace buildTrace(String catalogTarget, String action, Object value,
+                                            StatisticResultSource source, long modifyTime, String desc) {
         return new StatisticTrace(catalogTarget, action, value, desc, source, modifyTime);
     }
 
@@ -323,8 +317,8 @@ public class StatisticUtils {
         }
         if (value instanceof Collection) {
             digest((Collection) value, sb);
-        } else if (value instanceof Row.RowValue) {
-            digest((Row.RowValue) value, sb);
+        } else if (value instanceof RowValue) {
+            digest((RowValue) value, sb);
         } else if (value instanceof Slice) {
             sb.append(((Slice) value).toStringUtf8());
         } else {
@@ -349,7 +343,7 @@ public class StatisticUtils {
         }
     }
 
-    public static void digest(Row.RowValue values, StringBuilder sb) {
+    public static void digest(RowValue values, StringBuilder sb) {
         if (sb.length() > MAX_DIGEST_SIZE) {
             return;
         }
@@ -369,5 +363,13 @@ public class StatisticUtils {
         if (sb.length() > originLength) {
             sb.setLength(sb.length() - 1);
         }
+    }
+
+    public static String skewKey(Collection<String> columns) {
+        if (columns == null || columns.size() == 0) {
+            return null;
+        }
+        columns = columns.stream().map(String::toLowerCase).sorted().collect(Collectors.toList());
+        return String.join("_", columns);
     }
 }

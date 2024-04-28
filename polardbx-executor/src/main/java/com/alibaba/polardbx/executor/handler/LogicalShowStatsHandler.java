@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
@@ -80,7 +81,7 @@ public class LogicalShowStatsHandler extends HandlerCommon {
 
         double connectionCreatePerSecond = 0;
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(showStatsAction, executionContext.getSchemaName());
+            SyncManagerHelper.sync(showStatsAction, executionContext.getSchemaName(), SyncScope.ALL);
 
         long activeConnection = 0;
         long totalRequest = 0;

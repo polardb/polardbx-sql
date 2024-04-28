@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.oss.OSSFileType;
 import com.alibaba.polardbx.common.oss.OSSMetaLifeCycle;
 import com.alibaba.polardbx.common.oss.access.OSSKey;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -41,8 +42,6 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-
-import static com.alibaba.polardbx.gms.metadb.table.FilesRecord.TABLE_FORMAT_TYPE;
 
 @Getter
 @TaskName(name = "CreateOssTableFormatTask")
@@ -101,7 +100,7 @@ public class CreateOssTableFormatTask extends BaseGmsTask {
                 }
 
                 // 4. upload to oss
-                FileSystemUtils.writeFile(localFormatFile, ossKey.toString(), tableEngine);
+                FileSystemUtils.writeFile(localFormatFile, ossKey.toString(), tableEngine, false);
 
                 // 5. delete tmp file
                 localFormatFile.delete();
@@ -130,7 +129,7 @@ public class CreateOssTableFormatTask extends BaseGmsTask {
         List<FilesRecord> files =
             TableMetaChanger.lockOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (FilesRecord record : files) {
-            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine, false);
             File tmpFile = new File(record.getLocalPath());
             if (tmpFile.exists()) {
                 if (!tmpFile.delete()) {
@@ -147,7 +146,7 @@ public class CreateOssTableFormatTask extends BaseGmsTask {
     private FilesRecord buildFilesRecord(File localFormatFile, OSSKey ossKey) {
         FilesRecord filesRecord = new FilesRecord();
         filesRecord.fileName = ossKey.toString();
-        filesRecord.fileType = TABLE_FORMAT_TYPE;
+        filesRecord.fileType = OSSFileType.TABLE_FORMAT.name();
         filesRecord.fileMeta = new byte[] {};
         filesRecord.tablespaceName = null;
         filesRecord.tableCatalog = "";

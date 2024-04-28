@@ -46,9 +46,8 @@ public class RemoteDdlTaskSyncAction implements ISyncAction {
     }
 
     /**
-     * @return
-     *      SUCCESS: 'TRUE'/'FALSE'
-     *      MSG: 'XXXXXX'
+     * @return SUCCESS: 'TRUE'/'FALSE'
+     * MSG: 'XXXXXX'
      */
     @Override
     public ResultCursor sync() {
@@ -62,29 +61,29 @@ public class RemoteDdlTaskSyncAction implements ISyncAction {
             IServerConfigManager serverConfigManager = OptimizerHelper.getServerConfigManager();
             serverConfigManager.remoteExecuteDdlTask(schemaName, jobId, taskId);
             buildSuccessResult(result);
-        }catch (Exception e){
+        } catch (Exception e) {
             SQLRecorderLogger.ddlEngineLogger.error("execute/rollback DDL TASK failed", e);
             buildFailureResult(result, e.getMessage());
         }
         return result;
     }
 
-    private void buildSuccessResult(ArrayResultCursor result){
-        result.addRow(new Object[]{
+    private void buildSuccessResult(ArrayResultCursor result) {
+        result.addRow(new Object[] {
             String.valueOf(Boolean.TRUE),
             ""
         });
     }
 
-    private void buildFailureResult(ArrayResultCursor result, String errMsg){
-        result.addRow(new Object[]{
+    private void buildFailureResult(ArrayResultCursor result, String errMsg) {
+        result.addRow(new Object[] {
             String.valueOf(Boolean.FALSE),
             errMsg
         });
     }
 
-    public static boolean isRemoteDdlTaskSyncActionSuccess(List<Map<String, Object>> result){
-        if(CollectionUtils.isEmpty(result)){
+    public static boolean isRemoteDdlTaskSyncActionSuccess(List<Map<String, Object>> result) {
+        if (CollectionUtils.isEmpty(result)) {
             return false;
         }
         return StringUtils.equalsIgnoreCase(
@@ -93,8 +92,8 @@ public class RemoteDdlTaskSyncAction implements ISyncAction {
         );
     }
 
-    public static String getMsgFromResult(List<Map<String, Object>> result){
-        if(CollectionUtils.isEmpty(result)){
+    public static String getMsgFromResult(List<Map<String, Object>> result) {
+        if (CollectionUtils.isEmpty(result)) {
             return "";
         }
         return (String) result.get(0).get(MSG);

@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.executor.statistic.entity.PolarDbXSystemTableColumnStatistic;
@@ -25,6 +26,8 @@ import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.metadb.misc.SchemaInfoCleaner;
+import com.alibaba.polardbx.gms.metadb.table.BaselineInfoAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanAccessor;
@@ -32,8 +35,6 @@ import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.SchemaMetaCleaner;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
-import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTableBaselineInfo;
-import com.alibaba.polardbx.optimizer.planmanager.PolarDbXSystemTablePlanInfo;
 import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
 
 import java.sql.Connection;
@@ -59,6 +60,7 @@ public class SchemaMetaUtil {
         TableInfoManager tableInfoManager = new TableInfoManager();
         SchemaInfoCleaner schemaInfoCleaner = new SchemaInfoCleaner();
         DdlPlanAccessor ddlPlanAccessor = new DdlPlanAccessor();
+        BaselineInfoAccessor baselineInfoAccessor = new BaselineInfoAccessor(false);
 
         try {
             assert metaDbConn != null;
@@ -66,10 +68,13 @@ public class SchemaMetaUtil {
             tableInfoManager.setConnection(metaDbConn);
             schemaInfoCleaner.setConnection(metaDbConn);
             ddlPlanAccessor.setConnection(metaDbConn);
+            baselineInfoAccessor.setConnection(metaDbConn);
 
             // If the schema has been dropped, then we have to do some cleanup.
             String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
             MetaDbConfigManager.getInstance().unregister(tableListDataId, metaDbConn);
+            String columnarTableListDataId = MetaDbDataIdBuilder.getColumnarTableListDataId(schemaName);
+            MetaDbConfigManager.getInstance().unregister(columnarTableListDataId, metaDbConn);
 
             List<TablesRecord> records = tableInfoManager.queryTables(schemaName);
             for (TablesRecord record : records) {
@@ -78,17 +83,19 @@ public class SchemaMetaUtil {
                 MetaDbConfigManager.getInstance().unregister(tableDataId, metaDbConn);
             }
 
+            tableInfoManager.updateColumnarTableStatusBySchema(schemaName, ColumnarTableStatus.DROP.name());
+
             tableInfoManager.removeAll(schemaName);
 
             schemaInfoCleaner.removeAll(schemaName);
+            DdlJobManager.cleanUpArchiveSchema(schemaName);
 
             PolarDbXSystemTableView.deleteAll(schemaName, metaDbConn);
 
             new PolarDbXSystemTableLogicalTableStatistic().deleteAll(schemaName, metaDbConn);
             new PolarDbXSystemTableColumnStatistic().deleteAll(schemaName, metaDbConn);
 
-            PolarDbXSystemTableBaselineInfo.deleteAll(schemaName);
-            PolarDbXSystemTablePlanInfo.deleteAll(schemaName);
+            baselineInfoAccessor.deleteBySchema(schemaName);
 
             GsiBackfillManager.deleteAll(schemaName, metaDbConn);
             CheckerManager.deleteAll(schemaName, metaDbConn);
@@ -102,6 +109,7 @@ public class SchemaMetaUtil {
         } finally {
             tableInfoManager.setConnection(null);
             schemaInfoCleaner.setConnection(null);
+            baselineInfoAccessor.setConnection(null);
         }
     }
 

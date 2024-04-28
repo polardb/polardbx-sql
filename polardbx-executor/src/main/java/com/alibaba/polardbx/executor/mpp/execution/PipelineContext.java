@@ -76,15 +76,15 @@ public class PipelineContext {
     private final List<DriverContext> drivers = new CopyOnWriteArrayList<>();
     private final Object driverLock = new Object();
 
-    private AtomicLong totalScheduledTime = new AtomicLong(0);
-    private AtomicLong totalCpuTime = new AtomicLong(0);
-    private AtomicLong totalUserTime = new AtomicLong(0);
-    private AtomicLong totalBlockedTime = new AtomicLong(0);
+    private final AtomicLong totalScheduledTime = new AtomicLong(0);
+    private final AtomicLong totalCpuTime = new AtomicLong(0);
+    private final AtomicLong totalUserTime = new AtomicLong(0);
+    private final AtomicLong totalBlockedTime = new AtomicLong(0);
 
     @Nullable
     private PipelineProperties pipelineProperties;
 
-    private DateTime startTime = DateTime.now();
+    private final DateTime startTime = DateTime.now();
 
     public PipelineContext(int pipelineId, TaskContext taskContext) {
         this.pipelineId = pipelineId;
@@ -252,7 +252,7 @@ public class PipelineContext {
                 runningTasks++;
             }
 
-            TaskStats taskStats = taskInfo.getStats();
+            TaskStats taskStats = taskInfo.getTaskStats();
 
             if (taskStats != null) {
                 totalPipelineExecs += taskStats.getTotalPipelineExecs();
@@ -263,10 +263,10 @@ public class PipelineContext {
                 cumulativeMemory += taskStats.getCumulativeMemory();
                 totalMemoryReservation += taskStats.getMemoryReservation();
 
-                totalScheduledTime += taskStats.getTotalScheduledTime();
-                totalCpuTime += taskStats.getTotalCpuTime();
-                totalUserTime += taskStats.getTotalUserTime();
-                totalBlockedTime += taskStats.getTotalBlockedTime();
+                totalScheduledTime += taskStats.getTotalScheduledTimeNanos();
+                totalCpuTime += taskStats.getTotalCpuTimeNanos();
+                totalUserTime += taskStats.getTotalUserTimeNanos();
+                totalBlockedTime += taskStats.getTotalBlockedTimeNanos();
                 if (!taskState.isDone()) {
                     fullyBlocked &= taskStats.isFullyBlocked();
                     blockedReasons.addAll(taskStats.getBlockedReasons());
@@ -284,9 +284,10 @@ public class PipelineContext {
                             OperatorStats operator = taskStats.getOperatorStats().get(i);
                             operators.add(new OperatorStats(Optional.of(stageId), operator.getPipelineId(),
                                 operator.getOperatorType(),
-                                operator.getOperatorId(), operator.getOutputRowCount(), operator.getOutputBytes(),
-                                operator.getStartupDuration(), operator.getDuration(), operator.getMemory(),
-                                operator.getInstances(), operator.getSpillCnt()));
+                                operator.getOperatorId(), operator.getOutputRowCount(),
+                                operator.getRuntimeFilteredCount(),
+                                operator.getOutputBytes(), operator.getStartupDuration(), operator.getDuration(),
+                                operator.getMemory(), operator.getInstances(), operator.getSpillCnt()));
                         }
                     } else {
                         if (taskStats.getOperatorStats() != null) {

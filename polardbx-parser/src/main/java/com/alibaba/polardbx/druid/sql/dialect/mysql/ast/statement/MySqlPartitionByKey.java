@@ -29,7 +29,13 @@ public class MySqlPartitionByKey extends SQLPartitionBy implements MySqlObject {
         if (visitor instanceof MySqlASTVisitor) {
             accept0((MySqlASTVisitor) visitor);
         } else {
-            throw new IllegalArgumentException("not support visitor type : " + visitor.getClass().getName());
+            if (visitor.visit(this)) {
+                acceptChild(visitor, columns);
+                acceptChild(visitor, partitionsCount);
+                acceptChild(visitor, getPartitions());
+                acceptChild(visitor, subPartitionBy);
+            }
+            visitor.endVisit(this);
         }
     }
 

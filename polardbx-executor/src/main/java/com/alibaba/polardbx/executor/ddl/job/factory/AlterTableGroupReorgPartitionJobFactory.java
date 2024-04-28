@@ -82,7 +82,7 @@ public class AlterTableGroupReorgPartitionJobFactory extends AlterTableGroupBase
         Map<String, Long> tablesVersion = getTablesVersion();
 
         DdlTask validateTask = new AlterTableGroupValidateTask(schemaName, tableGroupName, tablesVersion, true,
-            reorgPreparedData.getTargetPhysicalGroups());
+            reorgPreparedData.getTargetPhysicalGroups(), false);
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
         List<String> outdatedPartitionGroupLocalities = new ArrayList<>();
@@ -166,7 +166,7 @@ public class AlterTableGroupReorgPartitionJobFactory extends AlterTableGroupBase
             ));
 
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
-
+        attacheCdcFinalMarkTask(executableDdlJob);
         return executableDdlJob;
     }
 

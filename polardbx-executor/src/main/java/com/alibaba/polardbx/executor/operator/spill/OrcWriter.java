@@ -232,7 +232,7 @@ public class OrcWriter {
         try {
             for (int i = 0; i < localFilePaths.size(); i++) {
                 File localFile = new File(localFilePaths.get(i));
-                FileSystemUtils.writeFile(localFile, ossKeys.get(i).toString(), OSS);
+                FileSystemUtils.writeFile(localFile, ossKeys.get(i).toString(), OSS, false);
                 logger.info("file upload done: " + localFilePaths.get(i) + " file size = " + localFile.length());
             }
         } catch (Exception e) {

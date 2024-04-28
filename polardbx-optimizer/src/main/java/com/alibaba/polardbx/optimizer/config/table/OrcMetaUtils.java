@@ -16,7 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.config.table;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -30,6 +32,7 @@ import com.google.common.base.Preconditions;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.util.StringUtils;
 import org.apache.orc.ColumnStatistics;
 import org.apache.orc.CompressionCodec;
 import org.apache.orc.CompressionKind;
@@ -47,6 +50,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -58,9 +62,11 @@ public class OrcMetaUtils {
         new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
     public static final String ORC_ROW_INDEX_STRIDE = "orc.row.index.stride";
     public static final String ORC_BLOOM_FILTER_COLUMNS = "orc.bloom.filter.columns";
+    public static final String ORC_DICT_COLUMNS = "orc.dictionary.columns";
     public static final String ORC_BLOOM_FILTER_FPP = "orc.bloom.filter.fpp";
     public static final String ORC_COMPRESS = "orc.compress";
-
+    public static final String ENABLE_DECIMAL64 = "orc.write.decimal64";
+    public static final String COLUMN_NAME_DELIMITER = StringUtils.COMMA_STR;
     private static final String REDUNDANT_SUFFIX = "__redundant__";
     private static final String REDUNDANT_FORMAT = "%s__redundant__";
 
@@ -74,7 +80,8 @@ public class OrcMetaUtils {
 
     @NotNull
     public static PolarDBXOrcSchema buildPolarDBXOrcSchema(TableMeta tableMeta) {
-        return buildPolarDBXOrcSchema(tableMeta, Optional.empty(), tableMeta.isOldFileStorage());
+        return buildPolarDBXOrcSchema(tableMeta, Optional.empty(), tableMeta.isOldFileStorage(),
+            Collections.emptyList());
     }
 
     /**
@@ -86,7 +93,8 @@ public class OrcMetaUtils {
     @NotNull
     public static PolarDBXOrcSchema buildPolarDBXOrcSchema(TableMeta sourceTableMeta,
                                                            Optional<Map<String, String>> columnToFieldIdMap,
-                                                           boolean oldFileStorage) {
+                                                           boolean oldFileStorage,
+                                                           List<String> dictColumnNames) {
         List<ColumnMeta> allColumns = sourceTableMeta.getAllColumns();
         List<Field> fieldList = sourceTableMeta.getAllColumns().stream().map(columnMeta -> columnMeta.getField())
             .collect(Collectors.toList());
@@ -153,9 +161,13 @@ public class OrcMetaUtils {
         TypeDescription bfSchema = getBfTypeDescription(orcKeyColumnNames, schema, redundantColumnId,
             sourceTableMeta, columnToFieldIdMap, oldFileStorage);
 
+        // force dictionary columns schema
+        TypeDescription dictSchema = getDictTypeDescription(dictColumnNames, schema, redundantColumnId,
+            sourceTableMeta, columnToFieldIdMap, oldFileStorage);
+
         return new PolarDBXOrcSchema(
-            schema, bfSchema,
-            columnMetas, bfColumnMetas.stream().collect(Collectors.toList()), redundantColumnMetas,
+            schema, bfSchema, dictSchema,
+            columnMetas, new ArrayList<>(bfColumnMetas), redundantColumnMetas,
             redundantColumnId, redundantMap
         );
     }
@@ -212,16 +224,57 @@ public class OrcMetaUtils {
     }
 
     @NotNull
+    public static TypeDescription getDictTypeDescription(List<String> dictColumnNames, TypeDescription schema,
+                                                         int redundantId,
+                                                         TableMeta tableMeta,
+                                                         Optional<Map<String, String>> columnToFieldIdMap,
+                                                         boolean oldFileStorage) {
+        TypeDescription dictSchema = TypeDescription.createStruct();
+        if (dictColumnNames != null) {
+            for (int i = 0; i < dictColumnNames.size(); i++) {
+                String colName = dictColumnNames.get(i);
+                if (oldFileStorage) {
+                    TypeDescription child = schema.findSubtype(colName);
+                    dictSchema.addField(colName, child.clone());
+                    continue;
+                }
+                String filedId = columnToFieldIdMap.isPresent() ?
+                    columnToFieldIdMap.get().get(colName) :
+                    tableMeta.getColumnFieldId(colName);
+                if (filedId == null) {
+                    throw new TddlNestableRuntimeException("unknown dictionary column name: " + colName);
+                }
+                TypeDescription child = schema.findSubtype(filedId);
+                dictSchema.addField(filedId, child.clone());
+            }
+        }
+
+        // build dict schema for redundant columns
+        for (int i = redundantId; i <= schema.getMaximumId(); i++) {
+            String colName = schema.getFieldNames().get(i - 1);
+            TypeDescription child = schema.findSubtype(i);
+            dictSchema.addField(colName, child.clone());
+        }
+
+        return dictSchema;
+    }
+
+    @NotNull
     public static Configuration getConfiguration(ExecutionContext executionContext, PolarDBXOrcSchema orcSchema) {
         Configuration conf = new Configuration();
         ParamManager paramManager = executionContext.getParamManager();
 
         List<String> orcKeyColumnNames = orcSchema.getBfSchema().getFieldNames();
-        String orcBloomFilterColumns = String.join(",", orcKeyColumnNames);
+        String orcBloomFilterColumns = String.join(COLUMN_NAME_DELIMITER, orcKeyColumnNames);
+
+        List<String> dictColumnNames = orcSchema.getDictSchema().getFieldNames();
+        String orcDictColumns = String.join(COLUMN_NAME_DELIMITER, dictColumnNames);
 
         conf.setLong(ORC_ROW_INDEX_STRIDE, paramManager.getLong(ConnectionParams.OSS_ORC_INDEX_STRIDE));
+        conf.setBoolean(ENABLE_DECIMAL64, DynamicConfig.getInstance().enableColumnarDecimal64());
         conf.set(ORC_BLOOM_FILTER_COLUMNS, orcBloomFilterColumns);
         conf.setDouble(ORC_BLOOM_FILTER_FPP, paramManager.getFloat(ConnectionParams.OSS_BLOOM_FILTER_FPP));
+        conf.set(ORC_DICT_COLUMNS, orcDictColumns);
         conf.set(ORC_COMPRESS, paramManager.getString(ConnectionParams.OSS_ORC_COMPRESSION));
         return conf;
     }
@@ -329,6 +382,9 @@ public class OrcMetaUtils {
         /* =========== Decimal ============ */
         case MYSQL_TYPE_DECIMAL:
         case MYSQL_TYPE_NEWDECIMAL:
+            return TypeDescription.createDecimal()
+                .withScale(dataType.getScale())
+                .withPrecision(dataType.getPrecision());
         case MYSQL_TYPE_ENUM:
             // for enum
         case MYSQL_TYPE_JSON:

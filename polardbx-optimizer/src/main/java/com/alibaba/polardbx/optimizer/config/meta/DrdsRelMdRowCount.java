@@ -19,10 +19,12 @@ package com.alibaba.polardbx.optimizer.config.meta;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.jdbc.RawString;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.Xplan.XPlanTableScan;
@@ -98,8 +100,56 @@ public class DrdsRelMdRowCount extends RelMdRowCount {
         return rowCount;
     }
 
+    public Double getRowCountColumnarPartialAgg(Aggregate rel, RelMetadataQuery mq) {
+        // special path for columnar partial agg
+        if (!(rel instanceof HashAgg)) {
+            return null;
+        }
+
+        if (!(((HashAgg) rel).isPartial())) {
+            return null;
+        }
+
+        int shard;
+        if (CBOUtil.isColumnarOptimizer(rel)) {
+            // partition wise
+            shard = PlannerContext.getPlannerContext(rel).getColumnarMaxShardCnt();
+        } else {
+            shard = PlannerContext.getPlannerContext(rel).getParamManager().getInt(ConnectionParams.PARTIAL_AGG_SHARD);
+        }
+
+        ImmutableBitSet groupKey = rel.getGroupSet();
+        Double distinctRowCount =
+            mq.getDistinctRowCount(rel.getInput(), groupKey, null);
+        if (distinctRowCount == null || distinctRowCount < 1) {
+            return null;
+        }
+        double total = mq.getRowCount(rel.getInput());
+
+        double bins = distinctRowCount * rel.getGroupSets().size();
+        if (bins < 1) {
+            return null;
+        }
+        long balls = (long) (total / shard);
+        double base = 1 - 1D / bins;
+        double pow = 1D;
+        while (balls > 0) {
+            if (balls % 2 == 1) {
+                pow *= base;
+            }
+            base *= base;
+            balls >>= 1;
+        }
+        return bins * (1 - pow) * shard;
+
+    }
+
     @Override
     public Double getRowCount(Aggregate rel, RelMetadataQuery mq) {
+        Double value = getRowCountColumnarPartialAgg(rel, mq);
+        if (value != null) {
+            return value;
+        }
         ImmutableBitSet groupKey = rel.getGroupSet(); // .range(rel.getGroupCount());
 
         // rowCount is the cardinality of the group by columns

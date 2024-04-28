@@ -31,8 +31,10 @@ import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableRenameIndex;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterViewStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAssignItem;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLColumnDefinition;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateDatabaseStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateIndexStatement;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateSequenceStatement;
@@ -58,13 +60,17 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlAlterTabl
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlRenameTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlASTVisitorAdapter;
+import com.alibaba.polardbx.druid.sql.parser.ParserException;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.sql.repository.function.Function;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitorAdapter;
 import com.alibaba.polardbx.druid.support.logging.Log;
 import com.alibaba.polardbx.druid.support.logging.LogFactory;
+import com.alibaba.polardbx.druid.util.CharsetNameForParser;
+import com.alibaba.polardbx.druid.util.CollationNameForParser;
 import com.alibaba.polardbx.druid.util.FnvHash;
+import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -80,16 +86,17 @@ import java.util.concurrent.ConcurrentHashMap;
  * Created by wenshao on 03/06/2017.
  */
 public class SchemaRepository {
-    private static Log LOG = LogFactory.getLog(SchemaRepository.class);
-
-    private Schema defaultSchema;
+    private static final Log LOG = LogFactory.getLog(SchemaRepository.class);
+    protected final Map<Long, Function> internalFunctions = new ConcurrentHashMap<Long, Function>(16, 0.75f, 1);
     protected DbType dbType;
     protected DbType schemaDbType;
     protected SQLASTVisitor consoleVisitor;
     protected Map<String, Schema> schemas = new LinkedHashMap<String, Schema>();
-    protected final Map<Long, Function> internalFunctions = new ConcurrentHashMap<Long, Function>(16, 0.75f, 1);
     protected SchemaLoader schemaLoader;
     protected SchemaObjectStoreProvider schemaObjectStoreProvider = new DefaultSchemaObjectStoreProvider();
+    private Schema defaultSchema;
+
+    private String defaultCharset;
 
     public SchemaRepository() {
 
@@ -114,41 +121,25 @@ public class SchemaRepository {
 
     }
 
+    private static String generateRandomString(int len) {
+        String str = "abcdefghijklmnopqrstuvwxyz";
+        Random random = new Random();
+        StringBuilder buf = new StringBuilder();
+
+        for (int i = 0; i < len; i++) {
+            int num = random.nextInt(str.length());
+            buf.append(str.charAt(num));
+        }
+
+        return buf.toString();
+    }
+
     public DbType getDbType() {
         return dbType;
     }
 
     public String getDefaultSchemaName() {
         return getDefaultSchema().getName();
-    }
-
-    public void setDefaultSchema(String name) {
-        if (name == null) {
-            defaultSchema = null;
-            return;
-        }
-
-        String normalizedName = SQLUtils.normalize(name)
-            .toLowerCase();
-
-        Schema defaultSchema = schemas.get(normalizedName);
-        if (defaultSchema != null) {
-            this.defaultSchema = defaultSchema;
-            return;
-        }
-
-        if (this.defaultSchema != null
-            && this.defaultSchema.getName() == null) {
-            this.defaultSchema.setName(name);
-
-            schemas.put(normalizedName, this.defaultSchema);
-            return;
-        }
-
-        defaultSchema = new Schema(this);
-        defaultSchema.setName(name);
-        schemas.put(normalizedName, defaultSchema);
-        this.defaultSchema = defaultSchema;
     }
 
     public Schema findSchema(String schema) {
@@ -191,6 +182,40 @@ public class SchemaRepository {
         return defaultSchema;
     }
 
+    public void setDefaultSchema(String name) {
+        setDefaultSchemaWithCharset(name, defaultCharset);
+    }
+
+    public void setDefaultSchemaWithCharset(String name, String charset) {
+        if (name == null) {
+            defaultSchema = null;
+            return;
+        }
+
+        String normalizedName = SQLUtils.normalize(name)
+            .toLowerCase();
+
+        Schema defaultSchema = schemas.get(normalizedName);
+        if (defaultSchema != null) {
+            this.defaultSchema = defaultSchema;
+            return;
+        }
+
+        if (this.defaultSchema != null
+            && this.defaultSchema.getName() == null) {
+            this.defaultSchema.setName(name);
+
+            schemas.put(normalizedName, this.defaultSchema);
+            return;
+        }
+
+        defaultSchema = new Schema(this);
+        defaultSchema.setName(name);
+        defaultSchema.setCharacterSet(charset);
+        schemas.put(normalizedName, defaultSchema);
+        this.defaultSchema = defaultSchema;
+    }
+
     public void setDefaultSchema(Schema schema) {
         this.defaultSchema = schema;
     }
@@ -202,6 +227,7 @@ public class SchemaRepository {
                 return findTable((SQLName) expr);
             }
         }
+
         SchemaObject object = getDefaultSchema()
             .findTable(tableName);
 
@@ -766,6 +792,19 @@ public class SchemaRepository {
         return acceptCreateTable((SQLCreateTableStatement) x);
     }
 
+    void acceptCreateDatabase(SQLCreateDatabaseStatement x) {
+        String schemaName = SQLUtils.normalize(x.getDatabaseName());
+        String normalizedName = schemaName
+            .toLowerCase();
+        Schema schema = new Schema(this, schemaName);
+        String databaseCharset = SQLUtils.normalize(x.getCharacterSet());
+        if (StringUtils.isBlank(databaseCharset)) {
+            databaseCharset = defaultCharset;
+        }
+        schema.setCharacterSet(databaseCharset);
+        schemas.put(normalizedName, schema);
+    }
+
     SchemaObject acceptCreateTable(SQLCreateTableStatement x) {
         SQLCreateTableStatement x1 = x.clone();
         String schemaName = x1.getSchema();
@@ -860,12 +899,57 @@ public class SchemaRepository {
         String name = x1.computeName();
         SchemaObject table = schema.findTableOrView(name);
         if (table != null) {
-            LOG.info("replaced table '" + name + "'");
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("replaced table '" + name + "'");
+            }
         }
 
         table = new SchemaObject(schema, name, SchemaObjectType.Table, x1);
+        List<SQLAssignItem> assignItems = x1.getTableOptions();
+        String defineCharset = null;
+        String defineCollation = null;
+        // if table not assign character, use schema character set
+        for (SQLAssignItem item : assignItems) {
+            if (findCharset(item.getTarget().toString())) {
+                defineCharset = item.getValue().toString();
+            } else if (findCollate(item.getTarget().toString())) {
+                defineCollation = item.getValue().toString();
+            }
+        }
+        if (defineCharset == null && defineCollation != null) {
+            CharsetNameForParser charsetNameForParser = CollationNameForParser.getCharsetOf(defineCollation);
+            if (charsetNameForParser == null) {
+                throw new ParserException("can not find charset by define collate " + defineCollation);
+            }
+            defineCharset = charsetNameForParser.name();
+            x1.addOption("CHARACTER SET", new SQLIdentifierExpr(defineCharset));
+        }
+        if (StringUtils.isEmpty(defineCharset) && StringUtils.isNotBlank(schema.getCharacterSet())) {
+            x1.addOption("CHARACTER SET", new SQLIdentifierExpr(schema.getCharacterSet()));
+        }
         schema.getStore().addObject(table.nameHashCode64(), table);
         return table;
+    }
+
+    private static final String[] CHARSET_CONSIST = new String[] {"CHARSET", "CHARACTER"};
+    private static final String[] COLLATION_CONSIST = new String[] {"COLLATE"};
+
+    private boolean findCharset(String target) {
+        for (String cc : CHARSET_CONSIST) {
+            if (StringUtils.containsIgnoreCase(target, cc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean findCollate(String target) {
+        for (String cc : COLLATION_CONSIST) {
+            if (StringUtils.containsIgnoreCase(target, cc)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     boolean acceptDropTable(SQLDropTableStatement x) {
@@ -995,8 +1079,8 @@ public class SchemaRepository {
         // Then new sql will be: alter table change a c int, b a int, c b int
         if (x.getItems().size() == 2 && x.getItems().stream()
             .allMatch(item -> item instanceof MySqlAlterTableChangeColumn)) {
-            MySqlAlterTableChangeColumn change1 = ((MySqlAlterTableChangeColumn)(x.getItems().get(0)));
-            MySqlAlterTableChangeColumn change2 = ((MySqlAlterTableChangeColumn)(x.getItems().get(1)));
+            MySqlAlterTableChangeColumn change1 = ((MySqlAlterTableChangeColumn) (x.getItems().get(0)));
+            MySqlAlterTableChangeColumn change2 = ((MySqlAlterTableChangeColumn) (x.getItems().get(1)));
 
             String stmt1Before = change1.getColumnName().getSimpleName();
             String stmt1After = change1.getNewColumnDefinition().getColumnName();
@@ -1135,20 +1219,16 @@ public class SchemaRepository {
         this.schemaObjectStoreProvider = schemaObjectStoreProvider;
     }
 
-    public static interface SchemaLoader {
+    public String getDefaultCharset() {
+        return this.defaultCharset;
+    }
+
+    public void setDefaultCharset(String defaultCharset) {
+        this.defaultCharset = defaultCharset;
+    }
+
+    public interface SchemaLoader {
         String loadDDL(String catalog, String schema, String objectName);
     }
 
-    private static String generateRandomString(int len) {
-        String str = "abcdefghijklmnopqrstuvwxyz";
-        Random random = new Random();
-        StringBuilder buf = new StringBuilder();
-
-        for (int i = 0; i < len; i++) {
-            int num = random.nextInt(str.length());
-            buf.append(str.charAt(num));
-        }
-
-        return buf.toString();
-    }
 }

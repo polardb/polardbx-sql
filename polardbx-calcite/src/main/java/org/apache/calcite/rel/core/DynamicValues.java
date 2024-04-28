@@ -69,6 +69,11 @@ public class DynamicValues extends AbstractRelNode {
         return new DynamicValues(cluster, cluster.traitSet(), rowType, tuples);
     }
 
+    public static DynamicValues create(RelOptCluster cluster, RelTraitSet traits, RelDataType rowType,
+                                       ImmutableList<ImmutableList<RexNode>> tuples) {
+        return new DynamicValues(cluster, traits, rowType, tuples);
+    }
+
     @Override
     protected RelDataType deriveRowType() {
         return rowType;
@@ -111,8 +116,8 @@ public class DynamicValues extends AbstractRelNode {
         return super.explainTerms(pw)
             .itemIf("type", rowType,
                 pw.getDetailLevel() == SqlExplainLevel.DIGEST_ATTRIBUTES)
-            .itemIf("type", rowType.getFieldList(), pw.nest())
-            .itemIf("tuples", tuples, pw.nest());
+            .itemIf("type", rowType.getFieldList(), true)
+            .itemIf("tuples", tuples, true);
     }
 
     @Override

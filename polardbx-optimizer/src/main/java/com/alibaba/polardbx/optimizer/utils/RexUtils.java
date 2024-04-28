@@ -469,8 +469,8 @@ public class RexUtils {
         case MYSQL_TYPE_TIMESTAMP:
         case MYSQL_TYPE_TIMESTAMP2:
             MySQLTimeVal mySQLTimeVal = partitionField.timestampValue(0, sessionProperties);
-            boolean zeroTimestamp = mySQLTimeVal.getSeconds() == 0 && mySQLTimeVal.getNano() == 0;
-            MysqlDateTime mysqlDateTime = zeroTimestamp ? new MysqlDateTime() :
+            boolean zeroTimestamp = mySQLTimeVal.getSeconds() == 0;
+            MysqlDateTime mysqlDateTime = zeroTimestamp ? MysqlDateTime.zeroDateTime() :
                 MySQLTimeConverter.convertTimestampToDatetime(mySQLTimeVal, sessionProperties.getTimezone());
             mysqlDateTime.setSqlType(Types.TIMESTAMP);
             return new OriginalTimestamp(mysqlDateTime);
@@ -582,7 +582,7 @@ public class RexUtils {
         }
     }
 
-    private static boolean isBinaryReturnType(RexNode rexNode) {
+    public static boolean isBinaryReturnType(RexNode rexNode) {
         try {
             if ("BINARY".equalsIgnoreCase(rexNode.getType().getCharset().name())) {
                 return true;
@@ -768,8 +768,7 @@ public class RexUtils {
      */
     public static List<Object> buildRowValue(List<RexNode> rexRow, Row row, Map<Integer, ParameterContext> param,
                                              ExecutionContext ec) {
-        final ExecutionContext tmpEc = ec.copy();
-        tmpEc.setParams(new Parameters(param));
+        final ExecutionContext tmpEc = ec.copy(new Parameters(param));
 
         final List<Object> result = new ArrayList<>();
         for (RexNode rex : rexRow) {
@@ -1592,7 +1591,7 @@ public class RexUtils {
             final RexNodeRelShuttle relShuttle = new RexNodeRelShuttle(rexShuttle);
             rexShuttle.setRelShuttle(relShuttle);
 
-            rel.accept(rexShuttle);
+            rel.accept(relShuttle);
             return rexShuttle.found;
         }
 

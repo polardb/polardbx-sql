@@ -23,12 +23,15 @@ import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.server.TaskResource;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
 import com.alibaba.polardbx.optimizer.memory.QueryMemoryPool;
 import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
+import com.alibaba.polardbx.optimizer.statis.ColumnarTracer;
 import com.alibaba.polardbx.optimizer.statis.SQLTracer;
+import com.alibaba.polardbx.optimizer.utils.IColumnarTransaction;
 import com.alibaba.polardbx.optimizer.utils.IMppReadOnlyTransaction;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
@@ -65,10 +68,12 @@ public class SessionRepresentation {
     private long lastInsertId;
     private InternalTimeZone logicalTimeZone;
     private long tsoTimeStamp;
+    private boolean useColumnar;
     private Map<String, Long> dnLsnMap = new HashMap<>();
     private WorkloadType workloadType;
     private boolean omitTso;
     private boolean lizard1PC;
+    private ColumnarTracer columnarTracer;
 
     /**
      * 暂时只增加polardbx_server_id参数，避免长度增加较多；后续如有需要可以再修改
@@ -100,9 +105,11 @@ public class SessionRepresentation {
         @JsonProperty("lastInsertId") long lastInsertId,
         @JsonProperty("logicalTimeZone") InternalTimeZone logicalTimeZone,
         @JsonProperty("tsoTimeStamp") long tsoTimeStamp,
+        @JsonProperty("useColumnar") boolean useColumnar,
         @JsonProperty("dnLsnMap") Map<String, Long> dnLsnMap,
         @JsonProperty("omitTso") boolean omitTso,
         @JsonProperty("lizard1PC") boolean lizard1PC,
+        @JsonProperty("columnarTracer") ColumnarTracer columnarTracer,
         @JsonProperty("workloadType") WorkloadType workloadType,
         @JsonProperty("extraServerVariables") Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
@@ -128,9 +135,11 @@ public class SessionRepresentation {
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
         this.tsoTimeStamp = tsoTimeStamp;
+        this.useColumnar = useColumnar;
         this.dnLsnMap = dnLsnMap;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
+        this.columnarTracer = columnarTracer;
         this.workloadType = workloadType;
         this.extraServerVariables = extraServerVariables;
     }
@@ -159,9 +168,11 @@ public class SessionRepresentation {
         long lastInsertId,
         InternalTimeZone logicalTimeZone,
         long tsoTimeStamp,
+        boolean useColumnar,
         Map<String, Long> dnLsnMap,
         boolean omitTso,
         boolean lizard1PC,
+        ColumnarTracer columnarTracer,
         WorkloadType workloadType,
         Map<String, Object> extraServerVariables) {
         this.traceId = traceId;
@@ -187,10 +198,12 @@ public class SessionRepresentation {
         this.lastInsertId = lastInsertId;
         this.logicalTimeZone = logicalTimeZone;
         this.tsoTimeStamp = tsoTimeStamp;
+        this.useColumnar = useColumnar;
         this.dnLsnMap = dnLsnMap;
         this.workloadType = workloadType;
         this.omitTso = omitTso;
         this.lizard1PC = lizard1PC;
+        this.columnarTracer = columnarTracer;
         this.extraServerVariables = extraServerVariables;
     }
 
@@ -310,6 +323,11 @@ public class SessionRepresentation {
     }
 
     @JsonProperty
+    public boolean isUseColumnar() {
+        return useColumnar;
+    }
+
+    @JsonProperty
     public Map<String, Long> getDnLsnMap() {
         return dnLsnMap;
     }
@@ -352,13 +370,22 @@ public class SessionRepresentation {
         ExecutionContext ec = TaskResource.getDrdsContextHandler().makeExecutionContext(schema, hintCmds, txIsolation);
         ec.setTxId(trxId);
         if (tsoTimeStamp > 0 || omitTso) {
-            IMppReadOnlyTransaction transaction =
-                (IMppReadOnlyTransaction) ExecutorContext.getContext(schema).getTransactionManager().createTransaction(
+            ITransactionManager tm = ExecutorContext.getContext(schema).getTransactionManager();
+
+            if (useColumnar) {
+                IColumnarTransaction transaction = (IColumnarTransaction) tm.createTransaction(
+                    ITransactionPolicy.TransactionClass.COLUMNAR_READ_ONLY_TRANSACTION, ec);
+                transaction.setTsoTimestamp(tsoTimeStamp);
+                ec.setTransaction(transaction);
+            } else {
+                IMppReadOnlyTransaction transaction = (IMppReadOnlyTransaction) tm.createTransaction(
                     ITransactionPolicy.TransactionClass.MPP_READ_ONLY_TRANSACTION, ec);
-            transaction.setDnLsnMap(dnLsnMap);
-            transaction.setTsoTimestamp(tsoTimeStamp);
-            transaction.enableOmitTso(omitTso, lizard1PC);
-            ec.setTransaction(transaction);
+                transaction.setSnapshotTimestamp(tsoTimeStamp);
+                transaction.setDnLsnMap(dnLsnMap);
+                transaction.enableOmitTso(omitTso, lizard1PC);
+                ec.setTransaction(transaction);
+            }
+
             ec.setAutoCommit(true);
         } else {
             ITransaction transaction = ExecutorContext.getContext(schema).getTransactionManager().createTransaction(
@@ -380,6 +407,7 @@ public class SessionRepresentation {
         ec.setEnableTrace(enableTrace);
         if (enableTrace) {
             ec.setTracer(new SQLTracer());
+            ec.setColumnarTracer(columnarTracer);
         }
         ec.setServerVariables(serverVariables);
         ec.setUserDefVariables(userDefVariables);
@@ -431,5 +459,13 @@ public class SessionRepresentation {
         ec.setExtraServerVariables(extraServerVariables);
 
         return new Session(taskId.getStageId(), ec);
+    }
+
+    public ColumnarTracer getColumnarTracer() {
+        return columnarTracer;
+    }
+
+    public void setColumnarTracer(ColumnarTracer columnarTracer) {
+        this.columnarTracer = columnarTracer;
     }
 }

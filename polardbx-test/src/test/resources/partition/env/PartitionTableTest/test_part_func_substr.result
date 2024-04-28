@@ -17,7 +17,7 @@ EXPLAIN SELECT id
 FROM s1
 WHERE id = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="s1[p5]", sql="SELECT `id` FROM `s1` AS `s1` WHERE (`id` = ?)")
+PhyTableOperation(tables="s1[p5]", sql="SELECT `s1`.`id` AS `id` FROM ? AS `s1` WHERE (`s1`.`id` = ?)", params="abc")
 EXPLAIN SELECT id
 FROM s1
 WHERE id > 'abc';

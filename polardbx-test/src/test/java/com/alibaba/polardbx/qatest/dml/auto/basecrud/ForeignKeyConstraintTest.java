@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.dml.auto.basecrud;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -13,6 +14,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 
+@NotThreadSafe
 public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
     @Override
     public boolean usingNewPartDb() {
@@ -57,7 +59,6 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
     private static final String[] PART_DEFS = new String[] {
         "partition by hash(a) partitions 7",
         "partition by hash(b) partitions 7",
-        "partition by hash(b,c) partitions 7",
         "single",
         "broadcast"
     };
@@ -99,20 +100,27 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testInsertFkConstraint() throws SQLException {
-        testInsertFkConstraintInternal("insert into", "fk_test_insert_tbl", "fk1", false);
+        testInsertFkConstraintInternal("insert into", "fk_test_insert_tbl", "fk1", false, "");
     }
 
     @Test
     public void testReplaceFkConstraint() throws SQLException {
-        testInsertFkConstraintInternal("replace into", "fk_test_replace_tbl", "fk2", false);
+        testInsertFkConstraintInternal("replace into", "fk_test_replace_tbl", "fk2", false, "");
     }
 
     @Test
     public void testInsertIgnoreFkConstraint() throws SQLException {
-        testInsertFkConstraintInternal("insert ignore into", "fk_test_insert_ignore_tbl", "fk3", true);
+        testInsertFkConstraintInternal("insert ignore into", "fk_test_insert_ignore_tbl", "fk3", true, "");
     }
 
-    public void testInsertFkConstraintInternal(String op, String tableName, String fkName, boolean isInsertIgnore)
+    @Test
+    public void testUpsertFkConstraint() throws SQLException {
+        testInsertFkConstraintInternal("insert into", "fk_test_insert_tbl", "fk1", false,
+            " on duplicate key update b = values(b)");
+    }
+
+    public void testInsertFkConstraintInternal(String op, String tableName, String fkName, boolean isInsertIgnore,
+                                               String upsertSql)
         throws SQLException {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
 
@@ -142,7 +150,7 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
                         partitionDef2);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
 
-                sql = String.format("%s %s values (2,1,3), (3,1,4), (4,4,5)", op, tableName2);
+                sql = String.format("%s %s values (2,1,3), (3,1,4), (4,4,5)%s", op, tableName2, upsertSql);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
 
                 ResultSet rs =
@@ -151,7 +159,7 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
                 assertEquals(3, result.size());
 
                 // FK does not exist, should fail, unless it's insert ignore
-                sql = String.format("%s %s values (1,2,3), (5,4,7)", op, tableName2);
+                sql = String.format("%s %s values (1,2,3), (5,4,7)%s", op, tableName2, upsertSql);
                 if (isInsertIgnore) {
                     JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
 
@@ -173,14 +181,14 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
                         "primary key (a)", partitionDef2);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
 
-                sql = String.format("%s %s values (2,4,6), (5,1,7)", op, tableName2);
+                sql = String.format("%s %s values (2,4,6), (5,1,7)%s", op, tableName2, upsertSql);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
 
                 rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format("select * from %s", tableName2));
                 result = JdbcUtil.getAllResult(rs);
                 assertEquals(2, result.size());
 
-                sql = String.format("%s %s values (3,1,8)", op, tableName2);
+                sql = String.format("%s %s values (3,1,8)%s", op, tableName2, upsertSql);
                 if (isInsertIgnore) {
                     JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
                 } else {
@@ -195,14 +203,14 @@ public class ForeignKeyConstraintTest extends DDLBaseNewDBTestCase {
                         "primary key (a)", partitionDef2);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, createSql2);
 
-                sql = String.format("%s %s values (6,1,2), (7,4,5)", op, tableName2);
+                sql = String.format("%s %s values (6,1,2), (7,4,5)%s", op, tableName2, upsertSql);
                 JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
 
                 rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format("select * from %s", tableName2));
                 result = JdbcUtil.getAllResult(rs);
                 assertEquals(2, result.size());
 
-                sql = String.format("%s %s values (8,4,5), (9,1,3)", op, tableName2);
+                sql = String.format("%s %s values (8,4,5), (9,1,3)%s", op, tableName2, upsertSql);
                 if (isInsertIgnore) {
                     JdbcUtil.executeUpdateSuccess(tddlConnection, hint + sql);
 

@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -93,7 +94,7 @@ public class GsiUpdateIndexStatusTask extends BaseGmsTask {
 
         //sync have to be successful to continue
         if (needOnlineSchemaChange) {
-            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
         }
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

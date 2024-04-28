@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.partition.common;
 
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -61,6 +62,7 @@ public class BuildPartSpecFromAstParams {
 
     protected AtomicInteger phySpecCounter;
     protected PartitionSpec parentPartSpec;
+    protected String partEngine = TablePartitionRecord.PARTITION_ENGINE_INNODB;
 
     public BuildPartSpecFromAstParams() {
     }
@@ -233,5 +235,13 @@ public class BuildPartSpecFromAstParams {
 
     public void setAllLevelPrefixPartColCnts(List<Integer> allLevelPrefixPartColCnts) {
         this.allLevelPrefixPartColCnts = allLevelPrefixPartColCnts;
+    }
+
+    public String getPartEngine() {
+        return partEngine;
+    }
+
+    public void setPartEngine(String partEngine) {
+        this.partEngine = partEngine;
     }
 }

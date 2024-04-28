@@ -29,8 +29,8 @@
  */
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.base.Ticker;
 import com.alibaba.polardbx.executor.mpp.util.MillTicker;
+import com.google.common.base.Ticker;
 import io.airlift.units.Duration;
 
 import javax.annotation.concurrent.ThreadSafe;

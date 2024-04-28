@@ -69,7 +69,7 @@ public class VectorizedProjectExecTest extends BaseExecTest {
         VectorizedProjectExec projectExec =
             new VectorizedProjectExec(inputExecutor, expressions, chunks, columns, context);
 
-        assertExecResults(projectExec, expectedOutputs.toArray(new Chunk[0]));
+        assertExecResults(projectExec, true, expectedOutputs.toArray(new Chunk[0]));
     }
 
     @Test
@@ -102,6 +102,49 @@ public class VectorizedProjectExecTest extends BaseExecTest {
                 .row(Decimal.fromLong(5), Decimal.fromLong(8), Decimal.fromLong(2))
                 .chunkBreak()
                 .row(Decimal.fromLong(7), Decimal.fromLong(9), Decimal.fromLong(3))
+                .build();
+
+        doProjectTest();
+    }
+
+    @Test
+    public void maintainPartitionInfo() {
+        inputExecutor = RowChunksBuilder.rowChunksBuilder(DataTypes.DecimalType, DataTypes.DecimalType)
+            .row(null, Decimal.fromLong(1))
+            .row(Decimal.fromLong(1), Decimal.fromLong(2))
+            .row(Decimal.fromLong(2), Decimal.fromLong(3))
+            .partIndex(1)
+            .partCount(2)
+            .chunkBreak()
+            .row(Decimal.fromLong(3), Decimal.fromLong(4))
+            .partIndex(0)
+            .partCount(2)
+            .buildExec();
+        RelDataTypeFactory typeSystem = new TddlJavaTypeFactoryImpl();
+        RexBuilder builder = new RexBuilder(typeSystem);
+
+        RexNode input0 = builder.makeInputRef(typeSystem.createSqlType(SqlTypeName.DECIMAL), 0);
+        RexNode input1 = builder.makeInputRef(typeSystem.createSqlType(SqlTypeName.DECIMAL), 1);
+        RexNode input2 = builder.makeIntLiteral(5);
+
+        RexNode add1 = builder.makeCall(typeSystem.createSqlType(SqlTypeName.DECIMAL), SqlStdOperatorTable.PLUS,
+            Arrays.asList(input0, input1));
+        RexNode add2 = builder.makeCall(typeSystem.createSqlType(SqlTypeName.DECIMAL), SqlStdOperatorTable.PLUS,
+            Arrays.asList(input1, input2));
+
+        projections = Lists.newArrayList(add1, add2, input0);
+
+        expectedOutputs =
+            RowChunksBuilder.rowChunksBuilder(DataTypes.DecimalType, DataTypes.DecimalType, DataTypes.DecimalType)
+                .row(null, Decimal.fromLong(6), null)
+                .row(Decimal.fromLong(3), Decimal.fromLong(7), Decimal.fromLong(1))
+                .row(Decimal.fromLong(5), Decimal.fromLong(8), Decimal.fromLong(2))
+                .partIndex(1)
+                .partCount(2)
+                .chunkBreak()
+                .row(Decimal.fromLong(7), Decimal.fromLong(9), Decimal.fromLong(3))
+                .partIndex(0)
+                .partCount(2)
                 .build();
 
         doProjectTest();

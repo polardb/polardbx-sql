@@ -21,22 +21,11 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import java.util.List;
 
 /**
- * @Author ShuGuang
- * @Description
- * @Date 2020/11/2 2:33 下午
+ *
  */
 public class SqlShowBinlogEvents extends SqlShow {
 
-    private SqlNode with,logName, pos, limit;
-
-    public SqlShowBinlogEvents(SqlParserPos parserPos,
-                               List<SqlSpecialIdentifier> specialIdentifiers,
-                               List<SqlNode> operands, SqlNode logName, SqlNode pos, SqlNode limit) {
-        super(parserPos, specialIdentifiers, operands);
-        this.logName = logName;
-        this.pos = pos;
-        this.limit = limit;
-    }
+    private SqlNode with, logName, pos, limit;
 
     public SqlShowBinlogEvents(SqlParserPos parserPos,
                                List<SqlSpecialIdentifier> specialIdentifiers,

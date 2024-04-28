@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.operator;
 
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import java.util.List;

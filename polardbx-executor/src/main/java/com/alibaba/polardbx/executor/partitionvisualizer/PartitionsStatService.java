@@ -22,6 +22,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -38,17 +39,30 @@ import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * 采集分区原始统计信息的服务
  *
  * @author ximing.yd
- * @date 2022/3/1 11:41 上午
  */
 public class PartitionsStatService {
 
@@ -56,14 +70,14 @@ public class PartitionsStatService {
 
     private final Integer MAX_PARTITIONS_NAME_LENGTH = 50;
 
-    public static Map<String/**originBound**/, Pair<Long/**tableRows**/, String/**storageInstId**/>> BOUND_META_MAP = new HashMap<>();
+    public static Map<String/**originBound**/, Pair<Long/**tableRows**/, String/**storageInstId**/>> BOUND_META_MAP =
+        new HashMap<>();
 
     public static Map<String/**phyDbName,phyTbName**/, Long/**tableRows**/> PHY_TABLE_ROWS_MAP = new HashMap<>();
 
     public static String LAST_COLLECTION_ONLY_PARAM = "";
 
     public static boolean HAS_CHANGED_COLLECTION_ONLY_PARAM = false;
-
 
     public List<PartitionHeatInfo> queryPartitionsStat(boolean usePhyTableRowsCache) {
         Set<String> schemaNames = new TreeSet<>(String::compareToIgnoreCase);
@@ -73,7 +87,8 @@ public class PartitionsStatService {
         Map<String/**phyDbName**/, Pair<String/**storageInstId**/, String/**groupName**/>> storageInstIdGroupNames
             = new HashMap<>();
         // get all phy tables(partitions) info from all DNs
-        Map<String/** phyDbName **/, Map<String/** phyTbName **/, List<Object>/** statics **/>> phyDbTablesInfoForHeatmap = new HashMap<>();
+        Map<String/** phyDbName **/, Map<String/** phyTbName **/, List<Object>/** statics **/>>
+            phyDbTablesInfoForHeatmap = new HashMap<>();
 
         Integer maxScan = getPartitionsHeatmapCollectionMaxScan();
         Integer maxSingleLogicSchemaCount = getPartitionsHeatmapCollectionMaxSingleLogicSchemaCount();
@@ -131,14 +146,20 @@ public class PartitionsStatService {
 
         List<PartitionHeatInfo> partitionHeatInfos = new ArrayList<>();
         List<Long> tableRowList = new ArrayList<>();
+
         for (TableGroupConfig tableGroupConfig : tableGroupConfigs) {
             if (tableGroupConfig.getTableCount() == 0) {
                 logger.warn("tableGroupConfig is null");
                 continue;
             }
             String schemaName = tableGroupConfig.getTableGroupRecord().schema;
+
+            OptimizerContext oc =
+                Objects.requireNonNull(OptimizerContext.getContext(schemaName), schemaName + " not exists");
+            PartitionInfoManager pm = oc.getPartitionInfoManager();
+
             Set<String> indexTableNames = new TreeSet<>();
-            if (!MapUtils.isEmpty(onlySchemaTables)){
+            if (!MapUtils.isEmpty(onlySchemaTables)) {
                 Set<String> anyTables = onlySchemaTables.get("");
                 if (!CollectionUtils.isEmpty(anyTables)) {
                     indexTableNames.addAll(anyTables);
@@ -150,7 +171,8 @@ public class PartitionsStatService {
             }
 
             Map<String/**logicalTableName**/, Map<String/**phyTableName**/, List<Object>>> tablesStatInfoForHeatmap =
-                StatsUtils.queryTableGroupStatsForHeatmap(tableGroupConfig, indexTableNames, null, phyDbTablesInfoForHeatmap);
+                StatsUtils.queryTableGroupStatsForHeatmap(tableGroupConfig, indexTableNames, null,
+                    phyDbTablesInfoForHeatmap);
 
             if (MapUtils.isEmpty(tablesStatInfoForHeatmap)) {
                 continue;
@@ -161,70 +183,75 @@ public class PartitionsStatService {
                 partitionPyhDbMap.putAll(partitionGroupRecords.stream().collect(Collectors.toMap(
                     PartitionGroupRecord::getPartition_name, PartitionGroupRecord::getPhy_db)));
             }
-            for (TablePartRecordInfoContext context : tableGroupConfig.getAllTables()) {
-                String logicalTableName = context.getTableName().toLowerCase();
+            for (String logicalTableName : tableGroupConfig.getAllTables()) {
+                logicalTableName = logicalTableName.toLowerCase();
                 if (!StatsUtils.isFilterTable(indexTableNames, null, logicalTableName)) {
                     continue;
                 }
                 Map<String, List<Object>> tableStatInfoForHeatmap =
-                    tablesStatInfoForHeatmap.get(context.getLogTbRec().tableName.toLowerCase());
+                    tablesStatInfoForHeatmap.get(logicalTableName);
                 if (tableStatInfoForHeatmap == null) {
                     logger.warn(String.format("table meta tableStatInfo is null: schemaName:%s, tableName:%s",
-                        schemaName, context.getTableName()));
+                        schemaName, logicalTableName));
                     continue;
                 }
+                PartitionInfo partitionInfo = pm.getPartitionInfo(logicalTableName);
 
-                List<TablePartitionRecord> tablePartitionRecords =
-                    context.getPartitionRecList().stream().filter(
-                        o -> (o.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE)).collect(
-                        Collectors.toList());
-                for (int i = 0; i < tablePartitionRecords.size(); i++) {
-                    TablePartitionRecord record = tablePartitionRecords.get(i);
-                    List<Object> tableStatRowForHeatmap = tableStatInfoForHeatmap.get(record.phyTable.toLowerCase());
+                List<PartitionSpec> partitionSpecs = partitionInfo.getPartitionBy().getPhysicalPartitions();
+                for (int i = 0; i < partitionSpecs.size(); i++) {
+                    PartitionSpec record = partitionSpecs.get(i);
+                    List<Object> tableStatRowForHeatmap =
+                        tableStatInfoForHeatmap.get(record.getLocation().getPhyTableName().toLowerCase());
                     if (CollectionUtils.isEmpty(tableStatRowForHeatmap)) {
-                        logger.warn(String.format("physical table meta tableStatRow is null: schemaName:%s, tableName:%s, phyTable:%s",
-                            schemaName, record.tableName, record.phyTable));
+                        logger.warn(String.format(
+                            "physical table meta tableStatRow is null: schemaName:%s, tableName:%s, phyTable:%s",
+                            schemaName, schemaName, record.getLocation().getPhyTableName()));
                         continue;
                     }
 
                     long tableRow = DataTypes.LongType.convertFrom(tableStatRowForHeatmap.get(2));
-                    String phyTableRowsKey = StatsUtils.getPhyTableRowsKey(((String) tableStatRowForHeatmap.get(1)).toLowerCase(),
-                        ((String) tableStatRowForHeatmap.get(0)).toLowerCase());
+                    String phyTableRowsKey =
+                        StatsUtils.getPhyTableRowsKey(((String) tableStatRowForHeatmap.get(1)).toLowerCase(),
+                            ((String) tableStatRowForHeatmap.get(0)).toLowerCase());
                     Long tableRowCache = PHY_TABLE_ROWS_MAP.get(phyTableRowsKey);
                     if (tableRowCache != null) {
                         tableRow = tableRowCache;
                     }
                     tableRowList.add(tableRow);
 
-                    String phyDb = partitionPyhDbMap.get(record.partName);
+                    String phyDb = partitionPyhDbMap.get(record.getName());
                     Pair<String/**storageInstId**/, String/**groupName**/> pair = storageInstIdGroupNames.get(phyDb);
                     String storageInstId = pair.getKey();
 
                     partitionsNum++;
-                    String tableKey = VisualConvertUtil.genTableKey(schemaName, record.tableName);
+                    String tableKey = VisualConvertUtil.genTableKey(schemaName, record.getLocation().getPhyTableName());
                     storageInstIdSet.add(storageInstId);
                     partitionsNumMap.merge(tableKey, 1, Integer::sum);
 
-                    PartitionHeatInfo partitionHeatInfo = generatePartitionHeatInfo(schemaName, record, storageInstId,
+                    PartitionHeatInfo partitionHeatInfo = generatePartitionHeatInfo(schemaName, logicalTableName,
+                        record.getName(), storageInstId,
                         i, tableRow, tableStatRowForHeatmap);
                     partitionHeatInfos.add(partitionHeatInfo);
                 }
             }
         }
-        List<PartitionHeatInfo> mergedPartitionHeatInfos = mergePartitionHeatInfo(partitionHeatInfos, tableRowList, partitionsNum, storageInstIdSet.size(), partitionsNumMap);
+        List<PartitionHeatInfo> mergedPartitionHeatInfos =
+            mergePartitionHeatInfo(partitionHeatInfos, tableRowList, partitionsNum, storageInstIdSet.size(),
+                partitionsNumMap);
 
         BOUND_META_MAP = getBoundRowsMap(mergedPartitionHeatInfos);
 
         return mergedPartitionHeatInfos;
     }
 
-    private PartitionHeatInfo generatePartitionHeatInfo(String schemaName, TablePartitionRecord record,
+    private PartitionHeatInfo generatePartitionHeatInfo(String schemaName, String logicalTableName,
+                                                        String partitionName,
                                                         String storageInstId, int index, long tableRow,
-                                                        List<Object> tableStatRow){
+                                                        List<Object> tableStatRow) {
         PartitionHeatInfo partitionHeatInfo = new PartitionHeatInfo();
         partitionHeatInfo.setSchemaName(schemaName);
-        partitionHeatInfo.setLogicalTable(record.tableName);
-        partitionHeatInfo.setPartitionName(record.partName);
+        partitionHeatInfo.setLogicalTable(logicalTableName);
+        partitionHeatInfo.setPartitionName(partitionName);
         partitionHeatInfo.setStorageInstId(storageInstId);
         partitionHeatInfo.setPartitionSeq(index);
         partitionHeatInfo.setTableRows(tableRow);
@@ -237,7 +264,8 @@ public class PartitionsStatService {
             Object rowInsertedObj = DataTypes.ULongType.convertFrom(tableStatRow.get(4));
             Object rowUpdatedobj = DataTypes.ULongType.convertFrom(tableStatRow.get(5));
             rowRead = VisualConvertUtil.getObjLong(rowReadObj);
-            rowWritten = VisualConvertUtil.sumRows(VisualConvertUtil.getObjLong(rowInsertedObj), VisualConvertUtil.getObjLong(rowUpdatedobj));
+            rowWritten = VisualConvertUtil.sumRows(VisualConvertUtil.getObjLong(rowInsertedObj),
+                VisualConvertUtil.getObjLong(rowUpdatedobj));
             ReadWritten = VisualConvertUtil.sumRows(rowRead, rowWritten);
         }
 
@@ -256,18 +284,17 @@ public class PartitionsStatService {
             String bound = VisualConvertUtil.generateBound(info);
             Long tableRows = info.getTableRows() == null ? 0L : info.getTableRows();
             String storageInstId = info.getStorageInstId();
-            Pair<Long/**tableRows**/, String/**storageInstId**/> pair =  new Pair<>(tableRows, storageInstId);
+            Pair<Long/**tableRows**/, String/**storageInstId**/> pair = new Pair<>(tableRows, storageInstId);
             map.put(bound, pair);
         }
         return map;
     }
 
-
     public List<PartitionHeatInfo> mergePartitionHeatInfo(List<PartitionHeatInfo> originPartitionHeatInfos,
-                                                           List<Long> tableRowList,
-                                                           Integer partitionsNum,
-                                                           Integer storageInstIdNum,
-                                                           Map<String, Integer> partitionsNumMap) {
+                                                          List<Long> tableRowList,
+                                                          Integer partitionsNum,
+                                                          Integer storageInstIdNum,
+                                                          Map<String, Integer> partitionsNumMap) {
         Integer maxMergeNum = getPartitionsHeatmapCollectionMaxMergeNum();
         if (CollectionUtils.isEmpty(originPartitionHeatInfos) ||
             partitionsNum <= maxMergeNum) {
@@ -304,7 +331,7 @@ public class PartitionsStatService {
                     mergeTablePartitionHeatInfosByPercentile(tablePartitionHeatInfos, lastKey,
                         storageInstIdNum, minMergeRatio, percentile50, percentile90, partitionsNumMap, maxMergeNum) :
                     mergeTablePartitionHeatInfosByAdjacent(tablePartitionHeatInfos, lastKey,
-                    storageInstIdNum, minMergeRatio, partitionsNumMap, maxMergeNum);
+                        storageInstIdNum, minMergeRatio, partitionsNumMap, maxMergeNum);
 
                 lastKey = key;
                 tablePartitionHeatInfos = new ArrayList<>();
@@ -331,19 +358,19 @@ public class PartitionsStatService {
      * 数据量大于等于50分位且小于90分位的按照压缩率合并
      */
     private List<PartitionHeatInfo> mergeTablePartitionHeatInfosByPercentile(List<PartitionHeatInfo> partitionHeatInfos,
-                                                                 String key,
-                                                                 Integer storageInstIdNum,
-                                                                 int minMergeRatio,
-                                                                 Long percentile50,
-                                                                 Long percentile90,
-                                                                 Map<String, Integer> partitionsNumMap,
-                                                                 Integer maxMergeNum) {
+                                                                             String key,
+                                                                             Integer storageInstIdNum,
+                                                                             int minMergeRatio,
+                                                                             Long percentile50,
+                                                                             Long percentile90,
+                                                                             Map<String, Integer> partitionsNumMap,
+                                                                             Integer maxMergeNum) {
         Integer partNum = partitionsNumMap.get(key);
         if (partNum == null || partNum <= storageInstIdNum) {
             return partitionHeatInfos;
         }
 
-        int mergeRatio = (int) Math.ceil((double)(minMergeRatio * 10 - 1) / 4);
+        int mergeRatio = (int) Math.ceil((double) (minMergeRatio * 10 - 1) / 4);
         mergeRatio = checkMaxPartitionsNumMergeRatio(mergeRatio, partNum, storageInstIdNum, maxMergeNum);
 
         Map<String, List<PartitionHeatInfo>> groupInfosMapG90 = new HashMap<>();
@@ -388,7 +415,8 @@ public class PartitionsStatService {
         List<PartitionHeatInfo> mergedPartitionHeatInfos = new ArrayList();
         mergedPartitionHeatInfos.addAll(groupMergedPartitionHeatInfos(groupInfosMapG90, 1));
         mergedPartitionHeatInfos.addAll(groupMergedPartitionHeatInfos(groupInfosMapG50L90, mergeRatio));
-        mergedPartitionHeatInfos.addAll(groupMergedPartitionHeatInfos(groupInfosMapL50, ((int) Math.ceil((double)partNum / (double)storageInstIdNum) + 1)));
+        mergedPartitionHeatInfos.addAll(groupMergedPartitionHeatInfos(groupInfosMapL50,
+            ((int) Math.ceil((double) partNum / (double) storageInstIdNum) + 1)));
 
         return mergedPartitionHeatInfos;
     }
@@ -396,14 +424,15 @@ public class PartitionsStatService {
     /**
      * 单个逻辑表的分区数超大，讲该表进行最大化压缩
      */
-    private int checkMaxPartitionsNumMergeRatio(int mergeRatio, Integer partNum, Integer storageInstIdNum, Integer maxMergeNum) {
+    private int checkMaxPartitionsNumMergeRatio(int mergeRatio, Integer partNum, Integer storageInstIdNum,
+                                                Integer maxMergeNum) {
         if (partNum >= maxMergeNum) {
             //一个DN上的所有逻辑分区都合并到同一个分区
-            mergeRatio = ((int) Math.ceil((double)partNum / (double)storageInstIdNum)) + 1;
+            mergeRatio = ((int) Math.ceil((double) partNum / (double) storageInstIdNum)) + 1;
         }
         if (partNum < maxMergeNum && partNum >= (maxMergeNum / 2)) {
             //一个DN上的所有逻辑分区都合并到2个分区
-            mergeRatio = (int) Math.ceil((double)partNum / (double)(storageInstIdNum * 2));
+            mergeRatio = (int) Math.ceil((double) partNum / (double) (storageInstIdNum * 2));
         }
         return mergeRatio;
     }
@@ -440,8 +469,8 @@ public class PartitionsStatService {
         return groupMergedPartitionHeatInfos(groupInfosMap, mergeRatio);
     }
 
-    private  List<PartitionHeatInfo> groupMergedPartitionHeatInfos(Map<String, List<PartitionHeatInfo>> groupInfosMap,
-                                                                    int mergeRatio) {
+    private List<PartitionHeatInfo> groupMergedPartitionHeatInfos(Map<String, List<PartitionHeatInfo>> groupInfosMap,
+                                                                  int mergeRatio) {
         List<PartitionHeatInfo> mergedPartitionHeatInfos = new ArrayList<>();
         int seq = 0;
         for (Map.Entry<String, List<PartitionHeatInfo>> entry : groupInfosMap.entrySet()) {
@@ -558,7 +587,8 @@ public class PartitionsStatService {
                     schema = singleSchemaTables[0];
                     tables = singleSchemaTables[1];
                     String[] tableArrs = tables.split("&");
-                    Set<String> tableSet = new TreeSet<>(String::compareToIgnoreCase);;
+                    Set<String> tableSet = new TreeSet<>(String::compareToIgnoreCase);
+                    ;
                     for (String table : tableArrs) {
                         if (!StringUtils.isEmpty(table)) {
                             tableSet.add(table);
@@ -603,13 +633,15 @@ public class PartitionsStatService {
             }
             return Integer.parseInt(val);
         } catch (Exception e) {
-            logger.error(String.format("parse param:[PARTITIONS_HEATMAP_COLLECTION_MAX_MERGE_NUM=%s] error", defaultVal), e);
+            logger.error(
+                String.format("parse param:[PARTITIONS_HEATMAP_COLLECTION_MAX_MERGE_NUM=%s] error", defaultVal), e);
             return defaultVal;
         }
     }
 
     private int getPartitionsHeatmapCollectionMaxSingleLogicSchemaCount() {
-        int defaultVal = Integer.parseInt(ConnectionParams.PARTITIONS_HEATMAP_COLLECTION_MAX_SINGLE_LOGIC_SCHEMA_COUNT.getDefault());
+        int defaultVal =
+            Integer.parseInt(ConnectionParams.PARTITIONS_HEATMAP_COLLECTION_MAX_SINGLE_LOGIC_SCHEMA_COUNT.getDefault());
         try {
             String val = MetaDbInstConfigManager.getInstance().getInstProperty(
                 ConnectionProperties.PARTITIONS_HEATMAP_COLLECTION_MAX_SINGLE_LOGIC_SCHEMA_COUNT);
@@ -618,7 +650,8 @@ public class PartitionsStatService {
             }
             return Integer.parseInt(val);
         } catch (Exception e) {
-            logger.error(String.format("parse param:[PARTITIONS_HEATMAP_COLLECTION_MAX_MERGE_NUM=%s] error", defaultVal), e);
+            logger.error(
+                String.format("parse param:[PARTITIONS_HEATMAP_COLLECTION_MAX_MERGE_NUM=%s] error", defaultVal), e);
             return defaultVal;
         }
     }

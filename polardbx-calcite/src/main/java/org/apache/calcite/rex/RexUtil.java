@@ -777,6 +777,12 @@ public class RexUtil {
     return node.accept(ConstantFinder.INSTANCE);
   }
 
+  public static int getInputRefCount(RexNode node) {
+    RexInputRefVisitor visitor = new RexInputRefVisitor();
+    node.accept(visitor);
+    return visitor.getInputRefCount();
+  }
+
 
   /**
    * Returns whether a given expression is deterministic.
@@ -3392,6 +3398,33 @@ public class RexUtil {
       return super.visitCall(call);
     }
   }
+
+  public static class RexInputRefVisitor extends RexVisitorImpl<Void> {
+
+    private int inputRefCount;
+    private BitSet bitSet;
+
+    protected RexInputRefVisitor() {
+      super(true);
+      this.inputRefCount = 0;
+      this.bitSet = new BitSet(8);
+    }
+
+    public Void visitInputRef(RexInputRef inputRef) {
+      final int ref = inputRef.getIndex();
+      if (bitSet.get(ref)) {
+        // Remove duplicates input refs.
+        return null;
+      }
+      bitSet.set(ref);
+      inputRefCount++;
+      return null;
+    }
+
+    public int getInputRefCount() {
+      return inputRefCount;
+    }
+  };
 
   /**
    * Returns whether a given tree contains any un-pushable function

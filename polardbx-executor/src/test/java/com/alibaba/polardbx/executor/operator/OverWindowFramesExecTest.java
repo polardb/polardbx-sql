@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -29,8 +30,7 @@ import com.alibaba.polardbx.executor.operator.frame.RowUnboundedPrecedingOverFra
 import com.alibaba.polardbx.executor.operator.frame.UnboundedOverFrame;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -63,8 +63,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     @Ignore
     public void testUnbounded() {
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -94,8 +94,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     public void testRowSliding() {
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -125,8 +125,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     public void testRangeSliding() {
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -155,8 +155,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     public void testRowUnboundedFollowing() {
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -185,8 +185,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     @Ignore
     public void testRangeUnboundedFollowing() {
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -218,8 +218,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     public void testRowUnboundedPreceding() {
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -249,8 +249,8 @@ public class OverWindowFramesExecTest extends BaseExecTest {
     public void testRangeUnboundedPreceding() {
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new SumV2(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);

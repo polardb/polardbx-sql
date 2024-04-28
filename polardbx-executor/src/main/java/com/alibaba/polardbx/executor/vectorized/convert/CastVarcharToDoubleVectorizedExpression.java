@@ -52,7 +52,7 @@ public class CastVarcharToDoubleVectorizedExpression extends AbstractVectorizedE
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        double[] output = ((DoubleBlock) outputVectorSlot).doubleArray();
+        double[] output = outputVectorSlot.cast(DoubleBlock.class).doubleArray();
 
         // handle nulls
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());

@@ -76,6 +76,8 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
 
         final boolean skipUnchangedRow =
             executionContext.getParamManager().getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW);
+        final boolean checkJsonByStringCompare =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
         for (Integer tableIndex : relocate.getSetColumnMetas().keySet()) {
             RowSet rowSet = new RowSet(values, returnColumns);
@@ -93,7 +95,7 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
                 rowSet = LogicalRelocateHandler.buildChangedRowSet(distinctValues, returnColumns,
                     relocate.getSetColumnTargetMappings().get(tableIndex),
                     relocate.getSetColumnSourceMappings().get(tableIndex),
-                    relocate.getSetColumnMetas().get(tableIndex));
+                    relocate.getSetColumnMetas().get(tableIndex), checkJsonByStringCompare);
                 if (rowSet == null) {
                     continue;
                 }
@@ -109,7 +111,7 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
                 final Mapping sourceMap = relocate.getSetColumnSourceMappings().get(tableIndex);
                 final List<ColumnMeta> metas = relocate.getSetColumnMetas().get(tableIndex);
                 for (List<Object> row : (useRowSet ? rowSet.getRows() : distinctValues)) {
-                    affectRows += identicalRow(row, targetMap, sourceMap, metas) ? 0 : 1;
+                    affectRows += identicalRow(row, targetMap, sourceMap, metas, checkJsonByStringCompare) ? 0 : 1;
                 }
             }
 
@@ -134,12 +136,13 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
     }
 
     protected static boolean identicalRow(List<Object> row, Mapping setColumnTargetMapping,
-                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas) {
+                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas,
+                                          boolean checkJsonByStringCompare) {
         final List<Object> targets = Mappings.permute(row, setColumnTargetMapping);
         final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
         final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
         final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
-        return sourceKey.equalsForUpdate(targetKey);
+        return sourceKey.equalsForUpdate(targetKey, checkJsonByStringCompare);
     }
 
     private int executeRelocateWriter(RelocateWriter relocateWriter, RowSet rowSet) throws Exception {
@@ -152,6 +155,8 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
                 final RelocateWriter rw = w.unwrap(RelocateWriter.class);
                 final boolean usePartFieldChecker = rw.isUsePartFieldChecker() &&
                     executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_NEW_SK_CHECKER);
+                final boolean checkJsonByStringCompare =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
                 final List<Object> skSources = Mappings.permute(row, rw.getIdentifierKeySourceMapping());
                 final List<Object> skTargets = Mappings.permute(row, rw.getIdentifierKeyTargetMapping());
@@ -186,7 +191,7 @@ public class LogicalRelocateExecuteJob extends ExecuteJob {
                     final GroupKey skTargetKey = new GroupKey(skTargets.toArray(), rw.getIdentifierKeyMetas());
                     final GroupKey skSourceKey = new GroupKey(skSources.toArray(), rw.getIdentifierKeyMetas());
 
-                    return skTargetKey.equalsForUpdate(skSourceKey);
+                    return skTargetKey.equalsForUpdate(skSourceKey, checkJsonByStringCompare);
                 }
             };
 

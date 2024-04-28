@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -42,14 +41,9 @@ public class RenameTableAddMetaTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        if (!executionContext.needToRenamePhyTables()) {
-            return;
-        }
-
         TableMetaChanger.addNewTableName(metaDbConnection, schemaName, logicalTableName, newLogicalTableName);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        // 这个task 看起来是方便debug 或者物理ddl失败的时候用的，没有特别大的用处。
     }
 
     @Override

@@ -20,6 +20,9 @@ import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributionTraitDef;
+import org.apache.calcite.rel.RelPartitionWise;
+import org.apache.calcite.rel.RelPartitionWiseTraitDef;
+import org.apache.calcite.rel.RelPartitionWises;
 import org.apache.calcite.util.mapping.Mappings;
 
 import com.google.common.collect.ImmutableList;
@@ -388,6 +391,10 @@ public final class RelTraitSet extends AbstractList<RelTrait> {
   @SuppressWarnings("unchecked")
   public <T extends RelCollation> @Nullable T getCollation() {
     return (@Nullable T) getTrait(RelCollationTraitDef.INSTANCE);
+  }
+
+  public <T extends RelPartitionWise> @Nullable T getPartitionWise() {
+    return (@Nullable T) getTrait(RelPartitionWiseTraitDef.INSTANCE);
   }
 
   /**

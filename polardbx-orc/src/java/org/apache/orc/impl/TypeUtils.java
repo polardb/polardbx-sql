@@ -56,14 +56,14 @@ public class TypeUtils {
     case DOUBLE:
       return new DoubleColumnVector(maxSize);
     case DECIMAL: {
-      int precision = schema.getPrecision();
-      int scale = schema.getScale();
-      if (version == TypeDescription.RowBatchVersion.ORIGINAL ||
-              precision > TypeDescription.MAX_DECIMAL64_PRECISION) {
-        return new DecimalColumnVector(maxSize, precision, scale);
-      } else {
-        return new Decimal64ColumnVector(maxSize, precision, scale);
-      }
+        int precision = schema.getPrecision();
+        if (version == TypeDescription.RowBatchVersion.USE_DECIMAL64
+            && TypeUtils.isDecimal64Precision(precision)) {
+            return new LongColumnVector(maxSize);
+        } else {
+            // fall back to byte[] representation
+            return new BytesColumnVector(maxSize);
+        }
     }
     case STRING:
     case BINARY:
@@ -102,6 +102,10 @@ public class TypeUtils {
     default:
       throw new IllegalArgumentException("Unknown type " + schema.getCategory());
     }
+  }
+
+  public static boolean isDecimal64Precision(int precision) {
+    return precision >=0 && precision <= TypeDescription.MAX_DECIMAL64_PRECISION;
   }
 
 }

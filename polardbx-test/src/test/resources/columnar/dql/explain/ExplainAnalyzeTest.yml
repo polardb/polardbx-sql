@@ -1,0 +1,21 @@
+# ENABLE_COLUMNAR_OPTIMIZER=true should be omitted
+
+- sql: |
+    explain analyze /*+ TDDL: PARALLELISM=4 WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL ENABLE_COLUMNAR_OPTIMIZER=true*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1;
+
+  plan: |
+    HashAgg.*actual rowcount = 1,.*
+      Exchange.*actual rowcount = 4,.*
+        PartialHashAgg.*actual rowcount = 4,.*
+          OSSTableScan.*actual rowcount = 1000,.*
+
+- sql: |
+    explain analyze /*+ TDDL: PARALLELISM=8 WORKLOAD_TYPE=AP EXECUTOR_MODE=AP_LOCAL ENABLE_COLUMNAR_OPTIMIZER=true*/  
+    select sum(t1.integer_test) from select_base_one_multi_db_multi_tb t1;
+
+  plan: |
+    HashAgg.*actual rowcount = 1,.*
+      Exchange.*actual rowcount = 8,.*
+        PartialHashAgg.*actual rowcount = 8,.*
+          OSSTableScan.*actual rowcount = 1000,.*

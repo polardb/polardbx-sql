@@ -1,0 +1,30 @@
+## DISABLE_FAST_SQL_PARSER
+
+drop table if exists `t_bool_0`;
+
+CREATE TABLE `t_bool_0` (
+`a` int NOT NULL AUTO_INCREMENT,
+`b` bool DEFAULT NULL,
+`c` boolean DEFAULT NULL,
+PRIMARY KEY (a)
+);
+show create table `t_bool_0`;
+show full create table `t_bool_0`;
+
+CREATE TABLE `t_bool_1` (
+`a` int NOT NULL AUTO_INCREMENT,
+`b` bool DEFAULT NULL,
+`c` int DEFAULT NULL,
+PRIMARY KEY (a)
+);
+
+alter table t_bool_1 modify column c bool;
+alter table t_bool_1 add column d bool;
+alter table t_bool_1 add column e bool;
+alter table t_bool_1 modify column e boolean;
+
+show create table `t_bool_1`;
+show full create table `t_bool_1`;
+
+drop table if exists `t_bool_0`;
+drop table if exists `t_bool_1`;

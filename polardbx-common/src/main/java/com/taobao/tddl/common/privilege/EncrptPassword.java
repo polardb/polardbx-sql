@@ -16,12 +16,16 @@
 
 package com.taobao.tddl.common.privilege;
 
+import com.alibaba.polardbx.common.utils.encrypt.SecurityUtil;
+
 import java.io.Serializable;
+import java.security.NoSuchAlgorithmException;
 
 public class EncrptPassword implements Serializable {
 
     private static final long serialVersionUID = 6757582898782090114L;
     private boolean enc = true;
+    private AuthPlugin authPlugin = AuthPlugin.POLARDBX_NATIVE_PASSWORD;
     private String password = null;
     private EncryptAlgorithm encryptAlgorithm = EncryptAlgorithm.SHA1;
 
@@ -29,8 +33,13 @@ public class EncrptPassword implements Serializable {
     }
 
     public EncrptPassword(String password, boolean enc) {
+        this(password, AuthPlugin.POLARDBX_NATIVE_PASSWORD, enc);
+    }
+
+    public EncrptPassword(String password, AuthPlugin authPlugin, boolean enc) {
         this.password = password;
         this.enc = enc;
+        this.authPlugin = authPlugin;
         this.encryptAlgorithm = enc ? EncryptAlgorithm.SHA1 : EncryptAlgorithm.NONE;
     }
 
@@ -68,5 +77,32 @@ public class EncrptPassword implements Serializable {
 
     public void setEncryptAlgorithm(EncryptAlgorithm encryptAlgorithm) {
         this.encryptAlgorithm = encryptAlgorithm;
+    }
+
+    public AuthPlugin getAuthPlugin() {
+        return authPlugin;
+    }
+
+    public byte[] getMysqlPassword() throws NoSuchAlgorithmException {
+        if (password == null) {
+            throw new NullPointerException();
+        }
+        byte[] mysqlUserPassword = null;
+        if (enc) {
+            switch (authPlugin) {
+            case MYSQL_NATIVE_PASSWORD:
+                // 密码经过两次次sha-1混淆保存的
+                mysqlUserPassword = SecurityUtil.hexStr2Bytes(password);
+                break;
+            case POLARDBX_NATIVE_PASSWORD:
+            default:
+                // 密码经过一次sha-1混淆保存的
+                mysqlUserPassword = SecurityUtil.sha1Pass(SecurityUtil.hexStr2Bytes(password));
+                break;
+            }
+        } else {
+            mysqlUserPassword = SecurityUtil.calcMysqlUserPassword(password.getBytes());
+        }
+        return mysqlUserPassword;
     }
 }

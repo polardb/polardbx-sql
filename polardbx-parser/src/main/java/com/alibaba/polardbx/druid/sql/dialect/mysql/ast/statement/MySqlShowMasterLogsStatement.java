@@ -22,7 +22,8 @@ public class MySqlShowMasterLogsStatement extends MySqlStatementImpl implements 
 
     private SQLExpr with;
 
-    @Override
+    private boolean full;
+
     public void accept0(MySqlASTVisitor visitor) {
         if (visitor.visit(this)) {
             acceptChild(visitor, with);
@@ -36,5 +37,13 @@ public class MySqlShowMasterLogsStatement extends MySqlStatementImpl implements 
 
     public void setWith(SQLExpr with) {
         this.with = with;
+    }
+
+    public boolean isFull() {
+        return full;
+    }
+
+    public void setFull(boolean full) {
+        this.full = full;
     }
 }

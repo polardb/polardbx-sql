@@ -438,47 +438,90 @@ public class DdlJobManager extends DdlEngineSchedulerManager {
 
     public boolean removeJob(long jobId) {
         // Execute the following operations within a transaction.
-        return new DdlEngineAccessorDelegate<Boolean>() {
+        List<Long> jobIds = new DdlEngineAccessorDelegate<List<Long>>() {
 
             @Override
-            protected Boolean invoke() {
-                int subJobCount = 0;
+            protected List<Long> invoke() {
+                List<Long> jobList = new ArrayList<>();
 
                 // remove subjob cascade
                 List<SubJobTask> subjobs = fetchSubJobsRecursive(jobId, engineTaskAccessor, false);
                 for (SubJobTask subjob : GeneralUtil.emptyIfNull(subjobs)) {
                     for (long subJobId : subjob.fetchAllSubJobs()) {
-                        DdlEngineRecord subJobRecord = engineAccessor.query(subJobId);
-                        validateDdlStateContains(DdlState.valueOf(subJobRecord.state), DdlState.FINISHED);
-                        subJobCount += engineAccessor.delete(subJobId);
-                        engineTaskAccessor.deleteByJobId(subJobId);
+                        jobList.add(subJobId);
                     }
                 }
 
-                DdlEngineRecord jobRecord = engineAccessor.query(jobId);
-                validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
-                int count = engineAccessor.delete(jobId);
-                engineTaskAccessor.deleteByJobId(jobId);
+                jobList.add(jobId);
 
-                getResourceManager().releaseResource(getConnection(), jobId);
-                DdlEngineStats.METRIC_DDL_JOBS_FINISHED.update(count + subJobCount);
-
-                return count > 0;
+                return jobList;
             }
         }.execute();
+
+        jobIds.forEach(o -> {
+            new DdlEngineAccessorDelegate<Boolean>() {
+
+                @Override
+                protected Boolean invoke() {
+
+                    DdlEngineRecord jobRecord = engineAccessor.query(o);
+                    validateDdlStateContains(DdlState.valueOf(jobRecord.state), DdlState.FINISHED);
+                    int count = engineAccessor.delete(o);
+                    engineTaskAccessor.deleteByJobId(o);
+
+                    if (o == jobId) {
+                        getResourceManager().releaseResource(getConnection(), o);
+                    }
+                    DdlEngineStats.METRIC_DDL_JOBS_FINISHED.update(count);
+
+                    return count > 0;
+                }
+            }.execute();
+        });
+        return true;
     }
 
     public int cleanUpArchive(long minutes) {
-        return new DdlEngineAccessorDelegate<Integer>() {
+
+        List<DdlEngineRecord> archiveDdlEngineRecords = new DdlEngineAccessorDelegate<List<DdlEngineRecord>>() {
             @Override
-            protected Integer invoke() {
-                int count = engineAccessor.cleanUpArchive(minutes);
-                return count;
+            protected List<DdlEngineRecord> invoke() {
+                return engineAccessor.queryOutdateArchiveDDLEngine(minutes);
             }
         }.execute();
+        deleteArchive(archiveDdlEngineRecords);
+        return 0;
     }
 
-    private void validateDdlStateContains(DdlState currentState, Set<DdlState> ddlStateSet) {
+    public static int cleanUpArchiveSchema(String schemaName) {
+        List<DdlEngineRecord> archiveDdlEngineRecords = new DdlEngineAccessorDelegate<List<DdlEngineRecord>>() {
+            @Override
+            protected List<DdlEngineRecord> invoke() {
+                return engineAccessor.queryArchive(schemaName);
+            }
+        }.execute();
+        deleteArchive(archiveDdlEngineRecords);
+        return 0;
+    }
+
+    private static void deleteArchive(List<DdlEngineRecord> archiveDdlEngineRecords) {
+        List<Long> jobIds = new ArrayList(archiveDdlEngineRecords.size());
+        jobIds.addAll(archiveDdlEngineRecords.stream().map(o -> o.getJobId()).collect(Collectors.toList()));
+        if (!jobIds.isEmpty()) {
+            jobIds.forEach(jobId -> {
+                new DdlEngineAccessorDelegate<Boolean>() {
+                    @Override
+                    protected Boolean invoke() {
+                        engineAccessor.deleteArchive(jobId);
+                        engineTaskAccessor.deleteArchiveByJobId(jobId);
+                        return true;
+                    }
+                }.execute();
+            });
+        }
+    }
+
+    protected void validateDdlStateContains(DdlState currentState, Set<DdlState> ddlStateSet) {
         Preconditions.checkNotNull(ddlStateSet);
         Preconditions.checkNotNull(currentState);
         if (ddlStateSet.contains(currentState)) {

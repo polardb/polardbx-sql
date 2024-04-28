@@ -30,7 +30,6 @@ import com.google.common.collect.ImmutableList;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -311,6 +310,14 @@ public class RepartitionMetaChanger {
                 throw new TddlNestableRuntimeException(msgContent);
             }
 
+            // update index status   public --- write only
+            tableInfoManager.updateIndexesStatus(schemaName, sourceIndexName, targetTableIndex.get(0).indexStatus);
+            tableInfoManager.updateIndexesStatus(schemaName, targetIndexName, sourceTableIndex.get(0).indexStatus);
+
+            // update flag
+            tableInfoManager.updateIndexesFlag(schemaName, sourceIndexName, targetTableIndex.get(0).flag);
+            tableInfoManager.updateIndexesFlag(schemaName, targetIndexName, sourceTableIndex.get(0).flag);
+
             // cut over
             tableInfoManager.alterPartitionCountCutOver(schemaName, sourceIndexName, random);
             tableInfoManager.alterPartitionCountCutOver(schemaName, targetIndexName, sourceIndexName);
@@ -349,6 +356,17 @@ public class RepartitionMetaChanger {
             if (targetTableColumns == null || targetTableColumns.isEmpty()) {
                 String msgContent = String.format("Table'%s.%s' doesn't exist", schemaName, targetTableName);
                 throw new TddlNestableRuntimeException(msgContent);
+            }
+
+            for (ColumnsRecord columnsRecord : targetTableColumns) {
+                if (columnsRecord.columnMappingName != null) {
+                    tableInfoManager.updateColumnMappingName(schemaName, targetTableName, columnsRecord.columnName,
+                        null);
+                    if (!columnsRecord.columnMappingName.isEmpty()) {
+                        tableInfoManager.updateColumnMappingName(schemaName, sourceTableName,
+                            columnsRecord.columnMappingName, columnsRecord.columnName);
+                    }
+                }
             }
 
             // cut over

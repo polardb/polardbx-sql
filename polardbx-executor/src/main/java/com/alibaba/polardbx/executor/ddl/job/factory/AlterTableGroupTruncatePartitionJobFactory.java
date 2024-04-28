@@ -45,6 +45,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
 
     private final static Logger LOG = SQLRecorderLogger.ddlEngineLogger;
@@ -81,7 +83,7 @@ public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
 
         boolean isBrdTg = tableGroupConfig.getTableGroupRecord().isBroadCastTableGroup();
         DdlTask validateTask = new AlterTableGroupValidateTask(schemaName, tableGroupName, tableVersions, true,
-            isBrdTg ? null : preparedData.getTargetPhysicalGroups());
+            isBrdTg ? null : preparedData.getTargetPhysicalGroups(), false);
 
         executableDdlJob.labelAsHead(validateTask);
 
@@ -118,7 +120,7 @@ public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
         ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, tableVersions);
 
         DdlTask phyDdlTask = new TruncateTablePhyDdlTask(schemaName, physicalPlanData);
-        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
+        DdlTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
 
         subTasks.addSequentialTasks(Lists.newArrayList(
             validateTableVersionTask,
@@ -136,9 +138,8 @@ public class AlterTableGroupTruncatePartitionJobFactory extends DdlJobFactory {
         Map<String, Long> tableVersions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         tableGroupConfig.getAllTables().forEach(t -> {
-            String tableName = t.getTableName();
-            Long tableVersion = executionContext.getSchemaManager(schemaName).getTable(tableName).getVersion();
-            tableVersions.put(tableName, tableVersion);
+            Long tableVersion = executionContext.getSchemaManager(schemaName).getTable(t).getVersion();
+            tableVersions.put(t, tableVersion);
         });
 
         try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {

@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.scaleout;
 
-import com.alibaba.polardbx.cdc.SysTableUtil;
-import com.alibaba.polardbx.qatest.ddl.sharding.cdc.CdcBaseTest;
+import com.alibaba.polardbx.cdc.CdcTableUtil;
+import com.alibaba.polardbx.qatest.ddl.cdc.CdcBaseTest;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
@@ -51,12 +51,12 @@ public class CdcScaleOutRecordTest extends CdcBaseTest {
             sql = tokenHints + "drop database if exists " + dbName;
             stmt.execute(sql);
             Thread.sleep(2000);
-            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordInfoListByToken(tokenHints).get(0).getDdlSql());
 
             tokenHints = buildTokenHints();
             sql = tokenHints + "create database " + dbName;
             stmt.execute(sql);
-            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordInfoListByToken(tokenHints).get(0).getDdlSql());
 
             sql = "use " + dbName;
             stmt.execute(sql);
@@ -66,15 +66,15 @@ public class CdcScaleOutRecordTest extends CdcBaseTest {
             sql = tokenHints + String.format(CREATE_T_DDL_TEST_TABLE, tableName);
             stmt.execute(sql);
             //打标的建表语句和传入的建表语句并不完全一样，此处只演示是否是create语句
-            Assert.assertTrue(StringUtils.startsWith(getDdlRecordSql(tokenHints), tokenHints));
+            Assert.assertTrue(
+                StringUtils.startsWith(getDdlRecordInfoListByToken(tokenHints).get(0).getDdlSql(), tokenHints));
             doDml(jobIdSeed, tableName, 100);
 
             // Test Step
             // 1.如果是带有GSI的表，会报错: Table 't_ddl_test' is global secondary index table, which is forbidden to be modified,
             // 2.该测试语句如果报错，且报错信息是"Duplicate entry .... for key 'i_db_tb'"，需要将meta_db里的表scaleout_outline进行删除，然后重启一下tddl server，重启后会重建
             // 3.引擎内部，会根据group个数把ddl语句拆分为多个子语句，move database是异步操作，execute返回后需要加个等待
-            tokenHints = buildTokenHints();
-            sql = tokenHints + buildMoveDatabasesSql(dbName);
+            sql = buildMoveDatabasesSql(dbName);
             if (StringUtils.isNotBlank(sql)) {
                 stmt.execute(sql);
                 waitScaleOutDdlFinish(dbName);
@@ -84,7 +84,7 @@ public class CdcScaleOutRecordTest extends CdcBaseTest {
             sql = tokenHints + "drop database " + dbName;
             stmt.execute(sql);
             stmt.execute("use __cdc__");
-            Assert.assertEquals(sql, getDdlRecordSql(tokenHints));
+            Assert.assertEquals(sql, getDdlRecordInfoListByToken(tokenHints).get(0).getDdlSql());
         }
     }
 
@@ -148,7 +148,7 @@ public class CdcScaleOutRecordTest extends CdcBaseTest {
             while (true) {
                 try (ResultSet rs = stmt
                     .executeQuery(
-                        "select count(*) from __cdc__." + SysTableUtil.CDC_DDL_RECORD_TABLE + " where schema_name = '"
+                        "select count(*) from __cdc__." + CdcTableUtil.CDC_DDL_RECORD_TABLE + " where schema_name = '"
                             + dbName + "' and sql_kind = 'MOVE_DATABASE'")) {
                     if (rs.next()) {
                         int count = rs.getInt(1);

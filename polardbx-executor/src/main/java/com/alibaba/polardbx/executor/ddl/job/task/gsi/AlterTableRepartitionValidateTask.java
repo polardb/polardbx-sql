@@ -34,6 +34,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.google.common.collect.ImmutableList;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
@@ -108,6 +109,7 @@ public class AlterTableRepartitionValidateTask extends BaseValidateTask {
         IndexValidator.validateIndexNonExistence(schemaName, primaryTableName, indexName);
         GsiValidator.validateGsiSupport(schemaName, executionContext);
         GsiValidator.validateCreateOnGsi(schemaName, indexName, executionContext);
+        TableValidator.validateTableWithCCI(schemaName, primaryTableName, executionContext, SqlKind.ALTER_TABLE);
 
         // validate gsi add columns
         if (addColumnsIndexes != null) {

@@ -71,46 +71,6 @@ public class PartRoute extends AbstractScalarFunction {
     @Override
     public Object compute(Object[] args, ExecutionContext ec) {
 
-//        List<String> dbAndTb = new ArrayList<>();
-//        for (int i = 0; i < 2; i++) {
-//            String argStr = DataTypeUtil.convert(getOperandType(i), DataTypes.StringType, args[i]);
-//            dbAndTb.add(argStr);
-//        }
-//
-//        String dbName = dbAndTb.get(0);
-//        String tbName = dbAndTb.get(1);
-//
-//        String partColListStr = (String) args[2];
-//        String[] partColArr = partColListStr.split(",");
-//
-//        PartitionInfo partInfo = ec.getSchemaManager(dbName).getTable(tbName).getPartitionInfo();
-//        PartitionByDefinition partByDef = partInfo.getPartitionBy();
-//        boolean useSubPartBy = partByDef.getSubPartitionBy() != null;
-//
-//
-//
-//        List<Object> pointValue = new ArrayList<>();
-//        List<DataType> pointOpTypes = new ArrayList<>();
-//        for (int i = 2; i < args.length; i++) {
-//            pointValue.add(args[i]);
-//            pointOpTypes.add(getOperandType(i));
-//        }
-//
-//        StringBuilder partRsStrSb = new StringBuilder("");
-//        ExecutionContext[] newEc = new ExecutionContext[1];
-//        PartitionPruneStep step =
-//            PartitionPruneStepBuilder.generatePointSelectPruneStepInfo(dbName, tbName, pointValue, pointOpTypes, ec,
-//                newEc);
-//        PartPrunedResult result = PartitionPruner.doPruningByStepInfo(step, newEc[0]);
-//        List<PhysicalPartitionInfo> partitions = result.getPrunedParttions();
-//        for (int i = 0; i < partitions.size(); i++) {
-//            if (i > 0) {
-//                partRsStrSb.append(",");
-//            }
-//            partRsStrSb.append(partitions.get(i).getPartName());
-//        }
-//        return partRsStrSb.toString();
-
         List<String> dbAndTb = new ArrayList<>();
         for (int i = 0; i < 2; i++) {
             String argStr = DataTypeUtil.convert(operandTypes.get(i), DataTypes.StringType, args[i]);

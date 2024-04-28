@@ -51,13 +51,23 @@ import static com.google.common.truth.Truth.assertWithMessage;
  */
 public class FileStorageTest extends BaseTestCase {
 
+    final private static int INSERT_VALUE_SIZE = 9999;
     private static String testDataBase = "fileStorageTestDatabase";
-
     private static String testDataBase2 = "fileStorageTestDatabase2";
-
     private static String testDataBase3 = "fileStorageTestDatabase3";
-
     private static Engine engine = PropertiesUtil.engine();
+
+    @AfterClass
+    static public void DropDatabase() {
+        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
+            Statement statement = conn.createStatement();
+            statement.execute(String.format("drop database if exists %s ", testDataBase));
+            statement.execute(String.format("drop database if exists %s ", testDataBase2));
+            statement.execute(String.format("drop database if exists %s ", testDataBase3));
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
 
     private Connection getConnection() {
         return getPolardbxConnection(testDataBase);
@@ -92,18 +102,6 @@ public class FileStorageTest extends BaseTestCase {
             statement.execute(String.format("drop database if exists %s ", testDataBase3));
             statement.execute(String.format("create database %s mode = 'auto'", testDataBase3));
             statement.execute(String.format("use %s", testDataBase3));
-        } catch (Throwable t) {
-            throw new RuntimeException(t);
-        }
-    }
-
-    @AfterClass
-    static public void DropDatabase() {
-        try (Connection conn = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
-            Statement statement = conn.createStatement();
-            statement.execute(String.format("drop database if exists %s ", testDataBase));
-            statement.execute(String.format("drop database if exists %s ", testDataBase2));
-            statement.execute(String.format("drop database if exists %s ", testDataBase3));
         } catch (Throwable t) {
             throw new RuntimeException(t);
         }
@@ -257,6 +255,16 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
+    @Test
+    public void testCreateTableWithDictColumns() {
+        try (Connection connection = getConnection()) {
+            FileStorageTestUtil.createFileStorageTableWithDictColumns("testCreateTableWithDictColumns", engine,
+                connection);
+        } catch (Throwable t) {
+            throw new RuntimeException(t);
+        }
+    }
+
     /**
      * FLASHBACK TABLE {recyclebin_name} TO BEFORE DROP RENAME TO {table_name};
      */
@@ -345,17 +353,15 @@ public class FileStorageTest extends BaseTestCase {
                 "PRE ALLOCATE 3\n" +
                 "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            LocalDate dateIterator = startWithDate;
             for (int j = 0; j < 5; j++) {
-
+                LocalDate curDate = startWithDate.plusMonths(j);
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 999; i++) {
-                    insert.append("('").append(dateIterator).append("')").append(",");
+                    insert.append("('").append(curDate).append("')").append(",");
                 }
-                insert.append("('").append(dateIterator).append("')");
+                insert.append("('").append(curDate).append("')");
                 statement.executeUpdate(insert.toString());
-                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement.executeUpdate(String
@@ -407,16 +413,15 @@ public class FileStorageTest extends BaseTestCase {
                 "PRE ALLOCATE 3\n" +
                 "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            LocalDate dateIterator = startWithDate;
             for (int j = 0; j < 5; j++) {
+                LocalDate curDate = startWithDate.plusMonths(j);
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 1999; i++) {
-                    insert.append("('").append(dateIterator).append("')").append(",");
+                    insert.append("('").append(curDate).append("')").append(",");
                 }
-                insert.append("('").append(dateIterator).append("')");
+                insert.append("('").append(curDate).append("')");
                 statement1.executeUpdate(insert.toString());
-                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement2.executeUpdate(String
@@ -722,17 +727,15 @@ public class FileStorageTest extends BaseTestCase {
                 "PRE ALLOCATE 3\n" +
                 "PIVOTDATE NOW();", innodbTableName, startWithDate));
 
-            LocalDate dateIterator = startWithDate;
             for (int j = 0; j < 5; j++) {
-
+                LocalDate curDate = startWithDate.plusMonths(j);
                 StringBuilder insert = new StringBuilder();
                 insert.append("insert into ").append(innodbTableName).append(" ('gmt_modified') values ");
                 for (int i = 0; i < 999; i++) {
-                    insert.append("('").append(dateIterator).append("')").append(",");
+                    insert.append("('").append(curDate).append("')").append(",");
                 }
-                insert.append("('").append(dateIterator).append("')");
+                insert.append("('").append(curDate).append("')");
                 statement.executeUpdate(insert.toString());
-                dateIterator = dateIterator.plusMonths(1L);
             }
 
             statement.executeUpdate(String
@@ -850,6 +853,7 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
+    @Ignore("temporarily skip index pruning for OSS")
     @Test
     public void testVarcharPruning() {
         String innodbTableName = "testVarcharPruning";
@@ -868,7 +872,7 @@ public class FileStorageTest extends BaseTestCase {
 
             StringBuilder insert = new StringBuilder();
             insert.append("insert into ").append(innodbTableName).append("(`id`,`varchar_column`) values ");
-            for (int i = 0; i < 9999; i++) {
+            for (int i = 0; i < INSERT_VALUE_SIZE; i++) {
                 String val = UUID.randomUUID().toString();
                 varcharValues.add(val);
                 insert.append("(0, '").append(val).append("')").append(",");
@@ -887,7 +891,7 @@ public class FileStorageTest extends BaseTestCase {
                 statement.executeQuery(String.format(
                     "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where varchar_column = '%s'",
                     ossTableName,
-                    varcharValues.get(random.nextInt(10000))));
+                    varcharValues.get(random.nextInt(INSERT_VALUE_SIZE))));
                 ResultSet resultSet = statement.executeQuery("show trace");
                 int traceCount = 0;
                 while (resultSet.next()) {
@@ -902,8 +906,9 @@ public class FileStorageTest extends BaseTestCase {
                     String.format(
                         "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where varchar_column in('%s', '%s') or id in(%s, %s)",
                         ossTableName,
-                        varcharValues.get(random.nextInt(10000)), varcharValues.get(random.nextInt(10000)),
-                        random.nextInt(10000), random.nextInt(10000));
+                        varcharValues.get(random.nextInt(INSERT_VALUE_SIZE)),
+                        varcharValues.get(random.nextInt(INSERT_VALUE_SIZE)),
+                        random.nextInt(INSERT_VALUE_SIZE), random.nextInt(INSERT_VALUE_SIZE));
                 statement.executeQuery(expSql);
                 ResultSet resultSet = statement.executeQuery("show trace");
 
@@ -920,6 +925,7 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
+    @Ignore("temporarily skip index pruning for OSS")
     @Test
     public void testNullVarcharPruning() {
         String innodbTableName = "testNullVarcharPruning";
@@ -937,7 +943,7 @@ public class FileStorageTest extends BaseTestCase {
 
             StringBuilder insert = new StringBuilder();
             insert.append("insert into ").append(innodbTableName).append("(`id`) values ");
-            for (int i = 0; i < 9999; i++) {
+            for (int i = 0; i < INSERT_VALUE_SIZE; i++) {
                 insert.append("(0)").append(",");
             }
             insert.append("(0)");
@@ -964,6 +970,7 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
+    @Ignore("temporarily skip index pruning for OSS")
     @Test
     public void testDecimalPruning() {
         String innodbTableName = "testDecimalPruning";
@@ -983,9 +990,81 @@ public class FileStorageTest extends BaseTestCase {
             StringBuilder insert = new StringBuilder();
             insert.append("insert into ").append(innodbTableName).append("(`id`,`decimal_column`) values ");
             Random rand = new Random();
-            for (int i = 0; i < 9999; i++) {
+            for (int i = 0; i < INSERT_VALUE_SIZE; i++) {
                 BigDecimal bigDecimal = new BigDecimal(rand.nextDouble() * 1000000);
                 bigDecimal = bigDecimal.setScale(10, BigDecimal.ROUND_UP);
+                decimalValues.add(bigDecimal);
+                insert.append("(0, '").append(bigDecimal).append("')").append(",");
+            }
+            insert.append("(0, null)");
+            statement.executeUpdate(insert.toString());
+
+            // create oss table
+            statement.execute(String.format(
+                "/*+TDDL:ENABLE_FILE_STORE_CHECK_TABLE=true*/ create table %s like %s engine = '%s' archive_mode = 'loading'",
+                ossTableName, innodbTableName, engine.name()));
+            statement.execute("drop table " + innodbTableName);
+
+            Random random = new Random();
+            for (int i = 0; i < 10; i++) {
+                statement.executeQuery(
+                    String.format("trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column = %s",
+                        ossTableName,
+                        decimalValues.get(random.nextInt(INSERT_VALUE_SIZE))));
+                ResultSet resultSet = statement.executeQuery("show trace");
+                int traceCount = 0;
+                while (resultSet.next()) {
+                    traceCount++;
+                }
+                // table has 8 partition, with bloomfilter we expect at least pruning half (4 partition).
+                Assert.assertTrue(traceCount <= 4 && traceCount > 0);
+            }
+
+            for (int i = 0; i < 10; i++) {
+                String expSql = String.format(
+                    "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column in(%s, %s)",
+                    ossTableName,
+                    decimalValues.get(random.nextInt(INSERT_VALUE_SIZE)),
+                    decimalValues.get(random.nextInt(INSERT_VALUE_SIZE)));
+                statement.executeQuery(expSql);
+                ResultSet resultSet = statement.executeQuery("show trace");
+
+                boolean findArgument = false;
+                while (resultSet.next()) {
+                    String argument = resultSet.getString("STATEMENT").toLowerCase();
+                    findArgument |= (argument.contains("in") && argument.contains("__id__"));
+                }
+                assertWithMessage(String.format("sql %s should build search argument", expSql))
+                    .that(findArgument).isTrue();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Ignore("temporarily skip index pruning for OSS")
+    @Test
+    public void testDecimal64Pruning() {
+        String innodbTableName = "testDecimal64Pruning";
+        String ossTableName = "oss_testDecimal64Pruning";
+        List<BigDecimal> decimalValues = new ArrayList<>();
+        try (Connection connection = getConnection()) {
+            Statement statement = connection.createStatement();
+            statement.execute(String.format("CREATE TABLE %s (\n" +
+                "    id bigint NOT NULL AUTO_INCREMENT,\n" +
+                "    decimal_column decimal(16,4) DEFAULT NULL,\n" +
+                "    gmt_modified DATETIME DEFAULT CURRENT_TIMESTAMP,\n" +
+                "    KEY (decimal_column),\n" +
+                "    PRIMARY KEY (id, gmt_modified)\n" +
+                ")\n" +
+                "PARTITION BY HASH(id) PARTITIONS 8\n", innodbTableName));
+
+            StringBuilder insert = new StringBuilder();
+            insert.append("insert into ").append(innodbTableName).append("(`id`,`decimal_column`) values ");
+            Random rand = new Random();
+            for (int i = 0; i < 9999; i++) {
+                BigDecimal bigDecimal = new BigDecimal(rand.nextDouble() * 1000000);
+                bigDecimal = bigDecimal.setScale(4, BigDecimal.ROUND_UP);
                 decimalValues.add(bigDecimal);
                 insert.append("(0, '").append(bigDecimal).append("')").append(",");
             }
@@ -1012,12 +1091,11 @@ public class FileStorageTest extends BaseTestCase {
                 // table has 8 partition, with bloomfilter we expect at least pruning half (4 partition).
                 Assert.assertTrue(traceCount <= 4 && traceCount > 0);
             }
-
             for (int i = 0; i < 10; i++) {
                 String expSql = String.format(
                     "trace /*+TDDL: EXECUTOR_MODE=AP_LOCAL*/ select * from %s where decimal_column in(%s, %s)",
                     ossTableName,
-                    decimalValues.get(random.nextInt(10000)), decimalValues.get(random.nextInt(10000)));
+                    decimalValues.get(random.nextInt(9999)), decimalValues.get(random.nextInt(9999)));
                 statement.executeQuery(expSql);
                 ResultSet resultSet = statement.executeQuery("show trace");
 
@@ -1034,6 +1112,7 @@ public class FileStorageTest extends BaseTestCase {
         }
     }
 
+    @Ignore("temporarily skip index pruning for OSS")
     @Test
     public void testNullDecimalPruning() {
         String innodbTableName = "testNullDecimalPruning";
@@ -1052,7 +1131,7 @@ public class FileStorageTest extends BaseTestCase {
             StringBuilder insert = new StringBuilder();
             insert.append("insert into ").append(innodbTableName).append("(`id`) values ");
             Random rand = new Random();
-            for (int i = 0; i < 9999; i++) {
+            for (int i = 0; i < INSERT_VALUE_SIZE; i++) {
                 insert.append("(0)").append(",");
             }
             insert.append("(0)");

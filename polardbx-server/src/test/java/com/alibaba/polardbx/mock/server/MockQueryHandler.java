@@ -80,8 +80,8 @@ public class MockQueryHandler implements QueryHandler {
         for (FieldPacket field : fields) {
             field = new FieldPacket();
             field.packetId = conn.getNewPacketId();
-            field.charsetIndex = CharsetUtil.getIndex(conn.getCharset());
-            field.name = encode("Result", conn.getCharset());
+            field.charsetIndex = CharsetUtil.getIndex(conn.getResultSetCharset());
+            field.name = encode("Result", conn.getResultSetCharset());
             field.type = Fields.FIELD_TYPE_VAR_STRING;
             field.write(proxy);
         }
@@ -108,7 +108,7 @@ public class MockQueryHandler implements QueryHandler {
 
         // results
         RowDataPacket row = new RowDataPacket(header.fieldCount);
-        row.add(encode(mockResult, conn.getCharset()));
+        row.add(encode(mockResult, conn.getResultSetCharset()));
         row.packetId = conn.getNewPacketId();
         proxy = row.write(proxy);
 

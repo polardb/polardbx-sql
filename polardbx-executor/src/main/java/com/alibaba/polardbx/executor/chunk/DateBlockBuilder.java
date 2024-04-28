@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
@@ -23,6 +24,9 @@ import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
 import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
@@ -39,19 +43,34 @@ import java.util.TimeZone;
  */
 public class DateBlockBuilder extends AbstractBlockBuilder {
 
-    final LongArrayList packed;
+    final BatchedArrayList.BatchLongArrayList packed;
     final DataType<? extends Date> dataType;
     final ExecutionContext context;
     // timezone is mutable
     TimeZone timezone;
 
+    private DriverObjectPool<long[]> objectPool;
+    private int chunkLimit;
+
     public DateBlockBuilder(int capacity, DataType<? extends Date> dataType, ExecutionContext context) {
         super(capacity);
-        this.packed = new LongArrayList(capacity);
+        this.packed = new BatchedArrayList.BatchLongArrayList(capacity);
         this.dataType = dataType;
         this.context = context;
         // 当前执行器以外的时区处理逻辑，都认为时间戳以默认时区表示
         this.timezone = InternalTimeZone.DEFAULT_TIME_ZONE;
+        this.chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
+    }
+
+    public DateBlockBuilder(int capacity, DataType<? extends Date> dataType, ExecutionContext context,
+                            DriverObjectPool<long[]> objectPool) {
+        super(capacity);
+        this.packed = new BatchedArrayList.BatchLongArrayList(capacity);
+        this.dataType = dataType;
+        this.context = context;
+        this.timezone = InternalTimeZone.DEFAULT_TIME_ZONE;
+        this.objectPool = objectPool;
+        this.chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
     }
 
     @Override
@@ -144,8 +163,13 @@ public class DateBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public Block build() {
-        return new DateBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, packed.elements(),
-            dataType, timezone);
+        Block block =
+            new DateBlock(0, getPositionCount(), mayHaveNull() ? valueIsNull.elements() : null, packed.elements(),
+                dataType, timezone);
+        if (objectPool != null) {
+            block.setRecycler(objectPool.getRecycler(chunkLimit));
+        }
+        return block;
     }
 
     @Override
@@ -156,7 +180,16 @@ public class DateBlockBuilder extends AbstractBlockBuilder {
 
     @Override
     public BlockBuilder newBlockBuilder() {
-        return new DateBlockBuilder(getCapacity(), dataType, context);
+        if (objectPool != null) {
+            return new DateBlockBuilder(getCapacity(), dataType, context, objectPool);
+        } else {
+            return new DateBlockBuilder(getCapacity(), dataType, context);
+        }
+    }
+
+    @Override
+    public BlockBuilder newBlockBuilder(ObjectPools objectPools, int chunkLimit) {
+        return new DateBlockBuilder(getCapacity(), dataType, context, objectPools.getLongArrayPool());
     }
 
     @Override

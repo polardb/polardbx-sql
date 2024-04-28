@@ -1,0 +1,138 @@
+# clean
+drop table if exists `t_order_single`;
+drop table if exists `t_order_broadcast`;
+drop table if exists `t_order_single_1`;
+drop table if exists `t_order_broadcast_1`;
+
+CREATE TABLE `t_order_single` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double(10, 2),
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 single;
+
+CREATE TABLE `t_order_broadcast` (
+`id` bigint(11) NOT NULL AUTO_INCREMENT,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double(10, 2),
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 broadcast;
+
+CREATE TABLE `t_order_single_1` (
+`id` bigint(11) NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double(10, 2)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 single;
+
+CREATE TABLE `t_order_broadcast_1` (
+`id` bigint(11) NOT NULL,
+`order_id` varchar(20) DEFAULT NULL,
+`buyer_id` varchar(20) DEFAULT NULL,
+`seller_id` varchar(20) DEFAULT NULL,
+`order_snapshot` longtext,
+`order_detail` longtext,
+`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+`rint` double(10, 2)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8 broadcast;
+
+  # create cci on single table (without PARTITION BY and PARTITIONS) 
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_single` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_single` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_single`;
+check columnar index `cci_seller_id` on `t_order_single` meta;
+DROP INDEX `cci_seller_id` ON `t_order_single`;
+
+  # create cci on single table (with PARTITION BY, without PARTITIONS)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_single` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`) PARTITION BY HASH (`id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_single` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_single`;
+check columnar index `cci_seller_id` on `t_order_single` meta;
+DROP INDEX `cci_seller_id` ON `t_order_single`;
+  
+  # create cci on single table (without PARTITION BY and PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+ALTER TABLE `t_order_single` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_single` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_single`;
+check columnar index `cci_seller_id` on `t_order_single` meta;
+DROP INDEX `cci_seller_id` ON `t_order_single`;
+  
+  # create cci on single table (with PARTITION BY, without PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+ALTER TABLE `t_order_single` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`) PARTITION BY HASH (`id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_single` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_single`;
+check columnar index `cci_seller_id` on `t_order_single` meta;
+DROP INDEX `cci_seller_id` ON `t_order_single`;
+
+  # create cci on single table (without PARTITION BY and PARTITIONS, using implicit pk)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_single_1` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_single_1` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_single_1`;
+check columnar index `cci_seller_id` on `t_order_single_1` meta;
+DROP INDEX `cci_seller_id` ON `t_order_single_1`;
+
+  # create cci on broadcast table (with PARTITION BY, without PARTITIONS)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_broadcast` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`) PARTITION BY HASH (`id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_broadcast` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_broadcast`;
+check columnar index `cci_seller_id` on `t_order_broadcast` meta;
+DROP INDEX `cci_seller_id` ON `t_order_broadcast`;
+  
+  # create cci on broadcast table (without PARTITION BY and PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+ALTER TABLE `t_order_broadcast` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_broadcast` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_broadcast`;
+check columnar index `cci_seller_id` on `t_order_broadcast` meta;
+DROP INDEX `cci_seller_id` ON `t_order_broadcast`;
+  
+  # create cci on broadcast table (with PARTITION BY, without PARTITIONS), with COLUMNAR_DEFAULT_PARTITIONS=20
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask", COLUMNAR_DEFAULT_PARTITIONS=20)*/
+ALTER TABLE `t_order_broadcast` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`) PARTITION BY HASH (`id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_broadcast` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_broadcast`;
+check columnar index `cci_seller_id` on `t_order_broadcast` meta;
+DROP INDEX `cci_seller_id` ON `t_order_broadcast`;
+
+  # create cci on broadcast table (without PARTITION BY and PARTITIONS, using implicit pk)
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/
+ALTER TABLE `t_order_broadcast_1` ADD CLUSTERED COLUMNAR INDEX `cci_seller_id`(`seller_id`);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/
+ALTER TABLE `t_order_broadcast_1` alter index `cci_seller_id` VISIBLE;
+show full create table `t_order_broadcast_1`;
+check columnar index `cci_seller_id` on `t_order_broadcast_1` meta;
+DROP INDEX `cci_seller_id` ON `t_order_broadcast_1`;
+
+# cleanup
+drop table if exists `t_order_single`;
+drop table if exists `t_order_broadcast`;
+drop table if exists `t_order_single_1`;
+drop table if exists `t_order_broadcast_1`;

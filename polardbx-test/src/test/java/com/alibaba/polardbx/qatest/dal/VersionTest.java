@@ -10,23 +10,34 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Set;
-import java.util.regex.Pattern;
 
 public class VersionTest extends ReadBaseTestCase {
+
     @Test
-    public void testSelectAllVersions() throws SQLException {
-        final Set<String> expectNodeTypes = Sets.newHashSet("CN",
-            "DN", "CDC", "GMS");
+    public void testSelectPolarDBVersions() throws SQLException {
+        // some components may not exist
+        final Set<String> requiredNodeTypes = Sets.newHashSet("Product", "CN",
+            "DN", "GMS");
+        final Set<String> optionalNodeTypes = Sets.newHashSet("CDC", "Columnar");
         String sql = "select polardb_version()";
         try (Statement stmt = tddlConnection.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
-                String nodeType = rs.getString("NODE_TYPE").toUpperCase();
-                Assert.assertTrue("Unexpected node type: " + nodeType,
-                    expectNodeTypes.remove(nodeType));
+                String nodeType = rs.getString("TYPE");
+                // check field exists
+                String version = rs.getString("VERSION");
+                // check field exists
+                String releaseDate = rs.getString("RELEASE_DATE");
+                boolean isRequired = requiredNodeTypes.remove(nodeType);
+                if (isRequired) {
+                    continue;
+                }
+                boolean isOptional = optionalNodeTypes.remove(nodeType);
+                Assert.assertTrue("Unexpected node type: " + nodeType, isOptional);
             }
         }
-        Assert.assertTrue("Remain node_types: " + StringUtils.join(expectNodeTypes, ","),
-            expectNodeTypes.isEmpty());
+        Assert.assertTrue("Remain node_types: " + StringUtils.join(requiredNodeTypes, ","),
+            requiredNodeTypes.isEmpty());
     }
+
 }

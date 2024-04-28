@@ -22,7 +22,6 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.executor.ddl.job.factory.AlterTableModifyPartitionJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.executor.utils.StringUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -35,14 +34,12 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumComparator;
 import com.alibaba.polardbx.optimizer.partition.pruning.SearchDatumInfo;
-import groovy.sql.Sql;
 import org.apache.calcite.rel.ddl.AlterTable;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableModifyPartitionValues;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlPartition;
-import org.apache.calcite.sql.SqlPartitionValue;
 import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.util.Util;
 
@@ -217,11 +214,11 @@ public class LogicalAlterTableModifyPartitionHandler extends LogicalCommonDdlHan
 //                        partName));
 //            }
 
-            if (tableMeta.withGsi()) {
+            if (tableMeta.withGsi() && !tableMeta.withCci()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                     String.format("it's not support to drop value when table[%s] with GSI", logicalTableName));
             }
-            if (tableMeta.isGsi()) {
+            if (tableMeta.isGsi() && !tableMeta.isColumnar()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_MODIFY_PARTITION_DROP_VALUE,
                     String.format("it's not support to drop value for global index[%s]", logicalTableName));
             }

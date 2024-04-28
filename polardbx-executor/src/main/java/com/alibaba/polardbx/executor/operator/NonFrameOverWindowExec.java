@@ -1,30 +1,14 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 
@@ -56,6 +40,7 @@ public class NonFrameOverWindowExec extends AbstractExecutor {
 
     private boolean isFinish;
     private ListenableFuture<?> blocked;
+    private boolean needToProcessEachRow;
 
     public NonFrameOverWindowExec(Executor input, ExecutionContext context, List<Aggregator> aggregators,
                                   List<Integer> partitionIndexes, boolean[] resetAccumulators,
@@ -72,8 +57,6 @@ public class NonFrameOverWindowExec extends AbstractExecutor {
     @Override
     void doOpen() {
         input.open();
-        aggregators.forEach(t -> t.open(1));
-        aggregators.forEach(Aggregator::appendInitValue);
     }
 
     private void processFirstLine(Chunk.ChunkRow chunkRow, int rowsCount) {
@@ -81,14 +64,17 @@ public class NonFrameOverWindowExec extends AbstractExecutor {
         if (changePartition) {
             lastPartition = chunkRow;
         }
+        Aggregator tempAggregator;
         for (int i = 0; i < aggregators.size(); i++) {
             if (resetAccumulators[i] || changePartition) {
-                aggregators.get(i).resetToInitValue(0);
+                aggregators.set(i, aggregators.get(i).getNew());
             }
-            aggregators.get(i).accumulate(0, chunkRow.getChunk(), chunkRow.getPosition());
+            tempAggregator = aggregators.get(i);
+            tempAggregator.aggregate(chunkRow);
+            Object result = tempAggregator.value();
             blockBuilders[i] =
                 BlockBuilders.create(dataTypes.get(i + input.getDataTypes().size()), context);
-            aggregators.get(i).writeResultTo(0, blockBuilders[i]);
+            blockBuilders[i].writeObject(result);
         }
     }
 
@@ -111,10 +97,11 @@ public class NonFrameOverWindowExec extends AbstractExecutor {
             }
             for (int i = 0; i < aggFuncNumber; i++) {
                 if (resetAccumulators[i] || changePartition) {
-                    aggregators.get(i).resetToInitValue(0);
+                    aggregators.set(i, aggregators.get(i).getNew());
                 }
-                aggregators.get(i).accumulate(0, chunkRow.getChunk(), chunkRow.getPosition());
-                aggregators.get(i).writeResultTo(0, blockBuilders[i]);
+                aggregators.get(i).aggregate(chunkRow);
+                Object result = aggregators.get(i).value();
+                blockBuilders[i].writeObject(result);
             }
         }
 

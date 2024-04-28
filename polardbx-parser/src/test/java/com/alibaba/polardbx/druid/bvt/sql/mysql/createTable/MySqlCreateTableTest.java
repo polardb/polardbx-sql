@@ -17,11 +17,15 @@ package com.alibaba.polardbx.druid.bvt.sql.mysql.createTable;
 
 import com.alibaba.polardbx.druid.sql.MysqlTest;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlSchemaStatVisitor;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserFeature;
 import com.alibaba.polardbx.druid.stat.TableStat;
 import org.junit.Assert;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class MySqlCreateTableTest extends MysqlTest {
@@ -43,7 +47,7 @@ public class MySqlCreateTableTest extends MysqlTest {
 //        System.out.println("fields : " + visitor.getColumns());
 //        System.out.println("coditions : " + visitor.getConditions());
 //        System.out.println("orderBy : " + visitor.getOrderByColumns());
-        
+
         Assert.assertEquals(1, visitor.getTables().size());
         Assert.assertEquals(1, visitor.getColumns().size());
         Assert.assertEquals(0, visitor.getConditions().size());
@@ -52,19 +56,18 @@ public class MySqlCreateTableTest extends MysqlTest {
 
 //        Assert.assertTrue(visitor.getColumns().contains(new Column("mytable", "last_name")));
     }
-    
-    
+
     public void test_1() throws Exception {
         String sql = "CREATE TABLE `ins_ebay_auth` ("
-                + " `auth_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '主键id',"
-                + " `usr_id` int(10) NOT NULL COMMENT '外键，用户表',"
-                + " `status` char(1) COLLATE utf8_bin NOT NULL COMMENT '状态 0.有效?1.无效',"
-                + " `ebay_token` varchar(255) COLLATE utf8_bin NOT NULL COMMENT 'eBay授权码',"
-                + " `ebay_name` varchar(50) COLLATE utf8_bin NOT NULL COMMENT 'eBay唯一名',"
-                + " `create_time` datetime NOT NULL COMMENT '授权时间', "
-                + " `invalid_time` datetime NOT NULL COMMENT '授权失效时间',"
-                + " PRIMARY KEY (`auth_id`)"
-                + " ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='INS_EBAY_AUTH'";
+            + " `auth_id` int(10) NOT NULL AUTO_INCREMENT COMMENT '主键id',"
+            + " `usr_id` int(10) NOT NULL COMMENT '外键，用户表',"
+            + " `status` char(1) COLLATE utf8_bin NOT NULL COMMENT '状态 0.有效?1.无效',"
+            + " `ebay_token` varchar(255) COLLATE utf8_bin NOT NULL COMMENT 'eBay授权码',"
+            + " `ebay_name` varchar(50) COLLATE utf8_bin NOT NULL COMMENT 'eBay唯一名',"
+            + " `create_time` datetime NOT NULL COMMENT '授权时间', "
+            + " `invalid_time` datetime NOT NULL COMMENT '授权失效时间',"
+            + " PRIMARY KEY (`auth_id`)"
+            + " ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin COMMENT='INS_EBAY_AUTH'";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         List<SQLStatement> statementList = parser.parseStatementList();
@@ -80,13 +83,12 @@ public class MySqlCreateTableTest extends MysqlTest {
 //        System.out.println("fields : " + visitor.getColumns());
 //        System.out.println("coditions : " + visitor.getConditions());
 //        System.out.println("orderBy : " + visitor.getOrderByColumns());
-        
+
         Assert.assertEquals(1, visitor.getTables().size());
         Assert.assertEquals(7, visitor.getColumns().size());
         Assert.assertEquals(0, visitor.getConditions().size());
     }
-    
-    
+
     public void test_2() throws Exception {
         String sql = "create table t2 as select * from t1";
 
@@ -104,5 +106,52 @@ public class MySqlCreateTableTest extends MysqlTest {
 //        System.out.println("fields : " + visitor.getColumns());
 //        System.out.println("coditions : " + visitor.getConditions());
 //        System.out.println("orderBy : " + visitor.getOrderByColumns());
+    }
+
+    public void test_3() {
+        String sql = "create table t2(a int ,b varchar(255)) COMMENT '抖音订单表' collate = utf8mb4_bin";
+
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertFalse(
+            ((MySqlCreateTableStatement) statement).getComment().toString().toLowerCase().contains("collate"));
+    }
+
+    public void test_4() {
+        String sql = "create table t3(a int ,b varchar(255)) auto_increment = 1 collate = utf8mb4_bin";
+
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertTrue(
+            ((MySqlCreateTableStatement) statement).getOption("COLLATE").toString().toLowerCase()
+                .contains("utf8mb4_bin"));
+    }
+
+    public void test_5() {
+        String sql = "create table t4(a int ,b varchar(255)) COMMENT \"抖音订单表\" collate = utf8mb4_bin";
+
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertTrue(
+            ((MySqlCreateTableStatement) statement).getComment().toString().equalsIgnoreCase("'抖音订单表'"));
+        Assert.assertTrue(
+            ((MySqlCreateTableStatement) statement).getOption("COLLATE").toString().toLowerCase()
+                .contains("utf8mb4_bin"));
+    }
+
+    public void test_6() {
+        String sql = "create table t5(a int ,b varchar(255)) COMMENT \"\"\"抖音订单表\"\"\" collate = utf8mb4_bin";
+
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        List<SQLStatement> statementList = parser.parseStatementList();
+        SQLStatement statement = statementList.get(0);
+        Assert.assertTrue(
+            ((MySqlCreateTableStatement) statement).getComment().toString().equalsIgnoreCase("'\"抖音订单表\"'"));
+        Assert.assertTrue(
+            ((MySqlCreateTableStatement) statement).getOption("COLLATE").toString().toLowerCase()
+                .contains("utf8mb4_bin"));
     }
 }

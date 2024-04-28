@@ -76,10 +76,7 @@ public class TopNExecutorFactory extends ExecutorFactory {
                 List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
 
                 Executor exec = new SpilledTopNExec(dataTypeList, orderBys, skip + fetch, context, spillerFactory);
-                exec.setId(topN.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(topN, exec, context);
-                }
+                registerRuntimeStat(exec, topN, context);
                 executors.add(exec);
             }
         }

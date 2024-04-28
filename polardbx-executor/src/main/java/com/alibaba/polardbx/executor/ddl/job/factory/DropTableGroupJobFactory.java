@@ -17,7 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableGroupRemoveMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.EmptyTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDropTableGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -71,13 +72,17 @@ public class DropTableGroupJobFactory extends DdlJobFactory {
         if (preparedData.isIfExists() && tableGroupConfig == null) {
             return new TransientDdlJob();
         }
-        DropTableGroupValidateTask dropTableGroupValidateTask =
-            new DropTableGroupValidateTask(preparedData.getSchemaName(),
+        EmptyTableGroupValidateTask dropTableGroupValidateTask =
+            new EmptyTableGroupValidateTask(preparedData.getSchemaName(),
                 preparedData.getTableGroupName());
         taskList.add(dropTableGroupValidateTask);
         DropTableGroupRemoveMetaTask dropTableGroupRemoveMetaTask = new DropTableGroupRemoveMetaTask(
             preparedData.getSchemaName(), preparedData.getTableGroupName());
         taskList.add(dropTableGroupRemoveMetaTask);
+        CdcDropTableGroupMarkTask cdcDropTableGroupMarkTask = new CdcDropTableGroupMarkTask(
+            preparedData.getSchemaName(), preparedData.getTableGroupName()
+        );
+        taskList.add(cdcDropTableGroupMarkTask);
         TableGroupSyncTask tableGroupSyncTask =
             new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
         taskList.add(tableGroupSyncTask);

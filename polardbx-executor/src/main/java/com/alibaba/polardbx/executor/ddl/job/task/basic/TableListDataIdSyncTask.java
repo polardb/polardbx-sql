@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -32,12 +32,18 @@ import java.util.List;
 @Getter
 @TaskName(name = "TableListDataIdSyncTask")
 public class TableListDataIdSyncTask extends BaseDdlTask {
+    private List<String> tableNames;
 
-    public TableListDataIdSyncTask(String schemaName) {
+    @JSONCreator
+    public TableListDataIdSyncTask(String schemaName, List<String> tableNames) {
         super(schemaName);
+        this.tableNames = tableNames;
     }
 
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        for (String tableName : tableNames) {
+            TableMetaChanger.syncTableDataId(schemaName, tableName);
+        }
         TableMetaChanger.notifyTableListDataId(metaDbConnection, schemaName);
     }
 

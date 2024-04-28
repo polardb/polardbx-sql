@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.string;
 
 import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
@@ -29,6 +30,8 @@ import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 import io.airlift.slice.Slice;
 
 import java.util.List;
+import java.sql.Blob;
+import java.sql.SQLException;
 import java.util.Optional;
 
 /**
@@ -63,6 +66,15 @@ public class Length extends AbstractScalarFunction {
             && operandType.getCharsetName() == CharsetName.BINARY) {
             byte[] bytes = ((Slice) args[0]).getBytes();
             return bytes.length;
+        }
+        if (DataTypeUtil.equalsSemantically(DataTypes.BlobType, operandType)) {
+            Blob blob = DataTypes.BlobType.convertFrom(args[0]);
+            try {
+                byte[] bytes = blob.getBytes(1, (int) blob.length());
+                return bytes.length;
+            } catch (SQLException e) {
+                throw GeneralUtil.nestedException(e);
+            }
         }
         String str = DataTypeUtil.convert(operandType, DataTypes.StringType, arg);
 

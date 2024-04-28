@@ -319,7 +319,8 @@ public abstract class ReplaceTableNameWithSomethingVisitor extends SqlShuttle {
                 throw new UnsupportedOperationException("Unsupported DDL syntax.");
             }
             return ddl;
-        } else if (kind == SqlKind.RENAME_TABLE) {
+        } else if (kind == SqlKind.RENAME_TABLE || kind == SqlKind.ALTER_TABLE_DISCARD_TABLESPACE
+            || kind == SqlKind.ALTER_TABLE_IMPORT_TABLESPACE) {
             this.sqlKind = kind;
 
             SqlDdl ddl = (SqlDdl) call;

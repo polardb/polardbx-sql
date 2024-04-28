@@ -29,6 +29,8 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.model.Group.GroupType;
 import com.alibaba.polardbx.common.model.Group;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -65,15 +67,20 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalRelocate;
+import com.alibaba.polardbx.optimizer.core.rel.LogicalUpsert;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.dml.BroadcastWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.SourceRows;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.BroadcastModifyWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.writer.RelocateWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.ShardingModifyWriter;
+import com.alibaba.polardbx.optimizer.core.rel.dml.writer.SingleModifyWriter;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
@@ -152,6 +159,9 @@ public abstract class HandlerCommon implements PlanHandler {
 
     private void executeSubNodesBlockConcurrent(ExecutionContext executionContext, List<RelNode> subNodes,
                                                 List<Cursor> subCursors, String schemaName) {
+        if (subNodes != null && subNodes.isEmpty()) {
+            return;
+        }
         checkExecMemCost(executionContext, subNodes);
         RelNode firstOp = subNodes.get(0);
         boolean isPhyTblOp = firstOp instanceof PhyTableOperation;
@@ -580,6 +590,8 @@ public abstract class HandlerCommon implements PlanHandler {
                 final RelocateWriter rw = w.unwrap(RelocateWriter.class);
                 final boolean usePartFieldChecker = rw.isUsePartFieldChecker() &&
                     executionContext.getParamManager().getBoolean(ConnectionParams.DML_USE_NEW_SK_CHECKER);
+                final boolean checkJsonByStringCompare =
+                    executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
                 final List<Object> skSources = Mappings.permute(row, rw.getIdentifierKeySourceMapping());
                 final List<Object> skTargets = Mappings.permute(row, rw.getIdentifierKeyTargetMapping());
@@ -614,7 +626,7 @@ public abstract class HandlerCommon implements PlanHandler {
                     final GroupKey skTargetKey = new GroupKey(skTargets.toArray(), rw.getIdentifierKeyMetas());
                     final GroupKey skSourceKey = new GroupKey(skSources.toArray(), rw.getIdentifierKeyMetas());
 
-                    return skTargetKey.equalsForUpdate(skSourceKey);
+                    return skTargetKey.equalsForUpdate(skSourceKey, checkJsonByStringCompare);
                 }
             };
 
@@ -844,11 +856,29 @@ public abstract class HandlerCommon implements PlanHandler {
         if (null != serverVariables) {
             executionContext.getServerVariables().putAll(serverVariables);
         }
-        executionContext.getServerVariables().put("sql_mode", "");
+        executionContext.getServerVariables().put("sql_mode", "NO_AUTO_VALUE_ON_ZERO");
         return executionContext;
     }
 
-    protected static void upgradeEncoding(ExecutionContext executionContext, String schemaName, String baseTableName) {
+    public static ExecutionContext setChangeSetApplySqlMode(ExecutionContext executionContext) {
+        // fix the data truncate issue
+        final Map<String, Object> serverVariables = executionContext.getServerVariables();
+        executionContext.setServerVariables(new TreeMap<>(String.CASE_INSENSITIVE_ORDER));
+        if (null != serverVariables) {
+            executionContext.getServerVariables().putAll(serverVariables);
+        }
+        String sqlMode = (String) executionContext.getServerVariables().get("sql_mode");
+        if (sqlMode != null && !sqlMode.isEmpty() && (StringUtils.containsIgnoreCase(sqlMode, "STRICT_ALL_TABLES")
+            || StringUtils.containsIgnoreCase(sqlMode, "STRICT_TRANS_TABLES"))) {
+            sqlMode = "STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO";
+        } else {
+            sqlMode = "NO_AUTO_VALUE_ON_ZERO";
+        }
+        executionContext.getServerVariables().put("sql_mode", sqlMode);
+        return executionContext;
+    }
+
+    public static void upgradeEncoding(ExecutionContext executionContext, String schemaName, String baseTableName) {
 
         final Map<String, CollationName> columnCharacterSet =
             getColumnCharacterSet(executionContext, schemaName, baseTableName);
@@ -1190,7 +1220,9 @@ public abstract class HandlerCommon implements PlanHandler {
 
             List<String> sortedColumns = getSortedColumns(true, tableMeta, data.getValue());
 
-            List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
+            ExecutionContext selectEc = executionContext.copy();
+            selectEc.setParams(new Parameters(selectEc.getParams().getCurrentParameter(), false));
+            List<List<Object>> selectValues = getSelectValues(selectEc, schemaName,
                 parentTableMeta, updateValueList, tableModify, memoryAllocator, builder, shardResults,
                 sortedColumns, false);
 
@@ -1209,6 +1241,22 @@ public abstract class HandlerCommon implements PlanHandler {
                                          int depth) {
         if (depth > MAX_FK_DEPTH) {
             throw new TddlRuntimeException(ErrorCode.ERR_FK_EXCEED_MAX_DEPTH);
+        }
+
+        if (tableModify instanceof LogicalInsert && ((LogicalInsert) tableModify).isUpsert()) {
+            DistinctWriter writer;
+            if (!((LogicalUpsert) tableModify).isModifyPartitionKey()) {
+                writer = ((LogicalUpsert) tableModify).getPrimaryUpsertWriter().getUpdaterWriter();
+            } else {
+                writer = ((LogicalUpsert) tableModify).getPrimaryRelocateWriter().getModifyWriter();
+            }
+            if (writer instanceof SingleModifyWriter) {
+                tableModify = ((SingleModifyWriter) writer).getModify();
+            } else if (writer instanceof BroadcastModifyWriter) {
+                tableModify = ((BroadcastModifyWriter) writer).getModify();
+            } else {
+                tableModify = ((ShardingModifyWriter) writer).getModify();
+            }
         }
 
         final MemoryPool selectValuesPool = MemoryPoolUtils.createOperatorTmpTablePool(executionContext);
@@ -1281,13 +1329,17 @@ public abstract class HandlerCommon implements PlanHandler {
                 }
             });
 
-            List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
+            ExecutionContext selectEc = executionContext.copy();
+            selectEc.setParams(new Parameters(selectEc.getParams().getCurrentParameter(), false));
+            List<List<Object>> selectValues = getSelectValues(selectEc, schemaName,
                 refTableMeta, shardConditionValueList, tableModify, memoryAllocator, builder, selectShardResults,
                 sortedColumns, false);
 
             if (selectValues.isEmpty()) {
                 continue;
             }
+
+            List<ColumnMeta> returnColumns = new ArrayList<>(refTableMeta.getAllColumns());
 
             switch (data.getValue().onUpdate) {
             case RESTRICT:
@@ -1306,7 +1358,6 @@ public abstract class HandlerCommon implements PlanHandler {
                     selectValue.addAll(updateValueList.get(0));
                 }
 
-                List<ColumnMeta> returnColumns = refTableMeta.getAllColumns();
                 for (ColumnMeta column : refTableMeta.getAllColumns()) {
                     if (data.getValue().columns.stream().anyMatch(c -> c.equalsIgnoreCase(column.getName()))) {
                         returnColumns.add(column);
@@ -1327,7 +1378,6 @@ public abstract class HandlerCommon implements PlanHandler {
                     }
                 }
 
-                returnColumns = refTableMeta.getAllColumns();
                 for (ColumnMeta column : refTableMeta.getAllColumns()) {
                     if (data.getValue().columns.stream().anyMatch(c -> c.equalsIgnoreCase(column.getName()))) {
                         returnColumns.add(column);
@@ -1352,7 +1402,7 @@ public abstract class HandlerCommon implements PlanHandler {
         }
     }
 
-    protected void beforeDeleteFkCascade(LogicalModify logicalModify, String schemaName, String targetTable,
+    protected void beforeDeleteFkCascade(TableModify logicalModify, String schemaName, String targetTable,
                                          ExecutionContext executionContext, List<List<Object>> values,
                                          Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> fkPlans,
                                          int depth) {
@@ -1408,7 +1458,9 @@ public abstract class HandlerCommon implements PlanHandler {
 
             List<String> sortedColumns = getSortedColumns(false, tableMeta, data.getValue());
 
-            List<List<Object>> selectValues = getSelectValues(executionContext, schemaName,
+            ExecutionContext selectEc = executionContext.copy();
+            selectEc.setParams(new Parameters(selectEc.getParams().getCurrentParameter(), false));
+            List<List<Object>> selectValues = getSelectValues(selectEc, schemaName,
                 refTableMeta, conditionValueList, logicalModify, memoryAllocator, builder, shardResults,
                 sortedColumns, false);
 
@@ -1420,14 +1472,14 @@ public abstract class HandlerCommon implements PlanHandler {
                 selectValues.removeAll(values);
             }
 
+            List<ColumnMeta> returnColumns = new ArrayList<>(refTableMeta.getAllColumns());
+
             switch (data.getValue().onDelete) {
             case RESTRICT:
             case NO_ACTION:
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
                     "Cannot delete or update a parent row: a foreign key constraint fails");
             case CASCADE:
-                List<ColumnMeta> returnColumns = refTableMeta.getAllColumns();
-
                 if (!data.getValue().isPushDown()) {
                     executeFkPlan(executionContext, returnColumns, fkPlans, schemaName, tableName, constraintName,
                         selectValues);
@@ -1441,7 +1493,6 @@ public abstract class HandlerCommon implements PlanHandler {
                     }
                 }
 
-                returnColumns = refTableMeta.getAllColumns();
                 for (ColumnMeta column : refTableMeta.getAllColumns()) {
                     if (data.getValue().columns.stream().anyMatch(c -> c.equalsIgnoreCase(column.getName()))) {
                         returnColumns.add(column);

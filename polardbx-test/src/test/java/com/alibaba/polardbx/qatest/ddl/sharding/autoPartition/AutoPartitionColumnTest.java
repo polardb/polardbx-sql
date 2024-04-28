@@ -463,7 +463,7 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
             final String alter =
                 MessageFormat.format("alter table `{0}` add column `{1}` int(1024);", TABLE_NAME, addedColumn);
             JdbcUtil
-                .executeUpdateFailed(tddlConnection, alter, "Not all physical DDLs have been executed successfully");
+                .executeUpdateFailed(tddlConnection, alter, "Display width out of range for column 'addedx'");
 
             // Assert no column.
             Assert.assertFalse(JdbcUtil.showCreateTable(tddlConnection, TABLE_NAME).contains(addedColumn));
@@ -877,7 +877,7 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
             // Go bad alter.
             JdbcUtil.executeUpdateFailed(tddlConnection,
                 MessageFormat.format("alter table `{0}` alter `c0` set default {1}", TABLE_NAME, "'hehe'"),
-                "Not all physical DDLs have been executed successfully");
+                "Invalid default value for 'c0'");
             Assert.assertTrue(showCreateTable(tddlConnection, TABLE_NAME).contains("`c0` int(11) DEFAULT NULL,"));
             Assert.assertTrue(showCreateTable(tddlConnection, CGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
             Assert.assertTrue(showCreateTable(tddlConnection, UCGSI_NAME).contains("`c0` int(11) DEFAULT NULL,"));
@@ -899,7 +899,7 @@ public class AutoPartitionColumnTest extends AutoPartitionTestBase {
             // Go bad alter.
             JdbcUtil.executeUpdateFailed(tddlConnection,
                 MessageFormat.format("alter table `{0}` alter `t` set default {1}", TABLE_NAME, "'haha'"),
-                "Not all physical DDLs have been executed successfully");
+                "Invalid default value for 't'");
 
             // Assert that default not changed.
             Assert.assertTrue(JdbcUtil.showCreateTable(tddlConnection, TABLE_NAME)

@@ -16,10 +16,12 @@
 
 package com.alibaba.polardbx.common.charset;
 
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import org.junit.Assert;
 import org.junit.Test;
 
 import static com.alibaba.polardbx.common.charset.CharsetName.*;
+import static com.alibaba.polardbx.common.charset.CharsetName.BINARY;
 import static com.alibaba.polardbx.common.charset.CollationName.*;
 
 public class CharsetNameTest {
@@ -131,5 +133,97 @@ public class CharsetNameTest {
 
     private void doTestOf(String charsetNameStr, CharsetName expected) {
         Assert.assertEquals(expected, CharsetName.of(charsetNameStr));
+    }
+
+    @Test
+    public void testDefaultCollationMySQL57() {
+        InstanceVersion.setMYSQL80(false);
+        Assert.assertTrue(ARMSCII8.getDefaultCollationName() == ARMSCII8_GENERAL_CI);
+        Assert.assertTrue(ASCII.getDefaultCollationName() == ASCII_GENERAL_CI);
+        Assert.assertTrue(BIG5.getDefaultCollationName() == BIG5_CHINESE_CI);
+        Assert.assertTrue(BINARY.getDefaultCollationName() == CollationName.BINARY);
+        Assert.assertTrue(CP1250.getDefaultCollationName() == CP1250_GENERAL_CI);
+        Assert.assertTrue(CP1251.getDefaultCollationName() == CP1251_GENERAL_CI);
+        Assert.assertTrue(CP1256.getDefaultCollationName() == CP1256_GENERAL_CI);
+        Assert.assertTrue(CP1257.getDefaultCollationName() == CP1257_GENERAL_CI);
+        Assert.assertTrue(CP850.getDefaultCollationName() == CP850_GENERAL_CI);
+        Assert.assertTrue(CP852.getDefaultCollationName() == CP852_GENERAL_CI);
+        Assert.assertTrue(CP866.getDefaultCollationName() == CP866_GENERAL_CI);
+        Assert.assertTrue(CP932.getDefaultCollationName() == CP932_JAPANESE_CI);
+        Assert.assertTrue(DEC8.getDefaultCollationName() == DEC8_SWEDISH_CI);
+        Assert.assertTrue(EUCJPMS.getDefaultCollationName() == EUCJPMS_JAPANESE_CI);
+        Assert.assertTrue(EUCKR.getDefaultCollationName() == EUCKR_KOREAN_CI);
+        Assert.assertTrue(GB18030.getDefaultCollationName() == GB18030_CHINESE_CI);
+        Assert.assertTrue(GB2312.getDefaultCollationName() == GB2312_CHINESE_CI);
+        Assert.assertTrue(GBK.getDefaultCollationName() == GBK_CHINESE_CI);
+        Assert.assertTrue(GEOSTD8.getDefaultCollationName() == GEOSTD8_GENERAL_CI);
+        Assert.assertTrue(GREEK.getDefaultCollationName() == GREEK_GENERAL_CI);
+        Assert.assertTrue(HEBREW.getDefaultCollationName() == HEBREW_GENERAL_CI);
+        Assert.assertTrue(HP8.getDefaultCollationName() == HP8_ENGLISH_CI);
+        Assert.assertTrue(KEYBCS2.getDefaultCollationName() == KEYBCS2_GENERAL_CI);
+        Assert.assertTrue(KOI8R.getDefaultCollationName() == KOI8R_GENERAL_CI);
+        Assert.assertTrue(KOI8U.getDefaultCollationName() == KOI8U_GENERAL_CI);
+        Assert.assertTrue(LATIN1.getDefaultCollationName() == LATIN1_SWEDISH_CI);
+        Assert.assertTrue(LATIN2.getDefaultCollationName() == LATIN2_GENERAL_CI);
+        Assert.assertTrue(LATIN5.getDefaultCollationName() == LATIN5_TURKISH_CI);
+        Assert.assertTrue(LATIN7.getDefaultCollationName() == LATIN7_GENERAL_CI);
+        Assert.assertTrue(MACCE.getDefaultCollationName() == MACCE_GENERAL_CI);
+        Assert.assertTrue(MACROMAN.getDefaultCollationName() == MACROMAN_GENERAL_CI);
+        Assert.assertTrue(SJIS.getDefaultCollationName() == SJIS_JAPANESE_CI);
+        Assert.assertTrue(SWE7.getDefaultCollationName() == SWE7_SWEDISH_CI);
+        Assert.assertTrue(TIS620.getDefaultCollationName() == TIS620_THAI_CI);
+        Assert.assertTrue(UCS2.getDefaultCollationName() == UCS2_GENERAL_CI);
+        Assert.assertTrue(UJIS.getDefaultCollationName() == UJIS_JAPANESE_CI);
+        Assert.assertTrue(UTF16.getDefaultCollationName() == UTF16_GENERAL_CI);
+        Assert.assertTrue(UTF16LE.getDefaultCollationName() == UTF16LE_GENERAL_CI);
+        Assert.assertTrue(UTF32.getDefaultCollationName() == UTF32_GENERAL_CI);
+        Assert.assertTrue(UTF8MB3.getDefaultCollationName() == UTF8_GENERAL_CI);
+        Assert.assertTrue(UTF8MB4.getDefaultCollationName() == UTF8MB4_GENERAL_CI);
+    }
+
+    @Test
+    public void testDefaultCollationMySQL80() {
+        InstanceVersion.setMYSQL80(true);
+        Assert.assertTrue(ARMSCII8.getDefaultCollationName() == ARMSCII8_GENERAL_CI);
+        Assert.assertTrue(ASCII.getDefaultCollationName() == ASCII_GENERAL_CI);
+        Assert.assertTrue(BIG5.getDefaultCollationName() == BIG5_CHINESE_CI);
+        Assert.assertTrue(BINARY.getDefaultCollationName() == CollationName.BINARY);
+        Assert.assertTrue(CP1250.getDefaultCollationName() == CP1250_GENERAL_CI);
+        Assert.assertTrue(CP1251.getDefaultCollationName() == CP1251_GENERAL_CI);
+        Assert.assertTrue(CP1256.getDefaultCollationName() == CP1256_GENERAL_CI);
+        Assert.assertTrue(CP1257.getDefaultCollationName() == CP1257_GENERAL_CI);
+        Assert.assertTrue(CP850.getDefaultCollationName() == CP850_GENERAL_CI);
+        Assert.assertTrue(CP852.getDefaultCollationName() == CP852_GENERAL_CI);
+        Assert.assertTrue(CP866.getDefaultCollationName() == CP866_GENERAL_CI);
+        Assert.assertTrue(CP932.getDefaultCollationName() == CP932_JAPANESE_CI);
+        Assert.assertTrue(DEC8.getDefaultCollationName() == DEC8_SWEDISH_CI);
+        Assert.assertTrue(EUCJPMS.getDefaultCollationName() == EUCJPMS_JAPANESE_CI);
+        Assert.assertTrue(EUCKR.getDefaultCollationName() == EUCKR_KOREAN_CI);
+        Assert.assertTrue(GB18030.getDefaultCollationName() == GB18030_CHINESE_CI);
+        Assert.assertTrue(GB2312.getDefaultCollationName() == GB2312_CHINESE_CI);
+        Assert.assertTrue(GBK.getDefaultCollationName() == GBK_CHINESE_CI);
+        Assert.assertTrue(GEOSTD8.getDefaultCollationName() == GEOSTD8_GENERAL_CI);
+        Assert.assertTrue(GREEK.getDefaultCollationName() == GREEK_GENERAL_CI);
+        Assert.assertTrue(HEBREW.getDefaultCollationName() == HEBREW_GENERAL_CI);
+        Assert.assertTrue(HP8.getDefaultCollationName() == HP8_ENGLISH_CI);
+        Assert.assertTrue(KEYBCS2.getDefaultCollationName() == KEYBCS2_GENERAL_CI);
+        Assert.assertTrue(KOI8R.getDefaultCollationName() == KOI8R_GENERAL_CI);
+        Assert.assertTrue(KOI8U.getDefaultCollationName() == KOI8U_GENERAL_CI);
+        Assert.assertTrue(LATIN1.getDefaultCollationName() == LATIN1_SWEDISH_CI);
+        Assert.assertTrue(LATIN2.getDefaultCollationName() == LATIN2_GENERAL_CI);
+        Assert.assertTrue(LATIN5.getDefaultCollationName() == LATIN5_TURKISH_CI);
+        Assert.assertTrue(LATIN7.getDefaultCollationName() == LATIN7_GENERAL_CI);
+        Assert.assertTrue(MACCE.getDefaultCollationName() == MACCE_GENERAL_CI);
+        Assert.assertTrue(MACROMAN.getDefaultCollationName() == MACROMAN_GENERAL_CI);
+        Assert.assertTrue(SJIS.getDefaultCollationName() == SJIS_JAPANESE_CI);
+        Assert.assertTrue(SWE7.getDefaultCollationName() == SWE7_SWEDISH_CI);
+        Assert.assertTrue(TIS620.getDefaultCollationName() == TIS620_THAI_CI);
+        Assert.assertTrue(UCS2.getDefaultCollationName() == UCS2_GENERAL_CI);
+        Assert.assertTrue(UJIS.getDefaultCollationName() == UJIS_JAPANESE_CI);
+        Assert.assertTrue(UTF16.getDefaultCollationName() == UTF16_GENERAL_CI);
+        Assert.assertTrue(UTF16LE.getDefaultCollationName() == UTF16LE_GENERAL_CI);
+        Assert.assertTrue(UTF32.getDefaultCollationName() == UTF32_GENERAL_CI);
+        Assert.assertTrue(UTF8MB3.getDefaultCollationName() == UTF8_GENERAL_CI);
+        Assert.assertTrue(UTF8MB4.getDefaultCollationName() == UTF8MB4_0900_AI_CI);
     }
 }

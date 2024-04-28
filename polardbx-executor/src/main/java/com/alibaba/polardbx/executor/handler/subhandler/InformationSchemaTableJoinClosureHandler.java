@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.statis.PlanAccessStat;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTableJoinClosure;
@@ -73,7 +74,7 @@ public class InformationSchemaTableJoinClosureHandler extends BaseVirtualViewSub
         }
 
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(showTableJoinClosureAction, executionContext.getSchemaName());
+            SyncManagerHelper.sync(showTableJoinClosureAction, executionContext.getSchemaName(), SyncScope.ALL);
         List<PlanAccessStat.PlanJoinClosureStatInfo> statInfos = PlanAccessStat.collectTableJoinClosureStat(results);
         for (int i = 0; i < statInfos.size(); i++) {
             PlanAccessStat.PlanJoinClosureStatInfo statInfo = statInfos.get(i);

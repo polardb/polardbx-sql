@@ -55,6 +55,11 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
     }
 
+    public ParameterizedTestCommon(String caseName, String targetEnvFile, int sqlIndex, String sql, String expectedPlan,
+                                   String lineNum) {
+        super(caseName, targetEnvFile, sqlIndex, sql, expectedPlan, lineNum);
+    }
+
     public void setExplainCost(boolean explainCost) {
         this.explainCost = explainCost;
     }
@@ -62,7 +67,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
     /**
      * show the cost of plan
      */
-    boolean explainCost = false;
+    protected boolean explainCost = false;
 
     @Override
     protected String getPlan(String testSql) {
@@ -88,6 +93,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
             executionContext.getCalcitePlanOptimizerTrace()
                 .ifPresent(x -> x.setSqlExplainLevel(SqlExplainLevel.ALL_ATTRIBUTES));
         }
+        executionContext.setInternalSystemSql(false);
 
         hintPlanner.collectAndPreExecute(ast, cmdBean, false, executionContext);
         processParameter(sqlParameterized, executionContext);
@@ -106,7 +112,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         return code;
     }
 
-    private void processParameter(SqlParameterized sqlParameterized, ExecutionContext executionContext) {
+    protected void processParameter(SqlParameterized sqlParameterized, ExecutionContext executionContext) {
         if (sqlParameterized != null) {
             List<Object> p = sqlParameterized.getParameters();
             for (int i = 0; i < p.size(); i++) {
@@ -131,7 +137,7 @@ public abstract class ParameterizedTestCommon extends PlanTestCommon {
         }
     }
 
-    private void setSysDefVariable(List<Object> params) {
+    protected void setSysDefVariable(List<Object> params) {
         for (int i = 0; i < params.size(); i++) {
             Object param = params.get(i);
             if (param instanceof DrdsParameterizeSqlVisitor.SysDefVariable) {

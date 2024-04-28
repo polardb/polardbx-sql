@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -66,6 +67,7 @@ public class AlterTableRemovePartitioningValidateTask extends BaseValidateTask {
         TableValidator.validateTableExistence(schemaName, primaryTable, executionContext);
         GsiValidator.validateGsiSupport(schemaName, executionContext);
         GsiValidator.validateCreateOnGsi(schemaName, indexTableName, executionContext);
+        TableValidator.validateTableWithCCI(schemaName, primaryTable, executionContext, SqlKind.ALTER_TABLE);
 
         if (addGsiNames != null) {
             addGsiNames.forEach(e -> GsiValidator.validateCreateOnGsi(schemaName, e, executionContext));

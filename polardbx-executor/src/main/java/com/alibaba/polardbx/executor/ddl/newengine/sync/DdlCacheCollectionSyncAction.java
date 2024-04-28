@@ -22,8 +22,8 @@ import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineResourceManager;
-import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
+import com.alibaba.polardbx.gms.metadb.misc.PersistentReadWriteLock;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.base.Joiner;
@@ -58,8 +58,8 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
 
         // All DDls
         List<DdlContext> ddlAcquiringLocksList = DdlEngineResourceManager.getAllDdlAcquiringLocks(schemaName);
-        if (CollectionUtils.isNotEmpty(ddlAcquiringLocksList)){
-            for(DdlContext ddlContext: ddlAcquiringLocksList){
+        if (CollectionUtils.isNotEmpty(ddlAcquiringLocksList)) {
+            for (DdlContext ddlContext : ddlAcquiringLocksList) {
                 resultCursor.addRow(buildRowFromDdlContext(ddlContext, serverInfo));
             }
         }
@@ -90,7 +90,8 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
 
     private Object[] buildRowFromDdlContext(DdlContext ddlContext, String nodeInfo) {
         Set<String> blockers =
-            lockManager.queryBlocker(Sets.union(Sets.newHashSet(ddlContext.getSchemaName()), ddlContext.getResources()));
+            lockManager.queryBlocker(
+                Sets.union(Sets.newHashSet(ddlContext.getSchemaName()), ddlContext.getResources()));
         return new Object[] {
             ENGINE_TYPE_DAG,
             nodeInfo,
@@ -128,8 +129,8 @@ public class DdlCacheCollectionSyncAction implements ISyncAction {
         this.schemaName = schemaName;
     }
 
-    private String setToString(Set<String> lockSet){
-        if(CollectionUtils.isEmpty(lockSet)){
+    private String setToString(Set<String> lockSet) {
+        if (CollectionUtils.isEmpty(lockSet)) {
             return "";
         }
         return Joiner.on(",").join(lockSet);

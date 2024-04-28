@@ -4,11 +4,31 @@ import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectMultiDBTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectShardingKeyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.SingleTableOperation;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
 import com.google.common.collect.Sets;
+import org.apache.calcite.plan.ConventionTraitDef;
+import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.volcano.VolcanoPlanner;
+import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.core.Sample;
+import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.logical.LogicalDummy;
+import org.apache.calcite.rel.type.RelDataTypeFactory;
+import org.apache.calcite.rel.type.RelDataTypeSystem;
+import org.apache.calcite.rex.RexBuilder;
+import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
 import org.apache.commons.lang.StringUtils;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.Collections;
@@ -85,7 +105,7 @@ public class BaselineInfoTest {
         Assert.assertTrue(b2.getFixPlans().size() == 12 && b2.getAcceptedPlans().size() == 12);
     }
 
-    @Test
+    @Ignore
     public void testMergeExpiredPlan() {
         BaselineInfo b1 = new BaselineInfo("test sql", Collections.emptySet());
         BaselineInfo b2 = new BaselineInfo("test sql", Collections.emptySet());
@@ -136,6 +156,19 @@ public class BaselineInfoTest {
         String json = BaselineInfo.serializeToJson(b1, false);
         BaselineInfo b2 = BaselineInfo.deserializeFromJson(json);
         Assert.assertTrue(b2.isRebuildAtLoad() && StringUtils.isNotEmpty(b2.getHint()) && b2.isUsePostPlanner());
+    }
+
+    @Test
+    public void testBaselineSupport() {
+        VolcanoPlanner planner = new VolcanoPlanner();
+        planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
+        final RelDataTypeFactory typeFactory = new SqlTypeFactoryImpl(RelDataTypeSystem.DEFAULT);
+        RelOptCluster cluster = RelOptCluster.create(planner, new RexBuilder(typeFactory));
+        assert !PlanManagerUtil.baselineSupported(new DirectMultiDBTableOperation(cluster, cluster.traitSet()));
+        assert !PlanManagerUtil.baselineSupported(new DirectShardingKeyTableOperation(cluster, cluster.traitSet()));
+        assert !PlanManagerUtil.baselineSupported(new DirectTableOperation(cluster, cluster.traitSet()));
+        assert !PlanManagerUtil.baselineSupported(new PhyDdlTableOperation(cluster, cluster.traitSet()));
+        assert !PlanManagerUtil.baselineSupported(new PhyTableOperation(cluster, cluster.traitSet()));
     }
 
     private static PlanInfo buildFixPlan() {

@@ -198,7 +198,7 @@ public class SqlSubPartitionBy extends SqlCall {
         int partColCnt = partColTypes.size();
 
         boolean allowNoPartBndVal = this instanceof SqlSubPartitionByHash;
-        // Validate subpartitions template
+        // Validate subpartition template
         SqlSubPartitionBy.validatePartitionDefs(validator, scope, this.getSubPartitions(), partColCnt, allowNoPartBndVal);
 
         // Validate partitionsCount

@@ -1,0 +1,39 @@
+## DISABLE_FAST_SQL_PARSER
+
+set enable_mpp=true;
+
+CREATE TABLE `t2` (
+`c1` int(11) DEFAULT NULL,
+`c2` int(11) NOT NULL,
+PRIMARY KEY (`c2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c2`)
+PARTITIONS 3;
+
+CREATE TABLE `t1` (
+`c1` int(11) NOT NULL,
+`c2` int(11) DEFAULT NULL,
+`c3` int(11) DEFAULT NULL,
+PRIMARY KEY (`c1`),
+LOCAL KEY `k_c1` (`c1`),
+LOCAL KEY `k_c2` (`c2`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`c1`)
+PARTITIONS 3;
+
+insert into t1 values (1,1,1), (2,2,2), (3,3,3), (4,4,4), (5,5,5);
+insert into t2 values (1,1), (2,2), (3,3), (5,5);
+
+analyze table t1;
+analyze table t2;
+
+select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_bka_join=false workload_type=tp)*/select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_bka_join=false enable_master_mpp=false workload_type=ap PARALLELISM=4)*/ select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_bka_join=false enable_master_mpp=false workload_type=ap PARALLELISM=1)*/ select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_bka_join=false enable_master_mpp=true workload_type=ap)*/ select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_master_mpp=false workload_type=ap)*/ select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_master_mpp=true workload_type=ap)*/ select row_number() over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+
+/*+TDDL:cmd_extra(enable_sort_window=false enable_bka_join=false workload_type=ap PARALLELISM=4)*/ select sum(tt1.c1) over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;
+/*+TDDL:cmd_extra(enable_hash_window=false enable_bka_join=false workload_type=ap PARALLELISM=4)*/ select sum(tt1.c1) over () AS num from (select c1 from t1 ) tt1 join (select c1 from t2 ) tt2 on tt1.c1 = tt2.c1;

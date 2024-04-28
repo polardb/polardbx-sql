@@ -1,0 +1,80 @@
+## DISABLE_FAST_SQL_PARSER
+
+#  * <pre>
+#  * TINYINT (1 Byte): -128~127
+#  * TINYINT UNSIGNED (1 Byte): 0~255
+#  * SMALLINT (2 Bytes): -32768~32767
+#  * SMALLINT UNSIGNED (2 Bytes): 0~65535
+#  * MEDIUMINT (3 Bytes): -8388608~8388607
+#  * MEDIUMINT UNSIGNED (3 Bytes): 0~16777215
+#  * INT (4 Bytes): -2147483648~2147483647
+#  * INT UNSIGNED (4 Bytes): 0~4294967295
+#  * BIGINT (8 Bytes): -9223372036854775808 ~ 9223372036854775807
+#  * BIGINT UNSIGNED (8 Bytes): 0~18446744073709551615
+
+
+CREATE TABLE `k_u8bin_ss` (
+`c1` varchar(32) collate utf8_bin,
+`c2` varchar(32) collate utf8_bin,
+`coll` varchar(32) collate utf8mb4_general_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by hash(substr(c1,-3))
+partitions 16;
+insert into k_u8bin_ss(c1,c2)
+values
+('123456Abc','123456Abc'),
+('123456aBc','123456aBc'),
+('123456ABC','123456ABC'),
+('123456abc','123456abc')
+;
+/*TDDL:merge_union=false*/ select c1,substr(c1,-3), c2, substr(c2,-3), part_route('','k_u8bin_ss', c1) from k_u8bin_ss order by c1;
+
+
+CREATE TABLE `ch_u8bin_ss_ss` (
+`c1` varchar(32) collate utf8_bin,
+`c2` varchar(32) collate utf8_bin,
+`coll` varchar(32) collate utf8mb4_general_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-3),substr(c2,-3))
+partitions 16;
+insert into ch_u8bin_ss_ss(c1,c2)
+values
+('123456Abc','123457Abc'),
+('123456aBc','123457aBc'),
+('123456ABC','123457ABC'),
+('123456abc','123457abc')
+;
+/*TDDL:merge_union=false*/ select c1,substr(c1,-3), c2, substr(c2,-3), part_route('','ch_u8bin_ss_ss', c1,c2) from ch_u8bin_ss_ss order by c1;
+
+CREATE TABLE `k_u8gci_ss` (
+`c1` varchar(32) collate utf8_general_ci,
+`c2` varchar(32) collate utf8_general_ci,
+`coll` varchar(32) collate utf8mb4_general_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by hash(substr(c1,-3))
+partitions 16;
+insert into k_u8gci_ss(c1,c2)
+values
+('123456Abc','123456Abc'),
+('123456aBc','123456aBc'),
+('123456ABC','123456ABC'),
+('123456abc','123456abc')
+;
+/*TDDL:merge_union=false*/ select c1,substr(c1,-3), c2, substr(c2,-3), part_route('','k_u8gci_ss', c1) from k_u8gci_ss order by c1;
+
+CREATE TABLE `ch_u8gci_ss_ss` (
+`c1` varchar(32) collate utf8_general_ci,
+`c2` varchar(32) collate utf8_general_ci,
+`coll` varchar(32) collate utf8mb4_general_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-3),substr(c2,-3))
+partitions 16;
+
+insert into ch_u8gci_ss_ss(c1,c2)
+values
+('123456Abc','123457Abc'),
+('123456aBc','123457aBc'),
+('123456ABC','123457ABC'),
+('123456abc','123457abc')
+;
+/*TDDL:merge_union=false*/ select c1,substr(c1,-3), c2, substr(c2,-3), part_route('','ch_u8gci_ss_ss', c1,c2) from ch_u8gci_ss_ss order by c1;

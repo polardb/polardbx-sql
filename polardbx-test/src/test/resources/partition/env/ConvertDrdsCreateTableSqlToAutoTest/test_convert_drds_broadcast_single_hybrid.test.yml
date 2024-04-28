@@ -2,8 +2,6 @@
 ## clear database
 drop database if exists `testConvertDrdsDb`;
 drop database if exists `testConvertDbAuto`;
-drop database if exists `testConvertDbAuto2`;
-drop database if exists `testConvertDbAuto3`;
 
 create database if not exists `testConvertDrdsDb` mode=drds;
 use testConvertDrdsDb;
@@ -66,24 +64,14 @@ insert into tb3 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
 insert into tb4 values(1, "1"),(2,"2"),(3,"3"),(4,"4"),(5,"5"),(6,"6"),(7,"7");
   
 ## real run
-create database testConvertDbAuto like testConvertDrdsDb mode=auto;
-create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
-use testConvertDbAuto;
-select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
-  
-## real run
-create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
-use testConvertDbAuto2;
-select col1 from tb1 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb2 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb3 where col1 > 1 and col1 < 4 order by col1;
-select col1 from tb4 where col1 > 1 and col1 < 4 order by col1;
+create database testConvertDbAuto as testConvertDrdsDb mode=auto;
   
 ## dry run
-create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+create database testConvertDbAuto2 like testConvertDrdsDb mode=auto dry_run=true;
+
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
 
 
 

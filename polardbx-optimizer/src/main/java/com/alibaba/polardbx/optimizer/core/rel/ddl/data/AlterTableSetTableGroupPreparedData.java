@@ -32,6 +32,7 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
     private boolean alignPartitionNameFirst = false;
     private boolean repartition = false;
     private boolean force = false;
+    private boolean implicit = false;
     private Map<String, String> partitionNamesMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public String getTableGroupName() {
@@ -100,5 +101,13 @@ public class AlterTableSetTableGroupPreparedData extends DdlPreparedData {
 
     public void setForce(boolean force) {
         this.force = force;
+    }
+
+    public boolean isImplicit() {
+        return implicit;
+    }
+
+    public void setImplicit(boolean implicit) {
+        this.implicit = implicit;
     }
 }

@@ -54,7 +54,7 @@ public class AsyncTaskQueue {
     }
 
     public Future<?> submit(Runnable runnable) {
-        return executor.submit(schema, null, AsyncTask.build(runnable));
+        return executor.submit(null, null, AsyncTask.build(runnable));
     }
 
     public Future<?> submitRandomBucket(Runnable runnable) {
@@ -177,6 +177,11 @@ public class AsyncTaskQueue {
             schema
         ));
 
+        EventLogger.log(EventType.DEAD_LOCK_DETECTION, String.format(
+            "Deadlock detection task for schema:%s is online",
+            schema
+        ));
+
         return timerTask;
     }
 
@@ -269,6 +274,35 @@ public class AsyncTaskQueue {
 
         timer.scheduleAtFixedRate(timerTask, 0, intervalMs);
         TransactionLogger.info("Scheduled TSO heartbeat task");
+
+        return timerTask;
+    }
+
+    public TimerTask scheduleBestEffortRecoverTask(TransactionExecutor te, GlobalTxLogManager globalTxManager,
+                                                   int interval) {
+        final ScanBestEffortPreparedTask recoverTask = new ScanBestEffortPreparedTask(te, globalTxManager);
+        final ScheduleAsyncTask task = ScheduleAsyncTask.build(recoverTask);
+
+        TimerTask timerTask = new TimerTask() {
+
+            @Override
+            public void run() {
+                if (!task.schedule()) {
+                    logger.warn("Ignore re-submit best-effort recover task");
+                    return;
+                }
+
+                try {
+                    executor.submit(schema, null, task);
+                } catch (Throwable e) {
+                    task.cancel();
+                    logger.error("Submit best-effort recover task failed", e);
+                }
+            }
+        };
+
+        timer.scheduleAtFixedRate(timerTask, 0, interval * 1000L);
+        TransactionLogger.info("Scheduled best-effort transaction recovery task");
 
         return timerTask;
     }

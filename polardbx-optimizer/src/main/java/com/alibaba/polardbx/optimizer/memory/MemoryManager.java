@@ -49,6 +49,8 @@ public class MemoryManager extends AbstractLifecycle {
 
     private long functionCacheLimit = MemorySetting.UNLIMITED_SIZE;
 
+    private int aggHashTableFactor = 1;
+
     public static MemoryManager getInstance() {
         return instance;
     }
@@ -86,6 +88,14 @@ public class MemoryManager extends AbstractLifecycle {
         procedureCacheLimit = Math.round(newGlobalLimit * MemorySetting.PROCEDURE_CACHE_LIMIT);
         functionCacheLimit = Math.round(newGlobalLimit * MemorySetting.FUNCTION_CACHE_LIMIT);
         logger.info("The Global Memory Pool size is  " + FileUtils.byteCountToDisplaySize(newGlobalLimit));
+        // split memory size into three level: <16G, 16G~48G, <48G
+        if (globalLimit < 16L << 30) {
+            aggHashTableFactor = 1;
+        } else if (globalLimit < 48L << 30) {
+            aggHashTableFactor = 10;
+        } else {
+            aggHashTableFactor = 20;
+        }
     }
 
     @Deprecated
@@ -164,5 +174,9 @@ public class MemoryManager extends AbstractLifecycle {
 
     public long getFunctionCacheLimit() {
         return functionCacheLimit;
+    }
+
+    public int getAggHashTableFactor() {
+        return aggHashTableFactor;
     }
 }

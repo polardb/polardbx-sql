@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
@@ -53,7 +54,7 @@ import static com.alibaba.polardbx.qatest.validator.DataOperator.executeErrorAss
  * @author minggong
  */
 
-
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public class TransactionTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();
@@ -136,6 +137,42 @@ public class TransactionTest extends GsiDMLTest {
                 "ERR_GLOBAL_SECONDARY_INDEX_ONLY_SUPPORT_XA");
         } finally {
             tddlConnection.setAutoCommit(true);
+        }
+    }
+
+    @Test
+    public void startNoTransactionTest() throws Exception {
+        tddlConnection.setAutoCommit(false);
+        try {
+            String setSql = "set IGNORE_TRANSACTION_POLICY_NO_TRANSACTION=true";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, setSql);
+            String startSql = "set transaction policy 4";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, startSql);
+
+            String sql = hint + "update " + baseOneTableName + " set float_test=0 where pk=1";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+        } finally {
+            tddlConnection.setAutoCommit(true);
+            String startSql = "set transaction policy 8";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, startSql);
+        }
+
+        tddlConnection.setAutoCommit(false);
+        try {
+            String setSql = "set IGNORE_TRANSACTION_POLICY_NO_TRANSACTION=false";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, setSql);
+            String startSql = "set transaction policy 4";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, startSql);
+
+            String sql = hint + "update " + baseOneTableName + " set float_test=0 where pk=1";
+            executeErrorAssert(tddlConnection,
+                sql,
+                Lists.newArrayList(),
+                "ERR_GLOBAL_SECONDARY_INDEX_ONLY_SUPPORT_XA");
+        } finally {
+            tddlConnection.setAutoCommit(true);
+            String startSql = "set transaction policy 8";
+            JdbcUtil.executeUpdateSuccess(tddlConnection, startSql);
         }
     }
 

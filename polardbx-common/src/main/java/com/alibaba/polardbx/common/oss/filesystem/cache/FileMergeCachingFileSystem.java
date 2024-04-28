@@ -44,7 +44,6 @@ public final class FileMergeCachingFileSystem
     extends CachingFileSystem {
     private final CacheManager cacheManager;
     private final boolean cacheValidationEnabled;
-    private final boolean enableCache;
 
     public FileMergeCachingFileSystem(
         URI uri,
@@ -59,8 +58,6 @@ public final class FileMergeCachingFileSystem
         this.cacheValidationEnabled = cacheValidationEnabled;
 
         setConf(configuration);
-
-        this.enableCache = enableCache;
     }
 
     @Override
@@ -69,7 +66,7 @@ public final class FileMergeCachingFileSystem
             dataTier.open(path),
             cacheManager,
             path,
-            enableCache ? CacheQuota.NO_CACHE_CONSTRAINTS : CacheQuota.DISABLE_CACHE,
+            cacheManager.getMaxCacheQuota(),
             cacheValidationEnabled);
     }
 

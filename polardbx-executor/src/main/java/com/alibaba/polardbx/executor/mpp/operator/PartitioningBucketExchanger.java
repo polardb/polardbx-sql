@@ -16,17 +16,17 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.collect.ImmutableList;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.executor.chunk.ChunkConverter;
 import com.alibaba.polardbx.executor.chunk.Converters;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
-import com.alibaba.polardbx.executor.mpp.operator.PartitionedOutputCollector.HashBucketFunction;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.google.common.collect.ImmutableList;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 
@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class PartitioningBucketExchanger extends LocalExchanger {
-    private final HashBucketFunction bucketGenerator;
+    private final LocalHashBucketFunction bucketGenerator;
     private final List<Integer> partitionChannels;
     private final List<AtomicBoolean> consumings;
     private final ChunkConverter keyConverter;
@@ -70,7 +70,7 @@ public class PartitioningBucketExchanger extends LocalExchanger {
             this.keyConverter = Converters.createChunkConverter(columnIndex, types, keyTypes, context);
         }
         this.totalBucketNum = executors.size() * bucketNum;
-        this.bucketGenerator = new HashBucketFunction(totalBucketNum);
+        this.bucketGenerator = new LocalHashBucketFunction(totalBucketNum);
         this.context = context;
         this.chunkLimit = chunkLimit;
         this.bucketNum = bucketNum;

@@ -21,20 +21,15 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.executor.balancer.action.ActionMovePartition;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMergeTableGroupMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
-import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterJoinGroupAddMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterJoinGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.CleanupEmptyTableGroupTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.JoinGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.MergeTableGroupChangeTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
-import com.alibaba.polardbx.executor.ddl.job.validator.TableGroupValidator;
-import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -45,10 +40,8 @@ import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterJoinGroupPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MergeTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
-import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -71,7 +64,6 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
     protected final ExecutionContext executionContext;
     private static String MOVE_PARTITION_SQL = "alter tablegroup %s move partitions %s";
     private static String MOVE_PARTITIONS = "(%s) to %s";
-
 
     public MergeTableGroupJobFactory(MergeTableGroupPreparedData preparedData,
                                      ExecutionContext executionContext) {
@@ -99,13 +91,14 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         return new MergeTableGroupJobFactory(preparedData, executionContext).create();
     }
 
-    private SubJobTask generateMovePartitionJob(TableGroupConfig sourceTableGroupConfig, Map<String, String> targetLocations) {
+    private SubJobTask generateMovePartitionJob(TableGroupConfig sourceTableGroupConfig,
+                                                Map<String, String> targetLocations) {
         String tableGroupName = sourceTableGroupConfig.getTableGroupRecord().getTg_name();
         sourceTableGroupConfig.getPartitionGroupRecords();
         Map<String, Set<String>> moveActions = new TreeMap<>(String::compareToIgnoreCase);
 
         boolean needMove = false;
-        for(PartitionGroupRecord record: sourceTableGroupConfig.getPartitionGroupRecords()) {
+        for (PartitionGroupRecord record : sourceTableGroupConfig.getPartitionGroupRecords()) {
             String targetDb = targetLocations.get(record.partition_name);
             String targetInst = preparedData.getDbInstMap().get(targetDb);
             if (StringUtils.isEmpty(targetInst)) {
@@ -114,16 +107,17 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
             }
             if (!record.getPhy_db().equalsIgnoreCase(targetDb)) {
                 needMove = true;
-                moveActions.computeIfAbsent(targetInst, o-> new TreeSet<>(String::compareToIgnoreCase)).add(record.getPartition_name());
+                moveActions.computeIfAbsent(targetInst, o -> new TreeSet<>(String::compareToIgnoreCase))
+                    .add(record.getPartition_name());
             }
         }
         if (!needMove) {
-             return null;
+            return null;
         }
 
         StringBuilder sb = new StringBuilder();
-        int i=0;
-        for(Map.Entry<String, Set<String>> entry:moveActions.entrySet()) {
+        int i = 0;
+        for (Map.Entry<String, Set<String>> entry : moveActions.entrySet()) {
             if (i > 0) {
                 sb.append(", ");
             }
@@ -148,8 +142,8 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         for (String tableGroup : preparedData.getSourceTableGroups()) {
             resources.add(concatWithDot(preparedData.getSchemaName(), tableGroup));
         }
-        for(Map.Entry<String, Map<String, Long>> entry : preparedData.getTablesVersion().entrySet()) {
-            for(Map.Entry<String, Long> tableEntry:entry.getValue().entrySet()) {
+        for (Map.Entry<String, Map<String, Long>> entry : preparedData.getTablesVersion().entrySet()) {
+            for (Map.Entry<String, Long> tableEntry : entry.getValue().entrySet()) {
                 resources.add(concatWithDot(preparedData.getSchemaName(), tableEntry.getKey()));
             }
         }
@@ -180,7 +174,7 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         job.addTask(tailTask);
         AlterTableGroupValidateTask targetTableGroupValidateTask = new AlterTableGroupValidateTask(
             preparedData.getSchemaName(), targetTableGroup, preparedData.getTablesVersion().get(targetTableGroup),
-            false, preparedData.getPhysicalGroups());
+            false, preparedData.getPhysicalGroups(), false);
         job.addTask(targetTableGroupValidateTask);
         job.addTaskRelationship(headTask, targetTableGroupValidateTask);
         job.addTaskRelationship(targetTableGroupValidateTask, midTask);
@@ -188,7 +182,8 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         List<String> tableGroups = new ArrayList<>();
         tableGroups.add(targetTableGroup);
         tableGroups.addAll(preparedData.getSourceTableGroups());
-        JoinGroupValidateTask joinGroupValidateTask = new JoinGroupValidateTask(preparedData.getSchemaName(),tableGroups,null,true );
+        JoinGroupValidateTask joinGroupValidateTask =
+            new JoinGroupValidateTask(preparedData.getSchemaName(), tableGroups, null, true);
         job.addTask(joinGroupValidateTask);
         job.addTaskRelationship(headTask, joinGroupValidateTask);
         job.addTaskRelationship(joinGroupValidateTask, midTask);
@@ -197,7 +192,7 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
             AlterTableGroupValidateTask validateTask =
                 new AlterTableGroupValidateTask(preparedData.getSchemaName(), sourceTableGroup,
                     preparedData.getTablesVersion()
-                        .get(sourceTableGroup), true, null);
+                        .get(sourceTableGroup), true, null, false);
             job.addTask(validateTask);
             job.addTaskRelationship(headTask, validateTask);
             job.addTaskRelationship(validateTask, midTask);
@@ -220,7 +215,7 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
                 subJobTask.setParentAcquireResource(true);
             }
             EmptyTask emptyTask = new EmptyTask(preparedData.getSchemaName());
-            DdlTask subJobOrEmptyTask = subJobTask == null? emptyTask:subJobTask;
+            DdlTask subJobOrEmptyTask = subJobTask == null ? emptyTask : subJobTask;
             job.addTask(subJobOrEmptyTask);
             job.addTaskRelationship(midTask, subJobOrEmptyTask);
             job.addTaskRelationship(subJobOrEmptyTask, changeTablesMetaTask);
@@ -251,6 +246,9 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
             job.addTaskRelationship(cleanupEmptyTableGroupTask, tablesSyncTask);
         }
 
+        CdcMergeTableGroupMarkTask cdcMergeTableGroupMarkTask = new CdcMergeTableGroupMarkTask(
+            preparedData.getSchemaName(), targetTableGroup);
+
         List<DdlTask> tableGroupSyncTasks = new ArrayList<>();
         TableGroupSyncTask targetTableGroupSyncTask =
             new TableGroupSyncTask(preparedData.getSchemaName(), targetTableGroup);
@@ -263,8 +261,9 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         for (DdlTask tableGroupSyncTask : tableGroupSyncTasks) {
             job.addTask(tableGroupSyncTask);
             job.addTaskRelationship(tablesSyncTask, tableGroupSyncTask);
-            job.addTaskRelationship(tableGroupSyncTask, tailTask);
+            job.addTaskRelationship(tableGroupSyncTask, cdcMergeTableGroupMarkTask);
         }
+
         job.labelAsHead(headTask);
         job.labelAsTail(tailTask);
         return job;
@@ -275,18 +274,21 @@ public class MergeTableGroupJobFactory extends DdlJobFactory {
         tableGroups.add(tableGroup);
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroup);
         if (tableGroupConfig != null) {
-            for (TablePartRecordInfoContext tablePartCon :GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
-                TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tablePartCon.getTableName());
+            for (String tableName : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
+                TableMeta tableMeta =
+                    executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
                 if (tableMeta.isGsi()) {
                     String primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-                    tableMeta = OptimizerContext.getContext(preparedData.getSchemaName()).getLatestSchemaManager().getTable(primaryTableName);
-                    TableGroupConfig curTableConfig = tableGroupInfoManager.getTableGroupConfigById(tableMeta.getPartitionInfo().getTableGroupId());
-                    if (curTableConfig !=null) {
+                    tableMeta = OptimizerContext.getContext(preparedData.getSchemaName()).getLatestSchemaManager()
+                        .getTable(primaryTableName);
+                    TableGroupConfig curTableConfig =
+                        tableGroupInfoManager.getTableGroupConfigById(tableMeta.getPartitionInfo().getTableGroupId());
+                    if (curTableConfig != null) {
                         tableGroups.add(curTableConfig.getTableGroupRecord().getTg_name());
                     }
                 }
             }
         }
-        return  tableGroups;
+        return tableGroups;
     }
 }

@@ -94,20 +94,24 @@ public class MySQLUnicodeUtils {
         return sliceOutput.slice();
     }
 
-    public static int utf8ToLatin1(byte[] buff, int begin, int end, byte[] res) {
+    public static boolean utf8ToLatin1(byte[] buff, int begin, int end, byte[] res) {
         int pos = 0;
+        boolean isUtf8FromLatin1 = true;
         while (begin < end && pos < res.length) {
             int uc1 = ((int) buff[begin++]) & 0xFF;
             // 0xxxxxxx
             if (uc1 < 0x80) {
                 res[pos++] = (byte) uc1;
             } else if (begin < end) {
+                if (uc1 != 0xC2 && uc1 != 0xC3) {
+                    isUtf8FromLatin1 = false;
+                }
                 int uc2 = ((int) buff[begin++]) & 0xFF;
                 res[pos++] = (byte) (((uc1 & 0x1f) << 6) | (uc2 ^ 0x80));
             } else {
                 res[pos++] = (byte) 0xFF;
             }
         }
-        return pos;
+        return isUtf8FromLatin1;
     }
 }

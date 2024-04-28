@@ -73,4 +73,8 @@ public class StatementMap {
     public void clear() {
         stmtCacheMap.clear();
     }
+
+    public int size() {
+        return stmtCacheMap.size();
+    }
 }

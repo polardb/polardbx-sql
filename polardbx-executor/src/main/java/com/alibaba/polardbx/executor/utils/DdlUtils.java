@@ -18,9 +18,13 @@ package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.ddl.sync.ClearPlanCacheSyncAction;
 import com.alibaba.polardbx.executor.sync.BaselineInvalidatePlanSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 
 public class DdlUtils {
 
@@ -64,7 +68,24 @@ public class DdlUtils {
     }
 
     public static void invalidatePlan(String schema, String table, boolean isForce) {
-        SyncManagerHelper.syncWithDefaultDB(new BaselineInvalidatePlanSyncAction(schema, table, isForce));
+        SyncManagerHelper.syncWithDefaultDB(new BaselineInvalidatePlanSyncAction(schema, table, isForce),
+            SyncScope.ALL);
+    }
+
+    public static void invalidatePlanCache(String schema, String table) {
+        SyncManagerHelper.syncWithDefaultDB(new ClearPlanCacheSyncAction(schema, table), SyncScope.ALL);
+    }
+
+    /**
+     * Generate ddl version id
+     */
+    public static long generateVersionId(ExecutionContext ec) {
+        final ITimestampOracle timestampOracle =
+            ec.getTransaction().getTransactionManagerUtil().getTimestampOracle();
+        if (null == timestampOracle) {
+            throw new UnsupportedOperationException("Do not support timestamp oracle");
+        }
+        return timestampOracle.nextTimestamp();
     }
 
 }

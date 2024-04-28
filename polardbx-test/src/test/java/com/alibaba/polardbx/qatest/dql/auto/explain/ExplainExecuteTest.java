@@ -16,18 +16,18 @@
 
 package com.alibaba.polardbx.qatest.dql.auto.explain;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.google.common.collect.ImmutableList;
+import org.apache.commons.lang.StringUtils;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.Arrays;
 import java.util.List;
+
+import static com.google.common.truth.Truth.assertThat;
 
 public class ExplainExecuteTest extends ReadBaseTestCase {
 
@@ -35,8 +35,6 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
     public boolean usingNewPartDb() {
         return true;
     }
-
-    private static final Log log = LogFactory.getLog(ExplainExecuteTest.class);
 
     @Parameterized.Parameters(name = "{index}:table0={0},table1={1}")
     public static List<String[]> prepareDate() {
@@ -53,21 +51,8 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainSelectTest() {
-        String sql = "explain execute select * from " + baseOneTableName;
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize > 0);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "select * from " + baseOneTableName;
+        assertThat(explainExecuteXplan(sql)).isFalse();
     }
 
     /**
@@ -75,40 +60,8 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainSelectWithPartitionFilterTest() {
-        String sql = "explain execute select * from " + baseOneTableName + " where pk=1";
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra != null && extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
-
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery("/*+TDDL:cmd_extra(CONN_POOL_XPROTO_XPLAN=false)*/" + sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "select * from " + baseOneTableName + " where pk=1";
+        assertThat(explainExecuteXplan(sql)).isEqualTo(useXproto(tddlConnection));
     }
 
     /**
@@ -116,44 +69,14 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainUpdateTest() {
-        String sql = "explain execute update " + baseOneTableName + " set varchar_test='a'";
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "update " + baseOneTableName + " set varchar_test='a'";
+        assertThat(explainExecuteXplan(sql)).isFalse();
     }
 
     @Test
     public void explainJoinTest() {
-        String sql = "explain execute select * from %s a join %s b on a.varchar_test = b.varchar_test and a.pk=1";
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(String.format(sql, baseOneTableName, baseTwoTableName));
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize > 0);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "select * from %s a join %s b on a.varchar_test = b.varchar_test and a.pk=1";
+        assertThat(explainExecuteXplan(String.format(sql, baseOneTableName, baseTwoTableName))).isFalse();
     }
 
     /**
@@ -161,23 +84,8 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainUpdateWithPartitionFilterTest() {
-        String sql = "explain execute update " + baseOneTableName + " set varchar_test='a' where pk=1";
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "update " + baseOneTableName + " set varchar_test='a' where pk=1";
+        assertThat(explainExecuteXplan(sql)).isFalse();
     }
 
     /**
@@ -185,23 +93,8 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainDeleteTest() {
-        String sql = "explain execute delete " + baseOneTableName;
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
-            }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+        String sql = "delete " + baseOneTableName;
+        assertThat(explainExecuteXplan(sql)).isFalse();
     }
 
     /**
@@ -209,22 +102,25 @@ public class ExplainExecuteTest extends ReadBaseTestCase {
      */
     @Test
     public void explainDeleteWithPartitionFilterTest() {
-        String sql = "explain execute delete " + baseOneTableName + " where varchar_test='a'";
-        try {
-            Statement statement = tddlConnection.createStatement();
-            ResultSet rs = statement.executeQuery(sql);
-            int rowsize = 0;
-            while (rs.next()) {
-                String actualExplainResult = rs.getString("select_type");
-                Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra == null || !extra.contains("XPlan"));
-                rowsize++;
+        String sql = "delete " + baseOneTableName + " where varchar_test='a'";
+        assertThat(explainExecuteXplan(sql)).isFalse();
+    }
+
+    private boolean explainExecuteXplan(String sql) {
+        final List<List<String>> res =
+            JdbcUtil.getAllStringResult(JdbcUtil.executeQuery("explain execute " + sql, tddlConnection), false,
+                ImmutableList.of());
+        boolean useXplan = (!StringUtils.isEmpty(res.get(0).get(11))) && res.get(0).get(11).contains("Using XPlan");
+        for (List<String> result : res) {
+            assertThat(useXplan == ((!StringUtils.isEmpty(result.get(11))) && result.get(11).contains("Using XPlan")))
+                .isTrue();
+            if (useXplan) {
+                assertThat(result.get(5)).contains(result.get(6));
+                assertThat(result.get(6)).isNotEmpty();
+                assertThat(Double.valueOf(result.get(10))).isAtMost(100D);
+                assertThat(Double.valueOf(result.get(10))).isAtLeast(0D);
             }
-            Assert.assertTrue(rowsize == 1);
-        } catch (Exception e) {
-            log.error(e.getMessage());
-            throw new RuntimeException(e);
         }
+        return useXplan;
     }
 }

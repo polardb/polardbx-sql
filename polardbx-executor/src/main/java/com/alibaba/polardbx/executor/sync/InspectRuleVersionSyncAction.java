@@ -62,7 +62,9 @@ public class InspectRuleVersionSyncAction implements ISyncAction {
     @Override
     public ResultCursor sync() {
         ArrayResultCursor resultCursor = new ArrayResultCursor("RULE_INFO");
+
         handleGMS(resultCursor);
+
         return resultCursor;
     }
 
@@ -83,7 +85,7 @@ public class InspectRuleVersionSyncAction implements ISyncAction {
         String isReadOnly = "";
         if ((localNode != null && localNode.instType != ServerInfoRecord.INST_TYPE_MASTER
             && localNode.instType != ServerInfoRecord.INST_TYPE_STANDBY) ||
-            (localNode == null && ConfigDataMode.isSlaveMode())) {
+            (localNode == null && ConfigDataMode.isReadOnlyMode())) {
             isReadOnly = "Y";
         }
 

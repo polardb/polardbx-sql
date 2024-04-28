@@ -234,9 +234,9 @@ public class PlanInvalidateTest extends DDLBaseNewDBTestCase {
             c2.createStatement().execute(createTable);
 
             // make select plan into baseline
-            String sql = "baseline add sql /*TDDL:a()*/select * from " + tableName + " where id=15";
+            String sql = "baseline add sql /*TDDL:a()*/select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
-            sql = "select * from " + tableName + " where id=15";
+            sql = "select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
             String explain = getExplainResult(c, sql);
 
@@ -299,9 +299,9 @@ public class PlanInvalidateTest extends DDLBaseNewDBTestCase {
             c2.createStatement().execute(createTable);
 
             // make select plan into baseline
-            String sql = "baseline add sql /*TDDL:a()*/select * from " + tableName + " where id=15";
+            String sql = "baseline add sql /*TDDL:a()*/select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
-            sql = "select * from " + tableName + " where id=15";
+            sql = "select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
             String explain = getExplainResult(c, sql);
 
@@ -363,9 +363,9 @@ public class PlanInvalidateTest extends DDLBaseNewDBTestCase {
             c2.createStatement().execute(createTable);
 
             // make select plan into baseline
-            String sql = "baseline fix sql /*TDDL:a()*/select * from " + tableName + " where id=15";
+            String sql = "baseline fix sql /*TDDL:a()*/select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
-            sql = "select * from " + tableName + " where id=15";
+            sql = "select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
             String explain = getExplainResult(c, sql);
 
@@ -426,9 +426,9 @@ public class PlanInvalidateTest extends DDLBaseNewDBTestCase {
             c2.createStatement().execute(createTable);
 
             // make select plan into baseline
-            String sql = "baseline fix sql /*TDDL:a()*/select * from " + tableName + " where id=15";
+            String sql = "baseline fix sql /*TDDL:a()*/select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
-            sql = "select * from " + tableName + " where id=15";
+            sql = "select * from " + tableName + " where id>15";
             c.createStatement().executeQuery(sql);
             String explain = getExplainResult(c, sql);
 

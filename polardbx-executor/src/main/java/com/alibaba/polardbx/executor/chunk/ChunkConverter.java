@@ -43,4 +43,8 @@ public class ChunkConverter implements Function<Chunk, Chunk> {
         }
         return new Chunk(blocks);
     }
+
+    public int columnWidth() {
+        return columnIndexes.length;
+    }
 }

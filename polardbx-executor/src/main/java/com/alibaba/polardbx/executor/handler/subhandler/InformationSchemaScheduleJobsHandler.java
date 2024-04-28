@@ -17,22 +17,19 @@
 package com.alibaba.polardbx.executor.handler.subhandler;
 
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaScheduleJobs;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.sql.Timestamp;
-import java.time.Instant;
-import java.time.ZoneId;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 
@@ -54,8 +51,13 @@ public class InformationSchemaScheduleJobsHandler extends BaseVirtualViewSubClas
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         List<ScheduledJobsRecord> jobs = ScheduledJobsManager.queryScheduledJobsRecord();
         for (ScheduledJobsRecord scheduledJob : jobs) {
-            ScheduledJobExecutorType executorType =
-                ScheduledJobExecutorType.valueOf(scheduledJob.getExecutorType());
+            ScheduledJobExecutorType executorType;
+            try {
+                executorType = ScheduledJobExecutorType.valueOf(scheduledJob.getExecutorType());
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+
             List<ExecutableScheduledJob> eJobList =
                 ScheduledJobsManager.getScheduledJobResult(scheduledJob.getScheduleId());
             ExecutableScheduledJob lastEJob = findLastJob(eJobList);

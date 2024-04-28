@@ -90,9 +90,9 @@ public class SqlCountAggFunction extends SqlAggFunction {
       SqlValidator validator,
       SqlValidatorScope scope,
       SqlCall call) {
-    // Check for COUNT(*) function.  If it is we don't
+    // Check for COUNT(*) or COUNT(1) function.  If it is we don't
     // want to try and derive the "*"
-    if (call.isCountStar()) {
+    if (call.isCountStar() || call.isCountLiteral()) {
       return validator.getTypeFactory().createSqlType(
           SqlTypeName.BIGINT);
     }

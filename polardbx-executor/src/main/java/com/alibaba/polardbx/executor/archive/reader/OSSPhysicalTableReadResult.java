@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
 import com.alibaba.polardbx.executor.chunk.SliceBlock;
+import com.alibaba.polardbx.executor.chunk.TimestampBlock;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.optimizer.config.table.FileMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -36,9 +37,10 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.TimestampUtils;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.type.RelDataType;
@@ -47,6 +49,7 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.TimeZone;
 
 public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult {
     private List<ORCReaderTask> orcReaderTaskList;
@@ -57,6 +60,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
 
     private int taskIndex;
     private volatile boolean isFinished;
+    private TimeZone timeZone;
 
     public OSSPhysicalTableReadResult(OSSReadOption readOption, ExecutionContext executionContext,
                                       List<AggregateCall> aggCalls, List<RelColumnOrigin> aggColumns,
@@ -85,6 +89,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
 
         this.columnProviders = readOption.getOssColumnTransformer().getTargetColumnProvides();
         this.sessionProperties = SessionProperties.fromExecutionContext(context);
+        this.timeZone = TimestampUtils.getTimeZone(context);
     }
 
     public void init() {
@@ -120,7 +125,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                     preAllocatedChunk,
                     filterBitmap,
                     outProject,
-                    context);
+                    context, 0, null);
                 if (result == null) {
                     continue;
                 }
@@ -141,6 +146,9 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_ZERO_COPY);
         boolean compatible =
             context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
+        boolean useSelection =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_COLUMNAR_SCAN_SELECTION);
+
         long resultRows;
         RandomAccessBlock[] blocksForCompute = new RandomAccessBlock[filterBitmap.length];
 
@@ -210,29 +218,32 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
                         // case 2. use block from cacheBlock
                         blocks[i] = cachedBlock;
                     } else if (delayMaterialization && cachedBlock instanceof DecimalBlock) {
+
                         // case 3. decimal block delay materialization
-                        DecimalBlock decimalBlock = (DecimalBlock) cachedBlock;
-                        blocks[i] =
-                            new DecimalBlock(DataTypes.DecimalType, decimalBlock.getMemorySegments(),
-                                decimalBlock.nulls(), decimalBlock.hasNull(), selSize,
-                                selection, decimalBlock.getState());
+                        DecimalBlock decimalBlock = cachedBlock.cast(DecimalBlock.class);
+                        blocks[i] = DecimalBlock.from(decimalBlock, selSize, selection, useSelection);
+
                     } else if (delayMaterialization && cachedBlock instanceof SliceBlock) {
                         // case 4. slice block delay materialization
-                        blocks[i] = new SliceBlock((SliceType) ((SliceBlock) cachedBlock).getType(), 0, selSize,
-                            ((SliceBlock) cachedBlock).nulls(), ((SliceBlock) cachedBlock).offsets(),
-                            ((SliceBlock) cachedBlock).data(), selection, compatible);
+                        blocks[i] = SliceBlock.from(cachedBlock.cast(SliceBlock.class), selSize, selection, compatible,
+                            useSelection);
+
                     } else if (delayMaterialization && cachedBlock instanceof DateBlock) {
                         // case 5. date block delay materialization
-                        DateBlock dateBlock = (DateBlock) cachedBlock;
-                        blocks[i] =
-                            new DateBlock(0, selSize, dateBlock.nulls(), dateBlock.getPacked(), dateBlock.getType(),
-                                dateBlock.getTimezone(), selection);
+                        DateBlock dateBlock = cachedBlock.cast(DateBlock.class);
+                        blocks[i] = DateBlock.from(dateBlock, selSize, selection, useSelection);
+
+                    } else if (delayMaterialization && cachedBlock instanceof TimestampBlock) {
+                        // case 5. date block delay materialization
+                        TimestampBlock timestampBlock = cachedBlock.cast(TimestampBlock.class);
+                        blocks[i] = TimestampBlock.from(timestampBlock, selSize, selection, useSelection, timeZone);
+
                     } else if (delayMaterialization && cachedBlock instanceof IntegerBlock) {
+
                         // case 6. integer block delay materialization
-                        IntegerBlock integerBlock = (IntegerBlock) cachedBlock;
-                        blocks[i] =
-                            new IntegerBlock(integerBlock.getType(), integerBlock.intArray(), integerBlock.nulls(),
-                                integerBlock.hasNull(), selSize, selection);
+                        IntegerBlock integerBlock = cachedBlock.cast(IntegerBlock.class);
+                        blocks[i] = IntegerBlock.from(integerBlock, selSize, selection, useSelection);
+
                     } else {
                         // case 7. normal
                         for (int j = 0; j < selSize; j++) {
@@ -270,7 +281,7 @@ public class OSSPhysicalTableReadResult extends SimpleOSSPhysicalTableReadResult
             }
 
             Chunk result = next(buffer, readOption.getOssColumnTransformer(),
-                inProjectDataTypeList, blockBuilders, context);
+                inProjectDataTypeList, blockBuilders, context, 0, null);
             if (result == null) {
                 continue;
             }

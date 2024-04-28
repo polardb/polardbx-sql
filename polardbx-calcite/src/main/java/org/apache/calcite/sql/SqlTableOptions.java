@@ -26,45 +26,44 @@ import org.apache.calcite.util.ImmutableNullableList;
 
 /**
  * @author chenmo.cm
- * @date 2018/12/13 5:38 PM
  */
 public class SqlTableOptions extends SqlCall {
 
-    private static final SqlOperator OPERATOR                  = new SqlSpecialOperator("TABLE OPTIONS",
-                                                                   SqlKind.TABLE_OPTIONS);
-    private SqlIdentifier            engine;
-    private SqlNumericLiteral        autoIncrement;
-    private SqlCall                  avgRowLength;
-    private SqlIdentifier            charSet;
-    private Boolean                  defaultCharset;
+    private static final SqlOperator OPERATOR = new SqlSpecialOperator("TABLE OPTIONS",
+        SqlKind.TABLE_OPTIONS);
+    private SqlIdentifier engine;
+    private SqlNumericLiteral autoIncrement;
+    private SqlNumericLiteral avgRowLength;
+    private SqlIdentifier charSet;
+    private Boolean defaultCharset;
     /**
      * 这里需要区分带charset的collate还是不带charset的collate
      */
-    private SqlIdentifier            collateWithCharset;
-    private Boolean                  defaultCollateWithCharset;
-    private SqlIdentifier            collation;
-    private Boolean                  defaultCollate;
-    private SqlLiteral               checkSum;
-    private SqlCharStringLiteral     comment;
-    private SqlCharStringLiteral     connection;
-    private SqlCharStringLiteral     dataDir;
-    private SqlCharStringLiteral     indexDir;
-    private SqlLiteral               delayKeyWrite;
-    private InsertMethod             insertMethod;
-    private SqlCall                  keyBlockSize;
-    private SqlCall                  maxRows;
-    private SqlCall                  minRows;
-    private PackKeys                 packKeys;
-    private SqlCharStringLiteral     password;
-    private RowFormat                rowFormat;
-    private StatsAutoRecalc          statsAutoRecalc;
-    private StatsPersistent          statsPersistent;
-    private SqlCall                  statsSamplePages;
-    private SqlIdentifier            tablespaceName;
-    private TableSpaceStorage        tableSpaceStorage;
-    private List<SqlIdentifier>      union;
-    private Boolean                  broadcast;
-    private SqlIdentifier            algorithm;
+    private SqlIdentifier collateWithCharset;
+    private Boolean defaultCollateWithCharset;
+    private SqlIdentifier collation;
+    private Boolean defaultCollate;
+    private SqlLiteral checkSum;
+    private SqlCharStringLiteral comment;
+    private SqlCharStringLiteral connection;
+    private SqlCharStringLiteral dataDir;
+    private SqlCharStringLiteral indexDir;
+    private SqlLiteral delayKeyWrite;
+    private InsertMethod insertMethod;
+    private SqlCall keyBlockSize;
+    private SqlNumericLiteral maxRows;
+    private SqlNumericLiteral minRows;
+    private PackKeys packKeys;
+    private SqlCharStringLiteral password;
+    private RowFormat rowFormat;
+    private StatsAutoRecalc statsAutoRecalc;
+    private StatsPersistent statsPersistent;
+    private SqlCall statsSamplePages;
+    private SqlIdentifier tablespaceName;
+    private TableSpaceStorage tableSpaceStorage;
+    private List<SqlIdentifier> union;
+    private Boolean broadcast;
+    private SqlIdentifier algorithm;
 
     // table_option:
     // ENGINE [=] engine_name
@@ -87,7 +86,7 @@ public class SqlTableOptions extends SqlCall {
     // | ROW_FORMAT [=] {DEFAULT|DYNAMIC|FIXED|COMPRESSED|REDUNDANT|COMPACT}
     // | UNION [=] (tbl_name[,tbl_name]...)
     // | ALGORITHM [=] algorithm_name
-    public SqlTableOptions(SqlParserPos pos){
+    public SqlTableOptions(SqlParserPos pos) {
         super(pos);
     }
 
@@ -133,7 +132,64 @@ public class SqlTableOptions extends SqlCall {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        super.unparse(writer, leftPrec, rightPrec);
+        writer.print(optionToString());
+        //super.unparse(writer, leftPrec, rightPrec);
+    }
+
+    public String optionToString() {
+        StringBuilder sb = new StringBuilder();
+        appendOption(sb, "ENGINE", engine);
+        appendOption(sb, "AUTO_INCREMENT", autoIncrement);
+        appendOption(sb, "AVG_ROW_LENGTH", avgRowLength);
+        appendOption(sb, "CHARACTER SET", charSet);
+        appendOption(sb, "DEFAULT CHARSET", defaultCharset);
+        appendOption(sb, "COLLATE", collateWithCharset);
+        appendOption(sb, "DEFAULT COLLATE", defaultCollateWithCharset);
+        appendOption(sb, "COLLATION", collation);
+        appendOption(sb, "DEFAULT COLLATE", defaultCollate);
+        appendOption(sb, "CHECKSUM", checkSum);
+        appendOption(sb, "COMMENT", comment, true);
+        appendOption(sb, "CONNECTION", connection, true);
+        appendOption(sb, "DATA DIRECTORY", dataDir, true);
+        appendOption(sb, "INDEX DIRECTORY", indexDir, true);
+        appendOption(sb, "DELAY_KEY_WRITE", delayKeyWrite);
+        appendOption(sb, "INSERT_METHOD", insertMethod);
+        appendOption(sb, "KEY_BLOCK_SIZE", keyBlockSize);
+        appendOption(sb, "MAX_ROWS", maxRows);
+        appendOption(sb, "MIN_ROWS", minRows);
+        appendOption(sb, "PACK_KEYS", packKeys);
+        appendOption(sb, "PASSWORD", password, true);
+        appendOption(sb, "ROW_FORMAT", rowFormat);
+        appendOption(sb, "STATS_AUTO_RECALC", statsAutoRecalc);
+        appendOption(sb, "STATS_PERSISTENT", statsPersistent);
+        appendOption(sb, "STATS_SAMPLE_PAGES", statsSamplePages);
+        appendOption(sb, "TABLESPACE", tablespaceName);
+        appendOption(sb, "STORAGE", tableSpaceStorage);
+        appendOption(sb, "UNION", union);
+        appendOption(sb, "BROADCAST", broadcast);
+        appendOption(sb, "ALGORITHM", algorithm);
+
+        if (sb.length() > 2) {
+            sb.setLength(sb.length() - 2);
+        }
+
+        return sb.toString();
+    }
+
+    private void appendOption(StringBuilder sb, String optionName, Object value) {
+        appendOption(sb, optionName, value, false);
+    }
+
+    private void appendOption(StringBuilder sb, String optionName, Object value, boolean isString) {
+        if (value != null) {
+            sb.append(optionName).append(" = ");
+            if (isString) {
+                sb.append("'").append(value.toString().replace("'", "\\'")).append("'");
+            } else {
+                sb.append(value);
+            }
+            sb.append(", ");
+        }
     }
 
     public SqlIdentifier getEngine() {
@@ -152,11 +208,11 @@ public class SqlTableOptions extends SqlCall {
         this.autoIncrement = autoIncrement;
     }
 
-    public SqlCall getAvgRowLength() {
+    public SqlNumericLiteral getAvgRowLength() {
         return avgRowLength;
     }
 
-    public void setAvgRowLength(SqlCall avgRowLength) {
+    public void setAvgRowLength(SqlNumericLiteral avgRowLength) {
         this.avgRowLength = avgRowLength;
     }
 
@@ -256,19 +312,19 @@ public class SqlTableOptions extends SqlCall {
         this.keyBlockSize = keyBlockSize;
     }
 
-    public SqlCall getMaxRows() {
+    public SqlNumericLiteral getMaxRows() {
         return maxRows;
     }
 
-    public void setMaxRows(SqlCall maxRows) {
+    public void setMaxRows(SqlNumericLiteral maxRows) {
         this.maxRows = maxRows;
     }
 
-    public SqlCall getMinRows() {
+    public SqlNumericLiteral getMinRows() {
         return minRows;
     }
 
-    public void setMinRows(SqlCall minRows) {
+    public void setMinRows(SqlNumericLiteral minRows) {
         this.minRows = minRows;
     }
 

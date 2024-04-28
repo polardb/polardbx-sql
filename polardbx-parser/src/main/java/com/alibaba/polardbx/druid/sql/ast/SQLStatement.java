@@ -44,4 +44,6 @@ public interface SQLStatement extends SQLObject, SQLDbTypedObject {
     String toParameterizedString();
 
     SqlType getSqlType();
+
+    Boolean getAsync();
 }

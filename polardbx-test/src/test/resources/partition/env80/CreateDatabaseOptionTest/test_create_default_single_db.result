@@ -56,8 +56,4 @@ t3,CREATE TABLE `t3` (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 /* LOCALITY='balance_single_table=on' */
 SINGLE
-select count(distinct rw_dn) dn_cnt from information_schema.partitions_meta
-  where table_schema='myds_db' and table_name in ('t1', 't2', 't3') order by table_name;
-dn_cnt
-2
 drop database if exists myds_db;

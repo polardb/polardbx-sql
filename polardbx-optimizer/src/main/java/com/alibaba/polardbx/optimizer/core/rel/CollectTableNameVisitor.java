@@ -247,6 +247,8 @@ public abstract class CollectTableNameVisitor extends SqlShuttle {
         } else if (fromKind == SqlKind.JOIN) {
             // 多表JOIN
             visit((SqlJoin) from);
+        } else if (fromKind == SqlKind.SELECT) {
+            visit((SqlSelect) from);
         }
     }
 

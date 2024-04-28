@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
@@ -72,15 +73,27 @@ public class InformationSchemaStorageStatus extends VirtualView {
         return i == getTableStorageInstIdIndex() || i == getTableInstRoleIndex() || i == getTableInstKindIndex();
     }
 
-    public int getTableStorageInstIdIndex() {
+    private static final List<Integer> INDEXABLE_COLUMNS;
+
+    static {
+        INDEXABLE_COLUMNS =
+            Lists.newArrayList(getTableStorageInstIdIndex(), getTableInstRoleIndex(), getTableInstRoleIndex());
+    }
+
+    @Override
+    List<Integer> indexableColumnList() {
+        return INDEXABLE_COLUMNS;
+    }
+
+    static public int getTableStorageInstIdIndex() {
         return 0;
     }
 
-    public int getTableInstRoleIndex() {
+    static public int getTableInstRoleIndex() {
         return 1;
     }
 
-    public int getTableInstKindIndex() {
+    static public int getTableInstKindIndex() {
         return 2;
     }
 }

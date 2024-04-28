@@ -52,12 +52,18 @@ public class CharTreeWriter extends StringBaseTreeWriter {
       if (vector.noNulls || !vector.isNull[0]) {
         // 0, length times
         writePadded(vec, 0, length);
+      } else {
+        //有null值更新
+        indexStatistics.updateNull();
       }
     } else {
       for(int i=0; i < length; ++i) {
         if (vec.noNulls || !vec.isNull[i + offset]) {
           // offset + i, once per loop
          writePadded(vec, i + offset, 1);
+        } else if (i == 0 || i == length - 1) {
+          //只用更新第一行和最后一行为null的情况
+          indexStatistics.updateNull();
         }
       }
     }

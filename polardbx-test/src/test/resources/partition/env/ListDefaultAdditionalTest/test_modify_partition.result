@@ -72,7 +72,7 @@ tb_modify_1,CREATE TABLE `tb_modify_1` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 (PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -123,7 +123,7 @@ tb_modify_2,CREATE TABLE `tb_modify_2` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 (PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -201,7 +201,7 @@ tb_modify_3,CREATE TABLE `tb_modify_3` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES IN ((3,'3'),(7,'7')) ENGINE = InnoDB,
  PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
@@ -252,7 +252,7 @@ tb_modify_4,CREATE TABLE `tb_modify_4` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES IN ((1,'1'),(2,'2'),(3,'3'),(7,'7')) ENGINE = InnoDB,
  PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
@@ -330,7 +330,7 @@ tb_modify_5,CREATE TABLE `tb_modify_5` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`)
 (PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -381,7 +381,7 @@ tb_modify_6,CREATE TABLE `tb_modify_6` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`)
 (PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -466,7 +466,7 @@ tb_modify_7,CREATE TABLE `tb_modify_7` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 (PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -515,7 +515,7 @@ tb_modify_8,CREATE TABLE `tb_modify_8` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 (PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -591,7 +591,7 @@ tb_modify_9,CREATE TABLE `tb_modify_9` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES IN ((3,'3'),(7,'7')) ENGINE = InnoDB,
  PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
@@ -640,7 +640,7 @@ tb_modify_10,CREATE TABLE `tb_modify_10` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`,`b`)
 (PARTITION p1 VALUES IN ((1,'1'),(2,'2'),(3,'3'),(7,'7')) ENGINE = InnoDB,
  PARTITION p2 VALUES IN ((4,'4'),(5,'5'),(6,'6'),(8,'8'),(9,'9')) ENGINE = InnoDB,
@@ -723,7 +723,7 @@ tb_modify_11,CREATE TABLE `tb_modify_11` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100008 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`)
 (PARTITION p1 VALUES IN (3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,
@@ -772,7 +772,7 @@ tb_modify_12,CREATE TABLE `tb_modify_12` (
 	`a` int(11) DEFAULT NULL,
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST COLUMNS(`a`)
 (PARTITION p1 VALUES IN (1,2,3,7) ENGINE = InnoDB,
  PARTITION p2 VALUES IN (4,5,6,8,9) ENGINE = InnoDB,

@@ -159,6 +159,9 @@ public class LogicalInsert extends TableModify {
     protected List<RexNode> genColRexNodes = null;
     protected List<Integer> inputToEvalFieldsMapping = null;
 
+    // modify foreign key in replace or upsert
+    protected boolean modifyForeignKey = false;
+
     protected List<ColumnMeta> defaultExprColMetas = null;
     protected List<RexNode> defaultExprColRexNodes = null;
     protected List<Integer> defaultExprEvalFieldsMapping = null;
@@ -215,7 +218,7 @@ public class LogicalInsert extends TableModify {
                          List<RexNode> genColRexNodes, List<Integer> inputToEvalFieldsMapping,
                          List<ColumnMeta> defaultExprColMetas, List<RexNode> defaultExprColRexNodes,
                          List<Integer> defaultExprEvalFieldsMapping, boolean pushablePrimaryKeyCheck,
-                         boolean pushableForeignConstraintCheck) {
+                         boolean pushableForeignConstraintCheck, boolean modifyForeignKey) {
         super(cluster, traitSet, table, catalogReader, input, operation, null, null, flattened, keywords, batchSize,
             appendedColumnIndex, hints, tableInfo);
         this.duplicateKeyUpdateList = duplicateKeyUpdateList;
@@ -235,6 +238,7 @@ public class LogicalInsert extends TableModify {
         this.defaultExprColRexNodes = defaultExprColRexNodes;
         this.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
         this.pushableForeignConstraintCheck = pushableForeignConstraintCheck;
+        this.modifyForeignKey = modifyForeignKey;
     }
 
     /**
@@ -847,7 +851,8 @@ public class LogicalInsert extends TableModify {
             getDefaultExprColRexNodes(),
             getDefaultExprEvalFieldsMapping(),
             isPushablePrimaryKeyCheck(),
-            isPushableForeignConstraintCheck());
+            isPushableForeignConstraintCheck(),
+            isModifyForeignKey());
         newLogicalInsert.sqlTemplate = sqlTemplate;
         newLogicalInsert.literalColumnIndex = literalColumnIndex;
         newLogicalInsert.seqColumnIndex = seqColumnIndex;
@@ -954,18 +959,8 @@ public class LogicalInsert extends TableModify {
             return;
         }
 
-        String schemaName = getSchemaName();
-        if (StringUtils.isEmpty(schemaName)) {
-            schemaName = executionContext.getSchemaName();
-        }
-        final String tableName = getLogicalTableName();
-        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
-        final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
-        final Pair<String, String> columnMultiWriteMapping =
-            TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, executionContext);
-
         final Map<Integer, ParameterContext> oldParams = parameterSettings.getCurrentParameter();
-        final int fieldNum = countParamNumInEachBatch(columnMultiWriteMapping);
+        final int fieldNum = countParamNumInEachBatch();
         final List<Integer> duplicateKeyUpdateParamIndexes = getParamInDuplicateKeyUpdateList();
 
         final int duplicateKeyUpdateParamNum = duplicateKeyUpdateParamIndexes.size();
@@ -1035,23 +1030,11 @@ public class LogicalInsert extends TableModify {
      *
      * @return How many DynamicParam in each row
      */
-    private int countParamNumInEachBatch(Pair<String, String> columnMultiWriteMapping) {
+    private int countParamNumInEachBatch() {
         // It could only be LogicalDynamicValues in batch mode.
         LogicalDynamicValues input = (LogicalDynamicValues) getInput();
         // Every row must be the same.
         List<RexNode> rowNodes = input.getTuples().get(0);
-
-        // Filter out multi-write target column since it should not have user input
-        if (columnMultiWriteMapping != null) {
-            List<String> fieldNames = input.getRowType().getFieldNames();
-            for (int i = 0; i < fieldNames.size(); i++) {
-                if (fieldNames.get(i).equalsIgnoreCase(columnMultiWriteMapping.right)) {
-                    rowNodes = new ArrayList<>(rowNodes);
-                    rowNodes.remove(i);
-                    break;
-                }
-            }
-        }
 
         final Set<Integer> autoIncParamIndex = new HashSet<>(getAutoIncParamIndex());
         final long amendColumnCount = rowNodes.stream().filter(
@@ -1229,5 +1212,13 @@ public class LogicalInsert extends TableModify {
 
     public void setPushableForeignConstraintCheck(boolean pushableForeignConstraintCheck) {
         this.pushableForeignConstraintCheck = pushableForeignConstraintCheck;
+    }
+
+    public boolean isModifyForeignKey() {
+        return this.modifyForeignKey;
+    }
+
+    public void setModifyForeignKey(boolean modifyForeignKeys) {
+        this.modifyForeignKey = modifyForeignKeys;
     }
 }

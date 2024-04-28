@@ -600,6 +600,78 @@ public class TruncateTableTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Test
+    public void testTruncateTableWithGsiAndRenamePartition() throws SQLException {
+        // gsi not supported for cross db ddl
+        if (crossSchema) {
+            return;
+        }
+        String tableName = "wgqolkyuglg0";
+        dropTableIfExists(tableName);
+
+        String sql = "CREATE TABLE `wgqolkyuglg0` (\n"
+            + "\t`eoNcLZ` char(26) NOT NULL COMMENT 'MKXgTMu0yEi',\n"
+            + "\t`MtW` char(30) NOT NULL COMMENT 'xEr',\n"
+            + "\t`fj86IkFFnfmZ` datetime DEFAULT NULL COMMENT 'o5E',\n"
+            + "\t`6pl` date NOT NULL COMMENT 'UAxIyG',\n"
+            + "\t`NOnkBboRkpdR` char(16) DEFAULT NULL,\n"
+            + "\t`17TOvaRCnWf` int(2) NOT NULL COMMENT 'OxlFTsF',\n"
+            + "\t`RF2T6cJ1l` datetime(5) NOT NULL COMMENT '7VL',\n"
+            + "\tPRIMARY KEY (`eoNcLZ`),\n"
+            + "\tGLOBAL INDEX `ChxujAr7qrqKHng` (`NOnkBboRkpdR`, `fj86IkFFnfmZ`) COVERING (`RF2T6cJ1l`)\n"
+            + "\t\tPARTITION BY KEY(`NOnkBboRkpdR`)\n"
+            + "\t\tPARTITIONS 3\n"
+            + "\t\tSUBPARTITION BY LIST COLUMNS(`fj86IkFFnfmZ`)\n"
+            + "\t\t(SUBPARTITION `w4btbkpzgofafq` VALUES IN ('1984-03-20 00:00:00','2013-04-18 00:00:00'),\n"
+            + "\t\t SUBPARTITION `a` VALUES IN ('2060-06-28 00:00:00','2115-03-27 00:00:00'),\n"
+            + "\t\t SUBPARTITION `iptubptfataf` VALUES IN (DEFAULT)),\n"
+            + "\tGLOBAL INDEX `Qm8muRyKtARg` USING BTREE (`eoNcLZ`, `17TOvaRCnWf`) COVERING (`NOnkBboRkpdR`, `RF2T6cJ1l`)\n"
+            + "\t\tPARTITION BY RANGE COLUMNS(`eoNcLZ`)\n"
+            + "\t\tSUBPARTITION BY LIST COLUMNS(`17TOvaRCnWf`)\n"
+            + "\t\t(SUBPARTITION `ydolfb` VALUES IN (1220258247,1649975967,1653300976),\n"
+            + "\t\t SUBPARTITION `9` VALUES IN (DEFAULT))\n"
+            + "\t\t(PARTITION `v` VALUES LESS THAN ('HyDKAr7w'),\n"
+            + "\t\t PARTITION `u` VALUES LESS THAN (MAXVALUE)),\n"
+            + "\tKEY `auto_shard_key_nonkbborkpdr_rf2t6cj1l` USING BTREE (`NOnkBboRkpdR`, `RF2T6cJ1l`)\n"
+            + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n"
+            + "PARTITION BY KEY(`NOnkBboRkpdR`,`RF2T6cJ1l`)\n"
+            + "PARTITIONS 7\n"
+            + "SUBPARTITION BY LIST COLUMNS(`eoNcLZ`)\n"
+            + "(SUBPARTITION `m9rztzuwgcxvw` VALUES IN ('EVaUzXSZSmuaM','hSWTH','wNL0Fa88NrxBik'),\n"
+            + " SUBPARTITION `u5eqiuimd` VALUES IN ('XNy3PnxjTKQ028','yZ1Nh4NX5'),\n"
+            + " SUBPARTITION `fv6i4f4gkdgiq` VALUES IN (DEFAULT)) ";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        String tableDetail =
+            String.format(
+                "/*+TDDL:enable_mpp=false*/select count(1) from information_schema.table_detail where table_schema='%s' and table_name='%s'",
+                getDdlSchema(), tableName);
+        ResultSet rs = null;
+        try {
+            rs = JdbcUtil.executeQuery(tableDetail, tddlConnection);
+        } catch (Exception ex) {
+            System.out.println("tableDetail:" + tableDetail);
+            if (ex.getMessage().indexOf("not set") != -1) {
+                return;
+            }
+        }
+        int countBefTrucate = 0;
+        if (rs.next()) {
+            countBefTrucate = rs.getInt(1);
+        }
+
+        sql = String.format("truncate table %s", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, tableDetail);
+        int countAftTrucate = 0;
+        if (rs.next()) {
+            countAftTrucate = rs.getInt(1);
+        }
+        Assert.assertEquals(countBefTrucate, countAftTrucate);
+        sql = String.format("alter table %s rename partition p1 to m, p2 to n", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
     String getTableGroup(Connection tddlConnection, String tableName) {
         String sql = "show full create table " + tableName;
         ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);

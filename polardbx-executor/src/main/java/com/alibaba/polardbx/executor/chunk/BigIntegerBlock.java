@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.utils.XxhashUtils;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
@@ -44,6 +48,10 @@ public class BigIntegerBlock extends AbstractCommonBlock {
 
     private final byte[] data;
 
+    public BigIntegerBlock(int positionCount) {
+        this(0, positionCount, new boolean[positionCount], new byte[positionCount * BigIntegerBlock.LENGTH]);
+    }
+
     public BigIntegerBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, byte[] data) {
         super(DataTypes.ULongType, positionCount, valueIsNull, valueIsNull != null);
         this.data = data;
@@ -54,6 +62,28 @@ public class BigIntegerBlock extends AbstractCommonBlock {
         super(DataTypes.ULongType, positionCount, valueIsNull, hasNull);
         this.data = data;
         updateSizeInfo();
+    }
+
+    public static BigIntegerBlock from(BigIntegerBlock other, int selSize, int[] selection) {
+        return new BigIntegerBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            other.copyDataArray(selSize, selection));
+    }
+
+    public byte[] copyDataArray(int selSize, int[] selection) {
+        if (data == null) {
+            return null;
+        }
+        if (selection == null) {
+            return Arrays.copyOf(data, selSize * BigIntegerBlock.LENGTH);
+        } else {
+            byte[] target = new byte[selSize * BigIntegerBlock.LENGTH];
+            for (int i = 0; i < selSize; i++) {
+                System.arraycopy(data, beginOffset(selection[i]), target, beginOffset(i), LENGTH);
+            }
+            return target;
+        }
     }
 
     @Override
@@ -108,6 +138,15 @@ public class BigIntegerBlock extends AbstractCommonBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(getBigInteger(pos).longValue());
+        }
+    }
+
+    @Override
     public boolean equals(int position, Block other, int otherPosition) {
         boolean n1 = isNull(position);
         boolean n2 = other.isNull(otherPosition);
@@ -117,7 +156,7 @@ public class BigIntegerBlock extends AbstractCommonBlock {
             return false;
         }
         if (other instanceof BigIntegerBlock) {
-            return equals(position, (BigIntegerBlock) other, otherPosition);
+            return equals(position, other.cast(BigIntegerBlock.class), otherPosition);
         } else if (other instanceof BigIntegerBlockBuilder) {
             return equals(position, (BigIntegerBlockBuilder) other, otherPosition);
         } else {

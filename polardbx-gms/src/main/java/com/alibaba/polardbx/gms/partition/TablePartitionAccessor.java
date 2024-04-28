@@ -139,7 +139,16 @@ public class TablePartitionAccessor extends AbstractAccessor {
 
     private static final String GET_TABLE_PARTITIONS_BY_DB_GROUP_ID =
         "select " + ALL_COLUMNS
-            + " from table_partitions where table_schema=? and group_id=? and part_level=0 and part_status=1 order by parent_id, part_position asc";
+            + " from table_partitions where table_schema=? and group_id=? and part_level=0 and part_status=1";
+
+    private static final String GET_TABLE_PARTITIONS_BY_DB_TB_LVL0 =
+        "select " + ALL_COLUMNS
+            + " from table_partitions where table_schema=? and table_name=? and part_level=0";
+
+    private static final String GET_TABLE_PARTITIONS_BY_DB_TB_LVL0_FROM_DELTA =
+        "select " + ALL_COLUMNS
+            + " from " + GmsSystemTables.TABLE_PARTITIONS_DELTA
+            + " where table_schema=? and table_name=? and part_level=0";
 
     private static final String GET_ALL_TABLE_PARTITIONS_BY_DB_GROUP_ID =
         "select " + ALL_COLUMNS
@@ -281,6 +290,28 @@ public class TablePartitionAccessor extends AbstractAccessor {
             MetaDbUtil.setParameter(2, params, ParameterMethod.setLong, groupId);
             records =
                 MetaDbUtil.query(GET_TABLE_PARTITIONS_BY_DB_GROUP_ID, params, TablePartitionRecord.class, connection);
+
+            return records;
+        } catch (Exception e) {
+            logger.error("Failed to query the system table 'table_partitions'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<TablePartitionRecord> getTablePartitionsByDbTbLvl0(String dbName, String tableName, boolean fromDelta) {
+        try {
+
+            List<TablePartitionRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+
+            assert dbName != null;
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, dbName);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableName);
+            records =
+                MetaDbUtil.query(
+                    fromDelta ? GET_TABLE_PARTITIONS_BY_DB_TB_LVL0_FROM_DELTA : GET_TABLE_PARTITIONS_BY_DB_TB_LVL0,
+                    params, TablePartitionRecord.class, connection);
 
             return records;
         } catch (Exception e) {

@@ -5,7 +5,7 @@ create table tb1(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -73,7 +73,7 @@ tb1,CREATE TABLE `tb1` (
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b` USING BTREE (`b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 SUBPARTITION BY LIST COLUMNS(`b`)
 (SUBPARTITION sp1 VALUES IN ('1','2'),
@@ -91,7 +91,7 @@ a int,
 b varchar(20),
 c int
 )partition by list(c) subpartition by list columns(a, b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in((1, "1"),(2, "2")),
 subpartition sp2 values in((3, "3"),(4, "4")),
 subpartition spd values in(default)
@@ -166,7 +166,7 @@ create table tb3(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -234,7 +234,7 @@ tb3,CREATE TABLE `tb3` (
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b` USING BTREE (`b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 SUBPARTITION BY LIST COLUMNS(`b`)
 (SUBPARTITION sp1 VALUES IN ('1','2'),
@@ -469,7 +469,7 @@ create table tb7(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -549,7 +549,7 @@ tb7,CREATE TABLE `tb7` (
 	`b` varchar(20) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b` USING BTREE (`b`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY LIST(`a`)
 SUBPARTITION BY LIST COLUMNS(`b`)
 (SUBPARTITION sp1 VALUES IN ('1','2'),
@@ -658,7 +658,7 @@ tb9,CREATE TABLE `tb9` (
 	`c` int(11) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100005 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS 3
 SUBPARTITION BY KEY(`b`,`c`)
@@ -707,7 +707,7 @@ tb10,CREATE TABLE `tb10` (
 	`c` int(11) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100005 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 SUBPARTITION BY KEY(`b`,`c`)
 (PARTITION p1 VALUES LESS THAN (-3074457345618258601)
@@ -754,7 +754,7 @@ tb11,CREATE TABLE `tb11` (
 	`c` int(11) DEFAULT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`),
 	KEY `auto_shard_key_b_c` USING BTREE (`b`, `c`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100003 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`a`)
 PARTITIONS 5
 SUBPARTITION BY HASH(`b`,`c`)

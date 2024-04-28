@@ -16,11 +16,15 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.utils;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.twophase.InitTwoPhaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
+import com.alibaba.polardbx.executor.ddl.twophase.TwoPhaseDdlUtils;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
@@ -28,6 +32,8 @@ import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.PhyDdlExecutionRecord;
 
 import java.sql.Connection;
+import java.util.HashMap;
+import java.util.Map;
 
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.SEMICOLON;
 import static com.alibaba.polardbx.executor.ddl.newengine.sync.DdlResponse.Response;
@@ -169,6 +175,17 @@ public class DdlJobManagerUtils {
                 }
             }
             phyDdlExecutionRecord.setNumPhyObjectsDone(countReallyDone);
+        }
+    }
+
+    public static Map<String, String> reloadPhyTablesHashCode(Long jobId) {
+        DdlEngineTaskRecord record =
+            SCHEDULER_MANAGER.fetchTaskRecord(jobId, TwoPhaseDdlUtils.TWO_PHASE_DDL_INIT_TASK_NAME).get(0);
+        if (record != null && TStringUtil.isNotEmpty(record.value)) {
+            InitTwoPhaseDdlTask initTwoPhaseDdlTask = JSONObject.parseObject(record.value, InitTwoPhaseDdlTask.class);
+            return initTwoPhaseDdlTask.getPhysicalTableHashCodeMap();
+        } else {
+            return new HashMap<>();
         }
     }
 

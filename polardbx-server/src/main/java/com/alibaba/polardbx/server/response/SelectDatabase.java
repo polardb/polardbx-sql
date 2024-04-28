@@ -66,7 +66,7 @@ public class SelectDatabase {
         }
 
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        row.add(StringUtil.encode(c.getSchema(), c.getCharset()));
+        row.add(StringUtil.encode(c.getSchema(), c.getResultSetCharset()));
         row.packetId = ++tmpPacketId;
         proxy = row.write(proxy);
         EOFPacket lastEof = new EOFPacket();

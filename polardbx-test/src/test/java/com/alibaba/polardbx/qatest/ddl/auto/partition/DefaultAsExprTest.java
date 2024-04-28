@@ -45,11 +45,11 @@ public class DefaultAsExprTest extends PartitionAutoLoadSqlTestBase {
         try {
             exceptedResult = loadTestResultByTestName(tcName.toLowerCase(), testClass);
             exceptedResult = exceptedResult.trim();
-            applyResourceFileIfExists(tcName.toLowerCase(), testClass);
             try {
                 conn = ConnectionManager.getInstance().newPolarDBXConnection();
                 JdbcUtil.dropDatabase(conn, dbName);
                 JdbcUtil.createPartDatabase(conn, dbName);
+                applyResourceFileIfExists(dbName, tcName.toLowerCase(), testClass);
                 testResult = runTestBySourceSql(tcName.toLowerCase(), supportAutoPart, testClass, dbName, conn,
                     s -> applySubstitute(s));
                 JdbcUtil.dropDatabase(conn, dbName);

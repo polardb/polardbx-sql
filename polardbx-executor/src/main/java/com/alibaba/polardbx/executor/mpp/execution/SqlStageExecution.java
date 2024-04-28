@@ -16,17 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.Multimap;
-import com.google.common.collect.Sets;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
@@ -36,10 +28,18 @@ import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.planner.RemoteSourceNode;
 import com.alibaba.polardbx.executor.mpp.server.remotetask.HttpRemoteTask;
-import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.executor.mpp.split.RemoteSplit;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.base.Predicate;
+import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.Duration;
 
 import javax.annotation.concurrent.GuardedBy;
@@ -92,6 +92,8 @@ public class SqlStageExecution {
     private final AtomicBoolean splitsScheduled = new AtomicBoolean();
     private final ListenableFuture<List<BloomFilterInfo>> waitBloomFuture;
 
+    private final List<String> orderedNodes;
+
     public SqlStageExecution(
         StageId stageId,
         URI location,
@@ -102,7 +104,8 @@ public class SqlStageExecution {
         NodeTaskMap nodeTaskMap,
         ExecutorService executor,
         Predicate<StageId> needStageIdPredicate,
-        QueryBloomFilter bloomFilterManager) {
+        QueryBloomFilter bloomFilterManager,
+        List<String> orderedNodes) {
         this.remoteTaskFactory = requireNonNull(remoteTaskFactory, "remoteTaskFactory is null");
         this.stageId = stageId;
         this.summarizeTaskInfo = summarizeTaskInfo;
@@ -131,6 +134,7 @@ public class SqlStageExecution {
         } else {
             this.waitBloomFuture = null;
         }
+        this.orderedNodes = orderedNodes;
     }
 
     public void beginScheduling() {
@@ -201,6 +205,12 @@ public class SqlStageExecution {
         return new Split(true, new RemoteSplit(location));
     }
 
+    private static Split createRemoteSplitForPairWise(TaskLocation taskLocation, int outputBufferId) {
+        TaskLocation location =
+            new TaskLocation(taskLocation.getNodeServer(), taskLocation.getTaskId(), outputBufferId);
+        return new Split(true, new RemoteSplit(location));
+    }
+
     private synchronized RemoteTask scheduleTask(Node node, TaskId taskId, Multimap<Integer, Split> sourceSplits,
                                                  boolean noMoreSplits, boolean startImmediately) {
         ensureNeedSetStageId();
@@ -208,7 +218,18 @@ public class SqlStageExecution {
         ImmutableMultimap.Builder<Integer, Split> initialSplits = ImmutableMultimap.builder();
         initialSplits.putAll(sourceSplits);
         for (Map.Entry<Integer, TaskLocation> entry : exchangeLocations.entries()) {
-            initialSplits.put(entry.getKey(), createRemoteSplitFor(taskId, entry.getValue(), needStageId));
+            if (getFragment().isRemotePairWise()) {
+                int bufferId = orderedNodes.indexOf(node.getNodeIdentifier());
+                checkArgument(bufferId != -1,
+                    "Unknown node id under partition wise join, node is is %s, while all nodes is %s",
+                    node.getNodeIdentifier(),
+                    String.join(",", orderedNodes));
+                bufferId = OutputBuffers.OutputBufferId
+                    .formatOutputBufferId(needStageId ? taskId.getStageId().getId() : 0, bufferId);
+                initialSplits.put(entry.getKey(), createRemoteSplitForPairWise(entry.getValue(), bufferId));
+            } else {
+                initialSplits.put(entry.getKey(), createRemoteSplitFor(taskId, entry.getValue(), needStageId));
+            }
         }
 
         RemoteTask task = remoteTaskFactory.createRemoteTask(
@@ -357,8 +378,19 @@ public class SqlStageExecution {
             for (RemoteTask task : getAllTasks()) {
                 ImmutableMultimap.Builder<Integer, Split> newSplits = ImmutableMultimap.builder();
                 for (TaskLocation exchangeLocation : exchangeLocations) {
-                    newSplits.put(remoteSource.getRelatedId(),
-                        createRemoteSplitFor(task.getTaskId(), exchangeLocation, needStageId));
+                    if (getFragment().isRemotePairWise()) {
+                        int bufferId = orderedNodes.indexOf(task.getNodeId());
+                        checkArgument(bufferId != -1,
+                            "Unknown node id under partition wise join, node is is %s, while all nodes is %s",
+                            task.getNodeId(), String.join(",", orderedNodes));
+                        bufferId = OutputBuffers.OutputBufferId
+                            .formatOutputBufferId(needStageId ? task.getTaskId().getStageId().getId() : 0, bufferId);
+                        newSplits.put(remoteSource.getRelatedId(),
+                            createRemoteSplitForPairWise(exchangeLocation, bufferId));
+                    } else {
+                        newSplits.put(remoteSource.getRelatedId(),
+                            createRemoteSplitFor(task.getTaskId(), exchangeLocation, needStageId));
+                    }
                 }
                 task.addSplits(newSplits.build(), isNoMoreSplits);
             }

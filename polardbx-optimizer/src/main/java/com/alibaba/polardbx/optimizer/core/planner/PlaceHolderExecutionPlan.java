@@ -16,9 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner;
 
-import org.apache.calcite.rel.RelNode;
-
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 
 /**

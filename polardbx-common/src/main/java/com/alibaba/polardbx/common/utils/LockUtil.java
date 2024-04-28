@@ -34,7 +34,7 @@ public class LockUtil {
     /**
      * Wrapped operations with specified lock_wait_timeout to avoid long MDL-wait.
      */
-    public static void wrapWithLockWaitTimeout(Connection conn, int logWaitTimeout, Consumer<Statement> consumer)
+    public static void wrapWithLockWaitTimeout(Connection conn, int lockWaitTimeout, Runnable task)
         throws SQLException {
         int originLockWaitTimeout = 0;
         try (Statement stmt = conn.createStatement();
@@ -43,18 +43,58 @@ public class LockUtil {
                 originLockWaitTimeout = rs.getInt(1);
             }
         }
-        if (originLockWaitTimeout > 0) {
+        // Only decrease the lock wait timeout, not increase it.
+        if (originLockWaitTimeout > lockWaitTimeout) {
             try (Statement stmt = conn.createStatement()) {
-                stmt.execute("set lock_wait_timeout = " + logWaitTimeout);
                 try {
-                    consumer.accept(stmt);
+                    stmt.execute("set lock_wait_timeout = " + lockWaitTimeout);
+                    task.run();
                 } finally {
-                    stmt.execute("set lock_wait_timeout = " + originLockWaitTimeout);
+                    try {
+                        stmt.execute("set lock_wait_timeout = " + originLockWaitTimeout);
+                    } catch (Throwable t) {
+                        if (conn instanceof IConnection) {
+                            // Discard connection to prevent reuse.
+                            ((IConnection) conn).discard(t);
+                        }
+                    }
                 }
             }
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
                 "Get wrong lock_wait_timeout value: " + originLockWaitTimeout);
+        }
+    }
+
+    public static void wrapWithInnodbLockWaitTimeout(Connection conn, int lockWaitTimeout, Runnable task)
+        throws SQLException {
+        int originLockWaitTimeout = 0;
+        try (Statement stmt = conn.createStatement();
+            ResultSet rs = stmt.executeQuery("select @@innodb_lock_wait_timeout")) {
+            while (rs.next()) {
+                originLockWaitTimeout = rs.getInt(1);
+            }
+        }
+        // Only decrease the lock wait timeout, not increase it.
+        if (originLockWaitTimeout > lockWaitTimeout) {
+            try (Statement stmt = conn.createStatement()) {
+                try {
+                    stmt.execute("set innodb_lock_wait_timeout = " + lockWaitTimeout);
+                    task.run();
+                } finally {
+                    try {
+                        stmt.execute("set innodb_lock_wait_timeout = " + originLockWaitTimeout);
+                    } catch (Throwable t) {
+                        if (conn instanceof IConnection) {
+                            // Discard connection to prevent reuse.
+                            ((IConnection) conn).discard(t);
+                        }
+                    }
+                }
+            }
+        } else {
+            throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
+                "Get wrong innodb_lock_wait_timeout value: " + originLockWaitTimeout);
         }
     }
 }

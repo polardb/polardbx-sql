@@ -71,6 +71,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
 
     private boolean onlineModifyColumnIndexTask;
 
+    private final long versionId;
+
     public AlterTableChangeMetaTask(String schemaName,
                                     String logicalTableName,
                                     String dbIndex,
@@ -95,7 +97,8 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
                                     String tableComment,
                                     String tableRowFormat,
                                     SequenceBean sequenceBean,
-                                    boolean onlineModifyColumnIndexTask) {
+                                    boolean onlineModifyColumnIndexTask,
+                                    long versionId) {
         super(schemaName, logicalTableName);
         this.dbIndex = dbIndex;
         this.phyTableName = phyTableName;
@@ -120,6 +123,7 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
         this.tableRowFormat = tableRowFormat;
         this.sequenceBean = sequenceBean;
         this.onlineModifyColumnIndexTask = onlineModifyColumnIndexTask;
+        this.versionId = versionId;
     }
 
     @Override
@@ -136,6 +140,12 @@ public class AlterTableChangeMetaTask extends BaseGmsTask {
             renamedIndexes, primaryKeyDropped, addedPrimaryKeyColumns,
             columnAfterAnother, requireLogicalColumnOrder, tableComment, tableRowFormat, sequenceBean,
             onlineModifyColumnIndexTask, changeFileStore, executionContext);
+
+        // Change columnar table meta in same transaction
+        // columnar_table_mapping, columnar_table_evolution, columnar_column_evolution
+        TableMetaChanger.changeColumnarTableMeta(metaDbConnection, schemaName, logicalTableName, addedColumns,
+            droppedColumns, updatedColumns, changedColumns, versionId, jobId);
+
         List<String> alterColumnList = new ArrayList<>();
         if (updatedColumns != null) {
             alterColumnList.addAll(updatedColumns);

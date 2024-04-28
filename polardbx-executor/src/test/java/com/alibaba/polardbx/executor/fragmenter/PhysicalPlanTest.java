@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.fragmenter;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.executor.common.PlanTestCommon;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.planner.PlanUtils;
@@ -40,6 +41,7 @@ public class PhysicalPlanTest extends PlanTestCommon {
     protected String returnPlanStr(ExecutionContext executionContext, RelNode plan) {
         Session session = new Session("", executionContext);
         session.setIgnoreSplitInfo(true);
+        executionContext.putIntoHintCmds(ConnectionProperties.SHOW_PIPELINE_INFO_UNDER_MPP, false);
         String mppPlanString = PlanUtils.textPlan(executionContext, session, plan);
         return mppPlanString;
     }

@@ -1,7 +1,6 @@
 package com.alibaba.polardbx.qatest.ddl.auto.primarykey;
 
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
-import com.alibaba.polardbx.qatest.ddl.auto.omc.ConcurrentDMLTest;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import lombok.SneakyThrows;
@@ -449,7 +448,7 @@ public class DropAddPrimaryKeyDMLTest extends DDLBaseNewDBTestCase {
                                 String sql = String.format(generator.apply(totalCount.get()), finalTableName);
                                 try {
                                     JdbcUtil.executeUpdateSuccess(connection, sql);
-                                } catch (AssertionError e) {
+                                } catch (Throwable e) {
                                     if (!changed) {
                                         changed = true;
                                         generator = generator2;
@@ -578,6 +577,11 @@ public class DropAddPrimaryKeyDMLTest extends DDLBaseNewDBTestCase {
             } catch (Throwable e) {
                 e.printStackTrace();
                 throw (e);
+            } finally {
+                //报错需设置退出信号,防止线程泄漏
+                shouldStop.set(true);
+                totalCount.set(FILL_COUNT);
+                threadPool.shutdown();
             }
 
             if (withGsi) {

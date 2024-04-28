@@ -70,7 +70,8 @@ public class LocalExchangeConsumerFactory implements ConsumeExecutorFactory {
             break;
         case RANDOM:
             localExchanger = new RandomExchanger(outputBufferMemoryManager, consumerExecutors,
-                this.status, localExchange.isAsyncConsume());
+                this.status, localExchange.isAsyncConsume(), index,
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_OPTIMIZE_RANDOM_EXCHANGE));
             break;
         case BORADCAST:
             localExchanger = new BroadcastExchanger(outputBufferMemoryManager, consumerExecutors,
@@ -91,8 +92,15 @@ public class LocalExchangeConsumerFactory implements ConsumeExecutorFactory {
                     this.status,
                     localExchange.isAsyncConsume(), localExchange.getTypes(),
                     localExchange.getPartitionChannels(),
-                    localExchange.getKeyTypes(), context);
+                    localExchange.getKeyTypes(), context, false);
             }
+            break;
+        case CHUNK_PARTITION:
+            localExchanger = new PartitioningExchanger(outputBufferMemoryManager, consumerExecutors,
+                this.status,
+                localExchange.isAsyncConsume(), localExchange.getTypes(),
+                localExchange.getPartitionChannels(),
+                localExchange.getKeyTypes(), context, true);
             break;
         case DIRECT:
             localExchanger = new DirectExchanger(
@@ -103,5 +111,10 @@ public class LocalExchangeConsumerFactory implements ConsumeExecutorFactory {
         }
         status.incrementParallelism();
         return localExchanger;
+    }
+
+    // for test
+    public List<ConsumerExecutor> getConsumerExecutors() {
+        return consumerExecutors;
     }
 }

@@ -33,10 +33,13 @@ import org.apache.orc.impl.PositionRecorder;
 import org.apache.orc.impl.PositionedOutputStream;
 import org.apache.orc.impl.StreamName;
 import org.apache.orc.impl.StringRedBlackTree;
+import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public abstract class StringBaseTreeWriter extends TreeWriterBase {
@@ -48,7 +51,7 @@ public abstract class StringBaseTreeWriter extends TreeWriterBase {
       new StringRedBlackTree(INITIAL_DICTIONARY_SIZE);
   protected final DynamicIntArray rows = new DynamicIntArray();
   protected final PositionedOutputStream directStreamOutput;
-  private final List<OrcProto.RowIndexEntry> savedRowIndex =
+  protected final List<OrcProto.RowIndexEntry> savedRowIndex =
       new ArrayList<>();
   private final boolean buildIndex;
   private final List<Long> rowIndexValueCount = new ArrayList<>();
@@ -89,6 +92,11 @@ public abstract class StringBaseTreeWriter extends TreeWriterBase {
       recordDirectStreamPosition();
     } else {
       doneDictionaryCheck = false;
+    }
+    boolean forceDictionary = writer.getDictionaryColumns()[id];
+    if (forceDictionary) {
+      useDictionaryEncoding = true;
+      doneDictionaryCheck = true;
     }
   }
 

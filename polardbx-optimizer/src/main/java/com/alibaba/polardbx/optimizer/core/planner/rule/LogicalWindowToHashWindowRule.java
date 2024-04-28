@@ -24,6 +24,7 @@ import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.volcano.RelSubset;
+import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Window;
@@ -31,14 +32,12 @@ import org.apache.calcite.rel.logical.LogicalWindow;
 import org.apache.calcite.rex.RexWindowBound;
 import org.apache.calcite.sql.SqlKind;
 
-public class LogicalWindowToHashWindowRule extends RelOptRule {
+public abstract class LogicalWindowToHashWindowRule extends RelOptRule {
+    protected Convention outConvention = DrdsConvention.INSTANCE;
 
-    public static final LogicalWindowToHashWindowRule INSTANCE = new LogicalWindowToHashWindowRule();
-
-    public LogicalWindowToHashWindowRule() {
-        super(operand(LogicalWindow.class,
-                some(operand(RelSubset.class, any()))),
-            "LogicalWindowToHashWindowRule");
+    public LogicalWindowToHashWindowRule(String desc) {
+        super(operand(LogicalWindow.class, some(operand(RelSubset.class, any()))),
+            "LogicalWindowToHashWindowRule:" + desc);
     }
 
     @Override
@@ -48,11 +47,6 @@ public class LogicalWindowToHashWindowRule extends RelOptRule {
             return false;
         }
         return true;
-    }
-
-    @Override
-    public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
     }
 
     @Override
@@ -69,19 +63,17 @@ public class LogicalWindowToHashWindowRule extends RelOptRule {
         }
 
         RelNode input = call.rels[1];
-        RelNode newInput =
-            convert(input, input.getTraitSet().replace(DrdsConvention.INSTANCE).replace(RelCollations.EMPTY));
 
-        HashWindow newWindow =
-            HashWindow.create(
-                window.getTraitSet().replace(DrdsConvention.INSTANCE).replace(RelCollations.EMPTY),
-                newInput,
-                window.getConstants(),
-                window.groups,
-                window.getRowType(),
-                window.getFixedCost());
-        call.transformTo(newWindow);
+        RelNode newInput =
+            convert(input, input.getTraitSet().replace(outConvention).replace(RelCollations.EMPTY));
+
+        createHashWindow(call, window, newInput);
     }
+
+    protected abstract void createHashWindow(
+        RelOptRuleCall call,
+        LogicalWindow window,
+        RelNode newInput);
 
     private boolean containsOrderKey(LogicalWindow window) {
         return !window.groups.get(0).orderKeys.getFieldCollations().isEmpty();

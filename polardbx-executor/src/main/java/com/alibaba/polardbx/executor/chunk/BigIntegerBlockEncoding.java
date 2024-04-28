@@ -50,7 +50,7 @@ public class BigIntegerBlockEncoding implements BlockEncoding {
 
         encodeNullsAsBits(sliceOutput, block);
 
-        BigIntegerBlock bigIntegerBlock = (BigIntegerBlock) block;
+        BigIntegerBlock bigIntegerBlock = block.cast(BigIntegerBlock.class);
         byte[] data = bigIntegerBlock.getData();
         sliceOutput.writeBytes(data, 0, positionCount * BigIntegerBlock.LENGTH);
     }

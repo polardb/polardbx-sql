@@ -16,13 +16,11 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.backfill.Throttle;
 import com.alibaba.polardbx.executor.backfill.ThrottleInfo;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;

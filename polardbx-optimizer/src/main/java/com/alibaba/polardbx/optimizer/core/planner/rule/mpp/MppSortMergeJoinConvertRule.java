@@ -18,9 +18,8 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
-import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.SortMergeJoin;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
 import org.apache.calcite.plan.Convention;
@@ -97,23 +96,27 @@ public class MppSortMergeJoinConvertRule extends RelOptRule {
             .getBoolean(ConnectionParams.ENABLE_BROADCAST_JOIN)) {
             // Broadcast Shuffle
             switch (sortMergeJoin.getJoinType()) {
-                case LEFT: {
-                    RelNode broadcastRight = convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
-                    break;
-                }
-                case RIGHT:{
-                    RelNode broadcastLeft = convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
-                    break;
-                }
-                case INNER: {
-                    RelNode broadcastLeft = convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
-                    RelNode broadcastRight = convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
-                    implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
-                    break;
-                }
+            case LEFT: {
+                RelNode broadcastRight =
+                    convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
+                break;
+            }
+            case RIGHT: {
+                RelNode broadcastLeft =
+                    convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
+                break;
+            }
+            case INNER: {
+                RelNode broadcastLeft =
+                    convert(left, left.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(broadcastLeft, right)));
+                RelNode broadcastRight =
+                    convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
+                implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
+                break;
+            }
             }
         }
 

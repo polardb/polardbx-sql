@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.OptimizerAlertScheduleSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.google.common.collect.Sets;
 import org.apache.commons.collections.CollectionUtils;
@@ -70,7 +71,7 @@ public class OptimizerAlertScheduledJob extends SchedulerExecutor {
             } else {
                 // enable OPTIMIZER_ALERT
                 List<List<Map<String, Object>>> results = SyncManagerHelper.syncWithDefaultDB(
-                    new OptimizerAlertScheduleSyncAction());
+                    new OptimizerAlertScheduleSyncAction(), SyncScope.CURRENT_ONLY);
                 StringBuilder sb = new StringBuilder();
                 long countSum = 0L;
                 Set<String> alertSets = Sets.newHashSet();

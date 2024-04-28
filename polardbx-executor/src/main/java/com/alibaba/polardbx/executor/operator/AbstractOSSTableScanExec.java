@@ -33,7 +33,8 @@ public abstract class AbstractOSSTableScanExec extends SourceExec implements Clo
         super(context);
     }
 
-    public static AbstractOSSTableScanExec create(OSSTableScan ossTableScan, ExecutionContext context, List<DataType> dataTypeList) {
+    public static AbstractOSSTableScanExec create(OSSTableScan ossTableScan, ExecutionContext context,
+                                                  List<DataType> dataTypeList) {
         final boolean useBufferPool = context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_BUFFER_POOL);
         AbstractOSSTableScanExec exec;
         if (useBufferPool) {

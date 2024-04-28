@@ -22,10 +22,10 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
+import com.alibaba.polardbx.executor.ddl.job.factory.CreateJoinGroupJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.validator.JoinGroupValidator;
-import com.alibaba.polardbx.executor.handler.HandlerCommon;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
+import com.alibaba.polardbx.executor.handler.ddl.LogicalCommonDdlHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -38,10 +38,9 @@ import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateJoinGroup;
-import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
-import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlCreateJoinGroup;
 import org.apache.commons.collections.CollectionUtils;
 
@@ -55,7 +54,7 @@ import java.util.stream.Collectors;
  *
  * @author luoyanxin
  */
-public class LogicalCreateJoinGroupHandler extends HandlerCommon {
+public class LogicalCreateJoinGroupHandler extends LogicalCommonDdlHandler {
 
     public static Logger logger = LoggerFactory.getLogger(LogicalCreateJoinGroupHandler.class);
 
@@ -64,25 +63,41 @@ public class LogicalCreateJoinGroupHandler extends HandlerCommon {
     }
 
     @Override
-    public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
-        LogicalCreateJoinGroup logicalCreateJoinGroup = (LogicalCreateJoinGroup) logicalPlan;
+    protected DdlJob buildDdlJob(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        LogicalCreateJoinGroup logicalCreateJoinGroup = (LogicalCreateJoinGroup) logicalDdlPlan;
         SqlCreateJoinGroup sqlNode = (SqlCreateJoinGroup) logicalCreateJoinGroup.getNativeSqlNode();
         String schemaName = logicalCreateJoinGroup.getSchemaName();
         if (schemaName == null) {
             schemaName = executionContext.getSchemaName();
         }
+        String joinGroupName = logicalCreateJoinGroup.getTableJoinName();
+
+        return CreateJoinGroupJobFactory.create(schemaName, joinGroupName, sqlNode.getLocality(),
+            logicalCreateJoinGroup.isIfNotExists(), executionContext);
+    }
+
+    @Override
+    protected boolean validatePlan(BaseDdlOperation logicalDdlPlan, ExecutionContext executionContext) {
+        LogicalCreateJoinGroup logicalCreateJoinGroup = (LogicalCreateJoinGroup) logicalDdlPlan;
+        SqlCreateJoinGroup sqlNode = (SqlCreateJoinGroup) logicalCreateJoinGroup.getNativeSqlNode();
+        String schemaName = logicalCreateJoinGroup.getSchemaName();
+        if (schemaName == null) {
+            schemaName = executionContext.getSchemaName();
+        }
+
+        // validate if schema is auto partition mode
         boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (!isNewPart) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
                 "can't execute the create joingroup command in non-partitioning database");
         }
+
+        // validate join group characters
         String joinGroupName = logicalCreateJoinGroup.getTableJoinName();
         JoinGroupValidator.validateJoinGroupName(joinGroupName);
 
-        boolean isIfNotExists = logicalCreateJoinGroup.isIfNotExists();
-        String locality = sqlNode.getLocality();
-
         // validate the locality
+        String locality = sqlNode.getLocality();
         if (TStringUtil.isNotBlank(locality)) {
             LocalityDesc desc = LocalityInfoUtils.parse(locality);
 
@@ -106,6 +121,8 @@ public class LogicalCreateJoinGroupHandler extends HandlerCommon {
             }
         }
 
+        // validate existence
+        boolean isIfNotExists = logicalCreateJoinGroup.isIfNotExists();
         JoinGroupInfoAccessor joinGroupInfoAccessor = new JoinGroupInfoAccessor();
         try (Connection connection = MetaDbUtil.getConnection()) {
             joinGroupInfoAccessor.setConnection(connection);
@@ -113,24 +130,17 @@ public class LogicalCreateJoinGroupHandler extends HandlerCommon {
                 joinGroupInfoAccessor.getJoinGroupInfoByName(schemaName, joinGroupName, true);
             if (joinGroupInfoRecord != null) {
                 if (isIfNotExists) {
-                    return new AffectRowCursor(new int[] {0});
+                    return true;
                 } else {
                     throw new TddlRuntimeException(ErrorCode.ERR_JOIN_GROUP_ALREADY_EXISTS,
                         String.format("Create joingroup error, joingroup[%s] has already exist", joinGroupName));
                 }
-            } else {
-                JoinGroupInfoRecord record = new JoinGroupInfoRecord();
-                record.tableSchema = schemaName;
-                record.joinGroupName = joinGroupName;
-                record.locality = locality;
-                joinGroupInfoAccessor.addJoinGroup(record, isIfNotExists);
             }
-
         } catch (Throwable ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw GeneralUtil.nestedException(ex);
         }
 
-        return new AffectRowCursor(new int[] {1});
+        return false;
     }
 }

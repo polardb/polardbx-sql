@@ -143,7 +143,8 @@ public class LogicalShowFilesHandler extends HandlerCommon {
                                 rowCount,
                                 createTime,
                                 ossOrcFileMeta.getCommitTs() == null ? null :
-                                        sdf.format(new Date(ossOrcFileMeta.getCommitTs() >> ITimestampOracle.BITS_LOGICAL_TIME))
+                                    sdf.format(
+                                        new Date(ossOrcFileMeta.getCommitTs() >> ITimestampOracle.BITS_LOGICAL_TIME))
                             });
                     }
                 }

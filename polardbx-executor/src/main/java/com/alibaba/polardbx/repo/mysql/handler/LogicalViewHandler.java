@@ -19,18 +19,18 @@ package com.alibaba.polardbx.repo.mysql.handler;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
+import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
 import com.alibaba.polardbx.executor.cursor.impl.LogicalViewResultCursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.SubqueryUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.context.ScalarSubQueryExecContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.ReplaceCallWithLiteralVisitor;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
@@ -66,7 +66,7 @@ public class LogicalViewHandler extends HandlerCommon {
             throw new RuntimeException("multi-get is not supported in Cursor executor");
         }
 
-        PhyTableOperationUtil.enableIntraGroupParallelism(logicalView.getSchemaName(),executionContext);
+        PhyTableOperationUtil.enableIntraGroupParallelism(logicalView.getSchemaName(), executionContext);
 
         QueryConcurrencyPolicy queryConcurrencyPolicy =
             ExecUtils.getQueryConcurrencyPolicy(executionContext, logicalView);
@@ -81,8 +81,12 @@ public class LogicalViewHandler extends HandlerCommon {
         if (executionContext.getParams() != null) {
             params = executionContext.getParams().getCurrentParameter();
         }
-        ReplaceCallWithLiteralVisitor visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
-            params, RexUtils.getEvalFunc(executionContext), true);
+        ReplaceCallWithLiteralVisitor visitor = null;
+        if (executionContext.getSqlType() != SqlType.SELECT) {
+            visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
+                params, RexUtils.getEvalFunc(executionContext), true);
+        }
+
         // Dynamic functions will be calculated in buildSqlTemplate()
         final SqlSelect sqlTemplate = (SqlSelect) logicalView.getSqlTemplate(visitor, executionContext);
         if (executionContext.isModifyCrossDb()) {
@@ -129,7 +133,11 @@ public class LogicalViewHandler extends HandlerCommon {
                 LogicalViewResultCursor lvRs = new LogicalViewResultCursor(resultCursor, executionContext);
                 newInputCursors.add(lvRs);
             }
-            return MultiCursorAdapter.wrap(newInputCursors);
+            if (newInputCursors.size() == 1) {
+                return newInputCursors.get(0);
+            } else {
+                return new GatherCursor(newInputCursors, executionContext);
+            }
         }
 
     }

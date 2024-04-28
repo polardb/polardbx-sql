@@ -278,40 +278,40 @@ a
 98
 99
 # scalarSubQuery wrapped with scalarSubQuery;
-explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
   LogicalView(tables="sb_pruning_test1[p1,p2,p3]", shardCount=3, sql="SELECT `a` FROM `sb_pruning_test1` AS `sb_pruning_test1` WHERE ((`a` IN(?)) AND (`a` BETWEEN ? AND ?)) ORDER BY `a`", isDynamicParam="true")
 HitCache:false
 Source:PLAN_CACHE
 >> individual scalar subquery
-TopN(sort="a ASC", offset=0, fetch=?1)
+TopN(sort="a ASC", offset=?1, fetch=?2)
   MaterializedSemiJoin(condition="a = a", type="semi")
     Gather(concurrent=true)
       LogicalView(tables="sb_pruning_test2[p1,p2]", shardCount=2, sql="SELECT `a` FROM `sb_pruning_test2` AS `sb_pruning_test2` WHERE ((`a` IN(?)) AND (`a` IN (...)))", isDynamicParam="true")
     Gather(concurrent=true)
       LogicalView(tables="sb_pruning_test3[p1,p2]", shardCount=2, sql="SELECT `a` FROM `sb_pruning_test3` AS `sb_pruning_test3` WHERE (`a` IN(?))", isDynamicParam="true")
-select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 a
 97
 98
 190
 # scalarSubQuery wrapped with applySubQuery;
-explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
   LogicalView(tables="sb_pruning_test1[p1,p2,p3]", shardCount=3, sql="SELECT `a` FROM `sb_pruning_test1` AS `sb_pruning_test1` WHERE ((`a` IN(?)) AND (`a` BETWEEN ? AND ?)) ORDER BY `a`", isDynamicParam="true")
 HitCache:false
 Source:PLAN_CACHE
 >> individual scalar subquery
-Limit(offset=0, fetch=?1)
+TopN(sort="a ASC", offset=?1, fetch=?2)
   Project(a="a")
     SemiBKAJoin(condition="a = a AND b <= b", type="semi")
-      MergeSort(sort="a ASC")
-        LogicalView(tables="sb_pruning_test2[p1,p2]", shardCount=2, sql="SELECT `a`, `b` FROM `sb_pruning_test2` AS `sb_pruning_test2` WHERE (`a` IN(?)) ORDER BY `a`", isDynamicParam="true")
+      Gather(concurrent=true)
+        LogicalView(tables="sb_pruning_test2[p1,p2]", shardCount=2, sql="SELECT `a`, `b` FROM `sb_pruning_test2` AS `sb_pruning_test2` WHERE (`a` IN(?))", isDynamicParam="true")
       Gather(concurrent=true)
         LogicalView(tables="sb_pruning_test3[p1,p2]", shardCount=2, sql="SELECT `a`, `b` FROM `sb_pruning_test3` AS `sb_pruning_test3` WHERE ((`a` IN(?)) AND (`a` IN (...)))", isDynamicParam="true")
-select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 a
 97
 98

@@ -1,0 +1,64 @@
+- sql: |
+    select s_name, count(*) as numwait from supplier, lineitem l1, orders, nation where s_suppkey = l1.l_suppkey and o_orderkey = l1.l_orderkey and o_orderstatus = 'F' and l1.l_receiptdate > l1.l_commitdate and exists ( select * from lineitem l2 where l2.l_orderkey = l1.l_orderkey and l2.l_suppkey <> l1.l_suppkey ) and not exists ( select * from lineitem l3 where l3.l_orderkey = l1.l_orderkey and l3.l_suppkey <> l1.l_suppkey and l3.l_receiptdate > l3.l_commitdate ) and s_nationkey = n_nationkey and n_name = 'ARGENTINA' group by s_name order by numwait desc, s_name limit 100;
+  plan: |
+    topn(sort="numwait desc,s_name asc", offset=0, fetch=?2)
+      exchange(distribution=single, collation=[1 desc-nulls-last, 0 asc-nulls-first])
+        topn(sort="numwait desc,s_name asc", fetch=+(?2, 0))
+          hashagg(group="s_name", numwait="sum(numwait)")
+            exchange(distribution=hash[0]4, collation=[])
+              partialhashagg(group="s_name", numwait="count()")
+                hashjoin(condition="l_orderkey = o_orderkey", type="inner")
+                  osstablescan(tables="orders[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `o_orderkey` from `orders` as `orders` where (`o_orderstatus` = ?)")
+                  semihashjoin(condition="l_orderkey = l_orderkey and l_suppkey <> l_suppkey", type="semi", build="outer")
+                    semihashjoin(condition="l_orderkey = l_orderkey and l_suppkey <> l_suppkey", type="anti", build="outer", partition=[local])
+                      project(n_nationkey="n_nationkey", s_suppkey="s_suppkey", s_name="s_name", s_nationkey="s_nationkey", l_orderkey="l_orderkey", l_suppkey="l_suppkey")
+                        hashjoin(condition="s_suppkey = l_suppkey", type="inner")
+                          osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` where (`l_receiptdate` > `l_commitdate`)")
+                          exchange(distribution=broadcast, collation=[])
+                            project(n_nationkey="n_nationkey", s_suppkey="s_suppkey", s_name="s_name", s_nationkey="s_nationkey")
+                              hashjoin(condition="s_nationkey = n_nationkey", type="inner")
+                                osstablescan(tables="supplier[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `s_suppkey`, `s_name`, `s_nationkey` from `supplier` as `supplier`")
+                                exchange(distribution=broadcast, collation=[])
+                                  osstablescan(tables="nation[p1]", sql="select `n_nationkey` from `nation` as `nation` where (`n_name` = ?)")
+                      osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem` where (`l_receiptdate` > `l_commitdate`)")
+                    osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `l_orderkey`, `l_suppkey` from `lineitem` as `lineitem`")
+  fragment: |
+    pipelineId = 0
+    [Producer]: 16 * { ColumnarScanExec }
+    [Consumer]: 16 * { RandomExchanger --> 16 * ParallelHashJoinExec }
+    pipelineId = 1
+    [Producer]: 16 * { VectorizedProjectExec <-- ParallelHashJoinExec <-- ColumnarScanExec }
+    [Consumer]: 16 * { RandomExchanger --> 16 * ParallelHashJoinExec }
+    pipelineId = 2
+    [Producer]: 16 * { VectorizedProjectExec <-- ParallelHashJoinExec <-- ColumnarScanExec }
+    [Consumer]: 16 * { RandomExchanger --> 16 * ParallelHashJoinExec }
+    pipelineId = 3
+    [Producer]: 16 * { ParallelHashJoinExec <-- ColumnarScanExec }
+    [Consumer]: 16 * { RandomExchanger --> 16 * ParallelHashJoinExec }
+    pipelineId = 4
+    [Producer]: 16 * { ParallelHashJoinExec <-- ColumnarScanExec }
+    [Consumer]: 16 * { RandomExchanger --> 16 * ParallelHashJoinExec }
+    pipelineId = 5
+    [Producer]: 16 * { ParallelHashJoinExec <-- ColumnarScanExec }
+    [Consumer]: 16 * { DirectExchanger --> 1 * LocalBufferExec }
+    pipelineId = 6
+    [Producer]: 16 * { LocalBufferExec }
+    [Consumer]: 16 * { HashAggExec }
+    pipelineId = 7
+    [Producer]: 16 * { HashAggExec }
+    [Consumer]: 16 * { PartitioningExchanger --> 16 * LocalBufferExec }
+    pipelineId = 8
+    [Producer]: 16 * { LocalBufferExec }
+    [Consumer]: 16 * { HashAggExec }
+    pipelineId = 9
+    [Producer]: 16 * { HashAggExec }
+    [Consumer]: 16 * { SingleExchanger --> 1 * LocalBufferExec }
+    pipelineId = 10
+    [Producer]: 1 * { LocalBufferExec }
+    [Consumer]: 1 * { SpilledTopNExec }
+    pipelineId = 11
+    [Producer]: 1 * { SpilledTopNExec }
+    [Consumer]: 1 * { SingleExchanger --> 1 * SpilledTopNExec }
+    pipelineId = 12
+    [Producer]: 1 * { SpilledTopNExec }
+    [Consumer]: 1 * { SingleExchanger --> 1 * LocalBufferExec }

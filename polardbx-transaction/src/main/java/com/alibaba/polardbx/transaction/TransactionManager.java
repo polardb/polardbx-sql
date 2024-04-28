@@ -24,6 +24,7 @@ import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
@@ -34,7 +35,11 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
@@ -45,15 +50,30 @@ import com.alibaba.polardbx.transaction.async.RotateGlobalTxLogTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionIdleTimeoutTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionStatisticsTaskWrapper;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
+import com.alibaba.polardbx.transaction.trx.AllowReadTransaction;
+import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
+import com.alibaba.polardbx.transaction.trx.AutoCommitTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.AutoCommitSingleShardTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.AutoCommitTransaction;
+import com.alibaba.polardbx.transaction.trx.BestEffortTransaction;
+import com.alibaba.polardbx.transaction.trx.CobarStyleTransaction;
+import com.alibaba.polardbx.transaction.trx.ITsoTransaction;
+import com.alibaba.polardbx.transaction.trx.MppReadOnlyTransaction;
+import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
+import com.alibaba.polardbx.transaction.trx.TsoTransaction;
+import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
+import com.alibaba.polardbx.transaction.trx.XATransaction;
 import com.alibaba.polardbx.transaction.tso.ClusterTimestampOracle;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -106,7 +126,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     private static TimerTask tsoHeartbeatTask;
 
     // Since purge tso task must run on PolarDB-X instances, only one task is need
-    private static TimerTask tsoPurgeTask;
+    private static volatile TimerTask tsoPurgeTask;
 
     private static final ITimestampOracle timestampOracle;
 
@@ -228,13 +248,16 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         case XA:
             // 如果启用了 DRDS XA 事务，定期检查 XA RECOVER
             enableXaRecoverScan();
-            trx = new XATransaction(executionContext, this);
+            if (storageManager.isSupportMarkDistributed() && executionContext.isEnableXaTso()) {
+                trx = new XATsoTransaction(executionContext, this);
+            } else {
+                trx = new XATransaction(executionContext, this);
+            }
             break;
         case TSO:
             enableXaRecoverScan();
-            if (InstanceVersion.isMYSQL80() && storageManager.support2pcOpt()
-                && DynamicConfig.getInstance().isEnable2pcOpt()) {
-                trx = new Tso2pcOptTransaction(executionContext, this);
+            if (executionContext.enableAsyncCommit() && supportAsyncCommit()) {
+                trx = new AsyncCommitTransaction(executionContext, this);
             } else {
                 trx = new TsoTransaction(executionContext, this);
             }
@@ -254,13 +277,20 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             trx = new ReadOnlyTsoTransaction(executionContext, this);
             break;
         case AUTO_COMMIT:
-            trx = new AutoCommitTransaction(executionContext, this);
+            if (storageManager.isSupportMarkDistributed() && executionContext.isEnableAutoCommitTso()) {
+                trx = new AutoCommitTsoTransaction(executionContext, this);
+            } else {
+                trx = new AutoCommitTransaction(executionContext, this);
+            }
             break;
         case ALLOW_READ_CROSS_DB:
             trx = new AllowReadTransaction(executionContext, this);
             break;
         case MPP_READ_ONLY_TRANSACTION:
             trx = new MppReadOnlyTransaction(executionContext, this);
+            break;
+        case COLUMNAR_READ_ONLY_TRANSACTION:
+            trx = new ColumnarTransaction(executionContext, this);
             break;
         default:
             throw new AssertionError("TransactionType: " + trxConfig.name() + " not supported");
@@ -295,7 +325,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     }
 
     public void enableLogCleanTask() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         if (null == cleanTask) {
@@ -365,7 +395,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
     public void enableXaRecoverScan() {
         // stop xa schedule work
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         if (!executor.isXaAvailable()) {
@@ -385,8 +415,28 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         }
     }
 
+    public void enableBestEffortRecoverScan() {
+        // stop xa schedule work
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+            return;
+        }
+        if (bestEffortRecoverTask == null) {
+            synchronized (this) {
+                if (bestEffortRecoverTask == null) {
+                    AsyncTaskQueue asyncQueue = executor.getAsyncQueue();
+
+                    ParamManager paramManager = new ParamManager(properties);
+                    int interval = paramManager.getInt(ConnectionParams.XA_RECOVER_INTERVAL); // reuse this variable
+
+                    bestEffortRecoverTask =
+                        asyncQueue.scheduleBestEffortRecoverTask(executor, globalTxLogManager, interval);
+                }
+            }
+        }
+    }
+
     void enableMdlDeadlockDetection() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         ParamManager paramManager = new ParamManager(properties);
@@ -410,7 +460,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     }
 
     public void enableKillTimeoutTransaction() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         ParamManager paramManager = new ParamManager(properties);
@@ -432,7 +482,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     }
 
     void enableTsoHeartbeat() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         if (tsoHeartbeatTask == null) {
@@ -451,7 +501,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     }
 
     void enableTsoPurge() {
-        if (ConfigDataMode.isFastMock() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
+        if (!ConfigDataMode.needDNResource() || SystemDbHelper.isDBBuildInExceptCdc(schemaName)) {
             return;
         }
         if (tsoPurgeTask == null) {
@@ -510,6 +560,7 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
     /**
      * get the min tso timestamp.
      */
+    @Override
     public long getMinSnapshotSeq() {
 
         long minSnapshotTime =
@@ -517,6 +568,10 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
         for (Iterator<Map.Entry<Long, ITransaction>> iterator = trans.entrySet().iterator(); iterator.hasNext(); ) {
             ITransaction transaction = iterator.next().getValue();
             if (transaction instanceof ITsoTransaction) {
+                if (transaction instanceof ColumnarTransaction) {
+                    // skip columnar transaction
+                    continue;
+                }
                 if (!((ITsoTransaction) transaction).snapshotSeqIsEmpty()) {
                     minSnapshotTime =
                         Math.min(minSnapshotTime,
@@ -526,6 +581,19 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             }
         }
         return minSnapshotTime;
+    }
+
+    @Override
+    public long getColumnarMinSnapshotSeq() {
+        long minSnapshotSeq = Long.MAX_VALUE;
+        for (ITransaction transaction : trans.values()) {
+            if (transaction instanceof ColumnarTransaction) {
+                if (!((ITsoTransaction) transaction).snapshotSeqIsEmpty()) {
+                    minSnapshotSeq = Math.min(minSnapshotSeq, ((ITsoTransaction) transaction).getSnapshotSeq());
+                }
+            }
+        }
+        return minSnapshotSeq;
     }
 
     /**
@@ -630,6 +698,18 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
 
     public static void finishAsyncCommitTask() {
         asyncCommitTasks.decrementAndGet();
+    }
+
+    public static boolean shouldWriteEventLog(long lastLogTime) {
+        // Write event log every 7 * 24 hours.
+        return lastLogTime == 0 || ((System.nanoTime() - lastLogTime) / 1000000000) > 604800;
+    }
+
+    public static void turnOffAutoSavepointOpt() throws SQLException {
+        // Set global.
+        Properties properties = new Properties();
+        properties.setProperty(ConnectionProperties.ENABLE_X_PROTO_OPT_FOR_AUTO_SP, "false");
+        MetaDbUtil.setGlobal(properties);
     }
 
 }

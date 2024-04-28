@@ -31,6 +31,7 @@ import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ServerThreadPool;
 import com.alibaba.polardbx.executor.changeset.ChangeSetApplyExecutorMap;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineSchedulerManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.sync.DdlRequest;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
@@ -43,18 +44,42 @@ import com.alibaba.polardbx.gms.metadb.lease.LeaseRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.collect.Sets;
+import org.apache.calcite.rel.metadata.BuiltInMetadata;
 import org.apache.commons.lang3.StringUtils;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
-import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.*;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_ARCHIVE_CLEANER_NAME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_DISPATCHER_NAME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_LEADER_ELECTION_NAME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_LEADER_KEY;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_LEADER_TTL_IN_MILLIS;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DDL_SCHEDULER_NAME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_LOGICAL_DDL_PARALLELISM;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_PAUSED_DDL_RESCHEDULE_INTERVAL_IN_MINUTES;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.DEFAULT_RUNNING_DDL_RESCHEDULE_INTERVAL_IN_MINUTES;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MEDIAN_WAITING_TIME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MORE_WAITING_TIME;
+import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.ROLLBACK_DDL_WAIT_TIMES;
 import static com.alibaba.polardbx.common.properties.ConnectionProperties.LOGICAL_DDL_PARALLELISM;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
@@ -380,6 +405,12 @@ public class DdlEngineScheduler {
                         return;
                     }
                     if (DdlEngineDagExecutorMap.contains(schemaName, record.jobId)) {
+                        return;
+                    }
+                    // double check ddl record exits
+                    List<DdlEngineRecord> records
+                        = ddlJobManager.fetchRecords(Collections.singletonList(record.jobId));
+                    if (records == null || records.isEmpty()) {
                         return;
                     }
                     boolean success = ddlJobDeliveryQueue.offer(record);

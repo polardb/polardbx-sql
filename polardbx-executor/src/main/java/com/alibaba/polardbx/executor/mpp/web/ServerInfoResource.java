@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.mpp.web;
 
 import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.gms.node.NodeVersion;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.gms.node.NodeState;
+import com.alibaba.polardbx.gms.node.NodeVersion;
 import io.airlift.node.NodeInfo;
 
 import javax.inject.Inject;

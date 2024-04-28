@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaQueryInfo;
@@ -70,7 +71,7 @@ public class InformationSchemaQueryInfoHandler extends BaseVirtualViewSubClassHa
         }
 
         List<List<Map<String, Object>>> results = SyncManagerHelper.sync(showQueryListSyncAction,
-            executionContext.getSchemaName());
+            executionContext.getSchemaName(), SyncScope.ALL);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

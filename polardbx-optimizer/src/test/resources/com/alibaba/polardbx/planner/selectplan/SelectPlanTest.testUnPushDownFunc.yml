@@ -86,7 +86,7 @@
     select concat(current_user(), a.data) from test_single_table a);
 
   plan: |
-    semihashjoin(condition="data = concat(current_user(), a.data)", type="semi")
+    semihashjoin(condition="data = concat(current_user(), a.data)", type="semi", build="inner")
       logicalview(tables="optest_0000.test_single_table", sql="select `id`, `data` from `test_single_table` as `test_single_table`")
       project(concat(current_user(), a.data)="concat(current_user(), data)")
         logicalview(tables="optest_0000.test_single_table", sql="select `data` from `test_single_table` as `test_single_table`")

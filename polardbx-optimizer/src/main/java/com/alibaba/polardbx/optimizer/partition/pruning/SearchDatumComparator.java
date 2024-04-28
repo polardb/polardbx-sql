@@ -130,6 +130,17 @@ public class SearchDatumComparator implements Comparator<SearchDatumInfo> {
                 if (bndValKind == PartitionBoundValueKind.DATUM_MAX_VALUE) {
                     retVal = 0;
                 }
+            } else if (queryValKind == PartitionBoundValueKind.DATUM_ANY_VALUE) {
+                // queryValKind == PartitionBoundValueKind.DATUM_MAX_VALUE
+                if (bndValKind == PartitionBoundValueKind.DATUM_MIN_VALUE) {
+                    return -1;
+                }
+                if (bndValKind == PartitionBoundValueKind.DATUM_NORMAL_VALUE) {
+                    return -1;
+                }
+                if (bndValKind == PartitionBoundValueKind.DATUM_MAX_VALUE) {
+                    retVal = 0;
+                }
             } else if (queryValKind == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
                 if (bndValKind == PartitionBoundValueKind.DATUM_DEFAULT_VALUE) {
                     retVal = 0;

@@ -22,7 +22,6 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.RelFactories;
-import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSemiJoin;
@@ -60,7 +59,8 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
     public static final CBOLogicalSemiJoinLogicalJoinTransposeRule PROJECT_INSTANCE =
         new CBOLogicalSemiJoinLogicalJoinTransposeRule(
             operand(LogicalSemiJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-                operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
+                operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                    operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
             RelFactories.LOGICAL_BUILDER,
             "CBOLogicalSemiJoinLogicalJoinTransposeRule:Project", false);
 
@@ -74,7 +74,8 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
     public static final CBOLogicalSemiJoinLogicalJoinTransposeRule PROJECT_LASSCOM =
         new CBOLogicalSemiJoinLogicalJoinTransposeRule(
             operand(LogicalSemiJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-                operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
+                operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                    operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
             RelFactories.LOGICAL_BUILDER,
             "CBOLogicalSemiJoinLogicalJoinTransposeRule:PROJECT_LASSCOM", true);
 
@@ -101,7 +102,9 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
         if (bottomJoin.getJoinReorderContext().isHasCommuteZigZag()) {
             return false;
         }
-
+        if (topJoin.getJoinReorderContext().isHasSemiFilter()) {
+            return false;
+        }
         return true;
     }
 
@@ -250,7 +253,7 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
         } else {
             leftSemiJoinOp = bottomJoin.getRight();
         }
-        SemiJoin newSemiJoin = topJoin.copy(
+        LogicalSemiJoin newSemiJoin = topJoin.copy(
             topJoin.getTraitSet(),
             newSemiJoinFilter,
             leftSemiJoinOp,
@@ -258,6 +261,7 @@ public class CBOLogicalSemiJoinLogicalJoinTransposeRule extends AbstractCBOLogic
             topJoin.getJoinType(),
             topJoin.isSemiJoinDone(),
             newOperands);
+        newSemiJoin.getJoinReorderContext().setHasTopPushThrough(true);
 
         RelNode leftJoinRel;
         RelNode rightJoinRel;

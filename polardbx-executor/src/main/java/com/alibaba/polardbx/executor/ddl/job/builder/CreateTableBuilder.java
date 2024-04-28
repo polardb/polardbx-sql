@@ -17,8 +17,11 @@
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
@@ -26,6 +29,8 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.IndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
 import com.alibaba.polardbx.optimizer.index.TableRuleBuilder;
@@ -48,6 +53,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 public class CreateTableBuilder extends DdlPhyPlanBuilder {
@@ -153,7 +160,7 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
             || (preparedData.getDbPartitions() != null && dbCount == 1);
         boolean multiTbs = preparedData.getTbPartitionBy() != null && tbCount > 1;
 
-        return ConfigDataMode.isSupportSingleDbMultiTbs() || !(singleDb && multiTbs);
+        return DynamicConfig.getInstance().isSupportSingleDbMultiTbs() || !(singleDb && multiTbs);
     }
 
     @Override
@@ -162,6 +169,8 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
 
         final SqlCreateTable sqlTemplate = (SqlCreateTable) this.sqlTemplate;
         Engine engine = sqlTemplate.getEngine();
+
+        sqlTemplate.setIsAddLogicalForeignKeyOnly(isAddLogicalForeignKeyOnly());
 
         MySqlCreateTableStatement stmt = (MySqlCreateTableStatement) sqlTemplate.rewrite();
         if (sqlTemplate.getEncryption() == null
@@ -215,6 +224,12 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
         PhysicalPlanData data = super.genPhysicalPlanData(autoPartition);
         if (data.getLocalityDesc() == null || data.getLocalityDesc().isEmpty()) {
             data.setLocalityDesc(preparedData.getLocality());
+        }
+        if (data.getTableESA() == null) {
+            data.setTableESA(preparedData.getTableEAS());
+        }
+        if (data.getColEsaList() == null || data.getColEsaList().isEmpty()) {
+            data.setColEsaList(preparedData.getColEASList());
         }
         return data;
     }
@@ -304,5 +319,24 @@ public class CreateTableBuilder extends DdlPhyPlanBuilder {
                 }
             }
         }
+    }
+
+    public List<Boolean> isAddLogicalForeignKeyOnly() {
+        List<Boolean> isAddLogicalForeignKeyOnly = new ArrayList<>();
+        TableMeta tableMeta = preparedData.getTableMeta();
+
+        Set<String> indexes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        indexes.addAll(
+            tableMeta.getAllIndexes().stream().map(IndexMeta::getPhysicalIndexName).collect(Collectors.toList()));
+        if (GeneralUtil.isNotEmpty(preparedData.getAddedForeignKeys())) {
+            for (ForeignKeyData fk : preparedData.getAddedForeignKeys()) {
+                if (indexes.contains(fk.constraint)) {
+                    isAddLogicalForeignKeyOnly.add(true);
+                } else {
+                    isAddLogicalForeignKeyOnly.add(false);
+                }
+            }
+        }
+        return isAddLogicalForeignKeyOnly;
     }
 }

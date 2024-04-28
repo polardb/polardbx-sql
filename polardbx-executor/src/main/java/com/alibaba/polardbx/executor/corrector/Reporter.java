@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.corrector;
 
 import com.alibaba.fastjson.JSON;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -26,6 +25,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gsi.CheckerManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.util.Pair;
 

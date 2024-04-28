@@ -104,6 +104,20 @@ public class IndexValidator {
         }
     }
 
+    public static void validateColumnarIndexNonExistence(String schemaName, String logicalTableName) {
+        if (checkIfColumnarIndexExists(schemaName, logicalTableName)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                "Columnar index on table '" + logicalTableName + "' already exists");
+        }
+    }
+
+    public static void validateColumnarIndexNumLimit(String schemaName, String logicalTableName, long limit) {
+        if (checkIfColumnarIndexNumLimit(schemaName, logicalTableName, limit)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                "Columnar index on table '" + logicalTableName + "' already exists " + limit);
+        }
+    }
+
     public static void validateDropPrimaryKey(String indexName) {
         if (PRIMARY_KEY.equalsIgnoreCase(indexName)) {
             throw new TddlRuntimeException(ErrorCode.ERR_DROP_PRIMARY_KEY);
@@ -115,6 +129,24 @@ public class IndexValidator {
             @Override
             protected Boolean invoke() {
                 return tableInfoManager.checkIfIndexExists(schemaName, logicalTableName, indexName);
+            }
+        }.execute();
+    }
+
+    public static boolean checkIfColumnarIndexExists(String schemaName, String logicalTableName) {
+        return new TableInfoManagerDelegate<Boolean>(new TableInfoManager()) {
+            @Override
+            protected Boolean invoke() {
+                return tableInfoManager.checkIfColumnarIndexExists(schemaName, logicalTableName);
+            }
+        }.execute();
+    }
+
+    public static boolean checkIfColumnarIndexNumLimit(String schemaName, String logicalTableName, long limit) {
+        return new TableInfoManagerDelegate<Boolean>(new TableInfoManager()) {
+            @Override
+            protected Boolean invoke() {
+                return tableInfoManager.getColumnarIndexNum(schemaName, logicalTableName) >= limit;
             }
         }.execute();
     }

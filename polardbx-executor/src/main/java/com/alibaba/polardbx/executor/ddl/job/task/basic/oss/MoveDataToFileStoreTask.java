@@ -111,7 +111,7 @@ public class MoveDataToFileStoreTask extends BaseGmsTask {
         List<FilesRecord> files =
             TableMetaChanger.lockOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (FilesRecord record : files) {
-            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine, false);
             File tmpFile = new File(record.getLocalPath());
             if (tmpFile.exists()) {
                 if (!tmpFile.delete()) {
@@ -126,7 +126,7 @@ public class MoveDataToFileStoreTask extends BaseGmsTask {
         List<ColumnMetasRecord> columnMetas =
             TableMetaChanger.lockOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (ColumnMetasRecord record : columnMetas) {
-            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.tableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.tableEngine, false);
         }
         TableMetaChanger.deleteOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
 

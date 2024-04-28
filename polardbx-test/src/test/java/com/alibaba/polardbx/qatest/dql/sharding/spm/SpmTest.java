@@ -20,6 +20,7 @@ import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.Lists;
+import com.google.common.truth.Truth;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.Assert;
@@ -30,6 +31,7 @@ import org.junit.runners.Parameterized;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -135,6 +137,54 @@ public class SpmTest extends ReadBaseTestCase {
             + " where integer_test between 1324 and 435 or integer_test between 345 and 222;";
         // test original sql with different params
         explainAllResultNotMatchAssert(sql4, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+    }
+
+    @Test
+    public void baselineWithPushdownHint1() {
+        // clear current baseline info
+        executeBatchOnConn(tddlConnection, "baseline delete_all", null);
+
+        final String select = "select bigint_test from " + baseOneTableName
+            + " where bigint_test in (10086) order by date_test desc limit 100";
+
+        String sql1 = "explain " + select;
+        // test original sql plan ,making sure that it's a full table scan plan
+        explainAllResultMatchAssert(sql1, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        final String randomScanHint = "/*+TDDL:SCAN(\"" + baseOneTableName + "\", condition=\"pk = rand() * 100\")*/ ";
+        String sql2 = "explain " + randomScanHint + select;
+
+        // use hint make plan pushdown to a randomly chosen partition
+        explainAllResultNotMatchAssert(sql2, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        String sql3 = "baseline fix sql " + randomScanHint + select;
+
+        // baseline fix plan with pushdown hint
+        executeBatchOnConn(tddlConnection, sql3, null);
+
+        // test original sql , whether its plan contains no shardCount
+        explainAllResultNotMatchAssert(sql1, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        // persist plan(not necessary)
+        executeBatchOnConn(tddlConnection, "baseline PERSIST", null);
+
+        String sql4 = "select bigint_test from " + baseOneTableName
+            + " where bigint_test in (10086, 9527, 27149) order by date_test desc limit 100";
+        // test original sql with different params
+        explainAllResultNotMatchAssert("explain " + sql4, null, tddlConnection, "[\\s\\S]*shardCount[\\s\\S]*");
+
+        JdbcUtil.executeSuccess(tddlConnection, "trace " + sql4);
+        List<String> showTraceResults = new ArrayList<>();
+        try (final ResultSet showTraceRs = JdbcUtil.executeQuerySuccess(tddlConnection, "show trace")) {
+            while (showTraceRs.next()) {
+                showTraceResults.add(showTraceRs.getString("PARAMS"));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
+        Truth.assertThat(showTraceResults).hasSize(1);
+        Truth.assertThat(showTraceResults.get(0)).endsWith(", Raw(10086,9527,27149), 100]");
     }
 
     @Test

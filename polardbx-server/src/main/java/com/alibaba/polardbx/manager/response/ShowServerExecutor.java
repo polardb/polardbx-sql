@@ -87,7 +87,7 @@ public final class ShowServerExecutor {
 
         // write rows
         byte packetId = eof.packetId;
-        packetId = writeRows(CobarServer.getInstance().getServerExecutor(), c.getCharset(), proxy, packetId);
+        packetId = writeRows(CobarServer.getInstance().getServerExecutor(), c.getResultSetCharset(), proxy, packetId);
 
         // write last eof
         EOFPacket lastEof = new EOFPacket();

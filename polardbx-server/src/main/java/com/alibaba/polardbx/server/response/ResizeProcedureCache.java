@@ -34,7 +34,7 @@ public class ResizeProcedureCache {
         try {
             int newSize = Integer.parseInt(newSizeStr);
             SyncManagerHelper.sync(new ResizeProcedureCacheSyncAction(newSize), TddlConstants.INFORMATION_SCHEMA,
-                SyncScope.ALL);
+                SyncScope.NOT_COLUMNAR_SLAVE);
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException(String.format("'%s is illegal'", newSizeStr));
         }

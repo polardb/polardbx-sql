@@ -29,11 +29,11 @@
  */
 package com.alibaba.polardbx.executor.mpp.util;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.mpp.execution.ExecutionFailureInfo;
 import com.alibaba.polardbx.executor.mpp.execution.Failure;
+import com.google.common.collect.Lists;
 
 import javax.annotation.Nullable;
 import java.net.ConnectException;
@@ -41,9 +41,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.RejectedExecutionException;
 
-import static com.google.common.base.Functions.toStringFunction;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_SERVER_SHUTTING_DOWN;
 import static com.alibaba.polardbx.util.MoreObjects.firstNonNull;
+import static com.google.common.base.Functions.toStringFunction;
 import static java.lang.String.format;
 import static java.util.Arrays.asList;
 

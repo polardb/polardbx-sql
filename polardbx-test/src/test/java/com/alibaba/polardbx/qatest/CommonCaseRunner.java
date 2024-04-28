@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest;
 
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.runner.Description;
@@ -68,20 +69,21 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
 
         @Override
         public boolean shouldRun(Description description) {
-            // run anyway if not in file-storage mode.
-            if (!PropertiesUtil.useFileStorage()) {
+            // run anyway if not in file-storage mode and not in columnar mode
+            if (!PropertiesUtil.useFileStorage() && !PropertiesUtil.columnarMode()) {
                 return true;
             }
 
             // check annotation in test class
-            if (typeAnnotation != null && PropertiesUtil.useFileStorage()) {
+            if (typeAnnotation != null && (PropertiesUtil.useFileStorage() || PropertiesUtil.columnarMode())) {
                 return false;
             }
 
             if (description.isTest()) {
                 // check annotation in single test method.
                 T annotation = description.getAnnotation(klass);
-                boolean hitAnnotation = annotation != null && PropertiesUtil.useFileStorage();
+                boolean hitAnnotation =
+                    annotation != null && (PropertiesUtil.useFileStorage() || PropertiesUtil.columnarMode());
                 return !hitAnnotation;
             } else {
                 // explicitly check if any children want to run
@@ -117,12 +119,104 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
                 && !ClassHelper.getFileStorageTestCases().contains(this.klass)) {
                 return false;
             }
+            if (PropertiesUtil.columnarMode()
+                && !ClassHelper.getColumnarTestCases().contains(this.klass)) {
+                return false;
+            }
             return true;
         }
 
         @Override
         public String describe() {
             return "In file-storage mode, run test case only if matching the specific case list.";
+        }
+    }
+
+    // 不管是binlog实验室，还是replica实验室，使用该注解的用例，都会被ignore
+    public static class CdcIgnoreCaseFilter extends Filter {
+
+        private final CdcIgnore typeAnnotation;
+
+        public CdcIgnoreCaseFilter(CdcIgnore typeAnnotation) {
+            this.typeAnnotation = typeAnnotation;
+        }
+
+        static Class<CdcIgnore> clazz = CdcIgnore.class;
+
+        static boolean isCdcTesting() {
+            String value = System.getProperty("skip_cdc");
+            return StringUtils.equalsIgnoreCase(value, "false");
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            if (isCdcTesting()) {
+                return !(typeAnnotation != null || description.getAnnotation(clazz) != null);
+            }
+            return true;
+        }
+
+        @Override
+        public String describe() {
+            return "handle test case if cdc-based ignored";
+        }
+    }
+
+    public static class BinlogIgnoreCaseFilter extends Filter {
+
+        private final BinlogIgnore typeAnnotation;
+
+        public BinlogIgnoreCaseFilter(BinlogIgnore typeAnnotation) {
+            this.typeAnnotation = typeAnnotation;
+        }
+
+        static Class<BinlogIgnore> clazz = BinlogIgnore.class;
+
+        static boolean isBinlogTesting() {
+            String value = System.getProperty("cdc_test_type");
+            return StringUtils.equalsIgnoreCase(value, "binlog");
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            if (isBinlogTesting()) {
+                return !(typeAnnotation != null || description.getAnnotation(clazz) != null);
+            }
+            return true;
+        }
+
+        @Override
+        public String describe() {
+            return "handle test case if binlog-based ignored";
+        }
+    }
+
+    public static class ReplicaIgnoreCaseFilter extends Filter {
+
+        private final ReplicaIgnore typeAnnotation;
+
+        public ReplicaIgnoreCaseFilter(ReplicaIgnore typeAnnotation) {
+            this.typeAnnotation = typeAnnotation;
+        }
+
+        static Class<ReplicaIgnore> clazz = ReplicaIgnore.class;
+
+        static boolean isReplicaTesting() {
+            String value = System.getProperty("cdc_test_type");
+            return StringUtils.equalsIgnoreCase(value, "replica");
+        }
+
+        @Override
+        public boolean shouldRun(Description description) {
+            if (isReplicaTesting()) {
+                return !(typeAnnotation != null || description.getAnnotation(clazz) != null);
+            }
+            return true;
+        }
+
+        @Override
+        public String describe() {
+            return "handle test case if replica-based ignored";
         }
     }
 
@@ -154,7 +248,7 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
         }
         this.internalRunner = runner;
 
-        if (PropertiesUtil.useFileStorage()) {
+        if (PropertiesUtil.useFileStorage() || PropertiesUtil.columnarMode()) {
             // check if designated.
             Filter fileStorageCaseFilter = new FileStorageCaseFilter(klass);
 
@@ -163,13 +257,45 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
             FileStoreIgnore typeAnnotation = this.testClass.getAnnotation(FileStoreIgnore.class);
             Filter annotationBasedFilter = new AnnotationBasedFilter(typeAnnotation, FileStoreIgnore.class);
 
+            Filter addtionalFilter = PropertiesUtil.columnarMode() ? getColumnarFilter() : Filter.ALL;
+
             try {
                 fileStorageCaseFilter.apply(this.internalRunner);
                 annotationBasedFilter.apply(this.internalRunner);
+                addtionalFilter.apply(this.internalRunner);
             } catch (NoTestsRemainException ex) {
                 // ignore the whole case.
             }
         }
+
+        if (CdcIgnoreCaseFilter.isCdcTesting()) {
+            try {
+                CdcIgnore typeAnnotation = testClass.getAnnotation(CdcIgnore.class);
+                Filter cdcIgnoreCaseFilter = new CdcIgnoreCaseFilter(typeAnnotation);
+                cdcIgnoreCaseFilter.apply(this.internalRunner);
+            } catch (NoTestsRemainException ex) {
+                // ignore the whole case.
+            }
+
+            if (BinlogIgnoreCaseFilter.isBinlogTesting()) {
+                try {
+                    BinlogIgnore typeAnnotation = testClass.getAnnotation(BinlogIgnore.class);
+                    Filter binlogIgnoreCaseFilter = new BinlogIgnoreCaseFilter(typeAnnotation);
+                    binlogIgnoreCaseFilter.apply(this.internalRunner);
+                } catch (NoTestsRemainException ex) {
+                    // ignore the whole case.
+                }
+            } else if (ReplicaIgnoreCaseFilter.isReplicaTesting()) {
+                try {
+                    ReplicaIgnore typeAnnotation = testClass.getAnnotation(ReplicaIgnore.class);
+                    Filter replicaIgnoreCaseFilter = new ReplicaIgnoreCaseFilter(typeAnnotation);
+                    replicaIgnoreCaseFilter.apply(this.internalRunner);
+                } catch (NoTestsRemainException ex) {
+                    // ignore the whole case.
+                }
+            }
+        }
+
     }
 
     @Override
@@ -207,6 +333,12 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
         }
 
         return false;
+    }
+
+    private Filter getColumnarFilter() {
+        ColumnarIgnore typeAnnotation = this.testClass.getAnnotation(ColumnarIgnore.class);
+        Filter annotationBasedFilter = new AnnotationBasedFilter(typeAnnotation, ColumnarIgnore.class);
+        return annotationBasedFilter;
     }
 
     /**
@@ -262,6 +394,14 @@ public class CommonCaseRunner extends Parameterized implements Filterable, Sorta
             if (PropertiesUtil.useFileStorage()
                 && (getTestClass().getAnnotation(FileStoreIgnore.class) != null
                 || !ClassHelper.getFileStorageTestCases().contains(getTestClass().getJavaClass()))) {
+                return ImmutableList.of();
+            }
+
+            if (PropertiesUtil.columnarMode()
+                && (getTestClass().getAnnotation(FileStoreIgnore.class) != null
+                || getTestClass().getAnnotation(ColumnarIgnore.class) != null
+                || !ClassHelper.getColumnarTestCases().contains(getTestClass().getJavaClass()))
+            ) {
                 return ImmutableList.of();
             }
 

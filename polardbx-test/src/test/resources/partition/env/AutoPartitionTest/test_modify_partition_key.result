@@ -58,7 +58,7 @@ t_order,CREATE PARTITION TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
 	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -88,7 +88,7 @@ t_order,CREATE PARTITION TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
 	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -118,7 +118,7 @@ t_order,CREATE PARTITION TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
 	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -158,7 +158,7 @@ t_order,CREATE PARTITION TABLE `t_order` (
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
 	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -187,8 +187,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
-	UNIQUE LOCAL KEY `_local_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -217,8 +217,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
-	UNIQUE LOCAL KEY `_local_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -247,8 +247,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
-	UNIQUE LOCAL KEY `_local_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3
@@ -287,8 +287,8 @@ t_order,CREATE PARTITION TABLE `t_order` (
 	GLOBAL INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
 		PARTITION BY KEY(`seller_id`,`x`)
 		PARTITIONS 3,
-	UNIQUE LOCAL KEY `_local_order_id` USING BTREE (`order_id`),
-	LOCAL KEY `_local_seller_id` USING BTREE (`seller_id`)
+	UNIQUE LOCAL KEY `_local_order_id` (`order_id`),
+	LOCAL KEY `_local_seller_id` (`seller_id`)
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`x`)
 PARTITIONS 3

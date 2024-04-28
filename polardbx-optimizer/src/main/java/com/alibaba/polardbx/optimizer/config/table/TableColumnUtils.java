@@ -42,8 +42,10 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -132,42 +134,8 @@ public class TableColumnUtils {
         return tableColumnMeta.isModifying();
     }
 
-    public static boolean isModifyPrimaryKey(String schemaName, String tableName, ExecutionContext ec) {
-        // In OMC execution, may not be doing column multi-write
-        SchemaManager sm;
-        if (ec != null) {
-            sm = ec.getSchemaManager(schemaName);
-        } else {
-            sm = OptimizerContext.getContext(schemaName).getLatestSchemaManager();
-        }
-        final TableMeta table = sm.getTable(tableName);
-        final TableColumnMeta tableColumnMeta = table.getTableColumnMeta();
-        if (tableColumnMeta == null) {
-            return false;
-        }
-        return tableColumnMeta.isModifyPrimaryKey();
-    }
-
-    public static Pair<String, String> getColumnMultiWriteMapping(TableColumnMeta tableColumnMeta,
-                                                                  ExecutionContext ec) {
-        Pair<String, String> columnMultiWriteMapping =
-            tableColumnMeta == null ? null : tableColumnMeta.getColumnMultiWriteMapping();
-        if (columnMultiWriteMapping == null) {
-            // ColumnMultiWrite:`source_col`,`target_col`
-            final String dbgInfo = ec.getParamManager().getString(ConnectionParams.COLUMN_DEBUG);
-            final String mark = "ColumnMultiWrite";
-
-            if (!TStringUtil.isEmpty(dbgInfo) && dbgInfo.startsWith(mark)) {
-                List<Integer> pos = new ArrayList<>(4);
-                for (int i = dbgInfo.indexOf('`'); i >= 0; i = dbgInfo.indexOf('`', i + 1)) {
-                    pos.add(i);
-                }
-                String sourceColumn = dbgInfo.substring(pos.get(0) + 1, pos.get(1));
-                String targetColumn = dbgInfo.substring(pos.get(2) + 1, pos.get(3));
-                columnMultiWriteMapping = new Pair<>(sourceColumn, targetColumn);
-            }
-        }
-        return columnMultiWriteMapping;
+    public static Map<String, String> getColumnMultiWriteMapping(TableColumnMeta tableColumnMeta) {
+        return tableColumnMeta == null ? null : tableColumnMeta.getColumnMultiWriteMapping();
     }
 
     public static String getDataDefFromColumnDef(SQLColumnDefinition colDef) {
@@ -312,45 +280,27 @@ public class TableColumnUtils {
         return String.format("%s_%d", uniqueIndexName, 65);
     }
 
-    public static void rewriteSqlTemplate(SqlInsert sqlInsert, Pair<String, String> columnMapping) {
-        // Add target column to sqlTemplate
-        sqlInsert.getTargetColumnList().add(new SqlIdentifier(columnMapping.right, SqlParserPos.ZERO));
-
-        // Add alter_type(source_column) to values
-        SqlBasicCall source = (SqlBasicCall) sqlInsert.getSource();
-        SqlNode[] rows = source.getOperands();
-        SqlNode[] newRows = new SqlNode[rows.length];
-        for (int i = 0; i < rows.length; i++) {
-            SqlBasicCall row = (SqlBasicCall) rows[i];
-            SqlNode[] newVals = new SqlNode[row.getOperands().length + 1];
-            for (int j = 0; j < newVals.length - 1; j++) {
-                newVals[j] = row.getOperands()[j];
+    public static void rewriteSqlTemplate(SqlInsert sqlInsert, Map<String, String> columnMapping) {
+        SqlNodeList targetColumnList = sqlInsert.getTargetColumnList();
+        if (targetColumnList != null && targetColumnList.size() > 0) {
+            for (int i = 0; i < targetColumnList.size(); ++i) {
+                if (columnMapping.containsKey(targetColumnList.get(i).toString().toLowerCase())) {
+                    targetColumnList.set(i,
+                        new SqlIdentifier(columnMapping.get(targetColumnList.get(i).toString().toLowerCase()),
+                            SqlParserPos.ZERO));
+                }
             }
-            newVals[newVals.length - 1] = new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-                new SqlNode[] {new SqlIdentifier(columnMapping.left, SqlParserPos.ZERO)}, SqlParserPos.ZERO);
-            SqlBasicCall newRow =
-                new SqlBasicCall(row.getOperator(), newVals, row.getParserPosition(), row.isExpanded(),
-                    row.getFunctionQuantifier());
-            newRows[i] = newRow;
         }
-        SqlBasicCall newSource = new SqlBasicCall(
-            source.getOperator(),
-            newRows,
-            source.getParserPosition(),
-            source.isExpanded(),
-            source.getFunctionQuantifier()
-        );
 
-        sqlInsert.setSource(newSource);
-
-        // Add SET target_column=alter_type(source_column) if it is upsert
         SqlNodeList updateList = sqlInsert.getUpdateList();
         if (updateList != null && updateList.size() > 0) {
-            final SqlBasicCall alterTypeFunc = new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-                new SqlNode[] {new SqlIdentifier(columnMapping.left, SqlParserPos.ZERO)}, SqlParserPos.ZERO);
-            final SqlIdentifier targetColumnId = new SqlIdentifier(columnMapping.right, SqlParserPos.ZERO);
-            updateList.add(new SqlBasicCall(SqlStdOperatorTable.EQUALS,
-                ImmutableList.of(targetColumnId, alterTypeFunc).toArray(new SqlNode[2]), SqlParserPos.ZERO));
+            for (int i = 0; i < updateList.size(); ++i) {
+                if (columnMapping.containsKey(updateList.get(i).toString().toLowerCase())) {
+                    updateList.set(i,
+                        new SqlIdentifier(columnMapping.get(updateList.get(i).toString().toLowerCase()),
+                            SqlParserPos.ZERO));
+                }
+            }
         }
     }
 

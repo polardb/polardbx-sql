@@ -126,8 +126,7 @@ public class LogicalAlterJoinGroup extends BaseDdlOperation {
                 Pair<Set<String>, Set<String>> tables =
                     new Pair<>(new TreeSet<>(String::compareToIgnoreCase), new TreeSet<>(String::compareToIgnoreCase));
                 tables.getKey().add(tableMeta.getTableName());
-                tables.getValue().addAll(tableGroupConfig.getTables().stream().map(o -> o.getTableName()).collect(
-                    Collectors.toList()));
+                tables.getValue().addAll(tableGroupConfig.getTables());
                 tableGroupMap.put(tableGroupName, tables);
             } else {
                 tableGroupMap.get(tableGroupName).getKey().add(tableMeta.getTableName());
@@ -146,8 +145,7 @@ public class LogicalAlterJoinGroup extends BaseDdlOperation {
                                 new TreeSet<>(String::compareToIgnoreCase));
                         tables.getKey().add(o.getTableName());
                         tables.getValue()
-                            .addAll(gsiTableGroupConfig.getTables().stream().map(o1 -> o1.getTableName()).collect(
-                                Collectors.toList()));
+                            .addAll(gsiTableGroupConfig.getTables());
                     } else {
                         tableGroupMap.get(gsiTableGroupName).getKey().add(o.getTableName());
                     }

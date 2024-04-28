@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor.mpp.web;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
 import com.alibaba.polardbx.executor.mpp.execution.QueryState;
 import com.alibaba.polardbx.gms.node.InternalNodeManager;
 import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.gms.node.NodeState;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import javax.inject.Inject;
 import javax.ws.rs.GET;
@@ -37,9 +37,9 @@ import static java.util.Objects.requireNonNull;
 
 @Path("/v1/cluster")
 public class ClusterStatsResource {
+    private static ClusterStatsResource instance = null;
     private final InternalNodeManager nodeManager;
     private final QueryManager queryManager;
-    private static ClusterStatsResource instance = null;
 
     @Inject
     public ClusterStatsResource(InternalNodeManager nodeManager, QueryManager queryManager) {
@@ -52,6 +52,50 @@ public class ClusterStatsResource {
 
     public static ClusterStatsResource getInstance() {
         return instance;
+    }
+
+    protected static ClusterStats getClusterStatsInternal(List<QueryInfo> queryIfs, long activeNodes,
+                                                          long totalQueries) {
+        double rowInputRate = 0;
+        double byteInputRate = 0;
+        double cpuTimeRate = 0;
+
+        long runningDrivers = 0;
+        double memoryReservation = 0;
+
+        long runningQueries = 0;
+        long blockedQueries = 0;
+        long queuedQueries = 0;
+
+        for (QueryInfo query : queryIfs) {
+            if (query.getState() == QueryState.QUEUED) {
+                queuedQueries++;
+            } else if (query.getState() == QueryState.RUNNING) {
+                if (query.getQueryStats().isFullyBlocked()) {
+                    blockedQueries++;
+                } else {
+                    runningQueries++;
+                }
+            }
+
+            if (!query.getState().isDone()) {
+                double totalExecutionTimeSeconds = query.getQueryStats().getElapsedTime().getValue(TimeUnit.SECONDS);
+                if (totalExecutionTimeSeconds != 0) {
+                    byteInputRate +=
+                        query.getQueryStats().getProcessedInputDataSize().toBytes() / totalExecutionTimeSeconds;
+                    rowInputRate += query.getQueryStats().getProcessedInputPositions() / totalExecutionTimeSeconds;
+                    cpuTimeRate += (query.getQueryStats().getTotalCpuTime().getValue(TimeUnit.SECONDS))
+                        / totalExecutionTimeSeconds;
+                }
+                memoryReservation += query.getQueryStats().getTotalMemoryReservation().toBytes();
+                runningDrivers += query.getQueryStats().getRunningPipelinExecs();
+            }
+        }
+
+        return new ClusterStats(totalQueries, runningQueries, blockedQueries, queuedQueries,
+            activeNodes, runningDrivers, memoryReservation, rowInputRate, byteInputRate,
+            cpuTimeRate
+        );
     }
 
     @GET
@@ -83,25 +127,25 @@ public class ClusterStatsResource {
         @JsonCreator
         public ClusterStats(
             @JsonProperty("totalQueries")
-                long totalQueries, //总的query数目
+            long totalQueries, //总的query数目
             @JsonProperty("runningQueries")
-                long runningQueries, //运行query数目
+            long runningQueries, //运行query数目
             @JsonProperty("blockedQueries")
-                long blockedQueries, //blocked query数目
+            long blockedQueries, //blocked query数目
             @JsonProperty("queuedQueries")
-                long queuedQueries,
+            long queuedQueries,
             @JsonProperty("activeWorkers")
-                long activeWorkers,
+            long activeWorkers,
             @JsonProperty("runningDrivers")
-                long runningDrivers,
+            long runningDrivers,
             @JsonProperty("reservedMemory")
-                double reservedMemory,
+            double reservedMemory,
             @JsonProperty("rowInputRate")
-                double rowInputRate,
+            double rowInputRate,
             @JsonProperty("byteInputRate")
-                double byteInputRate,
+            double byteInputRate,
             @JsonProperty("cpuTimeRate")
-                double cpuTimeRate
+            double cpuTimeRate
         ) {
             this.totalQueries = totalQueries;
             this.runningQueries = runningQueries;
@@ -164,49 +208,5 @@ public class ClusterStatsResource {
         public double getCpuTimeRate() {
             return cpuTimeRate;
         }
-    }
-
-    protected static ClusterStats getClusterStatsInternal(List<QueryInfo> queryIfs, long activeNodes,
-                                                          long totalQueries) {
-        double rowInputRate = 0;
-        double byteInputRate = 0;
-        double cpuTimeRate = 0;
-
-        long runningDrivers = 0;
-        double memoryReservation = 0;
-
-        long runningQueries = 0;
-        long blockedQueries = 0;
-        long queuedQueries = 0;
-
-        for (QueryInfo query : queryIfs) {
-            if (query.getState() == QueryState.QUEUED) {
-                queuedQueries++;
-            } else if (query.getState() == QueryState.RUNNING) {
-                if (query.getQueryStats().isFullyBlocked()) {
-                    blockedQueries++;
-                } else {
-                    runningQueries++;
-                }
-            }
-
-            if (!query.getState().isDone()) {
-                double totalExecutionTimeSeconds = query.getQueryStats().getElapsedTime().getValue(TimeUnit.SECONDS);
-                if (totalExecutionTimeSeconds != 0) {
-                    byteInputRate +=
-                        query.getQueryStats().getProcessedInputDataSize().toBytes() / totalExecutionTimeSeconds;
-                    rowInputRate += query.getQueryStats().getProcessedInputPositions() / totalExecutionTimeSeconds;
-                    cpuTimeRate += (query.getQueryStats().getTotalCpuTime().getValue(TimeUnit.SECONDS))
-                        / totalExecutionTimeSeconds;
-                }
-                memoryReservation += query.getQueryStats().getTotalMemoryReservation().toBytes();
-                runningDrivers += query.getQueryStats().getRunningPipelinExecs();
-            }
-        }
-
-        return new ClusterStats(totalQueries, runningQueries, blockedQueries, queuedQueries,
-            activeNodes, runningDrivers, memoryReservation, rowInputRate, byteInputRate,
-            cpuTimeRate
-        );
     }
 }

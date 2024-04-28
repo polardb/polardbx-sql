@@ -44,6 +44,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -63,113 +64,93 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
         SqlCancelDdlJob command = (SqlCancelDdlJob) logicalPlan.getNativeSqlNode();
-        return doCancel(command.isAll(), command.getJobIds(), executionContext);
+
+        if (command.isAll()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        if (command.getJobIds() == null || command.getJobIds().isEmpty()) {
+            return new AffectRowCursor(0);
+        }
+
+        if (command.getJobIds().size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        return doCancel(command.getJobIds().get(0), executionContext);
     }
 
-    public Cursor doCancel(boolean isAll, List<Long> jobIds, ExecutionContext executionContext) {
+    public Cursor doCancel(Long jobId, ExecutionContext executionContext) {
         boolean enableOperateSubJob =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OPERATE_SUBJOB);
         boolean cancelSubJob =
             executionContext.getParamManager().getBoolean(ConnectionParams.CANCEL_SUBJOB);
-        List<DdlEngineRecord> records =
-            fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
-        for (DdlEngineRecord record : records) {
-            if (REBALANCE.name().equalsIgnoreCase(record.ddlType)) {
-                // update ddl plan state
-                DdlPlanState afterState;
-                if (record.ddlStmt.toLowerCase().contains("drain_node")) {
-                    // fail
-                    afterState = TERMINATED;
-                } else {
-                    // success
-                    afterState = SUCCESS;
-                }
-                String message = String.format("update state:[%s] by rollback the rebalance ddl", afterState.name());
-                RebalanceDdlPlanManager rebalanceDdlPlanManager = new RebalanceDdlPlanManager();
-                rebalanceDdlPlanManager.updateRebalanceScheduleState(record.jobId, afterState, message);
-            }
+        DdlEngineRecord record = schedulerManager.fetchRecordByJobId(jobId);
+        if (record == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "The ddl job does not exist");
         }
 
-        records.stream().forEach(record -> {
-            DdlState state = DdlState.valueOf(record.state);
-
-            if (!(state == DdlState.RUNNING || state == DdlState.PAUSED)) {
-                String errMsg = String.format("Only RUNNING/PAUSED jobs can be cancelled, but job %s is in %s state. ",
-                    record.jobId, record.state);
-                if (StringUtils.equalsIgnoreCase(record.state, DdlState.ROLLBACK_PAUSED.name())) {
-                    errMsg += String.format("You may want to try command: continue ddl %s", record.jobId);
-                }
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, errMsg);
+        if (REBALANCE.name().equalsIgnoreCase(record.ddlType)) {
+            // update ddl plan state
+            DdlPlanState afterState;
+            if (record.ddlStmt.toLowerCase().contains("drain_node")) {
+                // fail
+                afterState = TERMINATED;
+            } else {
+                // success
+                afterState = SUCCESS;
             }
-
-            if (!record.isSupportCancel() || !AlterTableRollbacker.checkIfRollbackable(record.ddlStmt)) {
-                String detail = (AlterTableRollbacker.checkIfRollbackable(record.ddlStmt) ? "original DDL itself" :
-                    "the DDL operations") + " cannot be rolled back";
-                String errMsg = "Cancel/rollback is not supported for job %s because %s%s. Please try: continue ddl %s";
-
-                if (state == DdlState.RUNNING) {
-                    // Pause the job first.
-                    DdlEnginePauseJobsHandler pauseJobsHandler = new DdlEnginePauseJobsHandler(repo);
-                    pauseJobsHandler.doPause(isAll, jobIds, executionContext);
-                    record.state = DdlState.PAUSED.name();
-                }
-
-                Optional<DdlEngineTaskRecord> phyDdlTaskRecord = checkIfAllShardsNotDone(record);
-
-                if (phyDdlTaskRecord != null && record.isSupportCancel()) {
-                    // There is no shard done, so we can roll the job back right now.
-                    if (phyDdlTaskRecord.isPresent()) {
-                        // The physical DDL task is still DIRTY, so we should set the task to READY for rollback.
-                        new DdlEngineAccessorDelegate<Integer>() {
-                            @Override
-                            protected Integer invoke() {
-                                phyDdlTaskRecord.get().state = DdlTaskState.READY.name();
-                                phyDdlTaskRecord.get().exceptionAction = DdlExceptionAction.ROLLBACK.name();
-                                return engineTaskAccessor.updateTask(phyDdlTaskRecord.get());
-                            }
-                        }.execute();
-                    } else {
-                        // The physical ddl task has been set already, so nothing to do.
-                    }
-                } else {
-                    // Otherwise, there is at least one shard done, so raise an exception to explain it.
-                    if (state == DdlState.RUNNING) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                            String.format(errMsg, record.jobId, detail, ", so the DDL job has been paused instead",
-                                record.jobId));
-                    }
-                    if (state == DdlState.PAUSED) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                            String.format(errMsg, record.jobId, detail, "", record.jobId));
-                    }
-                }
-            }
-        });
-
-        int countDone = 0;
-        for (DdlEngineRecord record : records) {
-            if (record.isSubJob() && !enableOperateSubJob) {
-                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
-            }
-
-            List<Long> rollbackJobs = new ArrayList<>();
-            List<String> traceIds = new ArrayList<>();
-
-            cancelJob(record, cancelSubJob, rollbackJobs, traceIds);
-
-            countDone += rollbackJobs.size();
+            String message = String.format("update state:[%s] by rollback the rebalance ddl", afterState.name());
+            RebalanceDdlPlanManager rebalanceDdlPlanManager = new RebalanceDdlPlanManager();
+            rebalanceDdlPlanManager.updateRebalanceScheduleState(record.jobId, afterState, message);
         }
+
+        DdlState state = DdlState.valueOf(record.state);
+
+        if (!(state == DdlState.RUNNING || state == DdlState.PAUSED)) {
+            String errMsg = String.format("Only RUNNING/PAUSED jobs can be cancelled, but job %s is in %s state. ",
+                record.jobId, record.state);
+            if (StringUtils.equalsIgnoreCase(record.state, DdlState.ROLLBACK_PAUSED.name())) {
+                errMsg += String.format("You may want to try command: continue ddl %s", record.jobId);
+            }
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, errMsg);
+        }
+
+        if (!isSupportCancel(record)) {
+            String detail = (AlterTableRollbacker.checkIfRollbackable(record.ddlStmt) ? "original DDL itself" :
+                "the DDL operations") + " cannot be rolled back";
+            String errMsg = "Cancel/rollback is not supported for job %s because %s%s. Please try: continue ddl %s";
+
+            if (state == DdlState.RUNNING) {
+                // Pause the job first.
+                DdlEnginePauseJobsHandler pauseJobsHandler = new DdlEnginePauseJobsHandler(repo);
+                pauseJobsHandler.doPause(jobId, executionContext);
+                record.state = DdlState.PAUSED.name();
+            }
+
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                String.format(errMsg, record.jobId, detail, "", record.jobId));
+        }
+
+        if (record.isSubJob() && !enableOperateSubJob) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on subjob is not allowed");
+        }
+
+        List<Long> rollbackJobs = new ArrayList<>();
+        List<String> traceIds = new ArrayList<>();
+
+        cancelJob(record, cancelSubJob, rollbackJobs, traceIds);
 
         DdlHelper.waitToContinue(DdlConstants.MEDIAN_WAITING_TIME);
-        DdlEngineRequester.notifyLeader(executionContext.getSchemaName(), jobIds);
+        Collections.reverse(rollbackJobs);
+        DdlEngineRequester.notifyLeader(record.schemaName, rollbackJobs);
 
         boolean asyncMode = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE);
-        if (!asyncMode && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
-            DdlEngineRecord record = records.get(0);
+        if (!asyncMode) {
             respond(record.schemaName, record.jobId, executionContext, false, true);
         }
 
-        return new AffectRowCursor(new int[] {countDone});
+        return new AffectRowCursor(rollbackJobs.size());
     }
 
     private void cancelJob(DdlEngineRecord record, boolean subJob, List<Long> rollbackJobs, List<String> traceIds) {
@@ -189,12 +170,13 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
                 rollbackJobs.add(record.jobId);
                 traceIds.add(record.traceId);
 
+                // 先中断父任务
+                DdlHelper.interruptJobs(record.schemaName, Collections.singletonList(record.jobId));
+                DdlHelper.killActivePhyDDLs(record.schemaName, record.traceId);
+
                 if (subJob) {
                     cancelSubJobs(record.jobId, rollbackJobs, traceIds);
                 }
-
-                DdlHelper.interruptJobs(record.schemaName, rollbackJobs);
-                DdlHelper.killActivePhyDDLs(record.schemaName, traceIds);
             }
         } else if (DdlState.PAUSED == DdlState.valueOf(record.state)) {
             if (schedulerManager.tryUpdateDdlState(
@@ -205,7 +187,7 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
 
                 rollbackJobs.add(record.jobId);
 
-                DdlHelper.interruptJobs(record.schemaName, rollbackJobs);
+                DdlHelper.interruptJobs(record.schemaName, Collections.singletonList(record.jobId));
             }
         }
     }
@@ -227,32 +209,32 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
         }
     }
 
-    private Optional<DdlEngineTaskRecord> checkIfAllShardsNotDone(DdlEngineRecord record) {
-        boolean allShardsNotDone = true;
+    private boolean isSupportCancel(DdlEngineRecord record) {
+        boolean supportCancel = record.isSupportCancel();
 
-        List<DdlEngineTaskRecord> taskRecords = fetchTasks(record.jobId);
+        List<SubJobTask> subJobs = schedulerManager.fetchSubJobsRecursive(record.jobId, false);
 
-        Optional<DdlEngineTaskRecord> phyDdlTaskRecord = taskRecords.stream().filter(
-            tr -> TStringUtil.containsIgnoreCase(tr.name, "PhyDdlTask") && DdlTaskState.DIRTY.name()
-                .equalsIgnoreCase(tr.state)).findFirst();
+        List<Long> subJobIds = GeneralUtil.emptyIfNull(subJobs)
+            .stream().flatMap(x -> x.fetchAllSubJobs().stream()).collect(Collectors.toList());
 
-        if (phyDdlTaskRecord.isPresent() && TStringUtil.isNotEmpty(phyDdlTaskRecord.get().extra)) {
-            String[] shards = phyDdlTaskRecord.get().extra.split(DdlConstants.SEMICOLON);
-            for (String shard : shards) {
-                String[] flags = shard.split(DdlConstants.COLON);
-                if (flags.length > 3) {
-                    if (Boolean.valueOf(flags[2])) {
-                        allShardsNotDone = false;
-                        break;
-                    }
-                } else {
-                    allShardsNotDone = false;
-                    break;
-                }
-            }
+        if (CollectionUtils.isEmpty(subJobIds)) {
+            return supportCancel;
         }
 
-        return allShardsNotDone ? phyDdlTaskRecord : null;
-    }
+        List<DdlEngineRecord> records = schedulerManager.fetchRecords(subJobIds);
+        for (DdlEngineRecord subJobRecord : GeneralUtil.emptyIfNull(records)) {
+            if (MOVE_DATABASE.name().equalsIgnoreCase(record.ddlType)
+                || ALTER_TABLEGROUP.name().equalsIgnoreCase(record.ddlType)) {
+                if (!record.isSupportCancel()) {
+                    continue;
+                }
+            }
+            if (DdlState.FINISHED.contains(DdlState.valueOf(subJobRecord.state))) {
+                continue;
+            }
+            supportCancel = (supportCancel && subJobRecord.isSupportCancel());
+        }
 
+        return supportCancel;
+    }
 }

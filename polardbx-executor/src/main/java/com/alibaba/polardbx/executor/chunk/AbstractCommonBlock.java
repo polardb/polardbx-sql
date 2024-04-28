@@ -25,12 +25,16 @@ public abstract class AbstractCommonBlock extends AbstractBlock {
         super(dataType, positionCount, isNull, hasNull);
     }
 
+    protected AbstractCommonBlock(DataType dataType, int positionCount) {
+        super(dataType, positionCount);
+    }
+
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (!(output instanceof ReferenceBlock)) {
             GeneralUtil.nestedException("cannot copy contents to " + output == null ? null : output.toString());
         }
-        ReferenceBlock refBlock = (ReferenceBlock) output;
+        ReferenceBlock refBlock = output.cast(ReferenceBlock.class);
         refBlock.setHasNull(this.hasNull);
 
         Object[] outputArray = refBlock.objectArray();

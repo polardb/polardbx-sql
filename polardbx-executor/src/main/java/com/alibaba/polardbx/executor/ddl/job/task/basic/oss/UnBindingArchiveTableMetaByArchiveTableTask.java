@@ -46,7 +46,7 @@ public class UnBindingArchiveTableMetaByArchiveTableTask extends BaseGmsTask {
         tableInfoManager.setConnection(metaDbConnection);
 
         TableLocalPartitionRecord record =
-                tableInfoManager.getLocalPartitionRecordByArchiveTable(getSchemaName(), archiveTableName);
+            tableInfoManager.getLocalPartitionRecordByArchiveTable(getSchemaName(), archiveTableName);
 
         if (record == null) {
             return;
@@ -56,7 +56,7 @@ public class UnBindingArchiveTableMetaByArchiveTableTask extends BaseGmsTask {
         originTableName = record.getTableName();
 
         tableInfoManager
-                .unBindingByArchiveTableName(getSchemaName(), archiveTableName);
+            .unBindingByArchiveTableName(getSchemaName(), archiveTableName);
     }
 
     @Override
@@ -66,7 +66,7 @@ public class UnBindingArchiveTableMetaByArchiveTableTask extends BaseGmsTask {
             tableInfoManager.setConnection(metaDbConnection);
 
             tableInfoManager
-                    .updateArchiveTable(originSchemaName, originTableName, getSchemaName(), archiveTableName);
+                .updateArchiveTable(originSchemaName, originTableName, getSchemaName(), archiveTableName);
 
         }
     }

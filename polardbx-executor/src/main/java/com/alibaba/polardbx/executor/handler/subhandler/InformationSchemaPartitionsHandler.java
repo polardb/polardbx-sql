@@ -22,31 +22,20 @@ import com.alibaba.polardbx.executor.balancer.stats.StatsUtils;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
-import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.PartitionMetaUtil;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaPartitions;
-import com.alibaba.polardbx.optimizer.view.InformationSchemaTableDetail;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
-import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexLiteral;
 
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
@@ -64,72 +53,20 @@ public class InformationSchemaPartitionsHandler extends BaseVirtualViewSubClassH
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-
-        InformationSchemaPartitions informationSchemaPartitions = (InformationSchemaPartitions) virtualView;
-
         // only new partitioning db
         Set<String> schemaNames = new TreeSet<>(String::compareToIgnoreCase);
         schemaNames.addAll(StatsUtils.getDistinctSchemaNames());
 
-        List<Object> tableSchemaIndexValue =
-            virtualView.getIndex().get(informationSchemaPartitions.getTableSchemaIndex());
-
-        Object tableSchemaLikeValue =
-            virtualView.getLike().get(informationSchemaPartitions.getTableSchemaIndex());
-
-        List<Object> tableNameIndexValue =
-            virtualView.getIndex().get(informationSchemaPartitions.getTableNameIndex());
-
-        Object tableNameLikeValue =
-            virtualView.getLike().get(informationSchemaPartitions.getTableNameIndex());
-
+        final int schemaIndex = InformationSchemaPartitions.getTableSchemaIndex();
+        final int tableIndex = InformationSchemaPartitions.getTableNameIndex();
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
-        // schemaIndex
-        Set<String> indexSchemaNames = new HashSet<>();
-        if (tableSchemaIndexValue != null && !tableSchemaIndexValue.isEmpty()) {
-            for (Object obj : tableSchemaIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
-            }
-            schemaNames = schemaNames.stream()
-                .filter(schemaName -> indexSchemaNames.contains(schemaName.toLowerCase()))
-                .collect(Collectors.toSet());
-        }
-
-        // schemaLike
-        String schemaLike = null;
-        if (tableSchemaLikeValue != null) {
-            if (tableSchemaLikeValue instanceof RexDynamicParam) {
-                schemaLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableSchemaLikeValue).getIndex() + 1).getValue());
-            } else if (tableSchemaLikeValue instanceof RexLiteral) {
-                schemaLike = ((RexLiteral) tableSchemaLikeValue).getValueAs(String.class);
-            }
-            if (schemaLike != null) {
-                final String likeArg = schemaLike;
-                schemaNames = schemaNames.stream().filter(schemaName -> new Like().like(schemaName, likeArg)).collect(
-                    Collectors.toSet());
-            }
-        }
+        schemaNames = virtualView.applyFilters(schemaIndex, params, schemaNames);
 
         // tableIndex
-        Set<String> indexTableNames = new HashSet<>();
-        if (tableNameIndexValue != null && !tableNameIndexValue.isEmpty()) {
-            for (Object obj : tableNameIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexTableNames);
-            }
-        }
-
+        Set<String> indexTableNames = virtualView.getEqualsFilterValues(tableIndex, params);
         // tableLike
-        String tableLike = null;
-        if (tableNameLikeValue != null) {
-            if (tableNameLikeValue instanceof RexDynamicParam) {
-                tableLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableNameLikeValue).getIndex() + 1).getValue());
-            } else if (tableNameLikeValue instanceof RexLiteral) {
-                tableLike = ((RexLiteral) tableNameLikeValue).getValueAs(String.class);
-            }
-        }
+        String tableLike = virtualView.getLikeString(tableIndex, params);
 
         handlePartitionsStat(schemaNames, indexTableNames, tableLike, executionContext, cursor);
         return cursor;

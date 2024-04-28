@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
 import com.alibaba.polardbx.optimizer.core.planner.rule.CBOPushAggRule;
 import com.alibaba.polardbx.optimizer.core.rel.HashAgg;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -157,7 +157,7 @@ public class MppHashAggConvertRule extends RelOptRule {
         ImmutableBitSet partialAggGroupSet = twoPhaseAggComponent.getPartialAggGroupSet();
 
         RelNode partialHashAgg =
-            HashAgg.create(hashAgg.getTraitSet().replace(MppConvention.INSTANCE), input, partialAggGroupSet,
+            HashAgg.createPartial(hashAgg.getTraitSet().replace(MppConvention.INSTANCE), input, partialAggGroupSet,
                 hashAgg.getGroupSets(), // FIXME if groupSets used ?
                 partialAggCalls);
 

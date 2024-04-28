@@ -19,7 +19,7 @@ package com.alibaba.polardbx.executor.handler;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.cursor.impl.MultiCursorAdapter;
+import com.alibaba.polardbx.executor.cursor.impl.GatherCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -77,7 +77,11 @@ public class BaseDalHandler extends HandlerCommon {
                     .execByExecPlanNode(relNode, executionContext));
             }
         }
-        baseDalCursor = MultiCursorAdapter.wrap(inputCursors);
-        return baseDalCursor;
+
+        if (inputCursors.size() == 1) {
+            return inputCursors.get(0);
+        } else {
+            return new GatherCursor(inputCursors, executionContext);
+        }
     }
 }

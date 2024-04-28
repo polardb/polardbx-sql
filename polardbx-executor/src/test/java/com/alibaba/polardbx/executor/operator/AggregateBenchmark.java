@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
+
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum0;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -26,7 +26,7 @@ import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.memory.MemoryType;
@@ -63,7 +63,7 @@ public class AggregateBenchmark {
         runBenchmark("without groupby", 10, () -> {
             Executor input = new Benchmark.MockIntegerExec(1, totalNumber);
             List<Aggregator> aggregators = new ArrayList<>();
-            aggregators.add(new Sum(0, false, DataTypes.LongType, -1));
+            aggregators.add(new SumV2(0, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
             Integer expectedOutputRowCount = 1;
             HashAggExec hashAggExec =
                 new HashAggExec(
@@ -79,7 +79,7 @@ public class AggregateBenchmark {
         runBenchmark("with multi keys " + columnNum, 10, () -> {
             Executor input = new Benchmark.MockMultiKeysExec(1, totalNumber, columnNum);
             List<Aggregator> aggregators = new ArrayList<>();
-            aggregators.add(new Sum0(0, false, DataTypes.LongType, -1));
+            aggregators.add(new Sum0(0, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
             DataType[] dataTypes = new DataType[columnNum + 1];
             int[] groups = new int[columnNum];
             for (int i = 0; i < columnNum; i++) {
@@ -116,58 +116,58 @@ public class AggregateBenchmark {
         runAggrWithMultiKey(1);
         runAggrWithMultiKey(2);
         runAggrWithMultiKey(4);
-        benchSum();
-        benchSum();
+//        benchSum();
+//        benchSum();
     }
 
-    private void benchSum() {
-        benchLong2DecimalSumUsingMapWithOverFlow();
-        benchLong2DecimalSumUsingMapWithoutOverFlow();
-    }
-
-    private void benchLong2DecimalSumUsingMapWithOverFlow() {
-        runBenchmark("sum(long) -> decimal using map with over flow" + 1, 10, () -> {
-            Executor input = new Benchmark.MockOverFlowExec(true);
-            List<Aggregator> aggregators = new ArrayList<>();
-            aggregators.add(new Long2DecimalSum(1, false, DataTypes.LongType, DataTypes.DecimalType, -1));
-            DataType[] dataTypes = new DataType[] {DataTypes.IntegerType, DataTypes.DecimalType};
-
-            Integer expectedOutputRowCount = 1024;
-
-            ExecutionContext context = new ExecutionContext();
-            context.setMemoryPool(
-                MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
-                    "test", MemorySetting.UNLIMITED_SIZE, MemoryType.QUERY));
-
-            HashAggExec hashAggExec =
-                new HashAggExec(
-                    input.getDataTypes(), new int[] {0}, aggregators, Arrays.asList(dataTypes),
-                    expectedOutputRowCount, context);
-            BaseExecTest.execForMppMode(hashAggExec, input, -1, false);
-        });
-    }
-
-    private void benchLong2DecimalSumUsingMapWithoutOverFlow() {
-        runBenchmark("sum(long) -> decimal using map without over flow" + 1, 10, () -> {
-            Executor input = new Benchmark.MockOverFlowExec(false);
-            List<Aggregator> aggregators = new ArrayList<>();
-            aggregators.add(new Long2DecimalSum(1, false, DataTypes.LongType, DataTypes.DecimalType, -1));
-            DataType[] dataTypes = new DataType[] {DataTypes.IntegerType, DataTypes.DecimalType};
-
-            Integer expectedOutputRowCount = 1024;
-
-            ExecutionContext context = new ExecutionContext();
-            context.setMemoryPool(
-                MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
-                    "test", MemorySetting.UNLIMITED_SIZE, MemoryType.QUERY));
-
-            HashAggExec hashAggExec =
-                new HashAggExec(
-                    input.getDataTypes(), new int[] {0}, aggregators, Arrays.asList(dataTypes),
-                    expectedOutputRowCount, context);
-            BaseExecTest.execForMppMode(hashAggExec, input, -1, false);
-        });
-    }
+//    private void benchSum() {
+//        benchLong2DecimalSumUsingMapWithOverFlow();
+//        benchLong2DecimalSumUsingMapWithoutOverFlow();
+//    }
+//
+//    private void benchLong2DecimalSumUsingMapWithOverFlow() {
+//        runBenchmark("sum(long) -> decimal using map with over flow" + 1, 10, () -> {
+//            Executor input = new Benchmark.MockOverFlowExec(true);
+//            List<Aggregator> aggregators = new ArrayList<>();
+//            aggregators.add(new Long2DecimalSum(1, false, DataTypes.LongType, DataTypes.DecimalType, -1));
+//            DataType[] dataTypes = new DataType[] {DataTypes.IntegerType, DataTypes.DecimalType};
+//
+//            Integer expectedOutputRowCount = 1024;
+//
+//            ExecutionContext context = new ExecutionContext();
+//            context.setMemoryPool(
+//                MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
+//                    "test", MemorySetting.UNLIMITED_SIZE, MemoryType.QUERY));
+//
+//            HashAggExec hashAggExec =
+//                new HashAggExec(
+//                    input.getDataTypes(), new int[] {0}, aggregators, Arrays.asList(dataTypes),
+//                    expectedOutputRowCount, context);
+//            BaseExecTest.execForMppMode(hashAggExec, input, -1, false);
+//        });
+//    }
+//
+//    private void benchLong2DecimalSumUsingMapWithoutOverFlow() {
+//        runBenchmark("sum(long) -> decimal using map without over flow" + 1, 10, () -> {
+//            Executor input = new Benchmark.MockOverFlowExec(false);
+//            List<Aggregator> aggregators = new ArrayList<>();
+//            aggregators.add(new Long2DecimalSum(1, false, DataTypes.LongType, DataTypes.DecimalType, -1));
+//            DataType[] dataTypes = new DataType[] {DataTypes.IntegerType, DataTypes.DecimalType};
+//
+//            Integer expectedOutputRowCount = 1024;
+//
+//            ExecutionContext context = new ExecutionContext();
+//            context.setMemoryPool(
+//                MemoryManager.getInstance().getGlobalMemoryPool().getOrCreatePool(
+//                    "test", MemorySetting.UNLIMITED_SIZE, MemoryType.QUERY));
+//
+//            HashAggExec hashAggExec =
+//                new HashAggExec(
+//                    input.getDataTypes(), new int[] {0}, aggregators, Arrays.asList(dataTypes),
+//                    expectedOutputRowCount, context);
+//            BaseExecTest.execForMppMode(hashAggExec, input, -1, false);
+//        });
+//    }
 
     public static void main(String[] args) {
         totalNumber = 10000000;

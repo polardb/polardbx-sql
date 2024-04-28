@@ -25,14 +25,15 @@ import com.alibaba.polardbx.druid.stat.TableStat.Column;
 public class MySqlCreateTableTest79_collate extends MysqlTest {
 
     public void test_one() throws Exception {
-        String sql = "CREATE TABLE tb_custom_vip_show_message (custom_vip_show_message_seq INT(11) NOT NULL AUTO_INCREMENT,show_channel_type TINYINT(4) NOT NULL COMMENT '通道类型',PRIMARY KEY (custom_vip_show_message_seq))COMMENT='自定VIP显示表' COLLATE='utf8_general_ci' ENGINE=InnoDB;";
+        String sql =
+            "CREATE TABLE tb_custom_vip_show_message (custom_vip_show_message_seq INT(11) NOT NULL AUTO_INCREMENT,show_channel_type TINYINT(4) NOT NULL COMMENT '通道类型',PRIMARY KEY (custom_vip_show_message_seq))COMMENT='自定VIP显示表' COLLATE='utf8_general_ci' ENGINE=InnoDB;";
 
         MySqlStatementParser parser = new MySqlStatementParser(sql);
         SQLStatement stmt = parser.parseCreateTable();
 
         MySqlSchemaStatVisitor visitor = new MySqlSchemaStatVisitor();
         stmt.accept(visitor);
-        
+
         Column column = visitor.getColumn("tb_custom_vip_show_message", "custom_vip_show_message_seq");
         assertNotNull(column);
         assertEquals("INT", column.getDataType());
@@ -40,19 +41,19 @@ public class MySqlCreateTableTest79_collate extends MysqlTest {
         {
             String output = SQLUtils.toMySqlString(stmt);
             assertEquals("CREATE TABLE tb_custom_vip_show_message (\n" +
-                    "\tcustom_vip_show_message_seq INT(11) NOT NULL AUTO_INCREMENT,\n" +
-                    "\tshow_channel_type TINYINT(4) NOT NULL COMMENT '通道类型',\n" +
-                    "\tPRIMARY KEY (custom_vip_show_message_seq)\n" +
-                    ") ENGINE = InnoDB COMMENT '自定VIP显示表' COLLATE utf8_general_ci", output);
+                "\tcustom_vip_show_message_seq INT(11) NOT NULL AUTO_INCREMENT,\n" +
+                "\tshow_channel_type TINYINT(4) NOT NULL COMMENT '通道类型',\n" +
+                "\tPRIMARY KEY (custom_vip_show_message_seq)\n" +
+                ") DEFAULT COLLATE = 'utf8_general_ci' ENGINE = InnoDB COMMENT '自定VIP显示表'", output);
         }
-        
+
         {
             String output = SQLUtils.toMySqlString(stmt, SQLUtils.DEFAULT_LCASE_FORMAT_OPTION);
             assertEquals("create table tb_custom_vip_show_message (\n" +
-                    "\tcustom_vip_show_message_seq INT(11) not null auto_increment,\n" +
-                    "\tshow_channel_type TINYINT(4) not null comment '通道类型',\n" +
-                    "\tprimary key (custom_vip_show_message_seq)\n" +
-                    ") engine = InnoDB comment '自定VIP显示表' collate utf8_general_ci", output);
+                "\tcustom_vip_show_message_seq INT(11) not null auto_increment,\n" +
+                "\tshow_channel_type TINYINT(4) not null comment '通道类型',\n" +
+                "\tprimary key (custom_vip_show_message_seq)\n" +
+                ") default collate = 'utf8_general_ci' engine = InnoDB comment '自定VIP显示表'", output);
         }
     }
 }

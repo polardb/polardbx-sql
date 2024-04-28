@@ -21,6 +21,7 @@ import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.google.common.collect.Lists;
 
 import java.sql.Connection;
 import java.util.Collection;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 /**
  * 用来描述一个逻辑表由哪些key-val组成的 <br/>
@@ -44,6 +46,10 @@ public interface SchemaManager extends Lifecycle {
     public static final String DUAL = "dual";
 
     public TableMeta getTable(String tableName);
+
+    default List<TableMeta> getAllUserTables() {
+        return Lists.newArrayList();
+    }
 
     public Collection<TableMeta> getAllTables();
 
@@ -74,7 +80,7 @@ public interface SchemaManager extends Lifecycle {
 
     public GsiMetaBean getGsi(String primaryOrIndexTableName, EnumSet<IndexStatus> statusSet);
 
-    default Set<String> guessGsi(String unwrappedName) {
+    default Set<String> guessGsi(String unwrappedName, Predicate<GsiMetaManager.GsiIndexMetaBean> filter) {
         return Collections.emptySet();
     }
 

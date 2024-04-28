@@ -27,6 +27,7 @@ import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
@@ -42,7 +43,6 @@ import static com.alibaba.polardbx.common.oss.filesystem.Constants.ACCESS_KEY_ID
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ACCESS_KEY_SECRET;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.ENDPOINT_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.Constants.OSS_FETCH_POLICY;
-import static com.google.common.base.Preconditions.checkState;
 
 public class OSSInstanceInitializer {
     /**
@@ -89,49 +89,41 @@ public class OSSInstanceInitializer {
     }
 
     public FileSystem initialize() {
-        FileSystem fileSystem;
-        CacheManager cacheManager;
+        CacheManager cacheManager = null;
+        FileSystem ossFileSystem = null;
         try {
-            Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
-                ConnectionParams.OSS_FS_CACHE_TTL,
-                ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES
-            );
-            cacheManager = FileMergeCacheManager.createMergeCacheManager(globalVariables, Engine.OSS);
-        } catch (IOException e) {
-            throw GeneralUtil.nestedException("Fail to create cache manager!");
-        }
-
-        URI ossFileUri = URI.create(this.bucketUri);
-        FileSystem ossFileSystem;
-        try {
+            cacheManager = FileMergeCacheManager.createMergeCacheManager(Engine.OSS);
+            URI ossFileUri = URI.create(this.bucketUri);
             ossFileSystem = createOSSFileSystem(ossFileUri,
                 cachePolicy == CachePolicy.META_CACHE || cachePolicy == CachePolicy.META_AND_DATA_CACHE);
-        } catch (IOException e) {
-            throw GeneralUtil.nestedException("Fail to create file system!");
-        }
+            URI fsUri = ossFileSystem.getUri();
+            Configuration factoryConfig = new Configuration();
+            final boolean validationEnabled = FileConfig.getInstance().getCacheConfig().isValidationEnabled();
 
-        URI fsUri = ossFileSystem.getUri();
-        Configuration factoryConfig = new Configuration();
-        final CacheType cacheType = CacheType.FILE_MERGE;
-        final boolean validationEnabled = false;
-
-        checkState(cacheType != null);
-
-        switch (cacheType) {
-        case FILE_MERGE:
-            fileSystem = new FileMergeCachingFileSystem(
+            return new FileMergeCachingFileSystem(
                 fsUri,
                 factoryConfig,
                 cacheManager,
                 ossFileSystem,
                 validationEnabled,
-                cachePolicy == CachePolicy.META_AND_DATA_CACHE || cachePolicy == CachePolicy.DATA_CACHE);
-            break;
-        default:
-            throw new IllegalArgumentException("Invalid CacheType: " + cacheType.name());
+                true);
+        } catch (Throwable t) {
+            if (cacheManager != null) {
+                try {
+                    cacheManager.close();
+                } catch (Throwable t1) {
+                    // ignore
+                }
+            }
+            if (ossFileSystem != null) {
+                try {
+                    ossFileSystem.close();
+                } catch (Throwable t1) {
+                    // ignore
+                }
+            }
+            throw GeneralUtil.nestedException("Fail to create OSS file system!", t);
         }
-
-        return fileSystem;
     }
 
     private synchronized OSSFileSystem createOSSFileSystem(URI ossFileUri, boolean enableCache) throws

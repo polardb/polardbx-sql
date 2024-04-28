@@ -146,7 +146,7 @@ public class RebalanceDdlPlanManager {
                 Pair<Long, Long> pair = getBackFillCount(jobId, true);
                 CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
                 CostEstimableDdlTask.CostInfo costInfo =
-                    CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                    CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue(), null);
                 CostEstimableDdlTask.CostInfo newCostInfo =
                     CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
                 ddlPlanManager.updateCostInfo(ddlPlanId, newCostInfo);
@@ -195,7 +195,7 @@ public class RebalanceDdlPlanManager {
                     Pair<Long, Long> pair = getBackFillCount(jobId, true);
                     CostEstimableDdlTask.CostInfo formerCostInfo = TaskHelper.decodeCostInfo(record.getExtras());
                     CostEstimableDdlTask.CostInfo costInfo =
-                        CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue());
+                        CostEstimableDdlTask.createCostInfo(pair.getKey(), pair.getValue(), null);
                     CostEstimableDdlTask.CostInfo newCostInfo =
                         CostEstimableDdlTask.CostInfo.combine(formerCostInfo, costInfo);
                     ddlPlanAccessor.updateExtra(ddlPlanId, TaskHelper.encodeCostInfo(newCostInfo));

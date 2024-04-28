@@ -23,9 +23,11 @@ public enum PartitionStrategy {
     RANGE("RANGE", "RANGE"),
     LIST("LIST", "LIST"),
     HASH("HASH", "HASH"),
+    DIRECT_HASH("DIRECT_HASH", "DIRECT_HASH"),
     KEY("KEY", "KEY"),
     RANGE_COLUMNS("RANGE_COLUMNS", "RANGE COLUMNS"),
     LIST_COLUMNS("LIST_COLUMNS", "LIST COLUMNS"),
+    CO_HASH("CO_HASH", "CO_HASH"),
     UDF_HASH("UDF_HASH", "UDF_HASH");
 
     private String strategyStr;
@@ -49,8 +51,10 @@ public enum PartitionStrategy {
         switch (this) {
         case RANGE:
         case HASH:
+        case DIRECT_HASH:
         case KEY:
         case RANGE_COLUMNS:
+        case CO_HASH:
         case UDF_HASH:
             return true;
         case LIST:
@@ -69,6 +73,10 @@ public enum PartitionStrategy {
         return this.equals(HASH) || this.equals(KEY);
     }
 
+    public boolean isDirectHash() {
+        return this.equals(DIRECT_HASH);
+    }
+
     public boolean isKey() {
         return this.equals(KEY);
     }
@@ -83,5 +91,9 @@ public enum PartitionStrategy {
 
     public boolean isUdfHashed() {
         return this.equals(UDF_HASH);
+    }
+
+    public boolean isCoHashed() {
+        return this.equals(CO_HASH);
     }
 }

@@ -960,39 +960,45 @@ public class InsertTest extends CrudBasedLockTestCase {
     @Test
     public void insertDuplicateSetTwice() throws Exception {
         // insert init data
-        String sql = String.format("insert into %s(integer_test,pk,varchar_test,float_test) values(?,?,?,?)",
-            baseOneTableName);
+        String sql =
+            String.format("insert into %s(integer_test,pk,varchar_test,float_test,timestamp_test) values(?,?,?,?,?)",
+                baseOneTableName);
         List<Object> param = new ArrayList<Object>();
         param.add(columnDataGenerator.integer_testValue);
         param.add(columnDataGenerator.pkValue);
         param.add(columnDataGenerator.varchar_testValue);
         param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.timestamp_testValue);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
 
-        sql = String.format("insert into %s(integer_test,pk,varchar_test,float_test) values(?,?,?,?)"
-                + "on duplicate key update integer_test=0, integer_test=integer_test+1, float_test=?",
+        sql = String.format("insert into %s(integer_test,pk,varchar_test,float_test,timestamp_test) values(?,?,?,?,?)"
+                + "on duplicate key update integer_test=0, integer_test=integer_test+1, float_test=?, timestamp_test=?",
             baseOneTableName);
         param.clear();
         param.add(columnDataGenerator.integer_testValue);
         param.add(columnDataGenerator.pkValue);
         param.add(columnDataGenerator.varchar_testValue);
         param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.timestamp_testValue);
         param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.timestamp_testValue);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
 
         sql = "select * from " + baseOneTableName;
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
 
         // integer_test and varchar_test
-        sql = String.format("insert into %s(integer_test,pk,varchar_test,float_test) values(?,?,?,?)"
+        sql = String.format("insert into %s(integer_test,pk,varchar_test,float_test,timestamp_test) values(?,?,?,?,?)"
             + "on duplicate key update integer_test=0, integer_test=integer_test+1, "
-            + "float_test=?, float_test=values(float_test)", baseOneTableName);
+            + "float_test=?, float_test=values(float_test), timestamp_test=?", baseOneTableName);
         param.clear();
         param.add(columnDataGenerator.integer_testValue);
         param.add(columnDataGenerator.pkValue);
         param.add(columnDataGenerator.varchar_testValue);
         param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.timestamp_testValue);
         param.add(columnDataGenerator.float_testValue);
+        param.add(columnDataGenerator.timestamp_testValue);
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, param, true);
 
         sql = "select * from " + baseOneTableName;

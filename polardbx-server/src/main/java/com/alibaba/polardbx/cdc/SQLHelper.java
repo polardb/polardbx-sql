@@ -16,8 +16,13 @@
 
 package com.alibaba.polardbx.cdc;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
@@ -29,11 +34,15 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlOrderingExpr;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlHintStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
+import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -43,11 +52,13 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.druid.sql.SQLUtils.normalize;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
 /**
  * Sql Utils for Cdc moudle
  * Created by ziyang.lb
  **/
+@Slf4j
 public class SQLHelper {
 
     static String getSqlName(SQLExpr sqlName) {
@@ -57,8 +68,8 @@ public class SQLHelper {
 
         if (sqlName instanceof SQLPropertyExpr) {
             SQLIdentifierExpr owner = (SQLIdentifierExpr) ((SQLPropertyExpr) sqlName).getOwner();
-            return SQLUtils.normalize(owner.getName()) + "."
-                + SQLUtils.normalize(((SQLPropertyExpr) sqlName).getName());
+            return SQLUtils.normalize(owner.getName()) + "." + SQLUtils.normalize(
+                ((SQLPropertyExpr) sqlName).getName());
         } else if (sqlName instanceof SQLIdentifierExpr) {
             return SQLUtils.normalize(((SQLIdentifierExpr) sqlName).getName());
         } else if (sqlName instanceof SQLCharExpr) {
@@ -72,16 +83,14 @@ public class SQLHelper {
         }
     }
 
-    static void filterColumns(MySqlCreateTableStatement stmt, String schema, String tableName)
-        throws SQLException {
+    static void filterColumns(MySqlCreateTableStatement stmt, String schema, String tableName) throws SQLException {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             ColumnsAccessor accessor = new ColumnsAccessor();
             accessor.setConnection(metaDbConn);
             List<ColumnsRecord> columnsRecords = accessor.query(schema, tableName);
 
-            List<String> toRemoveColumns = columnsRecords.stream()
-                .filter(c -> c.status == ColumnStatus.MULTI_WRITE_TARGET.getValue())
-                .map(c -> {
+            List<String> toRemoveColumns =
+                columnsRecords.stream().filter(c -> c.status == ColumnStatus.MULTI_WRITE_TARGET.getValue()).map(c -> {
                     c.columnName = StringUtils.lowerCase(c.columnName);
                     return c.columnName;
                 }).collect(Collectors.toList());
@@ -133,6 +142,51 @@ public class SQLHelper {
                     }
                 }
             }
+        }
+    }
+
+    public static void checkToString(String ddlSql) {
+        // parse一下，出错直接抛异常，问题前置
+        String parserResult = "";
+        try {
+            SQLStatementParser parser1 =
+                SQLParserUtils.createSQLStatementParser(ddlSql, DbType.mysql, SQL_PARSE_FEATURES);
+            List<SQLStatement> statementList1 = parser1.parseStatementList();
+            SQLStatement statement1 = statementList1.get(0);
+            parserResult = statement1.toString();
+
+            // 逆向parse一遍
+            SQLStatementParser parser2 =
+                SQLParserUtils.createSQLStatementParser(parserResult, DbType.mysql, SQL_PARSE_FEATURES);
+            List<SQLStatement> statementList2 = parser2.parseStatementList();
+            SQLStatement statement2 = statementList2.get(0);
+            statement2.toString();
+
+            // compare type
+            Assert.assertTrue(statement1.getClass().equals(statement2.getClass()),
+                String.format("SQLStatement type is different, before parse is %s, after parse is %s",
+                    statement1, statement2));
+
+            // check is not MySqlHintStatement
+            if (statementList1.size() > 1 && statement1 instanceof MySqlHintStatement) {
+                throw new RuntimeException("cdc ddl mark sql can`t be " + MySqlHintStatement.class);
+            }
+        } catch (Exception e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_PARSER, e,
+                "check ddl sql error in cdc ddl mark, input ddl sql: " + ddlSql
+                    + ", parse result sql :" + parserResult);
+        }
+    }
+
+    public static SQLStatement parseSql(String sql) {
+        try {
+            SQLStatementParser parser =
+                SQLParserUtils.createSQLStatementParser(sql, DbType.mysql, SQL_PARSE_FEATURES);
+            List<SQLStatement> statementList = parser.parseStatementList();
+            return statementList.get(0);
+        } catch (Throwable t) {
+            log.error("parse sql error! " + sql);
+            throw t;
         }
     }
 }

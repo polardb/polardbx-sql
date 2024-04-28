@@ -29,7 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.PipelineContext;
 import com.alibaba.polardbx.executor.mpp.execution.TaskId;
@@ -40,6 +39,9 @@ import com.alibaba.polardbx.executor.mpp.execution.buffer.BufferState;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferInfo;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.operator.SourceExec;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableSet;
 import org.joda.time.DateTime;
 import org.joda.time.chrono.ISOChronology;
 import org.weakref.jmx.internal.guava.collect.ImmutableList;
@@ -52,6 +54,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static java.util.Objects.requireNonNull;
@@ -63,10 +66,10 @@ public class DriverContext {
     private static final ThreadMXBean THREAD_MX_BEAN = ManagementFactory.getThreadMXBean();
 
     // Atomic Updaters
-    private static final AtomicLongFieldUpdater<DriverContext> startNanosUpdater =
-        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "startNanosLong");
-    private static final AtomicLongFieldUpdater<DriverContext> endNanosUpdater =
-        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "endNanosLong");
+    private static final AtomicLongFieldUpdater<DriverContext> startMillisUpdater =
+        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "startMillis");
+    private static final AtomicLongFieldUpdater<DriverContext> endMillisUpdater =
+        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "endMillis");
 
     private static final AtomicLongFieldUpdater<DriverContext> intervalWallStartUpdater =
         AtomicLongFieldUpdater.newUpdater(DriverContext.class, "intervalWallStartLong");
@@ -82,18 +85,18 @@ public class DriverContext {
     private static final AtomicLongFieldUpdater<DriverContext> processUserNanosUpdater =
         AtomicLongFieldUpdater.newUpdater(DriverContext.class, "processUserNanosLong");
 
-    private static final AtomicLongFieldUpdater<DriverContext> blockedWallMillsUpdater =
-        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "blockedWallMillsLong");
-    private static final AtomicLongFieldUpdater<DriverContext> blockedStartTimestampUpdater =
-        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "blockedStartTimestampLong");
+    private static final AtomicLongFieldUpdater<DriverContext> blockedWallNanoUpdater =
+        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "blockedWallNanosLong");
+    private static final AtomicLongFieldUpdater<DriverContext> blockedWallStartUpdater =
+        AtomicLongFieldUpdater.newUpdater(DriverContext.class, "blockedWallStartLong");
 
     private final long createMillis = System.currentTimeMillis();
 
     private long driverOutputPosition = 0;
 
     // volatile members
-    private volatile long startNanosLong = 0L;
-    private volatile long endNanosLong = 0L;
+    private volatile long startMillis = 0L;
+    private volatile long endMillis = 0L;
 
     private volatile long intervalWallStartLong = 0L;
     private volatile long intervalCpuStartLong = 0L;
@@ -103,8 +106,8 @@ public class DriverContext {
     private volatile long processCpuNanosLong = 0L;
     private volatile long processUserNanosLong = 0L;
 
-    private volatile long blockedWallMillsLong = 0L;
-    private volatile long blockedStartTimestampLong = 0L;
+    private volatile long blockedWallNanosLong = 0L;
+    private volatile long blockedWallStartLong = 0L;
 
     private final AtomicBoolean isBlocked = new AtomicBoolean(false);
 
@@ -122,6 +125,9 @@ public class DriverContext {
     private final AtomicReference<DriverExec> driverExecRef = new AtomicReference<>();
     private final AtomicReference<DriverStats> driverStats = new AtomicReference<>();
     private List<Integer> driverInputs = new ArrayList<>();
+
+    // Use Supplier to proactively dump the current statistics from TaskExecutor.
+    private Supplier<DriverRuntimeStatistics> driverRuntimeStatisticsSupplier;
 
     public DriverContext(PipelineContext pipelineContext, boolean partitioned, int driverId) {
         this.pipelineContext = requireNonNull(pipelineContext, "pipelineContext is null");
@@ -145,11 +151,12 @@ public class DriverContext {
     }
 
     public void startProcessTimer() {
-        long now = System.currentTimeMillis();
-        if (startNanosUpdater.compareAndSet(this, 0, now)) {
+        long nowMillis = System.currentTimeMillis();
+        if (startMillisUpdater.compareAndSet(this, 0, nowMillis)) {
             pipelineContext.start();
         }
-        intervalWallStartUpdater.set(this, now);
+        long nowNano = System.nanoTime();
+        intervalWallStartUpdater.set(this, nowNano);
         if (isSQLMetricEnabled(metricLevel)) {
             intervalCpuStartUpdater.set(this, currentThreadCpuTime());
             intervalUserStartUpdater.set(this, currentThreadUserTime());
@@ -157,7 +164,11 @@ public class DriverContext {
     }
 
     public void recordProcessed() {
-        processWallNanosUpdater.getAndAdd(this, System.currentTimeMillis() - intervalWallStartUpdater.get(this));
+        if (finished.get() && driverStats.get() != null) {
+            return;
+        }
+        long addTime = System.nanoTime() - intervalWallStartUpdater.get(this);
+        processWallNanosUpdater.getAndAdd(this, addTime);
         if (isSQLMetricEnabled(metricLevel)) {
             processCpuNanosUpdater
                 .getAndAdd(this, nanosBetween(intervalCpuStartUpdater.get(this), currentThreadCpuTime()));
@@ -175,7 +186,7 @@ public class DriverContext {
     }
 
     public long getTotalBlockedTime() {
-        return blockedWallMillsUpdater.get(this);
+        return blockedWallNanoUpdater.get(this);
     }
 
     public long getTotalUserTime() {
@@ -185,7 +196,7 @@ public class DriverContext {
     public void recordBlocked() {
         if (isSQLMetricEnabled(metricLevel)) {
             if (isBlocked.compareAndSet(false, true)) {
-                blockedStartTimestampUpdater.set(this, System.currentTimeMillis());
+                blockedWallStartUpdater.set(this, System.nanoTime());
             }
         }
     }
@@ -193,9 +204,9 @@ public class DriverContext {
     public void recordBlockedFinished() {
         if (isSQLMetricEnabled(metricLevel)) {
             if (isBlocked.compareAndSet(true, false)) {
-                long oldTime = blockedStartTimestampUpdater.getAndSet(this, 0);
+                long oldTime = blockedWallStartUpdater.getAndSet(this, 0);
                 if (oldTime > 0) {
-                    blockedWallMillsUpdater.getAndAdd(this, System.currentTimeMillis() - oldTime);
+                    blockedWallNanoUpdater.getAndAdd(this, System.nanoTime() - oldTime);
                 }
             }
         }
@@ -223,7 +234,8 @@ public class DriverContext {
 
     public void finished() {
         if (finished.compareAndSet(false, true)) {
-            endNanosUpdater.set(this, System.currentTimeMillis());
+            endMillisUpdater.set(this, System.currentTimeMillis());
+            recordProcessed();
             pipelineContext.driverFinished(this);
             this.driverStats.set(this.getDriverStats());
             this.driverExecRef.set(null);
@@ -232,6 +244,7 @@ public class DriverContext {
 
     public void failed(Throwable cause) {
         pipelineContext.failed(cause);
+        recordProcessed();
         finished.set(true);
         this.driverStats.set(this.getDriverStats());
         this.driverExecRef.set(null);
@@ -246,8 +259,8 @@ public class DriverContext {
     }
 
     private long getBlockedTime() {
-        if (isBlocked.get() && blockedStartTimestampUpdater.get(this) > 0) {
-            return System.currentTimeMillis() - blockedStartTimestampUpdater.get(this);
+        if (isBlocked.get() && blockedWallStartUpdater.get(this) > 0) {
+            return System.nanoTime() - blockedWallStartUpdater.get(this);
         }
         return 0;
     }
@@ -280,11 +293,8 @@ public class DriverContext {
 
     public String getUniqueId() {
         if (uniqueId == null) {
-            StringBuilder sb = new StringBuilder();
-            sb.append("tid:").append(pipelineContext.getTaskId())
-                .append(" pid:").append(pipelineContext.getPipelineId())
-                .append(" did:").append(driverId);
-            this.uniqueId = sb.toString();
+            this.uniqueId = String.format("%s.%d.%d", pipelineContext.getTaskId(),
+                pipelineContext.getPipelineId(), driverId);
         }
         return uniqueId;
     }
@@ -298,7 +308,7 @@ public class DriverContext {
     }
 
     public boolean isStart() {
-        return startNanosLong > 0;
+        return startMillis > 0;
     }
 
     @Nullable
@@ -308,6 +318,10 @@ public class DriverContext {
 
     public List<Integer> getDriverInputs() {
         return driverInputs;
+    }
+
+    public void setDriverRuntimeStatisticsSupplier(Supplier<DriverRuntimeStatistics> supplier) {
+        this.driverRuntimeStatisticsSupplier = supplier;
     }
 
     public DriverStats getDriverStats() {
@@ -329,14 +343,20 @@ public class DriverContext {
             } else {
                 outputPositions += driverOutputPosition;
             }
-            return new DriverStats(inputDataSize, inputPositions, outputDataSize, outputPositions);
+            long runningTime = processWallNanosUpdater.get(this);
+            return new DriverStats(getUniqueId(), inputDataSize, inputPositions, outputDataSize, outputPositions,
+                startMillis, endMillis, runningTime, blockedWallNanosLong,
+                driverRuntimeStatisticsSupplier == null ? null : driverRuntimeStatisticsSupplier.get());
         } else if (driverStats.get() != null) {
             return driverStats.get();
         }
-        return new DriverStats(0, 0, 0, 0);
+        long runningTime = processWallNanosUpdater.get(this);
+        return new DriverStats(getUniqueId(), 0, 0, 0, 0,
+            startMillis, endMillis, runningTime, blockedWallNanosLong,
+            driverRuntimeStatisticsSupplier == null ? null : driverRuntimeStatisticsSupplier.get());
     }
 
-    private TaskStats getSecondTaskStats() {
+    private TaskStats getTaskStatsBySecond() {
 
         int queuedPipeExecs = 0;
         int runningPipeExecs = 0;
@@ -369,21 +389,21 @@ public class DriverContext {
         long memoryReservation = 0;
         long cumulativeMemory = 0L;
 
-        DateTime start = new DateTime(startNanosLong, ISOChronology.getInstance());
-        long endTime = endNanosLong == 0 ? System.currentTimeMillis() : endNanosLong;
-        DateTime end = new DateTime(endTime, ISOChronology.getInstance());
+        DateTime start = new DateTime(startMillis, ISOChronology.getInstance());
+        long endTimeMillis = endMillis == 0 ? System.currentTimeMillis() : endMillis;
+        DateTime end = new DateTime(endTimeMillis, ISOChronology.getInstance());
         return new TaskStats(start,
-            start, end, endTime - startNanosLong, startNanosLong - createMillis, 0, 1,
+            start, end, endTimeMillis - startMillis, startMillis - createMillis, 0, 1,
             queuedPipeExecs, runningPipeExecs, completePipeExecs, cumulativeMemory, memoryReservation, peakMemory,
             totalScheduledTime, totalCpuTime, totalUserTime, totalBlockedTime, (runningPipeExecs > 0),
             ImmutableSet.of(), driverStats.getInputDataSize(), driverStats.getInputPositions(),
-            driverStats.getOutputDataSize(), driverStats.getOutputPositions(), ImmutableList.of()
-        );
+            driverStats.getOutputDataSize(), driverStats.getOutputPositions(), ImmutableList.of(),
+            ImmutableList.of(driverStats), null);
     }
 
     public TaskInfo buildLocalModeTaskInfo(String queryId) {
         TaskId taskId = new TaskId(queryId, pipelineContext.getPipelineId(), driverId);
-        TaskStats taskStats = getSecondTaskStats();
+        TaskStats taskStats = getTaskStatsBySecond();
 
         OutputBufferInfo outputBufferInfo = new OutputBufferInfo(BufferState.OPEN, 0);
 
@@ -418,17 +438,16 @@ public class DriverContext {
             taskStats.getTotalPipelineExecs(),
             taskStats.getCumulativeMemory(),
             taskStats.getMemoryReservation(),
-            taskStats.getElapsedTime(),
+            taskStats.getElapsedTimeMillis(),
             0,
-            taskStats.getElapsedTime(),
-            taskStats.getTotalScheduledTime(),
+            taskStats.getElapsedTimeMillis(),
+            taskStats.getTotalScheduledTimeNanos(),
             0,
-            taskStats.getDeliveryTime()
-        );
+            taskStats.getDeliveryTimeMillis());
     }
 
     private TaskState getState() {
-        if (startNanosLong > 0) {
+        if (startMillis > 0) {
             if (finished.get()) {
                 return TaskState.FINISHED;
             } else {
@@ -441,5 +460,79 @@ public class DriverContext {
 
     public void addOutputSize(long chunkSize) {
         this.driverOutputPosition += chunkSize;
+    }
+
+    /**
+     * Record the runtime stats of Driver in AP-RUNNER Executor.
+     */
+    public static class DriverRuntimeStatistics {
+        private final long runningCost;
+        private final long pendingCost;
+        private final long blockedCost;
+        private final long openCost;
+        private final long totalCost;
+        private final int runningCount;
+        private final int pendingCount;
+        private final int blockedCount;
+
+        @JsonCreator
+        public DriverRuntimeStatistics(
+            @JsonProperty("runningCost") long runningCost,
+            @JsonProperty("pendingCost") long pendingCost,
+            @JsonProperty("blockedCost") long blockedCost,
+            @JsonProperty("openCost") long openCost,
+            @JsonProperty("totalCost") long totalCost,
+            @JsonProperty("runningCount") int runningCount,
+            @JsonProperty("pendingCount") int pendingCount,
+            @JsonProperty("blockedCount") int blockedCount) {
+            this.runningCost = runningCost;
+            this.pendingCost = pendingCost;
+            this.blockedCost = blockedCost;
+            this.openCost = openCost;
+            this.totalCost = totalCost;
+            this.runningCount = runningCount;
+            this.pendingCount = pendingCount;
+            this.blockedCount = blockedCount;
+        }
+
+        @JsonProperty
+        public long getRunningCost() {
+            return runningCost;
+        }
+
+        @JsonProperty
+        public long getPendingCost() {
+            return pendingCost;
+        }
+
+        @JsonProperty
+        public long getBlockedCost() {
+            return blockedCost;
+        }
+
+        @JsonProperty
+        public long getOpenCost() {
+            return openCost;
+        }
+
+        @JsonProperty
+        public long getTotalCost() {
+            return totalCost;
+        }
+
+        @JsonProperty
+        public int getRunningCount() {
+            return runningCount;
+        }
+
+        @JsonProperty
+        public int getPendingCount() {
+            return pendingCount;
+        }
+
+        @JsonProperty
+        public int getBlockedCount() {
+            return blockedCount;
+        }
     }
 }

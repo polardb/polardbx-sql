@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.client;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -33,6 +32,7 @@ import com.alibaba.polardbx.executor.operator.ProducerExecutor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.ArrayList;
 import java.util.List;

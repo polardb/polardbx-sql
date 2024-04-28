@@ -84,6 +84,8 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
             return splitAndMoveToExistTableGroup();
         } else if (preparedData.isCreateNewTableGroup()) {
             return splitInNewTableGroup();
+        } else if (org.apache.commons.lang.StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            return withImplicitTableGroup(executionContext);
         } else {
             throw new RuntimeException("unexpected");
         }
@@ -104,11 +106,11 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
         DdlTask validateSourceTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 sourceTableGroup, tablesVersion, false,
-                /*todo*/null);
+                /*todo*/null, false);
         DdlTask validateTargetTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 targetTableGroup, preparedData.getFirstTableVersionInTargetTableGroup(), false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         executableDdlJob.addTask(emptyTask);
         executableDdlJob.addTask(validateSourceTableGroup);
@@ -124,7 +126,7 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
         List<String> targetDbList = new ArrayList<>();
         List<String> localities = new ArrayList<>();
         AlterTableGroupSplitPartitionPreparedData splitData = (AlterTableGroupSplitPartitionPreparedData) preparedData;
-        String firstTable = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTable = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo =
             executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(firstTable).getPartitionInfo();
         List<String> newPartitions = getNewPartitions(partitionInfo);
@@ -188,7 +190,7 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 preparedData.getTableGroupName(), tablesVersion, false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         SubJobTask subJobMoveTableToNewGroup =
             new SubJobTask(schemaName, String.format(SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);
@@ -214,7 +216,7 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableSplitPartitionPreparedData.getTableGroupName(),
-                tablesVersion, true, alterTableSplitPartitionPreparedData.getTargetPhysicalGroups());
+                tablesVersion, true, alterTableSplitPartitionPreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableSplitPartitionPreparedData.getTableGroupName());
 
@@ -225,7 +227,7 @@ public class AlterTableSplitPartitionJobFactory extends AlterTableGroupBaseJobFa
         List<String> targetDbList = new ArrayList<>();
         int targetDbCnt = alterTableSplitPartitionPreparedData.getTargetGroupDetailInfoExRecords().size();
 
-        String firstTable = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTable = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo =
             executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(firstTable).getPartitionInfo();
         List<String> newPartitions = getNewPartitions(partitionInfo);

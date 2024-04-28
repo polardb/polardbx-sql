@@ -16,21 +16,44 @@
 
 package com.alibaba.polardbx.druid.sql.ast.statement;
 
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
 public class SQLImportDatabaseStatement extends SQLStatementImpl {
-    private SQLName db;
+    private SQLName dstLogicalDb;
+
+    private SQLName srcPhyDb;
+
+    private SQLExpr locality;
     private SQLName status;
 
-    public SQLName getDb() {
-        return db;
+    private boolean existStillImportTag = false;
+
+    public SQLName getDstLogicalDb() {
+        return dstLogicalDb;
     }
 
-    public void setDb(SQLName db) {
-        this.db = db;
+    public void setDstLogicalDb(SQLName dstLogicalDb) {
+        this.dstLogicalDb = dstLogicalDb;
+    }
+
+    public SQLName getSrcPhyDb() {
+        return srcPhyDb;
+    }
+
+    public void setSrcPhyDb(SQLName srcPhyDb) {
+        this.srcPhyDb = srcPhyDb;
+    }
+
+    public SQLExpr getLocality() {
+        return locality;
+    }
+
+    public void setLocality(SQLExpr locality) {
+        this.locality = locality;
     }
 
     public SQLName getStatus() {
@@ -41,9 +64,19 @@ public class SQLImportDatabaseStatement extends SQLStatementImpl {
         this.status = status;
     }
 
+    public boolean isExistStillImportTag() {
+        return existStillImportTag;
+    }
+
+    public void setExistStillImportTag(boolean existStillImportTag) {
+        this.existStillImportTag = existStillImportTag;
+    }
+
     protected void accept0(SQLASTVisitor v) {
         if (v.visit(this)) {
-            acceptChild(v, db);
+            acceptChild(v, dstLogicalDb);
+            acceptChild(v, srcPhyDb);
+            acceptChild(v, locality);
             acceptChild(v, status);
         }
         v.endVisit(this);

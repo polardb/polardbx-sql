@@ -20,8 +20,6 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 
-import java.util.Map;
-
 public class AlterPartitionCountSyncAction extends RepartitionSyncAction {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AlterPartitionCountSyncAction.class);

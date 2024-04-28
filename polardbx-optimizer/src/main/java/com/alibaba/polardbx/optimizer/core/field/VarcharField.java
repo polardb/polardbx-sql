@@ -16,6 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.field;
 
+import com.alibaba.polardbx.common.charset.CharsetName;
+import com.alibaba.polardbx.common.charset.CollationName;
+import com.alibaba.polardbx.common.charset.SortKey;
+import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
 import com.alibaba.polardbx.common.charset.CharsetName;
@@ -23,8 +27,13 @@ import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.optimizer.config.table.collation.CollationHandler;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import io.airlift.slice.DynamicSliceOutput;
 import io.airlift.slice.Slice;
+import io.airlift.slice.SliceOutput;
 import io.airlift.slice.Slices;
+import io.airlift.slice.XxHash64;
+
+import static com.alibaba.polardbx.common.charset.MySQLUnicodeUtils.LATIN1_TO_UTF8_BYTES;
 
 /**
  * MySQL varchar(n) data type.
@@ -58,6 +67,20 @@ public class VarcharField extends CharField {
             int startPos = startPos();
             CollationHandler collationHandler = getCollationHandler();
             collationHandler.hashcode(packedBinary, startPos, startPos + length, numbers);
+        }
+    }
+
+    @Override
+    public long xxHashCode() {
+        if (isNull()) {
+            return NULL_HASH_CODE;
+        }
+        int length = (varLength == UNSET_CHAR_LENGTH) ? 0 : varLength;
+        int startPos = startPos();
+        if (isLatin1CharSet() && !isBinaryCollation()) {
+            return getCollationHandler().hashcode(convertLatin1ToUtf8(packedBinary, startPos, length));
+        } else {
+            return getCollationHandler().hashcode(Slices.wrappedBuffer(packedBinary, startPos, length));
         }
     }
 

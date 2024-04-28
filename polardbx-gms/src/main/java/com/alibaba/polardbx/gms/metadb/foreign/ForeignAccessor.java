@@ -36,9 +36,9 @@ public class ForeignAccessor extends AbstractAccessor {
 
     private static final String INSERT_TABLES =
         "insert into " + FOREIGN_TABLE
-            + "(`id`, `schema_name`, `table_name`, `index_name`, `constraint_name`, "
+            + "(`schema_name`, `table_name`, `index_name`, `constraint_name`, "
             + "`ref_schema_name`, `ref_table_name`, `ref_index_name`, `n_cols`, `update_rule`, `delete_rule`, `push_down`) "
-            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String WHERE_CLAUSE = " where `id` = ?";
 
@@ -69,6 +69,9 @@ public class ForeignAccessor extends AbstractAccessor {
     private static final String SELECT_FK_WITH_INDEX =
         SELECT_CLAUSE + FOREIGN_TABLE + WHERE_SCHEMA + AND_TABLE + AND_INDEX;
 
+    private static final String SELECT_REF_TABLE =
+        SELECT_CLAUSE + FOREIGN_TABLE + WHERE_REF_NAME;
+
     private static final String DELETE_FK_BY_SCHEMA = "delete from " + FOREIGN_TABLE + WHERE_SCHEMA;
 
     private static final String DELETE_FK_BY_TABLE = "delete from " + FOREIGN_TABLE + WHERE_SCHEMA + AND_TABLE;
@@ -84,6 +87,9 @@ public class ForeignAccessor extends AbstractAccessor {
 
     private static final String UPDATE_PUSH_DOWN =
         "update " + FOREIGN_TABLE + " set `push_down` = ? " + WHERE_SCHEMA + AND_TABLE + AND_INDEX;
+
+    private static final String UPDATE_REF_INDEX =
+        "update " + FOREIGN_TABLE + " set `ref_index_name` = ? " + WHERE_SCHEMA + AND_TABLE + AND_INDEX;
 
     public int insert(ForeignRecord record) {
         return insert(INSERT_TABLES, FOREIGN_TABLE, record.buildInsertParams());
@@ -176,6 +182,20 @@ public class ForeignAccessor extends AbstractAccessor {
         }
     }
 
+    public List<ForeignRecord> queryRefTable(String refTableSchema, String refTableName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, refTableSchema);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, refTableName);
+            return MetaDbUtil.query(SELECT_REF_TABLE, params, ForeignRecord.class, connection);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + FOREIGN_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                FOREIGN_TABLE,
+                e.getMessage());
+        }
+    }
+
     public int updateReferencedForeignKeyTable(String tableSchema, String tableName, String newTableName) {
         Map<Integer, ParameterContext> params = MetaDbUtil
             .buildStringParameters(new String[] {
@@ -206,6 +226,15 @@ public class ForeignAccessor extends AbstractAccessor {
         MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
         MetaDbUtil.setParameter(4, params, ParameterMethod.setString, indexName);
         return update(UPDATE_PUSH_DOWN, FOREIGN_TABLE, params);
+    }
+
+    public int updateForeignKeyRefIndex(String tableSchema, String tableName, String indexName, String refIndex) {
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, refIndex);
+        MetaDbUtil.setParameter(2, params, ParameterMethod.setString, tableSchema);
+        MetaDbUtil.setParameter(3, params, ParameterMethod.setString, tableName);
+        MetaDbUtil.setParameter(4, params, ParameterMethod.setString, indexName);
+        return update(UPDATE_REF_INDEX, FOREIGN_TABLE, params);
     }
 
     public int delete(String schemaName) {

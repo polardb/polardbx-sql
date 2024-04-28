@@ -17,9 +17,9 @@
 package com.alibaba.polardbx.executor.ddl.job.factory.oss;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.ChangeTableEngineTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.MoveDataToInnodbTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;

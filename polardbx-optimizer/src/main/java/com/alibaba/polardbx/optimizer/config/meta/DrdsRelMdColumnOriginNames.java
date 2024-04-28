@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.config.meta;
 
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
 import com.google.common.collect.ImmutableSet;
@@ -43,15 +45,20 @@ import org.apache.calcite.rel.metadata.RelColumnMapping;
 import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexSubQuery;
 import org.apache.calcite.rex.RexVisitor;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.util.BuiltInMethod;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -200,6 +207,15 @@ public class DrdsRelMdColumnOriginNames implements MetadataHandler<BuiltInMetada
                 // Direct reference: no derivation added.
                 final RexInputRef inputRef = (RexInputRef) rexNode;
                 columnOrigins = origins.get(inputRef.getIndex());
+            } else if (rexNode instanceof RexDynamicParam) {
+                columnOrigins = new HashSet<>();
+                if (((RexDynamicParam) rexNode).getRel() != null) {
+                    List<Set<RelColumnOrigin>> subOrigin =
+                        mq.getColumnOriginNames(((RexDynamicParam) rexNode).getRel());
+                    if (!subOrigin.isEmpty()) {
+                        columnOrigins.addAll(subOrigin.get(0));
+                    }
+                }
             } else {
                 // Anything else is a derivation, possibly from multiple
                 // columns.
@@ -283,6 +299,29 @@ public class DrdsRelMdColumnOriginNames implements MetadataHandler<BuiltInMetada
 
     public List<Set<RelColumnOrigin>> getColumnOriginNames(LogicalView rel, RelMetadataQuery mq) {
         return mq.getColumnOriginNames(rel.getPushedRelNode());
+    }
+
+    public List<Set<RelColumnOrigin>> getColumnOriginNames(BaseTableOperation rel, RelMetadataQuery mq) {
+        return mq.getColumnOriginNames(rel.getParent());
+    }
+
+    public List<Set<RelColumnOrigin>> getColumnOriginNames(DirectTableOperation rel, RelMetadataQuery mq) {
+        List<Set<RelColumnOrigin>> pushedOrigins = mq.getColumnOriginNames(rel.getParent());
+        try {
+            List<String> pushedColNames = rel.getParent().getRowType().getFieldNames();
+            Map<String, Integer> colNameIndex = new HashMap<>(pushedColNames.size());
+            for (int i = 0; i < pushedColNames.size(); i++) {
+                colNameIndex.put(pushedColNames.get(i).toLowerCase(), i);
+            }
+            List<String> colNames = rel.getRowType().getFieldNames();
+            List<Set<RelColumnOrigin>> origins = new ArrayList<>(pushedOrigins.size());
+            for (String colName : colNames) {
+                origins.add(pushedOrigins.get(colNameIndex.get(colName.toLowerCase())));
+            }
+            return origins;
+        } catch (Throwable e) {
+            return pushedOrigins;
+        }
     }
 
     public List<Set<RelColumnOrigin>> getColumnOriginNames(RelSubset rel, RelMetadataQuery mq) {

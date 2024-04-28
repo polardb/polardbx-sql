@@ -52,7 +52,7 @@ public class AlterTableGroupDropPartitionPreparedData extends AlterTableGroupBas
             .getTableGroupConfigByName(getTableGroupName());
         assert tableGroupConfig != null && GeneralUtil.isNotEmpty(tableGroupConfig.getAllTables());
 
-        String firstTbName = tableGroupConfig.getAllTables().get(0).getLogTbRec().getTableName();
+        String firstTbName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partInfo =
             OptimizerContext.getContext(getSchemaName()).getPartitionInfoManager().getPartitionInfo(firstTbName);
 

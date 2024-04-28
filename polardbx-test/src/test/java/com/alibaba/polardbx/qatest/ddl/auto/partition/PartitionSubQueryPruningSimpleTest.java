@@ -19,12 +19,12 @@ package com.alibaba.polardbx.qatest.ddl.auto.partition;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
 import org.apache.calcite.util.Pair;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -39,7 +39,7 @@ import static com.alibaba.polardbx.qatest.ddl.auto.partition.PartitionAutoLoadSq
  */
 public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
 
-    protected static final Log log = LogFactory.getLog(PartitionSubQueryPruningSimpleTest.class);
+    protected static final Logger log = LoggerFactory.getLogger(PartitionSubQueryPruningSimpleTest.class);
 
     protected static String testTableName = "sb_pruning_test";
     protected static String targetTableNameAlias = "`sb_pruning_test`";
@@ -86,16 +86,21 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
         subQueryExprSampleList.add(String.format("a = (select t1.a from %s t1 order by a limit 8,1)", tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.TRUE);
 
-        subQueryExprSampleList.add(String.format("a = (select t1.a from %s t1 order by a limit 8,1) or a=97", tbNames[1]));
+        subQueryExprSampleList.add(
+            String.format("a = (select t1.a from %s t1 order by a limit 8,1) or a=97", tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.TRUE);
 
-        subQueryExprSampleList.add(String.format("a = (select t1.a from sb_pruning_test1 t1 order by a limit 8,1) and b between 10 and 2000", tbNames[1]));
+        subQueryExprSampleList.add(
+            String.format("a = (select t1.a from sb_pruning_test1 t1 order by a limit 8,1) and b between 10 and 2000",
+                tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.TRUE);
 
-        subQueryExprSampleList.add(String.format("a = 98 and b=(select t1.a from %s t1 order by a limit 10,1)", tbNames[1]));
+        subQueryExprSampleList.add(
+            String.format("a = 98 and b=(select t1.a from %s t1 order by a limit 10,1)", tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.TRUE);
 
-        subQueryExprSampleList.add(String.format("a = 98 and (b=(select t1.a from %s t1 order by a limit 10,1) or b=908 )", tbNames[1]));
+        subQueryExprSampleList.add(
+            String.format("a = 98 and (b=(select t1.a from %s t1 order by a limit 10,1) or b=908 )", tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.TRUE);
 
 //        subQueryExprSampleList.add(String.format("a in (select t1.a from %s t1 order by a limit 10,1)", tbNames[1]));
@@ -104,18 +109,21 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
         subQueryExprSampleList.add(String.format("b = (select t1.b from %s t1 order by b limit 2,1)", tbNames[1]));
         onePartitionLeftAfterPruning.add(Boolean.FALSE);
 
-        subQueryExprSampleList.add(String.format("a = (select t1.a from %s t1 where t1.b=t.b order by t1.a limit 3,1)", tbNames[2]));
+        subQueryExprSampleList.add(
+            String.format("a = (select t1.a from %s t1 where t1.b=t.b order by t1.a limit 3,1)", tbNames[2]));
         onePartitionLeftAfterPruning.add(Boolean.FALSE);
 
-        subQueryExprSampleList.add(String.format("c = (select t1.c from %s t1 where t1.b=t.b order by t1.c limit 4,1)", tbNames[2]));
+        subQueryExprSampleList.add(
+            String.format("c = (select t1.c from %s t1 where t1.b=t.b order by t1.c limit 4,1)", tbNames[2]));
         onePartitionLeftAfterPruning.add(Boolean.FALSE);
 
-        subQueryExprSampleList.add(String.format("c = (select t1.c from %s t1 where t1.b>t.b order by t1.c limit 5,1)", tbNames[3]));
+        subQueryExprSampleList.add(
+            String.format("c = (select t1.c from %s t1 where t1.b>t.b order by t1.c limit 5,1)", tbNames[3]));
         onePartitionLeftAfterPruning.add(Boolean.FALSE);
 
-        subQueryExprSampleList.add(String.format("c = (select t1.c from %s t1 where t1.b>t.b order by t1.c limit 5,1)", tbNames[3]));
+        subQueryExprSampleList.add(
+            String.format("c = (select t1.c from %s t1 where t1.b>t.b order by t1.c limit 5,1)", tbNames[3]));
         onePartitionLeftAfterPruning.add(Boolean.FALSE);
-
 
     }
 
@@ -142,7 +150,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
             }
 
         } catch (Throwable ex) {
-            log.error(ex);
+            log.error("setUpEnv error", ex);
             throw new RuntimeException(ex);
         }
     }
@@ -153,7 +161,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
             dropTable(tddlConnection, dropTblSql);
             dropTable(mysqlConnection, dropTblSql);
         } catch (Throwable ex) {
-            log.error(ex);
+            log.error("setDownEnv error", ex);
             throw new RuntimeException(ex);
         } finally {
             JdbcUtil.updateDataTddl(tddlConnection, ENABLE_AUTO_PART, null);
@@ -170,7 +178,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
             String logMsg = String.format("rngSql[%s]: \n%s;\n\n", i, sql);
             log.info(logMsg);
             try {
-                runTestSql(sql,isOnePart);
+                runTestSql("/*+TDDL:enable_mpp=false*/" + sql, isOnePart);
             } catch (Throwable ex) {
                 Assert.fail(ex.getMessage());
             }
@@ -178,7 +186,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
         }
     }
 
-    protected void runTestSql(String rndSql, boolean isOnePart) throws Throwable  {
+    protected void runTestSql(String rndSql, boolean isOnePart) throws Throwable {
 
         ResultSet rs = null;
         DataValidator dataValidator = new DataValidator();
@@ -210,7 +218,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
             }
             Assert.assertEquals(cnt == 1, isOnePart);
         } catch (Throwable ex) {
-            log.error(ex);
+            log.error("runTestSql error", ex);
             throw ex;
         } finally {
             try {
@@ -234,7 +242,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
         return rndSql;
     }
 
-    protected String genSingleExpr(int predIdx ) {
+    protected String genSingleExpr(int predIdx) {
         String predExpr = subQueryExprSampleList.get(predIdx);
         return predExpr;
     }
@@ -290,7 +298,7 @@ public class PartitionSubQueryPruningSimpleTest extends PartitionTestBase {
          *
 
          create table if not exists rng_test_tbl (
-         a bigint not null, 
+         a bigint not null,
          b bigint not null, 
          c bigint not null,
          d bigint not null,

@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.executor.chunk.Block;
+import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
 import com.alibaba.polardbx.executor.chunk.Chunk;
@@ -24,122 +24,52 @@ import com.alibaba.polardbx.executor.chunk.ChunkBuilder;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
-import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.List;
 
-/**
- * Appendable buffer for arbitrary data types
- *
- * @author Eric Fu
- * @see ChunksIndex
- */
-public class TypedBuffer {
+public interface TypedBuffer<T> {
+    void appendRow(T array, int nullPosition, int positionCount);
 
-    private BlockBuilder[] blockBuilders;
-    private final int chunkSize;
-
-    private int currentSize;
-    private final List<Chunk> chunks = new ArrayList<>();
-    private long estimateSize = 0;
-    private ExecutionContext context;
-
-    private TypedBuffer(BlockBuilder[] blockBuilders, int chunkSize, ExecutionContext context) {
-        this.blockBuilders = blockBuilders;
-        this.chunkSize = chunkSize;
-        this.context = context;
+    default void appendRow(T array, int positionCount) {
+        appendRow(array, -1, positionCount);
     }
 
-    public static TypedBuffer create(DataType[] dataTypes, int chunkSize, ExecutionContext context) {
+    void appendRow(Chunk chunk, int position);
+
+    List<Chunk> buildChunks();
+
+    boolean equals(int position, Chunk otherChunk, int otherPosition);
+
+    void appendValuesTo(int position, ChunkBuilder chunkBuilder);
+
+    long estimateSize();
+
+    // type-specific interface
+    void appendInteger(int col, int value);
+
+    void appendLong(int col, long value);
+
+    void appendNull(int col);
+
+    static TypedBuffer create(DataType[] dataTypes, int chunkSize, ExecutionContext context) {
         BlockBuilder[] blockBuilders = new BlockBuilder[dataTypes.length];
         for (int i = 0; i < dataTypes.length; i++) {
             blockBuilders[i] = BlockBuilders.create(dataTypes[i], context);
         }
-        return new TypedBuffer(blockBuilders, chunkSize, context);
+        return new DefaultTypedBuffer(blockBuilders, chunkSize, context);
     }
 
-    public boolean equals(int position, Chunk otherChunk, int otherPosition) {
-        final int chunkId = chunkIndexOf(position);
-        final int offset = offsetOf(position);
-
-        if (chunkId < chunks.size()) {
-            // Just compare both chunks
-            Chunk chunk = chunks.get(chunkId);
-            return chunk.equals(offset, otherChunk, otherPosition);
-        } else {
-            // Compare the block builders with given chunk (block by block)
-            assert chunkId == chunks.size();
-            for (int i = 0; i < blockBuilders.length; i++) {
-                if (!otherChunk.getBlock(i).equals(otherPosition, blockBuilders[i], offset)) {
-                    return false;
-                }
-            }
-            return true;
+    static TypedBuffer createTypeSpecific(DataType dataType, int chunkSize, ExecutionContext context) {
+        MySQLStandardFieldType fieldType = dataType.fieldType();
+        switch (fieldType) {
+        case MYSQL_TYPE_LONGLONG:
+            return TypedBuffers.createLong(chunkSize, context);
+        case MYSQL_TYPE_LONG:
+            return TypedBuffers.createInt(chunkSize, context);
+        default: {
+            // fall back
+            return create(new DataType[] {dataType}, chunkSize, context);
         }
-    }
-
-    public void appendRow(Chunk chunk, int position) {
-        // Check fulfilled before appending
-        if (currentSize == chunkSize) {
-            Chunk buildingChunk = getBuildingChunk();
-            chunks.add(buildingChunk);
-            estimateSize += buildingChunk.estimateSize();
-            for (int i = 0; i < blockBuilders.length; i++) {
-                blockBuilders[i] = blockBuilders[i].newBlockBuilder();
-                currentSize = 0;
-            }
         }
-
-        for (int i = 0; i < blockBuilders.length; i++) {
-            chunk.getBlock(i).writePositionTo(position, blockBuilders[i]);
-        }
-        currentSize++;
-    }
-
-    public List<Chunk> buildChunks() {
-        ArrayList<Chunk> allChunks = new ArrayList<>(this.chunks);
-        if (currentSize > 0) {
-            allChunks.add(getBuildingChunk());
-        }
-        return allChunks;
-    }
-
-    private int chunkIndexOf(int position) {
-        return position / chunkSize;
-    }
-
-    private int offsetOf(int position) {
-        return position % chunkSize;
-    }
-
-    public void appendValuesTo(int position, ChunkBuilder chunkBuilder) {
-        final int chunkId = chunkIndexOf(position);
-        final int offset = offsetOf(position);
-        if (chunkId < chunks.size()) {
-            // Just compare both chunks
-            Chunk chunk = chunks.get(chunkId);
-            for (int i = 0; i < chunk.getBlockCount(); ++i) {
-                final Block block = chunk.getBlock(i);
-                chunkBuilder.appendTo(block, i, offset);
-            }
-        } else {
-            // Compare the block builders with given chunk (block by block)
-            assert chunkId == chunks.size();
-            for (int i = 0; i < blockBuilders.length; i++) {
-                Block block = blockBuilders[i].build();
-                chunkBuilder.appendTo(block, i, offset);
-            }
-        }
-    }
-
-    private Chunk getBuildingChunk() {
-        Block[] blocks = new Block[blockBuilders.length];
-        for (int i = 0; i < blockBuilders.length; i++) {
-            blocks[i] = blockBuilders[i].build();
-        }
-        return new Chunk(currentSize, blocks);
-    }
-
-    public long estimateSize() {
-        return estimateSize;
     }
 }

@@ -10,6 +10,7 @@ create tablegroup t_a_t_s_tg8;
 create tablegroup t_a_t_s_tg9;
 create tablegroup t_a_t_s_tg10;
 create tablegroup t_a_t_s_tg11;
+create tablegroup t_a_t_s_tg12;
 create table if not exists st_1(a int) single;
 create table if not exists st_2(b varchar(20)) single;
 create table if not exists bt_1(a int) broadcast;
@@ -496,3 +497,12 @@ PARTITIONS 3
  PARTITION p2 VALUES LESS THAN (3074457345618258603,9223372036854775807) ENGINE = InnoDB,
  PARTITION p3 VALUES LESS THAN (9223372036854775807,9223372036854775807) ENGINE = InnoDB)
 tablegroup = `t_a_t_s_tg4`
+create table pt_k_11(a int, b varchar(10),global index name (b) partition by key(b) partitions 2) partition by key(a) partitions 3;
+create table pt_k_12(a int, b varchar(10),global index name (b) partition by key(b) partitions 3) partition by key(a) partitions 3;
+alter table pt_k_11.name set tablegroup=t_a_t_s_tg12;
+## error_msg: $# due to need repartition #$
+alter table pt_k_12.name set tablegroup=t_a_t_s_tg12 force;
+due to need repartition
+select TABLE_GROUP_NAME,TABLE_COUNT,INDEX_COUNT from information_schema.table_group where TABLE_GROUP_NAME='t_a_t_s_tg12';
+TABLE_GROUP_NAME,TABLE_COUNT,INDEX_COUNT
+t_a_t_s_tg12,0,1

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -31,6 +30,7 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.core.row.JoinRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;

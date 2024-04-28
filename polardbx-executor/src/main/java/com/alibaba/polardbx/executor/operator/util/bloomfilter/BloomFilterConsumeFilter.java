@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.util.bloomfilter;
 
-import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
+import com.alibaba.polardbx.executor.chunk.Chunk;
 
 /**
  * @author bairui.lrj

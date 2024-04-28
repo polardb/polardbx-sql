@@ -83,6 +83,10 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
             + " where type=? and table_schema=? and sub_task=0";
 
+    private static final String GET_ALL_SCALEOUT_TASK_BY_SCH_JOB =
+        "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
+            + " where type=? and table_schema=? and job_id=? and sub_task=0";
+
     private static final String GET_UNFINISH_COMPLEX_TASK_BY_SCH_TB =
         "select " + ALL_COLUMNS + " from " + GmsSystemTables.COMPLEX_TASK_OUTLINE
             + " where status<>-1 and sub_task=1 and table_schema=? and object_name=?"
@@ -122,7 +126,7 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             DdlMetaLogUtil.logSql(INSERT_COMPLEXTASK_OUTLINE, paramsBatch);
 
             return MetaDbUtil
-                .insertAndRetureLastInsertId(INSERT_COMPLEXTASK_OUTLINE, paramsBatch, this.connection);
+                .insertAndReturnLastInsertId(INSERT_COMPLEXTASK_OUTLINE, paramsBatch, this.connection);
         } catch (Exception e) {
             LOGGER.error("Failed to insert into the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
@@ -339,6 +343,26 @@ public class ComplexTaskOutlineAccessor extends AbstractAccessor {
             records =
                 MetaDbUtil
                     .query(GET_ALL_SCALEOUT_TASK_BY_SCH, params, ComplexTaskOutlineRecord.class,
+                        connection);
+
+            return records;
+        } catch (Exception e) {
+            LOGGER.error("Failed to query the system table " + GmsSystemTables.COMPLEX_TASK_OUTLINE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e,
+                e.getMessage());
+        }
+    }
+
+    public List<ComplexTaskOutlineRecord> getAllScaleOutComplexTaskBySchJob(int type, String schemaName, Long jobId) {
+        try {
+            List<ComplexTaskOutlineRecord> records;
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setInt, type);
+            MetaDbUtil.setParameter(2, params, ParameterMethod.setString, schemaName);
+            MetaDbUtil.setParameter(3, params, ParameterMethod.setLong, jobId);
+            records =
+                MetaDbUtil
+                    .query(GET_ALL_SCALEOUT_TASK_BY_SCH_JOB, params, ComplexTaskOutlineRecord.class,
                         connection);
 
             return records;

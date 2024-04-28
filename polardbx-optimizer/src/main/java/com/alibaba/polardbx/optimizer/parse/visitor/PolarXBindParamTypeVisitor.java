@@ -141,12 +141,16 @@ public class PolarXBindParamTypeVisitor extends SQLExprTypeVisitor {
         Name tableNameObj = new Name(realSchema, realTableName);
         TableMeta stat = tableMetas.get(tableNameObj);
         if (stat == null) {
-            RelOptTable sourceTable = catalogReader.getTableForMember(
-                ImmutableList.of(realSchema, realTableName));
-            if (sourceTable != null) {
-                TableMeta tableMeta = CBOUtil.getTableMeta(sourceTable);
-                tableMetas.put(tableNameObj, tableMeta);
-                stat = tableMeta;
+            try {
+                RelOptTable sourceTable = catalogReader.getTableForMember(
+                    ImmutableList.of(realSchema, realTableName));
+                if (sourceTable != null) {
+                    TableMeta tableMeta = CBOUtil.getTableMeta(sourceTable);
+                    tableMetas.put(tableNameObj, tableMeta);
+                    stat = tableMeta;
+                }
+            } catch (Throwable t) {
+                //ignore, allow get table failure!
             }
         }
         return stat;

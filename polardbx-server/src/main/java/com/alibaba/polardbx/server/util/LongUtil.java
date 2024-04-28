@@ -24,17 +24,34 @@ public final class LongUtil {
     private static final byte[] minValue = "-9223372036854775808".getBytes();
 
     public static byte[] toBytes(long i) {
-        if (i == Long.MIN_VALUE) return minValue;
+        if (i == Long.MIN_VALUE) {
+            return minValue;
+        }
         int size = (i < 0) ? stringSize(-i) + 1 : stringSize(i);
         byte[] buf = new byte[size];
         getBytes(i, size, buf);
         return buf;
     }
 
+    public static byte[] toBytesOrNull(Long l) {
+        if (l == null) {
+            return null;
+        }
+        if (l == Long.MIN_VALUE) {
+            return minValue;
+        }
+        int size = (l < 0) ? stringSize(-l) + 1 : stringSize(l);
+        byte[] buf = new byte[size];
+        getBytes(l, size, buf);
+        return buf;
+    }
+
     static int stringSize(long x) {
         long p = 10;
         for (int i = 1; i < 19; i++) {
-            if (x < p) return i;
+            if (x < p) {
+                return i;
+            }
             p = 10 * p;
         }
         return 19;
@@ -75,12 +92,14 @@ public final class LongUtil {
 
         // Fall thru to fast mode for smaller numbers
         // assert(i2 <= 65536, i2);
-        for (;;) {
+        for (; ; ) {
             q2 = (i2 * 52429) >>> (16 + 3);
             r = i2 - ((q2 << 3) + (q2 << 1)); // r = i2-(q2*10) ...
             buf[--charPos] = IntegerUtil.digits[r];
             i2 = q2;
-            if (i2 == 0) break;
+            if (i2 == 0) {
+                break;
+            }
         }
         if (sign != 0) {
             buf[--charPos] = sign;

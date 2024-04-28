@@ -36,6 +36,8 @@ public class OperatorStatistics {
      */
     protected long rowCount = 0;
 
+    protected long runtimeFilteredCount = 0;
+
     /**
      * Memory consumed by this operator (in bytes)
      */
@@ -69,12 +71,14 @@ public class OperatorStatistics {
 
     @JsonCreator
     public OperatorStatistics(@JsonProperty("rowCount") long rowCount,
+                              @JsonProperty("runtimeFilteredCount") long runtimeFilteredCount,
                               @JsonProperty("memory") long memory,
                               @JsonProperty("startupDuration") long startupDuration,
                               @JsonProperty("processDuration") long processDuration,
                               @JsonProperty("closeDuration") long closeDuration,
                               @JsonProperty("spillCnt") int spillCnt) {
         this.rowCount = rowCount;
+        this.runtimeFilteredCount = runtimeFilteredCount;
         this.memory = memory;
         this.startupDuration = startupDuration;
         this.processDuration = processDuration;
@@ -89,6 +93,15 @@ public class OperatorStatistics {
 
     public void addRowCount(long rowCount) {
         this.rowCount += rowCount;
+    }
+
+    @JsonProperty
+    public long getRuntimeFilteredCount() {
+        return runtimeFilteredCount;
+    }
+
+    public void addRuntimeFilteredCount(long filteredCount) {
+        this.runtimeFilteredCount += filteredCount;
     }
 
     @JsonProperty

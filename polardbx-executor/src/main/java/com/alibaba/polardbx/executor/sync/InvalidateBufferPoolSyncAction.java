@@ -18,15 +18,11 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.archive.reader.BufferPoolManager;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
-import com.google.common.collect.ImmutableList;
 
 /**
  * @author chenzilin
- * @date 2022/2/21 11:29
  */
-public class InvalidateBufferPoolSyncAction  implements ISyncAction {
+public class InvalidateBufferPoolSyncAction implements ISyncAction {
 
     private String schemaName = null;
 

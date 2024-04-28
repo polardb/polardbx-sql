@@ -164,7 +164,8 @@ public class OSSBackFillLoader extends com.alibaba.polardbx.executor.backfill.Lo
         String targetGroup = sourceTargetGroupMap.get(sourceDbIndex);
         assert targetGroup != null;
         return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext, executeFunc,
+            .insertIntoTable(null, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName, executionContext,
+                executeFunc,
                 false,
                 false, this.designateLogicalPart);
     }

@@ -47,8 +47,8 @@ public class ${className} extends AbstractVectorizedExpression {
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType}[] input = ((${type.inputVectorType}) inputVectorSlot).${type.inputType}Array();
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
+        ${type.inputType}[] input = (inputVectorSlot.cast(${type.inputVectorType}.class)).${type.inputType}Array();
+        Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
 
         DecimalStructure tmpDecimal = new DecimalStructure();
         int precision = outputDataType.getPrecision();
@@ -86,6 +86,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 DecimalConverter.rescale(tmpDecimal, toValue, precision, scale, isUnsigned);
             }
         }
+        outputVectorSlot.cast(DecimalBlock.class).setFullState();
     }
 }
 

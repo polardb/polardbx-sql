@@ -65,6 +65,7 @@ import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlModifyColumn;
 import org.apache.calcite.util.Pair;
@@ -317,6 +318,15 @@ public class TableValidator {
         return tableMeta.isGsi();
     }
 
+    public static boolean checkTableIsGsiOrCci(String schemaName, String logicalTableName) {
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
+        if (tableMeta == null) {
+            return false;
+        }
+        return tableMeta.isGsi() || tableMeta.isColumnar();
+    }
+
     public static boolean checkTableWithGsi(String schemaName, String logicalTableName) {
         TableMeta tableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
@@ -324,6 +334,16 @@ public class TableValidator {
             return false;
         }
         return tableMeta.withGsi();
+    }
+
+    public static void validateTableWithCCI(String schemaName, String logicalTableName,
+                                            ExecutionContext executionContext, SqlKind sqlKind) {
+        TableMeta tableMeta =
+            OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
+        boolean forbidDdlWithCci = executionContext.getParamManager().getBoolean(ConnectionParams.FORBID_DDL_WITH_CCI);
+        if (forbidDdlWithCci && tableMeta != null && tableMeta.withCci()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_WITH_CCI, sqlKind.name());
+        }
     }
 
     /**

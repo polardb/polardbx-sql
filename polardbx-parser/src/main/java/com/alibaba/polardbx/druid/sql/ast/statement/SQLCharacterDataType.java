@@ -57,6 +57,9 @@ public class SQLCharacterDataType extends SQLDataTypeImpl {
     }
 
     private String trim(String str) {
+        if (str == null) {
+            return null;
+        }
         if (str.charAt(0) == '`' || str.charAt(str.length() - 1) == '`') {
             // trim
             StringBuilder builder = new StringBuilder();

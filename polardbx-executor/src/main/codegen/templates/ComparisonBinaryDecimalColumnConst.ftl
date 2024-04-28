@@ -51,43 +51,43 @@ public class ${className} extends AbstractVectorizedExpression {
 
     @Override
     public void eval(EvaluationContext ctx) {
-        children[0].eval(ctx);
-        MutableChunk chunk = ctx.getPreAllocatedChunk();
-        int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		children[0].eval(ctx);
+		MutableChunk chunk = ctx.getPreAllocatedChunk();
+		int batchSize = chunk.batchSize();
+		boolean isSelectionInUse = chunk.isSelectionInUse();
+		int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot =
-            chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot =
+		chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+		long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
-        DecimalStructure leftDec;
-        DecimalStructure operand1Dec = operand1.getDecimalStructure();
+		DecimalStructure leftDec;
+		DecimalStructure operand1Dec = operand1.getDecimalStructure();
 
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                int fromIndex = j * DECIMAL_MEMORY_SIZE;
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		int fromIndex = j * DECIMAL_MEMORY_SIZE;
 
-                // fetch left decimal value
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
+		// fetch left decimal value
+		leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
 
-                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) ${operator.op} 0;
+		boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) ${operator.op} 0;
 
-                output[j] = b1 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
-        } else {
-            for (int i = 0; i < batchSize; i++) {
-                int fromIndex = i * DECIMAL_MEMORY_SIZE;
+		output[j] = b1 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+		}
+		} else {
+		for (int i = 0; i < batchSize; i++) {
+		int fromIndex = i * DECIMAL_MEMORY_SIZE;
 
-                // fetch left decimal value
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
+		// fetch left decimal value
+		leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
 
-                boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) ${operator.op} 0;
+		boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) ${operator.op} 0;
 
                 output[i] = b1 ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
             }

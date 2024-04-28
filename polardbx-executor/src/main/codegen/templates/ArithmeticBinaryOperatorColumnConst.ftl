@@ -51,27 +51,27 @@ public class ${className} extends AbstractVectorizedExpression {
         }
 
         <#if (operator.classHeader == "Divide") || (operator.classHeader == "Modulo")>
-        if (right == 0) {
-            VectorizedExpressionUtils.setNulls(chunk, outputIndex);
-            return;
-        }
+			if (right == 0) {
+			VectorizedExpressionUtils.setNulls(chunk, outputIndex);
+			return;
+			}
         </#if>
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock leftInputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
-        ${type.outputType}[] res = ((${type.outputVectorType}) outputVectorSlot).${type.outputType}Array();
+        ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
+        ${type.outputType}[] res = (outputVectorSlot.cast(${type.outputVectorType}.class)).${type.outputType}Array();
 
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                res[j] = ((${type.outputType})array1[j]) ${operator.op} ((${type.outputType})right);
-            }
-        } else {
-            for (int i = 0; i < batchSize; i++) {
-                res[i] = ((${type.outputType})array1[i]) ${operator.op} ((${type.outputType})right);
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+		res[j] = ((${type.outputType})array1[j]) ${operator.op} ((${type.outputType})right);
+		}
+		} else {
+		for (int i = 0; i < batchSize; i++) {
+		res[i] = ((${type.outputType})array1[i]) ${operator.op} ((${type.outputType})right);
             }
         }
 

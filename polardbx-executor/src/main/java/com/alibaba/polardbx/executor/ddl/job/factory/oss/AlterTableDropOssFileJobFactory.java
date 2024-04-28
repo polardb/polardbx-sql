@@ -64,7 +64,8 @@ public class AlterTableDropOssFileJobFactory extends DdlJobFactory {
         List<DdlTask> taskList = new ArrayList<>();
 
         // change file meta task
-        final ITimestampOracle timestampOracle = executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
+        final ITimestampOracle timestampOracle =
+            executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
         if (null == timestampOracle) {
             throw new UnsupportedOperationException("Do not support timestamp oracle");
         }

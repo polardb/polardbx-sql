@@ -16,9 +16,10 @@
 
 package com.alibaba.polardbx.gms.privilege;
 
+import com.alibaba.polardbx.common.privilege.Host;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.expr.MySqlUserName;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateRoleStatement;
-import com.alibaba.polardbx.common.privilege.Host;
+import com.taobao.tddl.common.privilege.AuthPlugin;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.Objects;
@@ -43,16 +44,18 @@ public class PolarAccount {
      * Encrypted password.
      */
     private final String password;
+    private final AuthPlugin authPlugin;
     private final AccountType accountType;
 
     private final Predicate<String> hostMatcher;
 
     private PolarAccount(Builder builder) {
         this.accountId = builder.accountId;
-        this.username = Optional.ofNullable(builder.username).orElse(null);
+        this.username = builder.username;
         this.host = checkHost(builder.host);
-        this.password = Optional.ofNullable(builder.password).orElse(null);
+        this.password = builder.password;
         this.accountType = Optional.ofNullable(builder.accountType).orElse(AccountType.USER);
+        this.authPlugin = Optional.ofNullable(builder.authPlugin).orElse(AuthPlugin.POLARDBX_NATIVE_PASSWORD);
         this.hostMatcher = Optional.ofNullable(accountType)
             .map(t -> getHostMatcher(accountType, host))
             .orElse(null);
@@ -91,6 +94,7 @@ public class PolarAccount {
             .setUsername(originAccount.getUsername())
             .setHost(originAccount.getHost())
             .setPassword(originAccount.getPassword())
+            .setAuthPlugin(originAccount.getAuthPlugin())
             .setAccountType(originAccount.getAccountType());
     }
 
@@ -140,6 +144,10 @@ public class PolarAccount {
 
     public String getPassword() {
         return password;
+    }
+
+    public AuthPlugin getAuthPlugin() {
+        return authPlugin;
     }
 
     public AccountType getAccountType() {
@@ -197,6 +205,7 @@ public class PolarAccount {
             ", host='" + host + '\'' +
             ", password='" + password + '\'' +
             ", accountType=" + accountType +
+            ", authPlugin=" + authPlugin +
             '}';
     }
 
@@ -206,6 +215,7 @@ public class PolarAccount {
         private String username;
         private String host;
         private String password;
+        private AuthPlugin authPlugin;
 
         public Builder setAccountId(Long accountId) {
             this.accountId = accountId;
@@ -229,6 +239,11 @@ public class PolarAccount {
 
         public Builder setPassword(String password) {
             this.password = password;
+            return this;
+        }
+
+        public Builder setAuthPlugin(AuthPlugin authPlugin) {
+            this.authPlugin = authPlugin;
             return this;
         }
 

@@ -29,18 +29,20 @@
  */
 package com.alibaba.polardbx.executor.mpp.web;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.execution.QueryExecution;
 import com.alibaba.polardbx.executor.mpp.execution.QueryInfo;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
+import com.alibaba.polardbx.executor.mpp.execution.QuerySplitStats;
 import com.alibaba.polardbx.executor.mpp.execution.QueryState;
+import com.alibaba.polardbx.executor.mpp.execution.QueryStatsInfo;
 import com.alibaba.polardbx.executor.mpp.execution.StageId;
 import com.alibaba.polardbx.executor.mpp.server.BasicQueryInfo;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.collect.ImmutableList;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;
 
@@ -116,17 +118,66 @@ public class QueryResource {
         requireNonNull(queryId, "queryId is null");
 
         try {
-            QueryInfo queryInfo = queryManager.getQueryInfo(queryId);
-            QueryInfo summary = queryInfo;
-            try {
-                summary = queryInfo.summary();
-            } catch (Exception e) {
-                // ignore exceptions
-            }
+            QueryInfo summary = summarizeQuery(queryId);
             return Response.ok(summary).build();
         } catch (NoSuchElementException e) {
             return Response.status(Status.GONE).build();
         }
+    }
+
+    @GET
+    @Path("stats/{queryId}")
+    public Response getQueryStatsInfo(@PathParam("queryId") String queryId) {
+        requireNonNull(queryId, "queryId is null");
+
+        try {
+            QueryInfo summary = summarizeQuery(queryId);
+            QueryStatsInfo statsInfo = QueryStatsInfo.from(summary);
+            return Response.ok(statsInfo).build();
+        } catch (NoSuchElementException e) {
+            return Response.status(Status.GONE).build();
+        }
+    }
+
+    @GET
+    @Path("stats/splits/{queryId}")
+    public Response getSplitStatsInfo(@PathParam("queryId") String queryId) {
+        requireNonNull(queryId, "queryId is null");
+
+        try {
+            QueryInfo summary = summarizeQuery(queryId);
+            QueryStatsInfo statsInfo = QueryStatsInfo.from(summary);
+            QuerySplitStats splitStats = QuerySplitStats.from(statsInfo);
+            return Response.ok(splitStats).build();
+        } catch (NoSuchElementException e) {
+            return Response.status(Status.GONE).build();
+        }
+    }
+
+    @GET
+    @Path("stats/pipeline/{queryId}")
+    public Response getPipelineStatsInfo(@PathParam("queryId") String queryId) {
+        requireNonNull(queryId, "queryId is null");
+
+        try {
+            QueryInfo summary = summarizeQuery(queryId);
+            QueryStatsInfo statsInfo = QueryStatsInfo.from(summary);
+            QuerySplitStats splitStats = QuerySplitStats.from(statsInfo);
+            return Response.ok(splitStats).build();
+        } catch (NoSuchElementException e) {
+            return Response.status(Status.GONE).build();
+        }
+    }
+
+    protected QueryInfo summarizeQuery(String queryId) {
+        QueryInfo queryInfo = queryManager.getQueryInfo(queryId);
+        QueryInfo summary = queryInfo;
+        try {
+            summary = queryInfo.summary();
+        } catch (Exception e) {
+            // ignore exceptions
+        }
+        return summary;
     }
 
     @DELETE

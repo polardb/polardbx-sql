@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
+import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
@@ -54,6 +55,13 @@ public class DoubleBlock extends AbstractBlock {
         super(DataTypes.DoubleType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
         updateSizeInfo();
+    }
+
+    public static DoubleBlock from(DoubleBlock other, int selSize, int[] selection) {
+        return new DoubleBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyDoubleArray(other.values, selection, selSize));
     }
 
     @Override
@@ -109,6 +117,15 @@ public class DoubleBlock extends AbstractBlock {
         return Double.hashCode(values[position + arrayOffset]);
     }
 
+    @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxHash64.hash(Double.doubleToRawLongBits(values[pos + arrayOffset]));
+        }
+    }
+
     /**
      * Designed for test purpose
      */
@@ -121,7 +138,7 @@ public class DoubleBlock extends AbstractBlock {
                 builder.writeDouble(values[i]);
             }
         }
-        return (DoubleBlock) builder.build();
+        return builder.build().cast(DoubleBlock.class);
     }
 
     @Override
@@ -138,6 +155,17 @@ public class DoubleBlock extends AbstractBlock {
     }
 
     @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Double.hashCode(values[position + arrayOffset]);
+        }
+    }
+
+    @Override
     public DataType getType() {
         return DataTypes.DoubleType;
     }
@@ -145,7 +173,7 @@ public class DoubleBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof DoubleBlock) {
-            DoubleBlock outputVector = (DoubleBlock) output;
+            DoubleBlock outputVector = output.cast(DoubleBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -166,7 +194,7 @@ public class DoubleBlock extends AbstractBlock {
         if (!(another instanceof DoubleBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        DoubleBlock vectorSlot = (DoubleBlock) another;
+        DoubleBlock vectorSlot = another.cast(DoubleBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }

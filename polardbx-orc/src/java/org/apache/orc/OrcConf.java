@@ -51,6 +51,8 @@ public enum OrcConf {
       "Define the version of the file to write. Possible values are 0.11 and\n"+
           " 0.12. If this parameter is not defined, ORC will use the run\n" +
           " length encoding (RLE) introduced in Hive 0.12."),
+  ENABLE_DECIMAL_64("orc.write.decimal64", "hive.exec.orc.write.decimal64", true,
+      "Enable using long to represent decimal64"),
   ENFORCE_COMPRESSION_BUFFER_SIZE("orc.buffer.size.enforce", "hive.exec.orc.buffer.size.enforce", false,
       "Defines whether to enforce ORC compression buffer size."),
   ENCODING_STRATEGY("orc.encoding.strategy", "hive.exec.orc.encoding.strategy",
@@ -98,6 +100,8 @@ public enum OrcConf {
       "If the number of distinct keys in a dictionary is greater than this\n" +
           "fraction of the total number of non-null rows, turn off \n" +
           "dictionary encoding.  Use 1 to always use dictionary encoding."),
+  DICTIONARY_COLUMNS("orc.dictionary.columns", "orc.dictionary.columns",
+      "", "List of columns to create dictionary for when writing."),
   ROW_INDEX_STRIDE_DICTIONARY_CHECK("orc.dictionary.early.check",
       "hive.orc.row.index.stride.dictionary.check",
       true,
@@ -105,6 +109,12 @@ public enum OrcConf {
           "(default 10000 rows) else dictionary check will happen before\n" +
           "writing first stripe. In both cases, the decision to use\n" +
           "dictionary or not will be retained thereafter."),
+  DICTIONARY_IMPL("orc.dictionary.implementation", "orc.dictionary.implementation",
+      "rbtree",
+      "the implementation for the dictionary used for string-type column encoding.\n" +
+          "The choices are:\n"
+          + " rbtree - use red-black tree as the implementation for the dictionary.\n"
+          + " hash - use hash table as the implementation for the dictionary."),
   BLOOM_FILTER_COLUMNS("orc.bloom.filter.columns", "orc.bloom.filter.columns",
       "", "List of columns to create bloom filters for when writing."),
   BLOOM_FILTER_WRITE_VERSION("orc.bloom.filter.write.version",

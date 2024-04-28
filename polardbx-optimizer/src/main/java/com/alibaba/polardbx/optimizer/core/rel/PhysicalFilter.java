@@ -16,12 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.MppConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
-import com.alibaba.polardbx.optimizer.core.MppConvention;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -191,6 +193,24 @@ public class PhysicalFilter extends Filter implements PhysicalNode {
         RelCollation collation = required.getCollation();
         RelDistribution distribution = required.getDistribution();
         Convention convention = required.getConvention();
+        if (CBOUtil.isColumnarOptimizer(this)) {
+            if (required.getConvention() != traitSet.getConvention()) {
+                return null;
+            }
+            if (convention != DrdsConvention.INSTANCE) {
+                return null;
+            }
+            // don't pass through sort
+            if (collation != null && collation != RelCollations.EMPTY) {
+                return null;
+            }
+            if (distribution == null || distribution == RelDistributions.ANY) {
+                return null;
+            }
+            RelTraitSet traits = traitSet.replace(collation).replace(distribution);
+            RelTraitSet childTrait = traitSet.replace(distribution);
+            return Pair.of(traits, ImmutableList.of(childTrait));
+        }
         if (collation == null || collation == RelCollations.EMPTY) {
             if (convention == MppConvention.INSTANCE) {
                 if (distribution == null || distribution == RelDistributions.ANY) {

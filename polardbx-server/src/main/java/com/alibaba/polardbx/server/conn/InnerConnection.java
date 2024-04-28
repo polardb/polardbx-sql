@@ -17,14 +17,19 @@
 package com.alibaba.polardbx.server.conn;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.IInnerConnection;
 import com.alibaba.polardbx.common.IdGenerator;
 import com.alibaba.polardbx.common.TrxIdGenerator;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ITransactionPolicy;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
+import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.executor.cursor.AbstractCursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
@@ -43,6 +48,7 @@ import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 
 import java.sql.Array;
 import java.sql.Blob;
@@ -66,6 +72,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /**
  * 1. 一个精简版的Jdbc Connection实现，用于封装和屏蔽TConnection的细节，方便编写业务逻辑代码，提供原生JDBC的使用体验
@@ -74,13 +82,13 @@ import java.util.concurrent.Executor;
  *
  * @author ziyang.lb 2020-12-05
  */
-public class InnerConnection implements Connection {
+public class InnerConnection implements Connection, IInnerConnection {
     private final static Logger logger = LoggerFactory.getLogger(InnerConnection.class);
 
     private final Long id;
     private final String schemaName;
     private final TConnection connection;
-    private final MdlContext mdlContext;
+    private MdlContext mdlContext;
     private final Object mdlContextLock;
 
     private volatile Long txId = 0L;
@@ -88,6 +96,13 @@ public class InnerConnection implements Connection {
     private Long phySqlId = 0L;
     private String traceId = null;
     private volatile boolean autoCommit = true;
+    private ITransactionPolicy trxPolicy = ITransactionPolicy.TSO;
+    private final List<Consumer<Object>> executionContextInjectHooks = new ArrayList<>();
+    private final AtomicBoolean statementExecuting = new AtomicBoolean(false);
+    private long lastActiveTime = System.nanoTime();
+    private String user = PolarPrivUtil.POLAR_ROOT + '@' + "127.0.0.1";
+    private String sqlSample = null;
+    final private Map<String, Object> extraServerVariables = new HashMap<>();
 
     public InnerConnection() throws SQLException {
         this(SystemDbHelper.DEFAULT_DB_NAME);
@@ -116,23 +131,162 @@ public class InnerConnection implements Connection {
         OptimizerContext.setContext(ds.getConfigHolder().getOptimizerContext());
         this.connection = (TConnection) ds.getConnection();
         this.connection.setMdlContext(mdlContext);
-        this.connection.setUser(PolarPrivUtil.POLAR_ROOT + '@' + "127.0.0.1");
-        this.connection
-            .setFrontendConnectionInfo(PolarPrivUtil.POLAR_ROOT + '@' + "127.0.0.1" + ':' + "1111");
+        this.connection.setUser(user);
+        this.connection.setFrontendConnectionInfo(user + ':' + "1111");
         this.connection.setId(id);
         this.connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         this.connection.setAutoCommit(autoCommit);
         this.connection.setEncoding("utf8");
-        this.connection.setTrxPolicy(ITransactionPolicy.TSO, false);
+        this.connection.setTrxPolicy(trxPolicy, false);
         this.connection.setServerVariables(serverVariables);
+        this.connection.setExtraServerVariables(extraServerVariables);
+
+        if (null != InnerConnectionManager.getActiveConnections().putIfAbsent(id, this)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, "Found duplicate inner connection id.");
+        }
     }
 
     protected Object executeSql(String sql, List<Pair<Integer, ParameterContext>> params) throws SQLException {
-        genTxIdAndTraceId();
-        CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
+        lastActiveTime = System.nanoTime();
+        int sqlSimpleMaxLen = CobarServer.getInstance().getConfig().getSystem().getSqlSimpleMaxLen();
+        sqlSample = sql.substring(0, Math.min(sqlSimpleMaxLen, sql.length()));
+        boolean success = true;
+        try {
+            genTxIdAndTraceId();
+            CobarServer.getInstance().getServerExecutor().initTraceStats(traceId);
 
-        // 设置TrxPolicy & ExecutionContext信息
-        connection.setTrxPolicy(ITransactionPolicy.TSO, false);
+            // 设置TrxPolicy & ExecutionContext信息
+            connection.setTrxPolicy(trxPolicy, false);
+
+            // 变量定义
+            Object result = null;
+            Throwable exception = null;
+            ITransaction trx = null;
+            ExecutionContext ec = null;
+
+            // In non Auto-commit mode, A DDL will commit the
+            // current trans obj and create a new one. so we must
+            // record the trans obj for checking.
+            if (!autoCommit) {
+                trx = connection.getTrx();
+            }
+
+            //统一使用PrepareStatement模式，只支持一次一个Sql
+            try (TPreparedStatement stmt = (TPreparedStatement) connection.prepareStatement(sql)) {
+                // Since prepareStatement will init a new execution context,
+                // any operation on ec should start here.
+                ec = this.connection.getExecutionContext();
+                beforeExecution();
+                processExecutionContextHooks(ec);
+                fillParams(stmt, params);
+                statementExecuting.set(true);
+                boolean flag = stmt.execute();
+                if (flag) {
+                    result = stmt.getResultSet();
+                    result = buildResultSet((TResultSet) result);
+                } else {
+                    result = stmt.getUpdateCount();
+                }
+            } catch (Throwable t) {
+                logger.error(t);
+                exception = t;
+            }
+
+            // 自动提交模式下，直接提交即可
+            if (autoCommit && exception == null) {
+                try {
+                    connection.commit();
+                } catch (Throwable ex) {
+                    exception = ex;
+                }
+            }
+
+            // 释放事务锁
+            synchronized (mdlContextLock) {
+                if (connection.getMdlContext() != null) {
+                    if (autoCommit && exception != null) {
+                        // Release mdl on autocommit transaction with execution err
+                        mdlContext.releaseTransactionalLocks(txId);
+                    }
+
+                    if (autoCommit && exception != null && null != ec && ec.getTransaction() != null) {
+                        // Release mdl on autocommit transaction with execution
+                        // err
+                        mdlContext.releaseTransactionalLocks(ec.getTransaction().getId());
+                    }
+                }
+            }
+
+            try {
+                CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);
+                CobarServer.getInstance().getServerExecutor().waitByTraceId(traceId);
+            } catch (Throwable ex) {
+                logger.error("Interrupted unexpectedly for " + ec.getTraceId(), ex);
+            }
+
+            // Checking the current trans obj, If it's changing, A DDL
+            // maybe execute and committing the previous trans.
+            if (!autoCommit && trx != null) {
+                if (trx != connection.getTrx()) {
+                    this.txId = null;
+                }
+            }
+
+            try {
+                connection.tryClose();
+            } catch (Throwable e) {
+                logger.error("Failed to close TConnection", e);
+            }
+
+            statementExecuting.set(false);
+
+            try {
+                connection.getExecutionContext().clearAllMemoryPool();
+            } catch (Throwable e) {
+                logger.warn("Failed to release memory of current request", e);
+            }
+            if (connection.getExecutionContext().getParams() != null) {
+                connection.getExecutionContext().getParams().clear();
+            }
+
+            if (exception != null) {
+                success = false;
+                if (exception instanceof SQLException) {
+                    throw (SQLException) exception;
+                } else {
+                    throw new RuntimeException("sql execute error!", exception);
+                }
+            } else {
+                return result;
+            }
+        } finally {
+            // Record sql.
+            SQLRecorderLogger.innerSqlLogger.info(SQLRecorderLogger.innerSqlFormat.format(new Object[] {
+                sql,
+                success ? "0" : "1",
+                // in milliseconds
+                (System.nanoTime() - lastActiveTime) / 1_000_000
+            }));
+            // Reset.
+            lastActiveTime = System.nanoTime();
+        }
+    }
+
+    /**
+     * release Transactional locks and remove context
+     */
+    private void releaseLockAndRemoveMdlContext() {
+        synchronized (mdlContextLock) {
+            // remove mdl context
+            if (null != this.mdlContext) {
+                this.mdlContext.releaseAllTransactionalLocks();
+                MdlManager.removeContext(this.mdlContext);
+                this.mdlContext = null;
+            }
+        }
+    }
+
+    private void beforeExecution() {
         connection.getExecutionContext().setClientIp("127.0.0.1");
         connection.getExecutionContext().setConnId(connection.getId());
         connection.getExecutionContext().setTxId(txId);
@@ -143,98 +297,16 @@ public class InnerConnection implements Connection {
         connection.getExecutionContext().setInternalSystemSql(false);
         connection.getExecutionContext().setLogicalSqlStartTimeInMs(System.currentTimeMillis());
         connection.getExecutionContext().setLogicalSqlStartTime(System.nanoTime());
+    }
 
-        // 变量定义
-        Object result = null;
-        Throwable exception = null;
-        ITransaction trx = null;
-        ExecutionContext ec = this.connection.getExecutionContext();
+    @Override
+    public ITransactionPolicy getTrxPolicy() {
+        return trxPolicy;
+    }
 
-        // In non Auto-commit mode, A DDL will commit the
-        // current trans obj and create a new one. so we must
-        // record the trans obj for checking.
-        if (!autoCommit) {
-            trx = connection.getTrx();
-        }
-
-        //统一使用PrepareStatement模式，只支持一次一个Sql
-        try (TPreparedStatement stmt = (TPreparedStatement) connection.prepareStatement(sql)) {
-            fillParams(stmt, params);
-            boolean flag = stmt.execute();
-            if (flag) {
-                result = stmt.getResultSet();
-                result = buildResultSet((TResultSet) result);
-            } else {
-                result = stmt.getUpdateCount();
-            }
-        } catch (Throwable t) {
-            exception = t;
-        }
-
-        // 自动提交模式下，直接提交即可
-        if (autoCommit && exception == null) {
-            try {
-                connection.commit();
-            } catch (Throwable ex) {
-                exception = ex;
-            }
-        }
-
-        // 释放事务锁
-        synchronized (mdlContextLock) {
-            if (connection.getMdlContext() != null) {
-                if (autoCommit && exception != null) {
-                    // Release mdl on autocommit transaction with execution err
-                    mdlContext.releaseTransactionalLocks(txId);
-                }
-
-                if (autoCommit && exception != null && null != ec && ec.getTransaction() != null) {
-                    // Release mdl on autocommit transaction with execution
-                    // err
-                    mdlContext.releaseTransactionalLocks(ec.getTransaction().getId());
-                }
-            }
-        }
-
-        try {
-            CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);
-            CobarServer.getInstance().getServerExecutor().waitByTraceId(traceId);
-        } catch (Throwable ex) {
-            logger.error("Interrupted unexpectedly for " + ec.getTraceId(), ex);
-        }
-
-        // Checking the current trans obj, If it's changing, A DDL
-        // maybe execute and committing the previous trans.
-        if (!autoCommit && trx != null) {
-            if (trx != connection.getTrx()) {
-                this.txId = null;
-            }
-        }
-
-        try {
-            connection.tryClose();
-        } catch (Throwable e) {
-            logger.error("Failed to close TConnection", e);
-        }
-
-        try {
-            connection.getExecutionContext().clearAllMemoryPool();
-        } catch (Throwable e) {
-            logger.warn("Failed to release memory of current request", e);
-        }
-        if (connection.getExecutionContext().getParams() != null) {
-            connection.getExecutionContext().getParams().clear();
-        }
-
-        if (exception != null) {
-            if (exception instanceof SQLException) {
-                throw (SQLException) exception;
-            } else {
-                throw new RuntimeException("sql execute error!", exception);
-            }
-        } else {
-            return result;
-        }
+    @Override
+    public void setTrxPolicy(ITransactionPolicy trxPolicy) {
+        this.trxPolicy = trxPolicy;
     }
 
     private void genTxIdAndTraceId() {
@@ -295,6 +367,22 @@ public class InnerConnection implements Connection {
     }
 
     @Override
+    public void addExecutionContextInjectHook(Consumer<Object> hook) {
+        executionContextInjectHooks.add(hook);
+    }
+
+    @Override
+    public void clearExecutionContextInjectHooks() {
+        executionContextInjectHooks.clear();
+    }
+
+    private void processExecutionContextHooks(ExecutionContext ec) {
+        for (Consumer<Object> hook : executionContextInjectHooks) {
+            hook.accept(ec);
+        }
+    }
+
+    @Override
     public Statement createStatement() throws SQLException {
         return new InnerStatement(this);
     }
@@ -350,8 +438,123 @@ public class InnerConnection implements Connection {
     }
 
     @Override
-    public void close() throws SQLException {
-        this.connection.close();
+    public void close() {
+        try {
+            if (this.statementExecuting.get()) {
+                if (connection.isDdlStatement()) {
+                    logger.warn("Inner connection Killed By Client While Executing DDL");
+                    if (connection.getExecutionContext().getDdlContext() != null) {
+                        connection.getExecutionContext().getDdlContext().setClientConnectionResetAsTrue();
+                    }
+                }
+                CobarServer.getInstance().getKillExecutor().execute(() -> {
+                    CobarServer.getInstance().getServerExecutor().closeByTraceId(traceId);
+                    try {
+                        int retry = 0;
+                        do {
+                            try {
+                                if (connection != null) {
+                                    connection.kill();
+                                }
+
+                            } catch (Exception ex) {
+                                logger.warn("error when kill", ex);
+                            }
+
+                            try {
+                                Thread.sleep(5 + retry * 10);
+                            } catch (InterruptedException e) {
+                                logger.warn(e);
+                            }
+
+                        } while (statementExecuting.get() && ++retry < 10);
+                        try {
+                            if (connection != null) {
+                                connection.close();
+                            }
+                        } catch (Exception ex) {
+                            logger.warn("error when kill inner connection close", ex);
+                        }
+
+                        if (retry >= 10) {
+                            logger.error("KILL Inner Connection Failed, retry: " + retry);
+                        } else {
+                            logger.warn("Inner Connection Killed");
+                        }
+                    } finally {
+                        releaseLockAndRemoveMdlContext();
+                    }
+                });
+            } else {
+                if (connection != null) {
+                    CobarServer.getInstance().getKillExecutor().execute(() -> {
+                        try {
+                            connection.close();
+                        } catch (SQLException e) {
+                            logger.warn("error when close inner connection", e);
+                        } finally {
+                            releaseLockAndRemoveMdlContext();
+                        }
+                    });
+                } else {
+                    releaseLockAndRemoveMdlContext();
+                }
+            }
+        } finally {
+            InnerConnectionManager.getActiveConnections().remove(id);
+        }
+    }
+
+    public boolean isStatementExecuting() {
+        return statementExecuting.get();
+    }
+
+    public TConnection getTConnection() {
+        return connection;
+    }
+
+    public long getLastActiveTime() {
+        return lastActiveTime;
+    }
+
+    public long getId() {
+        return id;
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public String getSqlSample() {
+        return sqlSample;
+    }
+
+    @Override
+    public void setTimeZone(String timeZoneId) {
+        if ("SYSTEM".equalsIgnoreCase(timeZoneId)) {
+            this.connection.resetTimeZone();
+            this.extraServerVariables.put("time_zone", timeZoneId);
+        } else {
+            InternalTimeZone timeZone = TimeZoneUtils.convertFromMySqlTZ(timeZoneId);
+            if (timeZone == null) {
+                throw new TddlRuntimeException(com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_UNKNOWN_TZ,
+                    timeZoneId);
+            }
+            this.extraServerVariables.put("time_zone", timeZoneId);
+            this.connection.setTimeZone(timeZone);
+        }
     }
 
     private static class InnerResultCursor extends AbstractCursor {

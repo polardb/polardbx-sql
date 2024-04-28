@@ -27,9 +27,8 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.AlterSystemReloadStorageSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.ha.HaSwitchParams;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
-import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -37,7 +36,6 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemReloadStora
 import org.apache.calcite.rel.RelNode;
 import org.apache.commons.lang.StringUtils;
 
-import java.util.Date;
 import java.util.List;
 
 /**
@@ -63,7 +61,7 @@ public class LogicalAlterSystemReloadStorageHandler extends HandlerCommon {
 
     private void syncReloadStorage(List<String> dnList) {
         try {
-            SyncManagerHelper.sync(new AlterSystemReloadStorageSyncAction(dnList));
+            SyncManagerHelper.sync(new AlterSystemReloadStorageSyncAction(dnList), SyncScope.ALL);
         } catch (Throwable e) {
             logger.error(e);
             throw new TddlNestableRuntimeException(e);

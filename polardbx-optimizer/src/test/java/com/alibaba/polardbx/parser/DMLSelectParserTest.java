@@ -18,9 +18,22 @@ package com.alibaba.polardbx.parser;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.druid.sql.parser.Token;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
+import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
+import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlToCalciteNodeVisitor;
 import junit.framework.TestCase;
+import org.apache.calcite.sql.SqlBasicCall;
+import org.apache.calcite.sql.SqlJoin;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.TDDLSqlSelect;
 import org.junit.Assert;
+
+import java.util.ArrayList;
 
 public class DMLSelectParserTest extends TestCase {
 
@@ -271,7 +284,8 @@ public class DMLSelectParserTest extends TestCase {
         parser.match(Token.EOF);
         String output = SQLUtils.toMySqlString(stmt);
         Assert
-            .assertEquals("SELECT t1.id, t2.*\nFROM t1, test.t2\nWHERE test.t1.id = '中''‘文'\n\tAND t1.id = test.t2.id",
+            .assertEquals(
+                "SELECT t1.id, t2.*\nFROM t1, test.t2\nWHERE test.t1.id = '中''‘文'\n\tAND t1.id = test.t2.id",
                 output);
     }
 
@@ -303,5 +317,27 @@ public class DMLSelectParserTest extends TestCase {
             "\n\tINNER JOIN product_visit c" + //
             "\nWHERE a.member_id = c.member_id" + //
             "\n\tAND c.member_id = 'abc'", output);
+    }
+
+    public void test_lateral_1() {
+        String sql = "SELECT salesperson.name, max_sale.amount, max_sale_customer.customer_name FROM "
+            + " salesperson, LATERAL (SELECT MAX(amount) AS amount FROM all_sales "
+            + " WHERE all_sales.salesperson_id = salesperson.id) AS max_sale, "
+            + " LATERAL (SELECT customer_name FROM all_sales WHERE  all_sales.salesperson_id = salesperson.id AND all_sales.amount = max_sale.amount) AS max_sale_customer;";
+        ByteString byteSql = ByteString.from(sql);
+        ExecutionContext ec = new ExecutionContext();
+        FastsqlParser fastsqlParser = new FastsqlParser();
+
+        SqlNodeList sqlNodeList = fastsqlParser.parse(byteSql, new ArrayList<>(), new ContextParameters(false), ec);
+        Assert.assertEquals(1, sqlNodeList.size());
+        SqlNode sqlNode = sqlNodeList.get(0);
+        Assert.assertTrue(sqlNode instanceof TDDLSqlSelect);
+        Assert.assertTrue(((TDDLSqlSelect) sqlNode).getFrom() instanceof SqlJoin);
+        SqlJoin fromJoin = (SqlJoin) ((TDDLSqlSelect) sqlNode).getFrom();
+        Assert.assertTrue(fromJoin.getLeft() instanceof SqlJoin);
+        Assert.assertTrue(fromJoin.getRight() instanceof SqlBasicCall);
+
+        SqlBasicCall lateralNode = (SqlBasicCall) ((SqlBasicCall) fromJoin.getRight()).getOperands()[0];
+        Assert.assertSame(SqlKind.LATERAL, lateralNode.getOperator().getKind());
     }
 }

@@ -80,72 +80,20 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-        InformationSchemaTableDetail informationSchemaTableDetail = (InformationSchemaTableDetail) virtualView;
-
         // only new partitioning db
         Set<String> schemaNames = new TreeSet<>(String::compareToIgnoreCase);
         schemaNames.addAll(StatsUtils.getDistinctSchemaNames());
 
-        List<Object> tableSchemaIndexValue =
-            virtualView.getIndex().get(informationSchemaTableDetail.getTableSchemaIndex());
-
-        Object tableSchemaLikeValue =
-            virtualView.getLike().get(informationSchemaTableDetail.getTableSchemaIndex());
-
-        List<Object> tableNameIndexValue =
-            virtualView.getIndex().get(informationSchemaTableDetail.getTableNameIndex());
-
-        Object tableNameLikeValue =
-            virtualView.getLike().get(informationSchemaTableDetail.getTableNameIndex());
-
+        final int schemaIndex = InformationSchemaTableDetail.getTableSchemaIndex();
+        final int tableIndex = InformationSchemaTableDetail.getTableNameIndex();
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
-        // schemaIndex
-        Set<String> indexSchemaNames = new HashSet<>();
-        if (tableSchemaIndexValue != null && !tableSchemaIndexValue.isEmpty()) {
-            for (Object obj : tableSchemaIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
-            }
-            schemaNames = schemaNames.stream()
-                .filter(schemaName -> indexSchemaNames.contains(schemaName.toLowerCase()))
-                .collect(Collectors.toSet());
-        }
-
-        // schemaLike
-        String schemaLike = null;
-        if (tableSchemaLikeValue != null) {
-            if (tableSchemaLikeValue instanceof RexDynamicParam) {
-                schemaLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableSchemaLikeValue).getIndex() + 1).getValue());
-            } else if (tableSchemaLikeValue instanceof RexLiteral) {
-                schemaLike = ((RexLiteral) tableSchemaLikeValue).getValueAs(String.class);
-            }
-            if (schemaLike != null) {
-                final String likeArg = schemaLike;
-                schemaNames = schemaNames.stream().filter(schemaName -> new Like(null, null).like(
-                    schemaName, likeArg)).collect(
-                    Collectors.toSet());
-            }
-        }
+        schemaNames = virtualView.applyFilters(schemaIndex, params, schemaNames);
 
         // tableIndex
-        Set<String> indexTableNames = new HashSet<>();
-        if (tableNameIndexValue != null && !tableNameIndexValue.isEmpty()) {
-            for (Object obj : tableNameIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexSchemaNames);
-            }
-        }
-
+        Set<String> indexTableNames = virtualView.getEqualsFilterValues(tableIndex, params);
         // tableLike
-        String tableLike = null;
-        if (tableNameLikeValue != null) {
-            if (tableNameLikeValue instanceof RexDynamicParam) {
-                tableLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableNameLikeValue).getIndex() + 1).getValue());
-            } else if (tableNameLikeValue instanceof RexLiteral) {
-                tableLike = ((RexLiteral) tableNameLikeValue).getValueAs(String.class);
-            }
-        }
+        String tableLike = virtualView.getLikeString(tableIndex, params);
 
         List<TableGroupConfig> allTableGroupConfigs = StatsUtils.getTableGroupConfigs(schemaNames);
 
@@ -199,8 +147,8 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                 partitionPyhDbMap.putAll(partitionGroupRecords.stream().collect(Collectors.toMap(
                     PartitionGroupRecord::getPartition_name, PartitionGroupRecord::getPhy_db)));
             }
-            for (TablePartRecordInfoContext context : tableGroupConfig.getAllTables()) {
-                String logicalTableName = context.getTableName().toLowerCase();
+            for (String tableName : tableGroupConfig.getAllTables()) {
+                String logicalTableName = tableName.toLowerCase();
                 TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicalTableName);
                 String indexName = StringUtils.EMPTY;
                 if (tableMeta.isGsi()) {
@@ -208,14 +156,14 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                         continue;
                     }
                     logicalTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
-                    indexName = TddlSqlToRelConverter.unwrapGsiName(context.getTableName().toLowerCase());
+                    indexName = TddlSqlToRelConverter.unwrapGsiName(tableName.toLowerCase());
                 }
                 if (!StatsUtils.isFilterTable(logicalTableNames, tableLike, logicalTableName) && isPrimaryTable) {
                     continue;
                 }
 
                 Map<String, Map<String, Object>> phyTblStatInfoOfOneLogTb =
-                    tableGroupStatInfo.get(context.getLogTbRec().tableName.toLowerCase());
+                    tableGroupStatInfo.get(tableName.toLowerCase());
 
                 if (phyTblStatInfoOfOneLogTb == null) {
                     continue;
@@ -226,7 +174,8 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                 }
 
                 Objects.requireNonNull(phyTblStatInfoOfOneLogTb,
-                    String.format("table meta corrupted: %s.%s", schemaName, context.getTableName()));
+                    String.format("table meta corrupted: %s.%s", schemaName, tableName));
+
                 Long totalRows = 0L;
                 for (Map.Entry<String, Map<String, Object>> phyEntry : phyTblStatInfoOfOneLogTb.entrySet()) {
                     totalRows += DataTypes.LongType.convertFrom(phyEntry.getValue().get("physicalTableRows"));
@@ -235,21 +184,20 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                 /**
                  * Fetch all the phyPartRecords of metadb
                  */
-                List<TablePartitionRecord> tablePartitionRecords =
-                    context.fetchAllPhysicalPartitionRecList().stream().filter(
-                        o -> (o.partLevel != TablePartitionRecord.PARTITION_LEVEL_LOGICAL_TABLE)).collect(
-                        Collectors.toList());
-                for (int i = 0; i < tablePartitionRecords.size(); i++) {
+                List<PartitionSpec> partitionSpecs =
+                    tableMeta.getPartitionInfo().getPartitionBy().getPhysicalPartitions();
+                for (int i = 0; i < partitionSpecs.size(); i++) {
                     /**
                      * record is a record of phySpec
                      */
-                    TablePartitionRecord record = tablePartitionRecords.get(i);
+                    PartitionSpec record = partitionSpecs.get(i);
 
-                    Map<String, Object> tableStatRow = phyTblStatInfoOfOneLogTb.get(record.phyTable.toLowerCase());
+                    Map<String, Object> tableStatRow =
+                        phyTblStatInfoOfOneLogTb.get(record.getLocation().getPhyTableName().toLowerCase());
 
                     Objects.requireNonNull(tableStatRow,
                         String.format("physical table meta corrupted: %s.%s.%s",
-                            schemaName, record.tableName, record.phyTable));
+                            schemaName, tableMeta.getTableName(), record.getLocation().getPhyTableName()));
 
                     String partName = DataTypes.StringType.convertFrom(tableStatRow.get("partName"));
                     String subpartName = DataTypes.StringType.convertFrom(tableStatRow.get("subpartName"));
@@ -287,12 +235,12 @@ public class InformationSchemaTableDetailHandler extends BaseVirtualViewSubClass
                     /**
                      * fetch phyDb by the phyPartName of phySpec
                      */
-                    String phyDb = partitionPyhDbMap.get(record.partName);
+                    String phyDb = partitionPyhDbMap.get(record.getName());
 
                     Pair<String/**storageInstId**/, String/**groupName**/> pair = storageInstIdGroupNames.get(phyDb);
                     String storageInstId = pair.getKey();
                     String groupName = pair.getValue();
-                    String phyTblName = record.phyTable;
+                    String phyTblName = record.getLocation().getPhyTableName();
 
                     Object[] row = new Object[21];
                     cursor.addRow(row);

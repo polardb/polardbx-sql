@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
@@ -108,16 +109,21 @@ public class ValidateFileStorageBindingDDLTest extends DDLBaseNewDBTestCase {
             String.format("create table %s like %s.%s engine = '%s' archive_mode = '%s';", ossRangeTable,
                 getInnodbSchema(), innodbRangeTable, engine.name(), ArchiveMode.TTL.name()));
 
+        this.innodbHashTableGroup = null;
         try (ResultSet rs = JdbcUtil.executeQuerySuccess(getInnodbConn(), "show full tablegroup")) {
-            while (rs.next()) {
-                String name = rs.getString("TABLES");
-                if (name.equalsIgnoreCase(innodbHashTable)) {
-                    this.innodbHashTableGroup = rs.getString("TABLE_GROUP_NAME");
+            while (rs.next() && this.innodbHashTableGroup == null) {
+                String[] tableNames = rs.getString("TABLES").split(",");
+                for (String name : tableNames) {
+                    if (name.equalsIgnoreCase(innodbHashTable)) {
+                        this.innodbHashTableGroup = rs.getString("TABLE_GROUP_NAME");
+                        break;
+                    }
                 }
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+        Assert.assertTrue(this.innodbHashTableGroup != null);
 
         JdbcUtil.executeUpdateSuccess(getInnodbConn(), "create tablegroup " + innodbTableGroup);
     }

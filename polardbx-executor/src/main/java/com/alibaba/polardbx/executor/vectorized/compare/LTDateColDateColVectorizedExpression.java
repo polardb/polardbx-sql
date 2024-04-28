@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.vectorized.compare;
 
-import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
-import com.alibaba.polardbx.common.utils.time.core.OriginalDate;
-import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
 import com.alibaba.polardbx.executor.chunk.DateBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
@@ -57,9 +54,9 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
         if (leftInputVectorSlot instanceof DateBlock && rightInputVectorSlot instanceof DateBlock) {
-            long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
-            long[] array2 = ((DateBlock) rightInputVectorSlot).getPacked();
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            long[] array1 = leftInputVectorSlot.cast(DateBlock.class).getPacked();
+            long[] array2 = rightInputVectorSlot.cast(DateBlock.class).getPacked();
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
@@ -75,7 +72,7 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
                 children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof ReferenceBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
@@ -97,8 +94,8 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
                 children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof DateBlock && rightInputVectorSlot instanceof ReferenceBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
-            long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+            long[] array1 = leftInputVectorSlot.cast(DateBlock.class).getPacked();
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {
@@ -116,7 +113,7 @@ public class LTDateColDateColVectorizedExpression extends AbstractVectorizedExpr
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
                 children[1].getOutputIndex());
         } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof DateBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
             long[] array2 = ((DateBlock) rightInputVectorSlot).getPacked();
 
             if (isSelectionInUse) {

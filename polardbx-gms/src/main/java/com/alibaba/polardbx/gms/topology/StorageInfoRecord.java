@@ -224,4 +224,8 @@ public class StorageInfoRecord implements SystemTableRecord {
             return "NA";
         }
     }
+
+    public String getStorageInstId() {
+        return storageInstId;
+    }
 }

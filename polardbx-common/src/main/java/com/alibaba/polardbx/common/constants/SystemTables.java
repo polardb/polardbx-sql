@@ -44,6 +44,16 @@ public class SystemTables {
     public static final String DRDS_SYSTEM_LOCK = "__drds__system__lock__";
     public static final String TXC_UNDO_LOG = "txc_undo_log";
     public static final String POLARDBX_ASYNC_COMMIT_TX_LOG_TABLE = "polarx_global_trx_log";
+    // Table A.
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE = "`mysql`.`polarx_global_trx_log`";
+    // Table B.
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE_ARCHIVE = "`mysql`.`polarx_global_trx_log_archive`";
+    // A tmp table when switching table A and table B.
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE_TMP = "`mysql`.`polarx_global_trx_log_tmp`";
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE_PREFIX = "polarx_global_trx_log";
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE_DB = "mysql";
+    public static final String POLARDBX_GLOBAL_TX_LOG_TABLE_ARCHIVE_TABLE = "polarx_global_trx_log_archive";
+
     public static final String DRDS_REDO_LOG = "__drds_redo_log";
     public static final String TDDL_RULE = "tddl_rule";
     public static final String TDDL_RULE_STATUS = "tddl_rule_status";

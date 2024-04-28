@@ -42,6 +42,7 @@ public class DataIngestForTimestamp extends DataIngest {
         ps.setTimestamp(1, ts);
 
         this.sumDeltaTimestamp += current - baseTimestamp;
+        this.sumDeltaTimestamp = this.sumDeltaTimestamp % MOD_DIVISOR;
     }
 
     @Override

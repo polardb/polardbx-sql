@@ -388,7 +388,8 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
                 coveringGsi, gsiDbIndex, gsiPhyTableName, newColumnNullable);
         DdlTask swapColumnTableSyncTask = new TableSyncTask(schemaName, logicalTableName);
 
-        DdlTask cdcDdlMarkTask = new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, true);
+        DdlTask cdcDdlMarkTask =
+            new CdcAlterTableColumnDdlMarkTask(schemaName, physicalPlanData, true, prepareData.getDdlVersionId());
 
         DdlTask stopMultiWriteTask =
             new OnlineModifyColumnStopMultiWriteTask(schemaName, logicalTableName, isChange, newColumnName,
@@ -564,6 +565,8 @@ public class AlterTableOnlineModifyColumnJobFactory extends DdlJobFactory {
         alterTableStmt.getItems().clear();
         alterTableStmt.getItems().add(addColumn);
         alterTableStmt.setAfterSemi(false);
+        alterTableStmt.setTargetImplicitTableGroup(null);
+        alterTableStmt.getIndexTableGroupPair().clear();
         String addColumnSql = alterTableStmt.toString();
         alterTableStmt.getTableSource().setExpr("?");
         String addColumnSqlTemplate = alterTableStmt.toString();

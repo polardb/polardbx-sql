@@ -20,7 +20,6 @@ import com.alibaba.polardbx.optimizer.core.rel.OrcTableScan;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
-import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalTableScan;
@@ -33,33 +32,33 @@ import java.util.stream.Collectors;
 
 /**
  * @author chenzilin
- * @date 2021/11/15 16:58
  */
 public class OrcTableScanRule extends RelOptRule {
 
     public static final OrcTableScanRule PROJECT_FILTER_TABLESCAN = new OrcTableScanRule(
-            operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none()))),
-            "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", true, true, false);
+        operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none()))),
+        "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", true, true, false);
 
     public static final OrcTableScanRule PROJECT_FILTER_PROJECT_TABLESCAN = new OrcTableScanRule(
-            operand(LogicalProject.class, operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())))),
-            "OrcTableScanRule:PROJECT_FILTER_PROJECT_TABLESCAN", true, true, true);
+        operand(LogicalProject.class, operand(LogicalFilter.class,
+            operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())))),
+        "OrcTableScanRule:PROJECT_FILTER_PROJECT_TABLESCAN", true, true, true);
 
     public static final OrcTableScanRule FILTER_PROJECT_TABLESCAN = new OrcTableScanRule(
-            operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none()))),
-            "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", false, true, true);
+        operand(LogicalFilter.class, operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none()))),
+        "OrcTableScanRule:PROJECT_FILTER_TABLESCAN", false, true, true);
 
     public static final OrcTableScanRule PROJECT_TABLESCAN = new OrcTableScanRule(
-            operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())),
-            "OrcTableScanRule:PROJECT_TABLESCAN", false, false, true);
+        operand(LogicalProject.class, operand(LogicalTableScan.class, RelOptRule.none())),
+        "OrcTableScanRule:PROJECT_TABLESCAN", false, false, true);
 
     public static final OrcTableScanRule FILTER_TABLESCAN = new OrcTableScanRule(
-            operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none())),
-            "OrcTableScanRule:FILTER_TABLESCAN", false, true, false);
+        operand(LogicalFilter.class, operand(LogicalTableScan.class, RelOptRule.none())),
+        "OrcTableScanRule:FILTER_TABLESCAN", false, true, false);
 
     public static final OrcTableScanRule TABLESCAN = new OrcTableScanRule(
-            operand(LogicalTableScan.class, RelOptRule.none()),
-            "OrcTableScanRule:TABLESCAN", false, false, false);
+        operand(LogicalTableScan.class, RelOptRule.none()),
+        "OrcTableScanRule:TABLESCAN", false, false, false);
 
     private boolean withInProject;
 
@@ -67,7 +66,8 @@ public class OrcTableScanRule extends RelOptRule {
 
     private boolean withOutProject;
 
-    protected OrcTableScanRule(RelOptRuleOperand operand, String description, boolean withOutProject, boolean withFilter, boolean withInProject) {
+    protected OrcTableScanRule(RelOptRuleOperand operand, String description, boolean withOutProject,
+                               boolean withFilter, boolean withInProject) {
         super(operand, description);
         this.withOutProject = withOutProject;
         this.withFilter = withFilter;
@@ -82,30 +82,37 @@ public class OrcTableScanRule extends RelOptRule {
             LogicalProject logicalProject = call.rel(1);
             LogicalTableScan logicalTableScan = call.rel(2);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                    logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
+                logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(),
+                getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (!withInProject && withFilter && !withOutProject) {
             LogicalFilter logicalFilter = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                    logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
+                logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), new ArrayList<>(),
+                logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (withInProject && !withFilter && !withOutProject) {
             LogicalProject logicalProject = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                    logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(), getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
+                logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(),
+                getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (!withInProject && !withFilter && !withOutProject) {
             LogicalTableScan logicalTableScan = call.rel(0);
-            orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(), logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
-                logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+            orcTableScan =
+                OrcTableScan.create(logicalTableScan.getCluster(), logicalTableScan.getTable(), new ArrayList<>(),
+                    new ArrayList<>(), new ArrayList<>(),
+                logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getPartitions());
         } else if (!withInProject && withFilter && withOutProject) {
             LogicalProject logicalProject = call.rel(0);
             LogicalFilter logicalFilter = call.rel(1);
             LogicalTableScan logicalTableScan = call.rel(2);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                    logicalTableScan.getTable(), getColumnRefProjects(logicalProject.getProjects()), logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
+                logicalTableScan.getTable(), getColumnRefProjects(logicalProject.getProjects()),
+                logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else if (withInProject && withFilter && withOutProject) {
             LogicalProject outProject = call.rel(0);
@@ -113,7 +120,9 @@ public class OrcTableScanRule extends RelOptRule {
             LogicalProject inProject = call.rel(2);
             LogicalTableScan logicalTableScan = call.rel(3);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
-                    logicalTableScan.getTable(), getColumnRefProjects(outProject.getProjects()), logicalFilter.getChildExps(), getColumnRefProjects(inProject.getProjects()), logicalTableScan.getHints(),
+                logicalTableScan.getTable(), getColumnRefProjects(outProject.getProjects()),
+                logicalFilter.getChildExps(), getColumnRefProjects(inProject.getProjects()),
+                logicalTableScan.getHints(),
                 logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
         } else {
             throw new AssertionError("impossible case");

@@ -736,7 +736,7 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
             + " (id int, name varchar(30), primary key(id)) dbpartition by hash(id)";
 
         // JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Unknown database");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "SQL syntax");
         Assert.assertFalse(isShowTableExist(tableName, tddlDatabase2));
         dropTableIfExists(tableName);
     }
@@ -751,15 +751,7 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         dropTableIfExists(tableName);
         String sql = "create table if not exists abc." + tableName + " (id int, name varchar(30), primary key(id))";
 
-        //
-        // 目前用户在DRDS输入的所有SQL, 如果表名带了错误的或不存在的dbName( 如, notExistDb.tbl),
-        // drds都会忽略DbName而只取它表名来执行SQL
-        // 而mysql同步的样的行为应该报Unknown Database 之类的语法错误
-        // , 又因为drds执行DDL时，是先推规则，再推执行DDL
-        // 这时碰到当ddl的表名带上错误或不存在的表名时，则物理mysql已经报错，但表的规则已经推送
-        // 从而showTable查到对应的表名
-
-        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Unknown database");
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "SQL syntax");
         // 建表不成功但是规则会发布
         Assert.assertFalse(isShowTableExist(tableName, tddlDatabase2));
         dropTableIfExists(tableName);
@@ -783,10 +775,10 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         Assert.assertTrue(getLastInsertId(tddlConnection) > 0);
         String createTableString = showCreateTable(tddlConnection, tableName);
         Assert.assertTrue(
-            createTableString.contains("AUTO_INCREMENT=200000")
-                || createTableString.contains("AUTO_INCREMENT = 200000")
-                || createTableString.contains("AUTO_INCREMENT = 200001")
-                || createTableString.contains("AUTO_INCREMENT=200001"));
+            createTableString.contains("AUTO_INCREMENT=300001")
+                || createTableString.contains("AUTO_INCREMENT = 300001")
+                || createTableString.contains("AUTO_INCREMENT = 300002")
+                || createTableString.contains("AUTO_INCREMENT=300002"));
         dropTableIfExists(tableName);
     }
 
@@ -834,10 +826,10 @@ public class CreateTableTest extends AsyncDDLBaseNewDBTestCase {
         Assert.assertTrue(getLastInsertId(tddlConnection) > 0);
         String createTableString = showCreateTable(tddlConnection, tableName);
         Assert.assertTrue(
-            createTableString.contains("AUTO_INCREMENT=200000")
-                || createTableString.contains("AUTO_INCREMENT = 200000")
-                || createTableString.contains("AUTO_INCREMENT = 200001")
-                || createTableString.contains("AUTO_INCREMENT=200001"));
+            createTableString.contains("AUTO_INCREMENT=300001")
+                || createTableString.contains("AUTO_INCREMENT = 300001")
+                || createTableString.contains("AUTO_INCREMENT = 300002")
+                || createTableString.contains("AUTO_INCREMENT=300002"));
         dropTableIfExists(tableName);
     }
 

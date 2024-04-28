@@ -123,7 +123,7 @@ public final class ShowConnection {
 
         // write rows
         byte packetId = eof.packetId;
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
             for (FrontendConnection fc : p.getFrontends().values()) {
                 if (fc != null) {
@@ -151,7 +151,7 @@ public final class ShowConnection {
         row.add(IntegerUtil.toBytes(c.getPort()));
         row.add(IntegerUtil.toBytes(c.getLocalPort()));
         row.add(StringUtil.encode(c.getSchema(), charset));
-        row.add(StringUtil.encode(c.getCharset(), charset));
+        row.add(StringUtil.encode(c.getResultSetCharset(), charset));
         row.add(LongUtil.toBytes(c.getNetInBytes()));
         row.add(LongUtil.toBytes(c.getNetOutBytes()));
         row.add(LongUtil.toBytes((TimeUtil.currentTimeMillis() - c.getStartupTime()) / 1000L));

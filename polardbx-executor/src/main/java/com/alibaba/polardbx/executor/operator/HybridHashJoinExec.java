@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.bloomfilter.ConcurrentIntBloomFilter;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
@@ -39,7 +39,7 @@ import com.alibaba.polardbx.optimizer.core.join.EquiJoinKey;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryPoolUtils;
 import com.alibaba.polardbx.optimizer.memory.OperatorMemoryAllocatorCtx;
-import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.rel.core.JoinRelType;
 
 import java.util.ArrayList;
@@ -47,10 +47,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
-import static com.google.common.base.Preconditions.checkState;
-import static com.google.common.util.concurrent.Futures.immediateFuture;
 import static com.alibaba.polardbx.executor.operator.AbstractHashJoinExec.LIST_END;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildOneChunk;
+import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.util.concurrent.Futures.immediateFuture;
 
 // TODO: spillCnt应该是一直使用最外层的，但现在迭代生成新的spillCnt，统计失效。
 public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoker, ConsumerExecutor {
@@ -619,7 +619,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
         //build
         ConcurrentRawHashTable hashTable;
         int[] positionLinks;
-        FastIntBloomFilter bloomFilter;
+        ConcurrentIntBloomFilter bloomFilter;
 
         // Special mode only for semi/anti-join
         private boolean directOutputProbe;
@@ -700,7 +700,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
                     if (this.bloomFilter != null && needBloomfilter) {
                         for (; saveProbePosition < positionCount; saveProbePosition++) {
                             int hashCode = saveProbeHashCodes[saveProbePosition];
-                            if (this.bloomFilter.mightContain(hashCode)) {
+                            if (this.bloomFilter.mightContainInt(hashCode)) {
                                 this.spillHandler.getProbeSpillerExec()
                                     .addRowToSpill(saveProbeChunk, saveProbePosition);
                             } else {
@@ -875,7 +875,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
 
             if (!alreadyBuild) {
                 if (size <= BLOOM_FILTER_ROWS_LIMIT && size > 0) {
-                    this.bloomFilter = FastIntBloomFilter.create(size);
+                    this.bloomFilter = ConcurrentIntBloomFilter.create(size);
                 }
             }
 
@@ -897,7 +897,7 @@ public class HybridHashJoinExec extends AbstractJoinExec implements MemoryRevoke
         }
 
         int matchInit(Chunk keyChunk, int position, int hashCode) {
-            if (bloomFilter != null && !bloomFilter.mightContain(hashCode)) {
+            if (bloomFilter != null && !bloomFilter.mightContainInt(hashCode)) {
                 return LIST_END;
             }
 

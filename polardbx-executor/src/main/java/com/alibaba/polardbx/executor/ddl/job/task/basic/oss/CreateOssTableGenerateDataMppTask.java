@@ -47,8 +47,10 @@ public class CreateOssTableGenerateDataMppTask extends CreateOssTableGenerateDat
     public CreateOssTableGenerateDataMppTask(String schemaName, String logicalTableName,
                                              PhysicalPlanData physicalPlanData,
                                              String loadTableSchema, String loadTableName, Engine tableEngine,
-                                             ArchiveMode archiveMode, int totalTaskNumber, int serialNumber) {
-        super(schemaName, logicalTableName, physicalPlanData, loadTableSchema, loadTableName, tableEngine, archiveMode);
+                                             ArchiveMode archiveMode, List<String> dictColumns, int totalTaskNumber,
+                                             int serialNumber) {
+        super(schemaName, logicalTableName, physicalPlanData, loadTableSchema, loadTableName, tableEngine, archiveMode,
+            dictColumns);
         this.totalTaskNumber = totalTaskNumber;
         this.serialNumber = serialNumber;
         onExceptionTryRollback();

@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.BooleanUtils;
@@ -41,13 +40,13 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 
 public class GeneralUtil {
 
-    static Pattern pattern = Pattern.compile("\\d+$");
+    private static String lsnErrorMessage = "Variable 'read_lsn' can't be set to the value of";
+    private static String followDelayMessage =
+        "The follow exists delay, please use 'show storage' command to check latency";
 
     public static boolean isEmpty(Map map) {
         return null == map || map.isEmpty();
@@ -249,6 +248,9 @@ public class GeneralUtil {
             return (TddlNestableRuntimeException) e;
         }
 
+        if (e.getMessage() != null && e.getMessage().contains(lsnErrorMessage)) {
+            return new TddlNestableRuntimeException(followDelayMessage);
+        }
         return new TddlNestableRuntimeException(e);
     }
 
@@ -395,46 +397,6 @@ public class GeneralUtil {
     public final static String UNION_ALIAS = "__DRDS_ALIAS_T_";
 
     /**
-     * Use union all to reduce the amount of physical sql.
-     *
-     * @param num number of sub-queries
-     */
-    public static String buildPhysicalQuery(int num, String sqlTemplateStr, String orderBy, String prefix, long limit) {
-        Preconditions.checkArgument(num > 0, "The number of tables must great than 0 when build UNION ALL sql");
-        if (num == 1) {
-            if (StringUtils.isNotEmpty(prefix)) {
-                return prefix + sqlTemplateStr;
-            } else {
-                return sqlTemplateStr;
-            }
-        }
-
-        StringBuilder builder = new StringBuilder();
-        if (prefix != null) {
-            builder.append(prefix);
-        }
-        if (orderBy != null) {
-            builder.append("SELECT * FROM (");
-        }
-
-        builder.append("( ").append(sqlTemplateStr).append(" )");
-        for (int i = 1; i < num; i++) {
-            builder.append(UNION_KW).append("( ").append(sqlTemplateStr).append(") ");
-        }
-
-        // 最终生成的 UNION ALL SQL,需要在最外层添加 OrderBy
-        // 不能添加limit 和 offset, 有聚合函数的情况下会导致结果错误
-        if (orderBy != null) {
-            builder.append(") ").append(UNION_ALIAS).append(" ").append(ORDERBY_KW).append(orderBy);
-        }
-
-        if (limit > 0) {
-            builder.append(LIMIT_KW).append(limit);
-        }
-        return builder.toString();
-    }
-
-    /**
      * Convert string value to boolean value.
      * TRUE/ON/1 will be converted to true.
      * FALSE/OFF/0 will be converted to false.
@@ -544,6 +506,9 @@ public class GeneralUtil {
             line = line.trim();
             if (line.startsWith("Catalog:")) {
                 String actionLine = lineReader.readLine().trim();
+                if (!actionLine.startsWith("Action:")) {
+                    continue;
+                }
                 line = removeIdxSuffix(line);
                 String key = line + "\n" + actionLine;
 
@@ -551,7 +516,7 @@ public class GeneralUtil {
                 if (statisticResultLine.length() > "StatisticValue:".length()) {
                     statisticResultLine = statisticResultLine.substring("StatisticValue:".length());
                 }
-                statisticTraceMap.put(key, statisticResultLine);
+                statisticTraceMap.put(key.toLowerCase(), statisticResultLine);
             }
         }
         return statisticTraceMap;
@@ -600,27 +565,6 @@ public class GeneralUtil {
         } catch (Exception e) {
             throw nestedException(e);
         }
-    }
-
-    private static String buildFkReferenceName(Set<String> existingSymbols, String prefix) {
-        StringBuilder indexName = new StringBuilder(prefix);
-        int tryTime = 0;
-
-        while (existingSymbols.contains(indexName.toString().toUpperCase())) {
-            if (tryTime == 0) {
-                indexName.append("_").append(tryTime++);
-                continue;
-            }
-            int i = indexName.lastIndexOf("_");
-            indexName.delete(i, indexName.length());
-            indexName.append('_').append(tryTime++);
-        }
-
-        String identifier = indexName.toString().toLowerCase();
-        if (identifier.contains("`")) {
-            return "`" + identifier.replaceAll("`", "``") + "`";
-        }
-        return "`" + identifier + "`";
     }
 
     /**

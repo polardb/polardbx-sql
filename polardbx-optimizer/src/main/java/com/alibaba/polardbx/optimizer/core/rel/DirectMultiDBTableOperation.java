@@ -31,6 +31,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
@@ -92,6 +93,13 @@ public class DirectMultiDBTableOperation extends BaseTableOperation {
         orderSchemas = src.orderSchemas;
         schemaPhysicalMapping = src.schemaPhysicalMapping;
         simplify = src.simplify;
+    }
+
+    /**
+     * for ut test only
+     */
+    public DirectMultiDBTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
     }
 
     @Override

@@ -16,8 +16,13 @@
  */
 package org.apache.calcite.rel.metadata;
 
-import com.google.common.collect.HashBasedTable;
-import com.google.common.collect.Table;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPredicateList;
 import org.apache.calcite.plan.RelOptTable;
@@ -30,18 +35,12 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexTableInputRef.RelTableRef;
 import org.apache.calcite.sql.SqlExplainLevel;
 import org.apache.calcite.util.ImmutableBitSet;
-
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterables;
-import com.google.common.collect.Multimap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -83,7 +82,9 @@ import java.util.Set;
  */
 public class RelMetadataQuery {
   /** Set of active metadata queries, and cache of previous results. */
-  public final Table<RelNode, List, Object> map = HashBasedTable.create();
+  public final Map<RelNode, Map<List, Object>> map = Maps.newConcurrentMap();
+
+  public final Map<Long, Map<RelNode, Map<List, Object>>> threadMap = Maps.newConcurrentMap();
 
   public final JaninoRelMetadataProvider metadataProvider;
 
@@ -131,6 +132,9 @@ public class RelMetadataQuery {
           return JaninoRelMetadataProvider.DEFAULT;
         }
       };
+
+  public static final ThreadLocal<Parameters> THREAD_PARAMETERS =
+      ThreadLocal.withInitial(() -> null);
 
   protected RelMetadataQuery(JaninoRelMetadataProvider metadataProvider,
       RelMetadataQuery prototype) {
@@ -189,6 +193,14 @@ public class RelMetadataQuery {
    */
   public static RelMetadataQuery instance() {
     return new RelMetadataQuery(THREAD_PROVIDERS.get(), EMPTY);
+  }
+
+  /**
+   * @param metadataProvider target provider being used to build a meta query
+   * @return An instance of RelMetadataQuery
+   */
+  public static RelMetadataQuery instance(JaninoRelMetadataProvider metadataProvider) {
+    return new RelMetadataQuery(metadataProvider, EMPTY);
   }
 
   /** Creates and initializes the instance that will serve as a prototype for
@@ -1122,20 +1134,130 @@ public class RelMetadataQuery {
     }
   }
 
-  /**
-   * Removes cached metadata values for specified RelNode.
-   *
-   * @param rel RelNode whose cached metadata should be removed
-   * @return true if cache for the provided RelNode was not empty
-   */
-  public boolean clearCache(RelNode rel) {
-    Map<List, Object> row = map.row(rel);
-    if (row.isEmpty()) {
-      return false;
+    /**
+     * Removes cached metadata values for specified RelNode.
+     *
+     * @param rel RelNode whose cached metadata should be removed
+     * @return true if cache for the provided RelNode was not empty
+     */
+    public boolean clearCache(RelNode rel) {
+        Map<List, Object> row = null;
+        Map<List, Object> row1 = null;
+        row = map.remove(rel);
+        Long threadId = Thread.currentThread().getId();
+        Map<RelNode, Map<List, Object>> m = threadMap.get(threadId);
+        if (m != null) {
+            row1 = m.remove(rel);
+        }
+        return row != null || row1 != null;
     }
 
-    row.clear();
-    return true;
+    public void clearThreadCache() {
+        Long threadId = Thread.currentThread().getId();
+        threadMap.remove(threadId);
+    }
+
+  public void clearCache(RelNode rel, List key1) {
+    Map m = map.get(rel);
+    if (m != null) {
+      m.remove(key1);
+    }
+    Long threadId = Thread.currentThread().getId();
+    Map<RelNode, Map<List, Object>> m1 = threadMap.get(threadId);
+    if (m1 != null) {
+      Map m2 = m1.get(rel);
+      if (m2 != null) {
+        m2.remove(key1);
+      }
+    }
+  }
+
+  public Object cache(RelNode rel, List key, Object value, int classIndex) {
+    Object val = null;
+    if (DynamicConfig.getInstance().isEnableMQCacheByThread()) {
+      Class declaringClass = null;
+      boolean forceCacheByThread = false;
+      if(value==NullSentinel.ACTIVE){
+        // NullSentinel.ACTIVE meaning the target of this cache is checking cycle,
+        // so it should be cached by thread to avoiding CyclicMetadataException
+        forceCacheByThread = true;
+      }else if (key.get(classIndex) instanceof MetadataDef) {
+        // key.get(classIndex) is a Method meaning this cache request was coming from JaninoRelMetadataProvider.
+        // Whether this cache request should be cached by thread depended on declaringClass
+        declaringClass = ((MetadataDef) key.get(classIndex)).metadataClass;
+      } else if (key.get(classIndex) instanceof Method) {
+        // key.get(classIndex) is a Method meaning this cache request was coming from ReflectiveRelMetadataProvider
+        // and ReflectiveRelMetadataProvider only use this cache to check dead cycle loop.
+        // so it should be cached by thread to avoiding CyclicMetadataException
+        forceCacheByThread = true;
+      } else {
+        throw new RuntimeException("not supported cache key:" + key.get(classIndex));
+      }
+
+      // if cache request was working for dead cycle loop check, forceCacheByThread was expected as true
+      // if declaringClass(mq api) was something connected to params, this cache shouldn't be cached beyond thread
+      if (forceCacheByThread || isDeclaringClassShouldBeCached(declaringClass)) {
+        Long threadId = Thread.currentThread().getId();
+        Map<RelNode, Map<List, Object>> map = threadMap.get(threadId);
+
+        if (map == null) {
+          map = Maps.newHashMap();
+          threadMap.put(threadId, map);
+        }
+        Map<List, Object> subMap = map.get(rel);
+        if (subMap == null) {
+          subMap = Maps.newHashMap();
+          map.put(rel, subMap);
+        } else {
+          val = subMap.get(key);
+        }
+        subMap.put(key, value);
+        return val;
+      }
+    }
+    Map<List, Object> m = map.get(rel);
+    if (m == null) {
+      m = Maps.newConcurrentMap();
+      map.put(rel, m);
+    } else {
+      val = m.get(key);
+    }
+    m.put(key, value);
+    return val;
+  }
+
+  public static boolean isDeclaringClassShouldBeCached(Class declaringClass) {
+    return BuiltInMetadata.RowCount.class.equals(declaringClass)
+        || BuiltInMetadata.MaxRowCount.class.equals(declaringClass)
+        || BuiltInMetadata.MinRowCount.class.equals(declaringClass)
+        || BuiltInMetadata.PercentageOriginalRows.class.equals(declaringClass)
+        || BuiltInMetadata.StartUpCost.class.equals(declaringClass)
+        || BuiltInMetadata.NonCumulativeCost.class.equals(declaringClass)
+        || BuiltInMetadata.CumulativeCost.class.equals(declaringClass)
+        || BuiltInMetadata.Selectivity.class.equals(declaringClass)
+        || BuiltInMetadata.PopulationSize.class.equals(declaringClass)
+        || BuiltInMetadata.LowerBoundCost.class.equals(declaringClass)
+        || BuiltInMetadata.Memory.class.equals(declaringClass)
+        || BuiltInMetadata.DistinctRowCount.class.equals(declaringClass)
+        || BuiltInMetadata.Size.class.equals(declaringClass);
+  }
+
+  public Object getCache(RelNode rel, List key) {
+    Map<List, Object> row = map.get(rel);
+    if (row != null) {
+      if (row.containsKey(key)) {
+        return row.get(key);
+      }
+    }
+    Map<RelNode, Map<List, Object>> relMap = threadMap.get(Thread.currentThread().getId());
+    if (relMap != null && relMap.containsKey(rel)) {
+      Map<List, Object> subMap = relMap.get(rel);
+      if (subMap != null) {
+        return subMap.get(key);
+      }
+    }
+    return null;
+
   }
 }
 

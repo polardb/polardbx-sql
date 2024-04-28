@@ -224,7 +224,9 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
             + "dbpartition by hash(id) tbpartition by hash(id)", mytable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        sql = String.format("alter table %s modify column id int not null comment 'new comment'", mytable);
+        sql = String.format(
+            ALLOW_ALTER_GSI_INDIRECTLY_HINT + "alter table %s modify column id int not null comment 'new comment'",
+            mytable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(mytable);
@@ -1037,7 +1039,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
             tddlConnection,
             String.format(sql, tableName),
             isMySQL80() ? "optimize error by Referenced identifier" :
-                "Not all physical DDLs have been executed successfully"
+                "You have an error in your SQL syntax;"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -1060,7 +1062,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            "BLOB, TEXT, GEOMETRY or JSON column 'c1' can't have a default value"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -1083,7 +1085,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            "there can be only one auto column and it must be defined as a key"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -1106,7 +1108,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(
             tddlConnection,
             String.format(sql, tableName),
-            "Not all physical DDLs have been executed successfully"
+            "Invalid default value for 'c1'"
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table " + tableName);
@@ -2665,7 +2667,7 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
-    public void testHintIgnoreErrorCode() throws SQLException {
+    public void testHintIgnoreErrorCodeLegacyOnly() throws SQLException {
         String schemaName = TStringUtil.isBlank(tddlDatabase2) ? tddlDatabase1 : tddlDatabase2;
         String simpleTableName = "test_hint_ignore_error_code";
         String tableName = schemaPrefix + simpleTableName;
@@ -2690,8 +2692,9 @@ public class AlterTableTest extends AsyncDDLBaseNewDBTestCase {
 
         //then: with hint 'PHYSICAL_DDL_IGNORED_ERROR_CODE', add index i1 to local table will be success
         JdbcUtil.executeUpdateSuccess(tddlConnection,
-            String.format("/*+TDDL:cmd_extra(PHYSICAL_DDL_IGNORED_ERROR_CODE='1061')*/" +
-                "alter table %s add index i1 (id)", tableName));
+            String.format(
+                "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false,PHYSICAL_DDL_IGNORED_ERROR_CODE='1061')*/" +
+                    "alter table %s add index i1 (id)", tableName));
     }
 
     private void checkTableMeta(String schemaName, String simpleTableName, String fullTableName, String expectedShow,

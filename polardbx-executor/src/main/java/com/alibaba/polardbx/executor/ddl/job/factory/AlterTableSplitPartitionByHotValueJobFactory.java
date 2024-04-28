@@ -81,6 +81,8 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
             return splitAndMoveToExistTableGroup();
         } else if (preparedData.isCreateNewTableGroup()) {
             return splitInNewTableGroup();
+        } else if (org.apache.commons.lang.StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            return withImplicitTableGroup(executionContext);
         } else {
             throw new RuntimeException("unexpected");
         }
@@ -96,7 +98,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 preparedData.getTableGroupName(), tablesVersion, true,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         Set<Long> outdatedPartitionGroupId =
             getOldDatePartitionGroups(preparedData, preparedData.getOldPartitionNames(),
@@ -178,11 +180,11 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         DdlTask validateSourceTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 sourceTableGroup, tablesVersion, false,
-                /*todo*/null);
+                /*todo*/null, false);
         DdlTask validateTargetTableGroup =
             new AlterTableGroupValidateTask(schemaName,
                 targetTableGroup, preparedData.getFirstTableVersionInTargetTableGroup(), false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         executableDdlJob.addTask(emptyTask);
         executableDdlJob.addTask(validateSourceTableGroup);
@@ -261,7 +263,7 @@ public class AlterTableSplitPartitionByHotValueJobFactory extends AlterTableGrou
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName,
                 preparedData.getTableGroupName(), tablesVersion, false,
-                preparedData.getTargetPhysicalGroups());
+                preparedData.getTargetPhysicalGroups(), false);
 
         SubJobTask subJobMoveTableToNewGroup =
             new SubJobTask(schemaName, String.format(SET_NEW_TABLE_GROUP, preparedData.getTableName()), null);

@@ -30,6 +30,19 @@ public class FileStorageTestUtil {
         statement.execute("drop table " + innodbTableName);
     }
 
+    public static void createFileStorageTableWithDictColumns(String tableName, Engine engine, Connection connection)
+        throws SQLException {
+        String innodbTableName = tableName + "_innodb";
+        FileStorageTestUtil.createVarcharTableWith100Rows(innodbTableName, connection);
+        Statement statement = connection.createStatement();
+        statement.execute(String.format(
+            "/*+TDDL:ENABLE_FILE_STORE_CHECK_TABLE=true*/ create table %s like %s engine = '%s' archive_mode = 'loading' "
+                + "dictionary_columns='val'",
+            tableName, innodbTableName, engine.name()));
+
+        statement.execute("drop table " + innodbTableName);
+    }
+
     public static void createInnodbTableWith10000Rows(String tableName, Connection connection) throws SQLException {
         Statement statement = connection.createStatement();
         statement.execute(String.format("CREATE TABLE %s (\n" +
@@ -45,6 +58,25 @@ public class FileStorageTestUtil {
             insert.append("(0)").append(",");
         }
         insert.append("(0)");
+        statement.executeUpdate(insert.toString());
+    }
+
+    public static void createVarcharTableWith100Rows(String tableName, Connection connection) throws SQLException {
+        Statement statement = connection.createStatement();
+        statement.execute(String.format("CREATE TABLE %s (\n" +
+            "    id bigint NOT NULL AUTO_INCREMENT,\n" +
+            "    gmt_modified DATETIME DEFAULT CURRENT_TIMESTAMP,\n" +
+            "    val varchar(10) DEFAULT \"\",\n" +
+            "    PRIMARY KEY (id, gmt_modified)\n" +
+            ")\n" +
+            "PARTITION BY HASH(id) PARTITIONS 8\n", tableName));
+
+        StringBuilder insert = new StringBuilder();
+        insert.append("insert into ").append(tableName).append("(id,val) values ");
+        for (int i = 0; i < 99; i++) {
+            insert.append(String.format("(0,'%s')", "abc" + i % 10)).append(",");
+        }
+        insert.append("(0,'abc')");
         statement.executeUpdate(insert.toString());
     }
 

@@ -66,7 +66,8 @@ public class RowSet {
     public List<List<Object>> distinctRowSetWithoutNullThenRemoveSameRow(DistinctWriter writer,
                                                                          Mapping setColumnTargetMapping,
                                                                          Mapping setColumnSourceMapping,
-                                                                         List<ColumnMeta> setColumnMetas) {
+                                                                         List<ColumnMeta> setColumnMetas,
+                                                                         boolean checkJsonByStringCompare) {
         List<List<Object>> distinctRows = distinctRowSetCache.computeIfAbsent(writer,
             t -> groupByColumns(rows, metas, writer.getGroupingMapping(), true));
         this.sameRowCount = 0;
@@ -76,7 +77,7 @@ public class RowSet {
             final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
             final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
             final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
-            if (!targetKey.equalsForUpdate(sourceKey)) {
+            if (!targetKey.equalsForUpdate(sourceKey, checkJsonByStringCompare)) {
                 changedValues.add(row);
             } else {
                 sameRowCount++;

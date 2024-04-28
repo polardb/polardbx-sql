@@ -33,7 +33,6 @@ import org.apache.calcite.rel.ddl.CreateFileStorage;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 public class LogicalCreateFileStorageHandler extends LogicalCommonDdlHandler {
     public LogicalCreateFileStorageHandler(IRepository repo) {

@@ -39,24 +39,25 @@ public class OptimizeTablePhyDdlTask extends BasePhyDdlTask {
         onExceptionTryRollback();
     }
 
-    public List<OptimizeTablePhyDdlTask> partition(int physicalTableCount){
+    public List<OptimizeTablePhyDdlTask> partition(int physicalTableCount) {
 
         List<Map<String, List<List<String>>>> topos = this.physicalPlanData.partitionTableTopology(physicalTableCount);
-        List<List<Map<Integer, ParameterContext>>> params = this.physicalPlanData.partitionParamsList(physicalTableCount);
+        List<List<Map<Integer, ParameterContext>>> params =
+            this.physicalPlanData.partitionParamsList(physicalTableCount);
 
         List<OptimizeTablePhyDdlTask> result = new ArrayList<>();
-        for(int i=0;i<topos.size();i++){
+        for (int i = 0; i < topos.size(); i++) {
             PhysicalPlanData p = this.physicalPlanData.clone();
             Map<String, List<List<String>>> topoMap = topos.get(i);
             p.setTableTopology(topoMap);
 
             List<Map<Integer, ParameterContext>> paramList = new ArrayList<>();
-            for(Map.Entry<String, List<List<String>>> entry: topoMap.entrySet()){
+            for (Map.Entry<String, List<List<String>>> entry : topoMap.entrySet()) {
                 int size = entry.getValue().size();
-                for(int j=0;j<size;j++){
+                for (int j = 0; j < size; j++) {
                     Map<Integer, ParameterContext> parameterContextMap = new HashMap<>();
-                    parameterContextMap.put(1, new ParameterContext(ParameterMethod.setTableName, new Object[]{
-                            1, entry.getValue().get(j).get(0)
+                    parameterContextMap.put(1, new ParameterContext(ParameterMethod.setTableName, new Object[] {
+                        1, entry.getValue().get(j).get(0)
                     }));
                     paramList.add(parameterContextMap);
                 }
@@ -66,22 +67,23 @@ public class OptimizeTablePhyDdlTask extends BasePhyDdlTask {
             result.add(new OptimizeTablePhyDdlTask(this.schemaName, p));
         }
 
-        if(FailPoint.isAssertEnable()){
+        if (FailPoint.isAssertEnable()) {
             result.forEach(OptimizeTablePhyDdlTask::validatePartitionPlan);
         }
 
         return result;
     }
 
-    private void validatePartitionPlan(){
-        if(FailPoint.isAssertEnable()){
+    private void validatePartitionPlan() {
+        if (FailPoint.isAssertEnable()) {
             int index = 0;
             for (Map.Entry<String, List<List<String>>> topology : this.physicalPlanData.getTableTopology().entrySet()) {
                 for (List<String> phyTableNames : topology.getValue()) {
-                    final String phyTableName = (String) this.physicalPlanData.getParamsList().get(index++).get(1).getValue();
-                    if(!StringUtils.equalsIgnoreCase(
-                            phyTableNames.get(0).replace("`",""),
-                            phyTableName.replace("`",""))){
+                    final String phyTableName =
+                        (String) this.physicalPlanData.getParamsList().get(index++).get(1).getValue();
+                    if (!StringUtils.equalsIgnoreCase(
+                        phyTableNames.get(0).replace("`", ""),
+                        phyTableName.replace("`", ""))) {
                         throw new RuntimeException("generate optimize table plan error");
                     }
                 }

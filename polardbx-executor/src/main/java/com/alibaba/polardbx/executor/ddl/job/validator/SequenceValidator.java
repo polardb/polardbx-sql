@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.constants.SequenceAttribute.Type;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.ddl.job.meta.delegate.TableInfoManagerDelegate;
@@ -38,7 +39,7 @@ import java.util.Set;
 
 public class SequenceValidator {
 
-    public static void validate(SequenceBean sequence, ExecutionContext executionContext) {
+    public static void validate(SequenceBean sequence, ExecutionContext executionContext, boolean validateExistence) {
         if (sequence == null || sequence.getName() == null) {
             throw new SequenceException("Invalid sequence bean");
         }
@@ -53,7 +54,9 @@ public class SequenceValidator {
 
         validateSimpleSequence(sequence, executionContext);
 
-        validateExistence(sequence);
+        if (validateExistence) {
+            validateExistence(sequence);
+        }
 
         String newSeqName = sequence.getNewName();
         if (sequence.getKind() == SqlKind.RENAME_SEQUENCE && StringUtils.isEmpty(newSeqName)) {
@@ -98,7 +101,7 @@ public class SequenceValidator {
     public static void validateSimpleSequence(SequenceBean sequence, ExecutionContext executionContext) {
         if (sequence == null ||
             sequence.getKind() == null ||
-            ConfigDataMode.isAllowSimpleSequence() ||
+            DynamicConfig.getInstance().isAllowSimpleSequence() ||
             executionContext.getParamManager().getBoolean(ConnectionParams.ALLOW_SIMPLE_SEQUENCE)) {
             return;
         }

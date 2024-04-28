@@ -66,12 +66,14 @@ import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.alibaba.polardbx.repo.mysql.spi.MyPhyTableModifyCursor;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -149,23 +151,21 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         final ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
         final TopologyHandler topologyHandler = executorContext.getTopologyHandler();
         final boolean allDnUseXDataSource = isAllDnUseXDataSource(topologyHandler);
-        final boolean gsiCanUseReturning = GlobalIndexMeta
-            .isAllGsi(insertIgnore.getTargetTables().get(0), executionContext, GlobalIndexMeta::canWrite);
+        final boolean gsiCanUseReturning =
+            isGsiCanUseReturning(insertIgnore.getTargetTables().get(0), executionContext);
         final boolean isColumnMultiWriting =
             TableColumnUtils.isModifying(schemaName, tableName, executionContext);
         final boolean checkPrimaryKey =
             executionContext.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK);
         final boolean checkForeignKey =
             executionContext.foreignKeyChecks() && tableMeta.hasForeignKey();
-        final boolean isModifyPartitionKey =
-            TableColumnUtils.isModifyPrimaryKey(schemaName, tableName, executionContext);
 
         // Disable returning when doing column multi-writing since we have not tested it yet
         boolean canUseReturning =
             executorContext.getStorageInfoManager().supportsReturning() && executionContext.getParamManager()
                 .getBoolean(ConnectionParams.DML_USE_RETURNING) && allDnUseXDataSource && gsiCanUseReturning
                 && !isBroadcast && !ComplexTaskPlanUtils.canWrite(tableMeta) && !isColumnMultiWriting
-                && !checkPrimaryKey && !checkForeignKey && !isModifyPartitionKey;
+                && !checkPrimaryKey && !checkForeignKey;
 
         if (canUseReturning) {
             canUseReturning = noDuplicateOrNullValues(insertIgnore, insertEc);
@@ -769,6 +769,17 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         assert oc != null;
         final TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
 
+        Map<String, String> columnMapping =
+            TableColumnUtils.getColumnMultiWriteMapping(tableMeta.getTableColumnMeta());
+        if (MapUtils.isNotEmpty(columnMapping)) {
+            insertColumns = insertColumns.stream().map(e -> columnMapping.getOrDefault(e.toLowerCase(), e))
+                .collect(Collectors.toList());
+        }
+
+        // 下面这一大段很复杂的代码-- 非常不宜阅读
+        // 大概就是构造一个 value 位置的映射和上层函数中的 uk 位置的映射，以及 pk 的值
+        // ukIndexOffset 竟然是调用ta的函数中 uk 数组的位置
+
         final Map<String, Integer> columnIndexMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Ord.zip(insertColumns).forEach(o -> columnIndexMap.put(o.getValue(), o.getKey()));
 
@@ -959,7 +970,15 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
             List<Set<String>> currentUkSets = new ArrayList<>();
             for (List<String> uk : currentUkColumnList) {
                 final Set<String> ukSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-                ukSet.addAll(uk);
+                for (String columnName : uk) {
+                    ColumnMeta columnMeta = currentTableMeta.getColumnIgnoreCase(columnName);
+                    if (columnMeta != null && columnMeta.getMappingName() != null && !columnMeta.getMappingName()
+                        .isEmpty()) {
+                        ukSet.add(columnMeta.getMappingName());
+                    } else {
+                        ukSet.add(columnName);
+                    }
+                }
                 currentUkSets.add(ukSet);
             }
             ukSets.addAll(currentUkSets);
@@ -1273,10 +1292,18 @@ public class LogicalInsertIgnoreHandler extends LogicalInsertHandler {
         return results;
     }
 
-    protected static boolean identicalRow(List<Object> before, List<Object> after, List<ColumnMeta> rowColumnMetas) {
+    protected static boolean identicalRow(List<Object> before, List<Object> after, List<ColumnMeta> rowColumnMetas,
+                                          boolean checkJsonByStringCompare) {
         final GroupKey beforeKey = new GroupKey(before.toArray(), rowColumnMetas);
         final GroupKey afterKey = new GroupKey(after.toArray(), rowColumnMetas);
         // should use equalsForUpdate or may get wrong result when different types
-        return beforeKey.equalsForUpdate(afterKey);
+        return beforeKey.equalsForUpdate(afterKey, checkJsonByStringCompare);
+    }
+
+    private boolean isGsiCanUseReturning(RelOptTable primary, ExecutionContext ec) {
+        final boolean gsiCanUseReturning = GlobalIndexMeta
+            .isAllGsi(primary, ec, GlobalIndexMeta::canWrite) &&
+            !ComplexTaskPlanUtils.isAnyUGsi(primary, ec, ComplexTaskPlanUtils::isBackfillInProgress);
+        return gsiCanUseReturning;
     }
 }

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.FetchProcedureCacheSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaProcedureCache;
@@ -44,7 +45,7 @@ public class InformationSchemaProcedureCacheHandler extends BaseVirtualViewSubCl
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
 
         List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchProcedureCacheSyncAction(),
-            TddlConstants.INFORMATION_SCHEMA);
+            TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

@@ -16,6 +16,17 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.LabelPartition;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualPlane;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualResponse;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
+import org.apache.commons.collections.CollectionUtils;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,24 +35,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.LabelPartition;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualPlane;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualResponse;
-
-import org.apache.commons.collections.CollectionUtils;
-
 /**
  * 分区热度查询
  * 组装好前端需要的数据
  *
  * @author ximing.yd
- * @date 2021/12/20 上午11:18
  */
 public class PartitionVisualController {
 
@@ -50,7 +48,6 @@ public class PartitionVisualController {
     private final VisualLayerService visualLayerService = new VisualLayerService();
 
     private final PartitionsStatService partitionsStatService = new PartitionsStatService();
-
 
     private final int MAX_RESPONSE_BOUNDS_SIZE = 3200;
 
@@ -188,8 +185,10 @@ public class PartitionVisualController {
         //get new table rows to refresh PartitionsStatService.BOUND_META_MAP
         partitionsStatService.queryPartitionsStat(false);
 
-        List<Map.Entry<String, String>> sortBounds = getSortBounds(visualAxes, PartitionsStatService.BOUND_META_MAP, isDnView);
-        visualResponse.setBoundAxis(convertToLabelPartitions(sortBounds, PartitionsStatService.BOUND_META_MAP, isDnView));
+        List<Map.Entry<String, String>> sortBounds =
+            getSortBounds(visualAxes, PartitionsStatService.BOUND_META_MAP, isDnView);
+        visualResponse.setBoundAxis(
+            convertToLabelPartitions(sortBounds, PartitionsStatService.BOUND_META_MAP, isDnView));
         visualResponse.setDataMap(convertToDataMap(visualAxes, sortBounds, type, isDnView));
         return visualResponse;
     }
@@ -198,7 +197,8 @@ public class PartitionVisualController {
         return VisualTypeConstants.TYPE_WITH_DN_OPTIONS.contains(type);
     }
 
-    private List<Map.Entry<String, String>> getSortBounds(List<VisualAxis> visualAxes, Map<String, Pair<Long, String>> pairMap, boolean isDnView) {
+    private List<Map.Entry<String, String>> getSortBounds(List<VisualAxis> visualAxes,
+                                                          Map<String, Pair<Long, String>> pairMap, boolean isDnView) {
         //将 bounds 按照字母顺序排列，为了让同一个逻辑表的所有分区排列在一起
         Map<String, String> boundsMap = new HashMap<>();
         for (int i = 0; i < visualAxes.size(); i++) {
@@ -231,7 +231,8 @@ public class PartitionVisualController {
             String[] boundValues = bound.getKey().split(",");
             String originBound = bound.getKey();
             if (isDnView) {
-                originBound = String.format("%s,%s,%s,%s", boundValues[1], boundValues[2], boundValues[3], boundValues[4]);
+                originBound =
+                    String.format("%s,%s,%s,%s", boundValues[1], boundValues[2], boundValues[3], boundValues[4]);
             }
             Pair<Long, String> pair = pairMap.get(originBound);
             String storageInstId = (pair == null || pair.getValue() == null) ? "-" : pair.getValue();
@@ -289,14 +290,14 @@ public class PartitionVisualController {
 
     private String convertToOriginType(String type) {
         switch (type) {
-            case VisualTypeConstants.READ_ROWS_WITH_DN:
-                return VisualTypeConstants.READ_ROWS;
-            case VisualTypeConstants.WRITTEN_ROWS_WITH_DN:
-                return VisualTypeConstants.WRITTEN_ROWS;
-            case VisualTypeConstants.READ_WRITTEN_ROWS_WITH_DN:
-                return VisualTypeConstants.READ_WRITTEN_ROWS;
-            default:
-                return type;
+        case VisualTypeConstants.READ_ROWS_WITH_DN:
+            return VisualTypeConstants.READ_ROWS;
+        case VisualTypeConstants.WRITTEN_ROWS_WITH_DN:
+            return VisualTypeConstants.WRITTEN_ROWS;
+        case VisualTypeConstants.READ_WRITTEN_ROWS_WITH_DN:
+            return VisualTypeConstants.READ_WRITTEN_ROWS;
+        default:
+            return type;
         }
     }
 }

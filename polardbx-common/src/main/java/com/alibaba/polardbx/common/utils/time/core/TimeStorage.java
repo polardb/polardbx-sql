@@ -134,7 +134,8 @@ public class TimeStorage {
         return t.isNeg() ? -l : l;
     }
 
-    public static long writeTimestamp(long year, long month, long day, long hour, long minute, long second, long secondPart, boolean isNeg) {
+    public static long writeTimestamp(long year, long month, long day, long hour, long minute, long second,
+                                      long secondPart, boolean isNeg) {
         // | 64 - 42 | 41 - 25 | 24 - 1 |
         // |   ymd   |   hms   |  nano  |
         long ymd = ((year * 13 + month) << 5) | day;
@@ -143,6 +144,32 @@ public class TimeStorage {
         return isNeg ? -l : l;
     }
 
+
+    public static void readTimestamp(long l, MysqlDateTime t) {
+        // clear states in mysql datetime.
+        t.reset();
+        t.setNeg(l < 0);
+        l = Math.abs(l);
+
+        // for nano
+        t.setSecondPart((l % (1L << 24)) * 1000L);
+
+        // for year - month - day
+        long l2 = l >> 24;
+        long ymd = l2 >> 17;
+        long ym = ymd >> 5;
+        t.setDay(ymd % (1L << 5));
+        t.setMonth(ym % 13);
+        t.setYear(ym / 13);
+
+        // for hour - minute - second
+        long hms = l2 % (1L << 17);
+        t.setSecond(hms % (1L << 6));
+        t.setMinute((hms >> 6) % (1L << 6));
+        t.setHour(hms >> 12);
+
+        t.setSqlType(Types.TIMESTAMP);
+    }
 
     public static MysqlDateTime readTimestamp(long l) {
         MysqlDateTime t = new MysqlDateTime();
@@ -183,6 +210,20 @@ public class TimeStorage {
         return t;
     }
 
+    public static void readDate(long l, MysqlDateTime t) {
+        readTimestamp(l, t);
+        t.setSqlType(Types.DATE);
+    }
+
+    /**
+     * According to storage method of Innodb (mysql/sql-common/my_time.c/my_time_packed_to_binary)
+     * compress the packed long to bytes.
+     * <p>
+     * decimal 0 -> len = 3
+     * decimal 1,2 -> len = 4
+     * decimal 3,4 -> len = 5
+     * decimal 5,6 -> len = 6
+     */
     public static byte[] storeAsBinary(long l, int decimal) {
 
         Preconditions.checkArgument(decimal <= 6);

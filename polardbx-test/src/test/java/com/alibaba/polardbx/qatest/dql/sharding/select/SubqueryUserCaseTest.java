@@ -3,12 +3,15 @@ package com.alibaba.polardbx.qatest.dql.sharding.select;
 import com.alibaba.polardbx.qatest.BaseTestCase;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 
 /**
  * Materialize optimize test for IN subquery
@@ -17,12 +20,12 @@ import java.sql.SQLException;
 
 public class SubqueryUserCaseTest extends BaseTestCase {
     private static final Log log = LogFactory.getLog(SubqueryUserCaseTest.class);
-    private static final String testSchema = "subquery_testdb";
+    private static final String testSchemaDrds = "subquery_testdb";
+    private static final String testSchemaAuto = "subquery_testdb_auto";
 
     @Test
     public void testSubqueryWithBroadcastAndSingleTable() throws SQLException {
         try (Connection c = getPolardbxConnection()) {
-            prepareCatalog();
 //            SELECT 1
 //            FROM tbl_mult ana
 //            WHERE ana.yljgdm IN
@@ -44,21 +47,54 @@ public class SubqueryUserCaseTest extends BaseTestCase {
                     + "          FROM tbl_single xzqh\n"
                     + "          WHERE jgdm.sjbm = xzqh.qhdm\n"
                     + "                 OR jgdm.qxbm = xzqh.qhdm ))";
-            c.createStatement().execute("use " + testSchema);
+            c.createStatement().execute("use " + testSchemaDrds);
             c.createStatement().executeQuery(testSql);
-        } finally {
-            clearCatalog();
+        }
+    }
+
+    @Test
+    public void testCorrelatePushDown() throws SQLException {
+        String testSql = "SELECT\n"
+            + "  (SELECT  EXISTS\n"
+            + "                (SELECT *\n"
+            + "                 FROM single_tbl d\n"
+            + "                 WHERE d.id = a.id)\n"
+            + "              OR EXISTS\n"
+            + "                (SELECT *\n"
+            + "                 FROM single_tbl1 f\n"
+            + "                 WHERE f.bid = a.bid)),\n"
+            + "  (SELECT 1\n"
+            + "   FROM single_tbl2 g\n"
+            + "   WHERE g.name = a.name) \n"
+            + "FROM single_tbl2 a";
+        try (Connection c = getPolardbxConnection0(testSchemaAuto);
+            Statement stmt = c.createStatement();) {
+            stmt.executeQuery(testSql);
+
+            stmt.executeQuery(
+                "/*TDDL:ENABLE_DIRECT_PLAN=false ENABLE_POST_PLANNER=false ENABLE_PUSH_CORRELATE=false*/" + testSql);
+            ResultSet rs =
+                stmt.executeQuery(
+                    "explain /*TDDL:ENABLE_DIRECT_PLAN=false ENABLE_POST_PLANNER=false ENABLE_PUSH_CORRELATE=false*/"
+                        + testSql);
+            StringBuilder sb = new StringBuilder();
+            while (rs.next()) {
+                sb.append(rs.getString(1));
+            }
+
+            assert sb.toString().contains("CorrelateApply");
         }
     }
 
     /**
      * prepare db and table for test
      */
-    private void prepareCatalog() throws SQLException {
-        try (Connection c = getPolardbxConnection()) {
-            c.createStatement().execute("drop database if exists " + testSchema);
-            c.createStatement().execute("create database " + testSchema);
-            c.createStatement().execute("use " + testSchema);
+    @BeforeClass
+    public static void prepareCatalog() throws SQLException {
+        try (Connection c = getPolardbxConnection0()) {
+            c.createStatement().execute("drop database if exists " + testSchemaDrds);
+            c.createStatement().execute("create database " + testSchemaDrds);
+            c.createStatement().execute("use " + testSchemaDrds);
             c.createStatement().execute(
                 "CREATE TABLE `tbl_mult` (\n"
                     + "    `ID` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,\n"
@@ -81,19 +117,52 @@ public class SubqueryUserCaseTest extends BaseTestCase {
                     + "    PRIMARY KEY (`YLJGDM`)\n"
                     + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  broadcast;"
             );
+
+            c.createStatement().execute("drop database if exists " + testSchemaAuto);
+            c.createStatement().execute("create database " + testSchemaAuto + " mode='auto'");
+            c.createStatement().execute("use " + testSchemaAuto);
+
+            c.createStatement().execute(
+                "CREATE TABLE single_tbl(\n"
+                    + " id bigint not null auto_increment, \n"
+                    + " bid int, \n"
+                    + " name varchar(30), \n"
+                    + " primary key(id)\n"
+                    + ") SINGLE;"
+            );
+            c.createStatement().execute(
+                "CREATE TABLE single_tbl1(\n"
+                    + " id bigint not null auto_increment, \n"
+                    + " bid int, \n"
+                    + " name varchar(30), \n"
+                    + " primary key(id)\n"
+                    + ") SINGLE;"
+            );
+            c.createStatement().execute(
+                "CREATE TABLE single_tbl2(\n"
+                    + " id bigint not null auto_increment, \n"
+                    + " bid int, \n"
+                    + " name varchar(30), \n"
+                    + " primary key(id)\n"
+                    + ") SINGLE;"
+            );
         } finally {
-            log.info(testSchema + " catalog prepared");
+            log.info(testSchemaDrds + " catalog prepared");
+            log.info(testSchemaAuto + " catalog prepared");
         }
     }
 
     /**
      * clear db after test
      */
-    private void clearCatalog() throws SQLException {
-        try (Connection c = getPolardbxConnection()) {
-            c.createStatement().execute("drop database if exists " + testSchema);
+    @AfterClass
+    public static void clearCatalog() throws SQLException {
+        try (Connection c = getPolardbxConnection0()) {
+            c.createStatement().execute("drop database if exists " + testSchemaDrds);
+            c.createStatement().execute("drop database if exists " + testSchemaAuto);
         } finally {
-            log.info(testSchema + " catalog was dropped");
+            log.info(testSchemaDrds + " catalog was dropped");
+            log.info(testSchemaAuto + " catalog was dropped");
         }
     }
 }

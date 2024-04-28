@@ -16,7 +16,8 @@
               `DELETE_RULE` varchar(64) NOT NULL DEFAULT '',
               `PUSH_DOWN` int(11) unsigned NOT NULL DEFAULT '0',
               primary key (`ID`),
-              unique key (`SCHEMA_NAME`, `TABLE_NAME`, `INDEX_NAME`)
+              unique key (`SCHEMA_NAME`, `TABLE_NAME`, `INDEX_NAME`),
+              key (`REF_SCHEMA_NAME`, `REF_TABLE_NAME`)
             ) charset=utf8
         ]]></Create>
     </SystemTable>

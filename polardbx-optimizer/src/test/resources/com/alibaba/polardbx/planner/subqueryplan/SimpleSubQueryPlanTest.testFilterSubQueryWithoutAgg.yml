@@ -23,7 +23,7 @@
 
   plan: |
     hashagg(count(id)="count()")
-      semihashjoin(condition="name = name", type="semi")
+      semihashjoin(condition="name = name", type="semi", build="inner")
         gather(concurrent=true)
           logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `id`, `name` from `test_hash_tb` as `test_hash_tb`")
         gather(concurrent=true)
@@ -108,7 +108,7 @@
     Project(count(DISTINCT id)="count(DISTINCT id)")
       HashAgg(group="create_time", count(DISTINCT id)="COUNT(id)")
         Project(create_time="create_time", id="id")
-          SemiHashJoin(condition="name = name", type="semi")
+          SemiHashJoin(condition="name = name", type="semi", build="inner")
             Gather(concurrent=true)
               LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name`, `create_time` FROM `test_hash_tb` AS `test_hash_tb`")
             Gather(concurrent=true)

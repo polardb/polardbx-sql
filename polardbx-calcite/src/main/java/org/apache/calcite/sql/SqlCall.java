@@ -253,6 +253,17 @@ public abstract class SqlCall extends SqlNode {
     return false;
   }
 
+  public boolean isCountLiteral() {
+    if (getOperator().isName("COUNT") && operandCount() == 1) {
+      final SqlNode parm = operand(0);
+      if (parm instanceof SqlNumericLiteral) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   /**
    * Test to see if it is the function CHECK_SUM(*)
    *
@@ -260,6 +271,24 @@ public abstract class SqlCall extends SqlNode {
    */
   public boolean isCheckSumStar() {
     if (getOperator().isName("CHECK_SUM") && operandCount() == 1) {
+      final SqlNode parm = operand(0);
+      if (parm instanceof SqlIdentifier) {
+        SqlIdentifier id = (SqlIdentifier) parm;
+        if (id.isStar() && id.names.size() == 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Test to see if it is the function CHECK_SUM_V2(*)
+   *
+   * @return boolean true if function call to CHECK_SUM_V2(*)
+   */
+  public boolean isCheckSumV2Star() {
+    if (getOperator().isName("CHECK_SUM_V2") && operandCount() == 1) {
       final SqlNode parm = operand(0);
       if (parm instanceof SqlIdentifier) {
         SqlIdentifier id = (SqlIdentifier) parm;

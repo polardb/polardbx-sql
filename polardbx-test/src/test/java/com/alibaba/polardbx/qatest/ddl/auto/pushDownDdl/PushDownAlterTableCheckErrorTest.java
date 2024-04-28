@@ -160,7 +160,7 @@ public class PushDownAlterTableCheckErrorTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableCheckPhyTableDoneFailed() throws SQLException {
-        String mytable = schemaPrefix + randomTableName("alter_table_check_phy_table_failed", 4);
+        String mytable = schemaPrefix + randomTableName("alter_table_check_phy_table_failed1", 4);
         try {
             dropTableIfExists(mytable);
         } catch (Exception e) {
@@ -184,7 +184,7 @@ public class PushDownAlterTableCheckErrorTest extends DDLBaseNewDBTestCase {
 
     @Test
     public void testAlterTableCheckPhyTableDoneFailedMultiplePartitions() throws SQLException {
-        String mytable = schemaPrefix + randomTableName("alter_table_check_phy_table_failed", 4);
+        String mytable = schemaPrefix + randomTableName("alter_table_check_phy_table_failed2", 4);
         try {
             dropTableIfExists(mytable);
         } catch (Exception e) {

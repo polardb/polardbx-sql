@@ -69,7 +69,7 @@ public final class ShowLeader {
         // write rows
         byte packetId = eof.packetId;
 
-        RowDataPacket row = getRow(c.getCharset(), c.getSchema());
+        RowDataPacket row = getRow(c.getResultSetCharset(), c.getSchema());
         row.packetId = ++packetId;
         proxy = row.write(proxy);
 

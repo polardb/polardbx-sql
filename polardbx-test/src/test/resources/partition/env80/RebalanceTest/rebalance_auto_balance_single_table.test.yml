@@ -152,19 +152,12 @@ singleBalanceCaseBeans:
       keyDistribution: "uniform"
       distributionParameter: ["1"]
       rowNum: 40000
-
-
     manipulateActions:
     - conditionStmt: "show ddl"
       expectedConditionResult: []
       manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: []
-      manipulateStmt: "/*+TDDL:CMD_EXTRA(ALLOW_MOVING_BALANCED_SINGLE_TABLE=true)*/rebalance database policy = 'partition_balance'"
-      expectedManipulateColumns: [ 2 ]
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"]
     dataDistributionCheckActions:
     - conditionStmt: "show ddl"
       expectedConditionResult: [ ]

@@ -29,9 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.execution.SqlStageExecution;
@@ -41,6 +38,9 @@ import com.alibaba.polardbx.executor.mpp.planner.RemoteSourceNode;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.logical.LogicalCorrelate;

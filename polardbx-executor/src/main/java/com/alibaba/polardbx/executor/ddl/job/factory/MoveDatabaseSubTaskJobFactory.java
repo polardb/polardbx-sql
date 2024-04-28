@@ -102,7 +102,7 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
         taskList.add(addMetaTask);
         //2.2 create partitioned physical table
         PhysicalPlanData physicalPlanData =
-            DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations);
+            DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, phyDdlTableOperations, executionContext);
         DdlTask phyDdlTask =
             new CreateTablePhyDdlTask(schemaName, physicalPlanData.getLogicalTableName(), physicalPlanData);
         taskList.add(phyDdlTask);
@@ -163,5 +163,13 @@ public class MoveDatabaseSubTaskJobFactory extends DdlJobFactory {
         } else {
             return new DropLogicalForeignKeyTask(schemaName, tableName, pushDownForeignKeys);
         }
+    }
+
+    public List<DdlTask> getBackfillTaskEdgeNodes() {
+        return null;
+    }
+
+    public List<List<DdlTask>> getPhysicalyTaskPipeLine() {
+        return null;
     }
 }

@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.google.common.collect.ImmutableList;
 import com.googlecode.protobuf.format.JsonFormat;
 import com.mysql.cj.x.protobuf.PolarxExecPlan;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;

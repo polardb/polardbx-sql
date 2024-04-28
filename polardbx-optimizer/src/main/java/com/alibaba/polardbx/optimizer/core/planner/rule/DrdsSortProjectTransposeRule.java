@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.optimizer.core.rel.Limit;
-import com.alibaba.polardbx.optimizer.core.rel.MemSort;
-import com.alibaba.polardbx.optimizer.core.rel.TopN;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -32,7 +29,6 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.core.Sort;
-import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.logical.LogicalSort;
 import org.apache.calcite.rex.RexCall;
 import org.apache.calcite.rex.RexCallBinding;

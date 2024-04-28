@@ -29,6 +29,7 @@ import com.alibaba.polardbx.executor.ddl.job.builder.DirectPhysicalSqlPlanBuilde
 import com.alibaba.polardbx.executor.ddl.job.task.basic.AddLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.RemoveLocalPartitionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.localpartition.LocalPartitionValidateTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -55,6 +56,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -100,11 +102,15 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
         final TableMeta primaryTableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(primaryTableName);
 
+        Map<String, Long> versionMap = new HashMap<>();
+        versionMap.put(primaryTableName, primaryTableMeta.getVersion());
+
         checkLocalPartitionColumnInUk(primaryTableMeta);
         List<TableMeta> gsiList = GlobalIndexMeta.getIndex(primaryTableName, schemaName, executionContext);
         if (CollectionUtils.isNotEmpty(gsiList)) {
             for (TableMeta gsiMeta : gsiList) {
                 checkLocalPartitionColumnInUk(gsiMeta);
+                versionMap.put(gsiMeta.getTableName(), gsiMeta.getVersion());
             }
         }
 
@@ -155,6 +161,10 @@ public class RepartitionLocalPartitionJobFactory extends DdlJobFactory {
 
         ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
         List<DdlTask> taskList = new ArrayList<>();
+
+        ValidateTableVersionTask validateTableVersionTask = new ValidateTableVersionTask(schemaName, versionMap);
+        taskList.add(validateTableVersionTask);
+
         if (primaryTableMeta.getLocalPartitionDefinitionInfo() != null) {
             LocalPartitionValidateTask localPartitionValidateTask =
                 new LocalPartitionValidateTask(schemaName, primaryTableName);

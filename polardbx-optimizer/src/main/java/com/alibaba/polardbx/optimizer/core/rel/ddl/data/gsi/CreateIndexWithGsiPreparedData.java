@@ -18,13 +18,15 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import lombok.Data;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Data
-public class CreateIndexWithGsiPreparedData {
+public class CreateIndexWithGsiPreparedData extends DdlPreparedData {
 
     private CreateGlobalIndexPreparedData globalIndexPreparedData;
     private List<CreateLocalIndexPreparedData> localIndexPreparedDataList = new ArrayList<>();
@@ -39,5 +41,12 @@ public class CreateIndexWithGsiPreparedData {
 
     public void addLocalIndexPreparedData(CreateLocalIndexPreparedData localIndex) {
         this.localIndexPreparedDataList.add(localIndex);
+    }
+
+    public void setDdlVersionId(@NotNull Long versionId) {
+        super.setDdlVersionId(versionId);
+        if (null != globalIndexPreparedData) {
+            globalIndexPreparedData.setDdlVersionId(versionId);
+        }
     }
 }

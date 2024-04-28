@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.handler.ddl;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf.AlterProcedureTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterProcedureMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -43,6 +44,7 @@ public class LogicalAlterProcedureHandler extends LogicalCommonDdlHandler {
 
         List<DdlTask> taskList = new ArrayList<>();
         taskList.add(getAlterProcedureTask(logicalDdlPlan, executionContext));
+        taskList.add(getCdcAlterProcedureMarkTask(logicalDdlPlan, executionContext));
         executableDdlJob.addSequentialTasks(taskList);
 
         return executableDdlJob;
@@ -57,5 +59,13 @@ public class LogicalAlterProcedureHandler extends LogicalCommonDdlHandler {
         return new AlterProcedureTask(logicalDdlPlan.getSchemaName(), null,
             procedureSchema, SQLUtils.normalize(procedureName.getSimpleName()),
             alterProcedure.getText());
+    }
+
+    private CdcAlterProcedureMarkTask getCdcAlterProcedureMarkTask(BaseDdlOperation logicalDdlPlan,
+                                                                   ExecutionContext executionContext) {
+        SqlAlterProcedure alterProcedure = ((LogicalAlterProcedure) logicalDdlPlan).getSqlAlterProcedure();
+        SQLName procedureName = alterProcedure.getProcedureName();
+        String procedureSchema = PLUtils.getProcedureSchema(procedureName, executionContext.getSchemaName());
+        return new CdcAlterProcedureMarkTask(procedureSchema, SQLUtils.normalize(procedureName.getSimpleName()));
     }
 }

@@ -22,18 +22,25 @@ import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.executor.mpp.Session;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
+import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
 import com.alibaba.polardbx.executor.mpp.split.SplitManager;
+import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.optimizer.core.rel.BKAJoin;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.Limit;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MergeSort;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.core.rel.SemiBKAJoin;
+import com.alibaba.polardbx.optimizer.core.rel.mpp.ColumnarExchange;
 import com.alibaba.polardbx.optimizer.core.rel.mpp.MppExchange;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
 import com.google.common.base.Preconditions;
@@ -51,6 +58,7 @@ import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.Exchange;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.logical.LogicalCorrelate;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.logical.LogicalValues;
@@ -62,8 +70,13 @@ import org.apache.calcite.sql.fun.SqlRuntimeFilterBuildFunction;
 import org.apache.calcite.sql.fun.SqlRuntimeFilterFunction;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner.SUPPORT_ALL_CACHE_NODES;
 import static com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner.SUPPORT_ONE_SIDE_CACHE_NODES;
@@ -105,6 +118,8 @@ public class PlanFragmenter {
         private boolean onlyUseReadInstance;
         private boolean lowConcurrencyQuery = false;
 
+        private SplitManager splitManager;
+
         public Fragmenter(Session session, RelNode root) {
             this.session = session;
             if (!WorkloadUtil.isApWorkload(session.getClientContext().getWorkloadType())) {
@@ -114,6 +129,7 @@ public class PlanFragmenter {
             }
 
             this.onlyUseReadInstance = existMppOnlyInstanceNode();
+            this.splitManager = new SplitManagerImpl();
         }
 
         public int getMaxConcurrentParallelism() {
@@ -171,6 +187,8 @@ public class PlanFragmenter {
         protected RelNode visitChildren(RelNode rel, FragmentProperties properties) {
 
             if (rel instanceof BKAJoin || rel instanceof SemiBKAJoin) {
+                // TODO consider this when partition wise support bka join
+                properties.setPruneExchangePartition(false);
                 //对于BKAJoin，我们先遍历outer端，直接忽略遍历inner端
                 Join join = (Join) rel;
                 int outerIndex = join.getOuter() == join.getInput(0) ? 0 : 1;
@@ -193,6 +211,9 @@ public class PlanFragmenter {
             } else if (rel.getInputs().size() == 2) {
 
                 Join join = (Join) rel;
+                if ((join.getJoinType() != JoinRelType.INNER) && (join.getJoinType() != JoinRelType.SEMI)) {
+                    properties.setPruneExchangePartition(false);
+                }
                 int innerIndex = join.getInner() == join.getInput(0) ? 0 : 1;
                 int outerIndex = join.getOuter() == join.getInput(0) ? 0 : 1;
                 boolean convertBuildSide = convertBuildSide(join);
@@ -233,7 +254,22 @@ public class PlanFragmenter {
                 parentProperties.setSourceNode();
                 parentProperties.updateRootCount(ExecUtils.calcRowCount((LogicalView) other));
                 parentProperties.updateRootIo(ExecUtils.calcIo((LogicalView) other));
-                parentProperties.setLogicalView((LogicalView) other);
+                parentProperties.addLogicalView((LogicalView) other);
+                if (other instanceof OSSTableScan) {
+                    parentProperties.setSimpleOssScan(parent instanceof ColumnarExchange || parent == null);
+                    parentProperties.updatePairWiseInfo((OSSTableScan) other, session.getClientContext().
+                        getParamManager().getBoolean(ConnectionParams.ENABLE_LOCAL_PARTITION_WISE_JOIN));
+                    // handle case like this:
+                    //     JOIN
+                    //    |    |
+                    //    Ex   T1
+                    // when we reached exchange, we can not know this Exchange is under pairwise
+                    // but when we reached table t1, we can go back to set all the children
+                    if (parentProperties.isRemotePairWise()) {
+                        parentProperties.getChildren().forEach(subPlan -> subPlan.getFragment().
+                            getPartitioningScheme().getShuffleHandle().setRemotePairWise(true));
+                    }
+                }
                 return other;
             } else if (other instanceof LogicalValues || other instanceof DynamicValues) {
                 parentProperties.setSingleTonNode();
@@ -288,7 +324,8 @@ public class PlanFragmenter {
         private RelNode visitExchange(RelNode parent, Exchange exchange, FragmentProperties parentProperties) {
             PartitionShuffleHandle shuffleHandle;
             boolean mergeSort =
-                exchange instanceof MppExchange ? ((MppExchange) exchange).isMergeSortExchange() : false;
+                exchange instanceof MppExchange ? ((MppExchange) exchange).isMergeSortExchange() :
+                    (exchange instanceof ColumnarExchange && ((ColumnarExchange) exchange).isMergeSortExchange());
             if (exchange.getDistribution() == RelDistributions.SINGLETON) {
                 if (mergeSort) {
                     shuffleHandle =
@@ -313,13 +350,26 @@ public class PlanFragmenter {
                 shuffleHandle = new PartitionShuffleHandle(
                     PartitionShuffleHandle.PartitionShuffleMode.FIXED,
                     mergeSort);
+                shuffleHandle.setFullPartCount(exchange.getTraitSet().getDistribution().getShardCnt());
             }
             List<OrderByOption> orderBys = new ArrayList<>();
             if (mergeSort) {
-                RelCollation ret = ((MppExchange) exchange).getCollation();
+                RelCollation ret = exchange instanceof MppExchange ? ((MppExchange) exchange).getCollation() :
+                    ((ColumnarExchange) exchange).getCollation();
                 List<RelFieldCollation> sortList = ret.getFieldCollations();
                 orderBys = ExecUtils.convertFrom(sortList);
             }
+
+            // handle case like this:
+            //     JOIN
+            //    |    |
+            //    T1   Ex
+            // when we reached exchange, we have known this Exchange is under pairwise
+            if (parentProperties.isRemotePairWise()) {
+                shuffleHandle.setRemotePairWise(true);
+            }
+
+            // TODO yuehan check union under partition wise join
             if (exchange.getInput() instanceof LogicalUnion) {
                 LogicalUnion union = (LogicalUnion) exchange.getInput();
                 RelNode remoteSourceNode = visitUnion(
@@ -378,9 +428,18 @@ public class PlanFragmenter {
             runtimeFilterIdCollector.collect(root, session);
             List<SerializeDataType> outputTypes = SerializeDataType.convertToSerilizeType(
                 parent.getRowType().getFieldList());
-            return generateSubPlan(root, currentProperties, outputTypes, partitioningScheme,
+            Set<Integer> commonIds =
+                runtimeFilterIdCollector.filterIds.stream().filter(runtimeFilterIdCollector.produceFilterIds::contains)
+                    .collect(Collectors.toSet());
+            SubPlan subPlan = generateSubPlan(root, currentProperties, outputTypes, partitioningScheme,
                 runtimeFilterIdCollector.filterIds,
                 runtimeFilterIdCollector.produceFilterIds);
+            if (InstConfUtil.getBool(ConnectionParams.ENABLE_LOCAL_RUNTIME_FILTER) && commonIds.equals(
+                new HashSet<>(runtimeFilterIdCollector.filterIds)) &&
+                commonIds.equals(new HashSet<>(runtimeFilterIdCollector.produceFilterIds))) {
+                subPlan.getFragment().setLocalBloomFilter(true);
+            }
+            return subPlan;
         }
 
         private SubPlan generateSubPlan(
@@ -388,27 +447,27 @@ public class PlanFragmenter {
             PartitioningScheme partitioningScheme, List<Integer> filterIds, List<Integer> produceFilterIds) {
             Pair<List<Integer>, List<Integer>> pairs = getPartitionSourceIds(currentProperties);
 
-            SplitInfo splitInfo = null;
-            if (currentProperties.getCurrentLogicalView() != null && !session.isIgnoreSplitInfo()) {
-                LogicalView logicalView = currentProperties.getCurrentLogicalView();
-                if (logicalView.fromTableOperation() != null) {
-                    splitInfo = new SplitManager().getSingleSplit(logicalView, session.getClientContext());
-                } else {
-                    splitInfo = new SplitManager().getSplits(
-                        logicalView, session.getClientContext(), !lowConcurrencyQuery);
+            // collect the logical table name and its split count.
+            Map<String, Integer> splitCountMap = new HashMap<>();
+
+            List<SplitInfo> splitInfos = new ArrayList<>();
+            if (currentProperties.getLogicalViews().size() > 0 && !session.isIgnoreSplitInfo()) {
+                for (LogicalView logicalView : currentProperties.getLogicalViews()) {
+                    SplitInfo splitInfo = null;
+                    if (logicalView.fromTableOperation() != null) {
+                        splitInfo = splitManager.getSingleSplit(logicalView, session.getClientContext());
+                    } else {
+                        splitInfo = splitManager.getSplits(
+                            logicalView, session.getClientContext(), !lowConcurrencyQuery);
+                    }
+                    splitCountMap.put(logicalView.getLogicalTableName(), splitInfo.getSplitCount());
+                    session.getGroups().putAll(splitInfo.getGroups());
+                    splitInfos.add(splitInfo);
                 }
-                session.getGroups().putAll(splitInfo.getGroups());
             }
 
             PlanFragment planFragment = null;
-            final int outerParallelism;
-            if (currentProperties.getPartitionHandle().isSingleTon()) {
-                outerParallelism = 1;
-            } else if (splitInfo != null) {
-                outerParallelism = calcScanParallelism(currentProperties.rootIo, splitInfo);
-            } else {
-                outerParallelism = calcParallelism(currentProperties);
-            }
+            int outerParallelism = getOuterParallelism(splitInfos, currentProperties);
 
             List<SplitInfo> expandSplitInfos = new ArrayList<>();
             Integer bkaJoinParallelism = -1;
@@ -416,15 +475,13 @@ public class PlanFragmenter {
                 for (LogicalView logicalView : currentProperties.getExpandView()) {
                     SplitInfo info;
                     if (logicalView.fromTableOperation() != null) {
-                        info = new SplitManager().getSingleSplit(logicalView, session.getClientContext());
+                        info = splitManager.getSingleSplit(logicalView, session.getClientContext());
                     } else {
-                        info = new SplitManager().getSplits(
+                        info = splitManager.getSplits(
                             logicalView, session.getClientContext(), !lowConcurrencyQuery);
                     }
+                    splitCountMap.put(logicalView.getLogicalTableName(), info.getSplitCount());
 
-                    if (splitInfo != null) {
-                        session.getGroups().putAll(splitInfo.getGroups());
-                    }
                     session.getGroups().putAll(info.getGroups());
                     expandSplitInfos.add(info);
 
@@ -440,8 +497,10 @@ public class PlanFragmenter {
             }
 
             planFragment = new PlanFragment(nextFragmentId++, root, outputTypes,
-                currentProperties.getPartitionHandle().setPartitionCount(outerParallelism), pairs.getKey(),
-                pairs.getValue(), partitioningScheme, bkaJoinParallelism, filterIds, produceFilterIds);
+                currentProperties.getPartitionHandle().setPartitionCount(outerParallelism),
+                currentProperties.isRemotePairWise(), pairs.getKey(),
+                pairs.getValue(), partitioningScheme, bkaJoinParallelism, filterIds, produceFilterIds,
+                currentProperties.isLocalPairWise(), splitCountMap, currentProperties.isPruneExchangePartition());
 
             int currentParallelism = currentProperties.getPartitionHandle().getPartitionCount();
             int singleChildParallelism = currentProperties.getSingleChildParallelism();
@@ -460,7 +519,46 @@ public class PlanFragmenter {
             } else {
                 currentConcurrentParallelism += currentParallelism;
             }
-            return new SubPlan(planFragment, splitInfo, expandSplitInfos, currentProperties.getChildren());
+            return new SubPlan(planFragment, splitInfos, expandSplitInfos, currentProperties.getChildren());
+        }
+
+        private int getOuterParallelism(List<SplitInfo> splitInfos, FragmentProperties currentProperties) {
+            if (currentProperties.getPartitionHandle().isSingleTon()) {
+                return 1;
+            }
+
+            // fragment not contain scan
+            if (splitInfos.size() == 0) {
+                return calcParallelism(currentProperties);
+            }
+
+            boolean containsOss = splitInfos.stream().anyMatch(this::containsOssSplit);
+            // for innodb
+            if (!containsOss) {
+                int outerParallelism = 1;
+                for (SplitInfo splitInfo : splitInfos) {
+                    outerParallelism =
+                        Math.max(outerParallelism, calcScanParallelism(currentProperties.rootIo, splitInfo));
+                }
+                return outerParallelism;
+            }
+
+            // coroner case: all tables in this fragment is empty
+            boolean allEmpty = splitInfos.stream().allMatch(splitInfo -> splitInfo.getSplits().isEmpty());
+            if (allEmpty) {
+                int parallelism =
+                    session.getClientContext().getParamManager().getInt(ConnectionParams.PARALLELISM_FOR_EMPTY_TABLE);
+                if (parallelism > 0) {
+                    return parallelism;
+                }
+            }
+
+            int outerParallelism = 1;
+            for (SplitInfo splitInfo : splitInfos) {
+                outerParallelism = Math.max(outerParallelism,
+                    calcColumnarScanParallelism(currentProperties.isSimpleOssScan(), splitInfo));
+            }
+            return outerParallelism;
         }
 
         public int calcParallelism(FragmentProperties properties) {
@@ -503,6 +601,7 @@ public class PlanFragmenter {
             if (lowConcurrencyQuery) {
                 return 1;
             }
+
             ParamManager paramManager = session.getClientContext().getParamManager();
 
             int parallelsim = -1;
@@ -525,10 +624,43 @@ public class PlanFragmenter {
                         ExecUtils.getMppMinParallelism(paramManager));
                 }
             }
+
             int dbParallelism = ExecUtils.getPolarDbCores(paramManager, !onlyUseReadInstance);
             parallelsim = Math.max(Math.min(Math.min(
                 splitInfo.getSplitCount(), dbParallelism * splitInfo.getInsCount()), parallelsim), 1);
+
             return parallelsim;
+        }
+
+        private boolean containsOssSplit(SplitInfo splitInfo) {
+            return splitInfo != null && splitInfo.getSplits().stream()
+                .anyMatch(splits -> splits.stream().anyMatch(split -> split.getConnectorSplit() instanceof OssSplit));
+        }
+
+        private int calcColumnarScanParallelism(boolean simpleOssScan, SplitInfo splitInfo) {
+            if (lowConcurrencyQuery) {
+                return 1;
+            }
+
+            ParamManager paramManager = session.getClientContext().getParamManager();
+
+            int parallelism = paramManager.getInt(ConnectionParams.MPP_PARALLELISM);
+
+            if (parallelism < 0) {
+                int mppNodeSize = paramManager.getInt(ConnectionParams.MPP_NODE_SIZE);
+                if (mppNodeSize <= 0) {
+                    mppNodeSize = (ServiceProvider.getInstance().getServer()).getNodeManager()
+                        .getAllWorkers(ConfigDataMode.isMasterMode() && paramManager
+                            .getBoolean(ConnectionParams.POLARDBX_SLAVE_INSTANCE_FIRST)).size();
+                }
+                // default parallelism is cores of all compute node
+                parallelism = mppNodeSize * ExecUtils.getPolarDBXCores(paramManager, !onlyUseReadInstance);
+            }
+
+            if (simpleOssScan && splitInfo.getSplitCount() > 0) {
+                parallelism = Math.min(parallelism, splitInfo.getSplitCount());
+            }
+            return parallelism;
         }
 
         public boolean isMergeSortSourceNode(RelNode node) {
@@ -557,8 +689,8 @@ public class PlanFragmenter {
         public Pair<List<Integer>, List<Integer>> getPartitionSourceIds(FragmentProperties properties) {
             List<Integer> partitionSources = new ArrayList<>();
             List<Integer> expandSources = new ArrayList<>();
-            if (properties.getCurrentLogicalView() != null) {
-                partitionSources.add(properties.getCurrentLogicalView().getRelatedId());
+            for (LogicalView logicalView : properties.getLogicalViews()) {
+                partitionSources.add(logicalView.getRelatedId());
             }
             if (properties.getExpandView().size() > 0) {
                 for (LogicalView logicalView : properties.getExpandView()) {
@@ -572,7 +704,7 @@ public class PlanFragmenter {
 
     private static class FragmentProperties {
         private final List<SubPlan> children = new ArrayList<>();
-        private LogicalView currentLogicalView;
+        private List<LogicalView> logicalViews = new ArrayList<>();
         private List<LogicalView> expandViews = new ArrayList<>();
         private double rootRowCnt;
         private double rootIo;
@@ -582,6 +714,14 @@ public class PlanFragmenter {
         private int innerChildParallelism = 0;
 
         private int singleChildParallelism = 0;
+
+        private boolean localPairWise = false;
+
+        private boolean remotePairWise = false;
+
+        private boolean simpleOssScan = false;
+
+        private boolean pruneExchangePartition = true;
 
         public int getInnerChildParallelism() {
             return innerChildParallelism;
@@ -599,13 +739,43 @@ public class PlanFragmenter {
             this.singleChildParallelism = singleChildParallelism;
         }
 
-        public LogicalView getCurrentLogicalView() {
-            return currentLogicalView;
+        public boolean isSimpleOssScan() {
+            return simpleOssScan;
         }
 
-        public void setLogicalView(LogicalView logicalView) {
-            Preconditions.checkState(this.currentLogicalView == null, "currentLogicalView is already exist!");
-            this.currentLogicalView = logicalView;
+        public void setSimpleOssScan(boolean simpleOssScan) {
+            this.simpleOssScan = simpleOssScan;
+        }
+
+        public boolean isPruneExchangePartition() {
+            return pruneExchangePartition;
+        }
+
+        public void setPruneExchangePartition(boolean pruneExchangePartition) {
+            this.pruneExchangePartition = pruneExchangePartition;
+        }
+
+        public List<LogicalView> getLogicalViews() {
+            return logicalViews;
+        }
+
+        public void addLogicalView(LogicalView logicalView) {
+            this.logicalViews.add(logicalView);
+        }
+
+        public void updatePairWiseInfo(OSSTableScan ossTableScan, boolean enableLocalPairWise) {
+            if (enableLocalPairWise) {
+                this.localPairWise = localPairWise | ossTableScan.getTraitSet().getPartitionWise().isLocalPartition();
+            }
+            this.remotePairWise = remotePairWise | ossTableScan.getTraitSet().getPartitionWise().isRemotePartition();
+        }
+
+        public boolean isLocalPairWise() {
+            return localPairWise;
+        }
+
+        public boolean isRemotePairWise() {
+            return remotePairWise;
         }
 
         public List<LogicalView> getExpandView() {
@@ -716,7 +886,10 @@ public class PlanFragmenter {
                 return;
             }
             visit(rel);
-            verify();
+            if (session.getClientContext().getParamManager()
+                .getBoolean(ConnectionParams.CHECK_RUNTIME_FILTER_SAME_FRAGMENT)) {
+                verify();
+            }
         }
 
         private void verify() {

@@ -426,6 +426,17 @@ public interface SqlValidator {
       SqlSelect query);
 
   /**
+   * expand the star of check_sum(*) in select
+   *
+   * @param selectItem        should be a star
+   * @param query             Query
+   * @return expanded select check_sum(*) clause
+   */
+  SqlNode[] expandStarForCheckSumV2(
+      SqlNode selectItem,
+      SqlSelect query);
+
+  /**
    * Returns the scope that expressions in the WHERE and GROUP BY clause of
    * this query should use. This scope consists of the tables in the FROM
    * clause, and the enclosing scope.
@@ -787,7 +798,9 @@ public interface SqlValidator {
       RelDataType targetRowType,
       SqlValidatorScope scope);
 
-  void validateGsiName(Set<String> gsiNames, SqlIdentifier currentGsiName);
+  void validateGsiName(Set<String> gsiNames, SqlCreateIndex createIndex);
+
+  void validateGsiName(Set<String> gsiNames, SqlIndexDefinition indexDefinition);
 
     /**
    * Set if implicit type coercion is allowed when the validator does validation.

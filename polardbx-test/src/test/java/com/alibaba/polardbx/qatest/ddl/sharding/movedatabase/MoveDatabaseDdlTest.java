@@ -34,13 +34,15 @@ public class MoveDatabaseDdlTest extends MoveDatabaseBaseTest {
     static private final String dataBaseName = "MoveDatabaseDdlTest";
 
     //delete hint SHARE_STORAGE_MODE=true,SCALE_OUT_DROP_DATABASE_AFTER_SWITCH_DATASOURCE=true because there are always 2 dn in k8s
-    public String scaleOutHint =
-        "";
+    public String scaleOutHint = "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=false)*/";
 
     public String scaleOutHint2 =
         "/*+TDDL:CMD_EXTRA("
             + "PHYSICAL_TABLE_START_SPLIT_SIZE = 100, PHYSICAL_TABLE_BACKFILL_PARALLELISM = 2, "
-            + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000)*/";
+            + "ENABLE_SLIDE_WINDOW_BACKFILL = true, SLIDE_WINDOW_SPLIT_SIZE = 2, SLIDE_WINDOW_TIME_INTERVAL = 1000, PHYSICAL_BACKFILL_ENABLE=false)*/";
+
+    public String scaleOutHint3 =
+        "/*+TDDL:CMD_EXTRA(PHYSICAL_BACKFILL_ENABLE=true, PHYSICAL_BACKFILL_SPEED_TEST=false)*/";
 
     public String createTableSql =
         "create table `%s` (`a` int(11) primary key auto_increment, `b` int(11), `c` timestamp DEFAULT CURRENT_TIMESTAMP) "
@@ -48,7 +50,7 @@ public class MoveDatabaseDdlTest extends MoveDatabaseBaseTest {
 
     public String insertSql = "insert into `%s` (b, c) values (1, now())";
 
-    private final Boolean useParallelBackfill;
+    private final Condition condition;
 
     @Before
     public void before() {
@@ -57,13 +59,13 @@ public class MoveDatabaseDdlTest extends MoveDatabaseBaseTest {
     }
 
     @Parameterized.Parameters(name = "{index}:usePhyParallelBackfill={0}")
-    public static List<Boolean> prepareDate() {
-        return Lists.newArrayList(Boolean.FALSE, Boolean.TRUE);
+    public static List<Condition> prepareDate() {
+        return Lists.newArrayList(Condition.NONE, Condition.USE_PARALLEL_BACKFILL, Condition.USE_PHYSICAL_BACKFILL);
     }
 
-    public MoveDatabaseDdlTest(Boolean useParallelBackfill) {
+    public MoveDatabaseDdlTest(Condition condition) {
         super(dataBaseName);
-        this.useParallelBackfill = useParallelBackfill;
+        this.condition = condition;
     }
 
     void doReCreateDatabase() {
@@ -99,7 +101,7 @@ public class MoveDatabaseDdlTest extends MoveDatabaseBaseTest {
             }
         } catch (Throwable ex) {
             ex.printStackTrace();
-            if (!ex.getMessage().contains("Failed to get MySQL version: Unknown database ")) {
+            if (!ex.getMessage().contains("Unknown database")) {
                 Assert.fail(ex.getMessage());
             }
 
@@ -137,7 +139,8 @@ public class MoveDatabaseDdlTest extends MoveDatabaseBaseTest {
         }
 
         String scaleOutTaskSql =
-            String.format("move database %s %s to '%s';", useParallelBackfill ? scaleOutHint2 : scaleOutHint,
+            String.format("move database %s %s to '%s';", condition == Condition.NONE ? scaleOutHint :
+                    (condition == Condition.USE_PARALLEL_BACKFILL ? scaleOutHint2 : scaleOutHint3),
                 groupName, targetStorageId);
 
         String insertDmlSql = String.format(insertSql, primaryTableName);

@@ -113,7 +113,7 @@ public class DropFileStorageJobFactory extends DdlJobFactory {
         taskList.add(new DeleteFileStorageDirectoryTask(engine.name(), "/"));
 
         // close file storage
-        taskList.add(new CloseFileStorageTask(engine.name()));
+        taskList.add(new CloseFileStorageTask(engine.name(), false));
 
         executableDdlJob.addSequentialTasks(taskList);
         return executableDdlJob;

@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
@@ -29,6 +29,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.calcite.sql.SqlKind;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 
@@ -61,7 +62,7 @@ public class CdcGsiDdlMarkTask extends BaseDdlTask {
         injectGSI(executionContext);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
-        useOrginalDDL(executionContext);
+        CdcMarkUtil.useOriginalDDL(executionContext);
         DdlType ddlType;
         SqlKind sqlKind;
         if (physicalPlanData.getKind() == SqlKind.CREATE_TABLE) {
@@ -78,16 +79,15 @@ public class CdcGsiDdlMarkTask extends BaseDdlTask {
         }
 
         String originalDdl = this.originalDdl != null ? this.originalDdl : executionContext.getOriginSql();
+        if (StringUtils.isNotBlank(executionContext.getDdlContext().getCdcRewriteDdlStmt())) {
+            originalDdl = executionContext.getDdlContext().getCdcRewriteDdlStmt();
+        }
 
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, primaryTable, sqlKind.name(),
                 originalDdl, ddlType, executionContext.getDdlContext().getJobId(),
                 getTaskId(),
-                DdlVisibility.Public, buildExtendParameter(executionContext));
-    }
-
-    private void useOrginalDDL(ExecutionContext executionContext) {
-        executionContext.getExtraCmds().put(ICdcManager.USE_ORGINAL_DDL, "true");
+                CdcDdlMarkVisibility.Public, buildExtendParameter(executionContext));
     }
 
     private void injectGSI(ExecutionContext executionContext) {

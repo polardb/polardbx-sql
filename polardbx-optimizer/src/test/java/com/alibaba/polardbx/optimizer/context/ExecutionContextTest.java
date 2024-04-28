@@ -1,7 +1,12 @@
 package com.alibaba.polardbx.optimizer.context;
 
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author fangwu
@@ -18,5 +23,26 @@ public class ExecutionContextTest {
         Assert.assertTrue(ec.getScalarSubqueryVal(0) != null);
         Assert.assertTrue(ec.getScalarSubqueryVal(-1) != null);
         Assert.assertTrue(ec.getScalarSubqueryVal(-23342227) != null);
+    }
+
+    @Test
+    public void isEnableXaTsoTest() {
+        ExecutionContext ec = new ExecutionContext();
+        Map<String, String> properties = new HashMap<>();
+        properties.put(ConnectionProperties.ENABLE_XA_TSO, "true");
+        properties.put(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "true");
+        ParamManager paramManager = new ParamManager(properties);
+        ec.setParamManager(paramManager);
+        Assert.assertTrue(ec.isEnableXaTso());
+        Assert.assertTrue(ec.isEnableAutoCommitTso());
+
+        properties.put(ConnectionProperties.ENABLE_XA_TSO, "false");
+        properties.put(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "false");
+        Assert.assertFalse(ec.isEnableXaTso());
+        Assert.assertFalse(ec.isEnableAutoCommitTso());
+
+        ec.setParamManager(null);
+        Assert.assertFalse(ec.isEnableXaTso());
+        Assert.assertFalse(ec.isEnableAutoCommitTso());
     }
 }

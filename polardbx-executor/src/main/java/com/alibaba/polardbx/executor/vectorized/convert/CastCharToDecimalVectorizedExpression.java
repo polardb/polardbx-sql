@@ -23,7 +23,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
 @SuppressWarnings("unused")
-@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Char"}, argumentKinds = {Variable})
+@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Char"},
+    argumentKinds = {Variable})
 public class CastCharToDecimalVectorizedExpression extends CastVarcharToDecimalVectorizedExpression {
     public CastCharToDecimalVectorizedExpression(DataType<?> outputDataType,
                                                  int outputIndex,

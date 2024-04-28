@@ -1,0 +1,301 @@
+## DISABLE_FAST_SQL_PARSER
+
+##-----ch_hash as first-level-part -----
+  ## ch-ch
+CREATE TABLE `ch_t1_sp_ch_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+PARTITIONS 2
+SUBPARTITION BY CO_HASH(SUBSTR(`sid`,-4),SUBSTR(`tid`,-4))
+SUBPARTITIONS 2;
+show create table ch_t1_sp_ch_ch;
+
+  ## ch-h1
+CREATE TABLE `ch_t1_sp_ch_h1` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+PARTITIONS 2
+SUBPARTITION BY HASH(`sid`)
+SUBPARTITIONS 2;
+show create table ch_t1_sp_ch_h1;
+
+  ## ch-h2
+CREATE TABLE `ch_t1_sp_ch_h2` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY HASH(YEAR(`sid`))
+  SUBPARTITIONS 2;
+show create table ch_t1_sp_ch_h2;
+
+    ## ch-h3
+CREATE TABLE `ch_t1_sp_ch_h3` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY HASH(tid,sid)
+  SUBPARTITIONS 2;
+show create table ch_t1_sp_ch_h3;
+
+  ## ch-k
+CREATE TABLE `ch_t1_sp_ch_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+PARTITIONS 2
+SUBPARTITION BY KEY(`sid`,`tid`)
+SUBPARTITIONS 2;
+show create table ch_t1_sp_ch_k;
+
+    ## ch-r
+CREATE TABLE `ch_t1_sp_ch_r` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY RANGE(YEAR(`order_time`)) (
+  SUBPARTITION sp1 VALUES LESS THAN(2022),
+  SUBPARTITION sp2 VALUES LESS THAN(maxvalue)
+  );
+show create table ch_t1_sp_ch_r;
+
+    ## ch-rc
+  CREATE TABLE `ch_t1_sp_ch_rc` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY RANGE COLUMNS (`sid`,`tid`) (
+  SUBPARTITION sp1 VALUES LESS THAN(1000,1000),
+  SUBPARTITION sp2 VALUES LESS THAN(maxvalue,maxvalue)
+  );
+
+    ## ch-l
+  CREATE TABLE `ch_t1_sp_ch_l` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY LIST (YEAR(`order_time`)) (
+  SUBPARTITION sp1 VALUES IN (2022,2021),
+  SUBPARTITION sp2 VALUES IN (default)
+  );
+
+    ## ch-lc
+  CREATE TABLE `ch_t1_sp_ch_lc` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT,
+  `sid` bigint DEFAULT NULL,
+  `tid` bigint DEFAULT NULL,
+  `user_id` varchar(32) DEFAULT NULL,
+  `order_id` varchar(32) DEFAULT NULL,
+  `order_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`)
+  ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+  PARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+  PARTITIONS 2
+  SUBPARTITION BY LIST COLUMNS (`sid`,`tid`) (
+  SUBPARTITION sp1 VALUES IN ((1000,2000),(1001,2001)),
+  SUBPARTITION sp2 VALUES IN (default)
+  );
+
+
+##-----ch_hash as second-level-part -----
+
+  ## h1-ch
+CREATE TABLE `ch_t1_sp_h1_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`sid`)
+PARTITIONS 2
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2;
+show create table ch_t1_sp_h1_ch;
+
+  ## h2-ch
+CREATE TABLE `ch_t1_sp_h2_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(YEAR(`order_time`))
+PARTITIONS 2
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2;
+show create table ch_t1_sp_h2_ch;
+
+  ## h3-ch
+CREATE TABLE `ch_t1_sp_h3_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY HASH(`sid`,`tid`)
+PARTITIONS 2
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2;
+show create table ch_t1_sp_h3_ch;
+
+  ## k-ch
+CREATE TABLE `ch_t1_sp_k_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`sid`,`tid`)
+PARTITIONS 2
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2;
+show create table ch_t1_sp_k_ch;
+
+
+  ## r-ch
+CREATE TABLE `ch_t1_sp_r_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(YEAR(`order_time`))
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2
+(
+PARTITION p1 VALUES LESS THAN (2000),
+PARTITION p2 VALUES LESS THAN (maxvalue)
+);
+show create table ch_t1_sp_r_ch;
+
+  ## rc-ch
+CREATE TABLE `ch_t1_sp_rc_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE COLUMNS(sid,tid)
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2
+(
+PARTITION p1 VALUES LESS THAN (1000,2000),
+PARTITION p2 VALUES LESS THAN (maxvalue,maxvalue)
+);
+show create table ch_t1_sp_rc_ch;
+
+  ## l-ch
+CREATE TABLE `ch_t1_sp_l_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST(YEAR(`order_time`))
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2
+(
+PARTITION p1 VALUES IN (2000,2001),
+PARTITION p2 VALUES IN (default)
+);
+show create table ch_t1_sp_l_ch;
+
+  ## lc-ch
+CREATE TABLE `ch_t1_sp_lc_ch` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY LIST COLUMNS(`sid`,`tid`)
+SUBPARTITION BY CO_HASH(SUBSTR(`order_id`,-8),SUBSTR(`user_id`,-4))
+SUBPARTITIONS 2
+(
+PARTITION p1 VALUES IN ((1000,1001),(2000,2001)),
+PARTITION p2 VALUES IN (default)
+);
+show create table ch_t1_sp_lc_ch;
+
+
+
+
+
+

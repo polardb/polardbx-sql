@@ -144,7 +144,7 @@ public class LogicalCreateDatabaseLikeAsHandler extends LogicalCommonDdlHandler 
 //                }
                 final TableMeta tm = schemaManager.getTable(tbName);
                 rows = (long) tm.getRowCount(null);
-                CostEstimableDdlTask.CostInfo info = CostEstimableDdlTask.createCostInfo(rows, null);
+                CostEstimableDdlTask.CostInfo info = CostEstimableDdlTask.createCostInfo(rows, null, null);
                 allTableCostInfos.put(tbName, info);
             }
         );

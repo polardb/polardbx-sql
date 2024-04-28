@@ -22,6 +22,14 @@ public class SequenceAttribute {
 
     public enum Type {
         NEW, GROUP, SIMPLE, TIME, NA;
+
+        public static Type fromString(String typeStr) {
+            try {
+                return Type.valueOf(typeStr.toUpperCase());
+            } catch (Exception e) {
+                return NA;
+            }
+        }
     }
 
     public static final int TRUE = 1;

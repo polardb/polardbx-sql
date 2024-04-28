@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -77,10 +78,12 @@ public class TableSyncTask extends BaseSyncTask {
                 .orElse(executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INTERVAL));
             TimeUnit timeUnit = Optional.ofNullable(this.timeUnit).orElse(TimeUnit.MILLISECONDS);
             if (!preemptive || !enablePreemptiveMdl) {
-                SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, tableName), throwExceptions);
+                SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, tableName), SyncScope.ALL,
+                    throwExceptions);
             } else {
                 SyncManagerHelper.sync(
                     new TableMetaChangePreemptiveSyncAction(schemaName, tableName, initWait, interval, timeUnit),
+                    SyncScope.ALL,
                     throwExceptions);
             }
             FailPoint.injectSuspendFromHint("FP_TABLE_SYNC_TASK_SUSPEND", executionContext);

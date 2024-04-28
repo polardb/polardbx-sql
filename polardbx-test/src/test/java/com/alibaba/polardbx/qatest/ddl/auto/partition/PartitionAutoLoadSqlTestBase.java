@@ -56,8 +56,8 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
     protected static final String RESOURCES_FILE_PATH_FRO_MYSQL80 = "partition/env80/%s/";
     protected static String RESOURCES_FILE_PATH = RESOURCES_FILE_PATH_FRO_MYSQL57;
     protected static String ENV_FILE_PATH = "src/test/resources/" + RESOURCES_FILE_PATH;
-    protected static String TEST_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.test.yml";
-    protected static String RESULT_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.result";
+    public static String TEST_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.test.yml";
+    public static String RESULT_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.result";
 
     protected static String RESOURCE_FILE_TEMPLATE = RESOURCES_FILE_PATH + "%s.resource";
     protected static String TEST_CASE_CONFIG_FILE_PATH_TEMPLATE = RESOURCES_FILE_PATH + "testcase.config.yml";
@@ -86,6 +86,9 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
     public static class AutoLoadSqlTestCaseParams {
         public boolean supportAutoPart = false;
         public int defaultPartitions = 0;
+
+        //忽略auto_increment的结果(默认不忽略)
+        public boolean ignoreAutoIncrement = false;
         public String tcName;
         public String testDbName;
         public Class testClass;
@@ -103,6 +106,10 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 this.testDbName = testDbName.substring(0, 16);
             }
             this.testDbName = testDbName + "_" + String.valueOf(Math.abs((testClass.getName() + tcName).hashCode()));
+        }
+
+        public void setIgnoreAutoIncrement(boolean ignoreAutoIncrement) {
+            this.ignoreAutoIncrement = ignoreAutoIncrement;
         }
 
         @Override
@@ -157,7 +164,6 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
         try {
             exceptedResult = loadTestResultByTestName(tcName.toLowerCase(), testClass);
             exceptedResult = exceptedResult.trim();
-            applyResourceFileIfExists(tcName.toLowerCase(), testClass);
             try {
                 conn = ConnectionManager.getInstance().newPolarDBXConnection();
                 JdbcUtil.dropDatabase(conn, dbName);
@@ -167,6 +173,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 } else {
                     JdbcUtil.createPartDatabase(conn, dbName);
                 }
+                applyResourceFileIfExists(dbName, tcName.toLowerCase(), testClass);
                 testResult = runTestBySourceSql(tcName.toLowerCase(), supportAutoPart, testClass, dbName, conn,
                     s -> applySubstitute(s));
                 JdbcUtil.dropDatabase(conn, dbName);
@@ -188,6 +195,10 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
             testResult = (params.supportAutoPart ?
                 testResult.replaceAll("_\\$[0-9a-f]{4}", Matcher.quoteReplacement("_$")) : testResult)
                 .replaceAll("tablegroup = `tg[0-9]{1,}` \\*/", "tablegroup = `tg` */");
+
+            testResult = (params.ignoreAutoIncrement ?
+                testResult.replaceAll("AUTO_INCREMENT = [0-9]{1,}", "AUTO_INCREMENT = ignore_val") : testResult);
+
             exceptedResult =
                 params.supportAutoPart ? exceptedResult.replaceAll("#@#", "" + params.defaultPartitions) :
                     exceptedResult;
@@ -247,6 +258,13 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 }
             }
 
+            // Remove 'Finish time' of CHECK COLUMNAR INDEX report
+            if (testResult.contains("CHECK COLUMNAR INDEX")) {
+                testResult = testResult.replaceAll(
+                    "\\) Finish time: \\d{4}-\\d{2}-\\d{2}\\s\\d{2}:\\d{2}:\\d{2}",
+                    ") Finish time: %");
+            }
+
             buildAndPrintTestInfo(testClassName, tcName, testResult, exceptedResult);
             Assert.assertEquals(exceptedResult, testResult);
         } catch (Throwable ex) {
@@ -267,7 +285,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
         }
     }
 
-    void applyResourceFileIfExists(String testCaseName, Class testClass) throws IOException {
+    void applyResourceFileIfExists(String dbName, String testCaseName, Class testClass) throws IOException {
         String fileName = String.format(RESOURCE_FILE_TEMPLATE, testClass.getSimpleName(), testCaseName);
         URL in = testClass.getClassLoader().getResource(fileName);
         if (in == null) {
@@ -284,6 +302,7 @@ public abstract class PartitionAutoLoadSqlTestBase extends PartitionTestBase {
                 sb.append(line).append("\n");
                 if (line.endsWith("|")) { // End of statement
                     String sql = sb.toString();
+                    JdbcUtil.useDb(tddlConnection, dbName);
                     JdbcUtil.executeSuccess(tddlConnection, sql.substring(0, sql.length() - 2));
                     sb.setLength(0); // Clear the StringBuilder
                 }

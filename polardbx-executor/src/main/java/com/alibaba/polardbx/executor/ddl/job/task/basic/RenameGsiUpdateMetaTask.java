@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -35,14 +36,14 @@ public class RenameGsiUpdateMetaTask extends RenameTableUpdateMetaTask {
     final private String primaryTableName;
 
     public RenameGsiUpdateMetaTask(String schemaName, String primaryTableName,
-                                   String logicalTableName, String newLogicalTableName) {
-        super(schemaName, logicalTableName, newLogicalTableName);
+                                   String logicalTableName, String newLogicalTableName,
+                                   boolean needRenamePhyTables) {
+        super(schemaName, logicalTableName, newLogicalTableName, needRenamePhyTables);
         this.primaryTableName = primaryTableName;
     }
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        executionContext.setPhyTableRenamed(false);
         super.executeImpl(metaDbConnection, executionContext);
 
         try {
@@ -54,15 +55,15 @@ public class RenameGsiUpdateMetaTask extends RenameTableUpdateMetaTask {
 
     @Override
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        executionContext.setPhyTableRenamed(false);
         boolean isNewPartitionDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
         if (isNewPartitionDb) {
             TableMetaChanger
                 .renamePartitionTableMeta(metaDbConnection, schemaName, newLogicalTableName, logicalTableName,
-                    executionContext);
+                    needRenamePhyTables, executionContext);
         } else {
             TableMetaChanger
-                .renameTableMeta(metaDbConnection, schemaName, newLogicalTableName, logicalTableName, executionContext);
+                .renameTableMeta(metaDbConnection, schemaName, newLogicalTableName, logicalTableName,
+                    needRenamePhyTables, executionContext);
         }
 
         try {
@@ -72,7 +73,7 @@ public class RenameGsiUpdateMetaTask extends RenameTableUpdateMetaTask {
         }
 
         //sync have to be successful to continue
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
         executionContext.refreshTableMeta();
     }
 }

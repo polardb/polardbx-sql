@@ -22,10 +22,10 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.GlobalAcquireMdlLockInDbSyncAction;
 import com.alibaba.polardbx.executor.sync.GlobalReleaseMdlLockInDbSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
-import java.util.List;
 import java.util.Set;
 
 /**
@@ -47,7 +47,7 @@ public class GlobalAcquireMdlLockInDbSyncTask extends BaseSyncTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         try {
-            SyncManagerHelper.sync(new GlobalAcquireMdlLockInDbSyncAction(schemaNames));
+            SyncManagerHelper.sync(new GlobalAcquireMdlLockInDbSyncAction(schemaNames), SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while lock tables meta, schemaNames:%s", schemaNames));
@@ -58,7 +58,7 @@ public class GlobalAcquireMdlLockInDbSyncTask extends BaseSyncTask {
     @Override
     protected void beforeRollbackTransaction(ExecutionContext executionContext) {
         try {
-            SyncManagerHelper.sync(new GlobalReleaseMdlLockInDbSyncAction(schemaNames));
+            SyncManagerHelper.sync(new GlobalReleaseMdlLockInDbSyncAction(schemaNames), SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while unlock tables meta, schemaName:%s", schemaNames));

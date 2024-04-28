@@ -18,9 +18,9 @@ package com.alibaba.polardbx.executor.ddl.job.factory.oss;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.MoveDataToFileStoreTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.MoveDataToInnodbTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.oss.UpdateFileCommitTsTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -81,7 +81,8 @@ public class MoveOSSDataJobFactory extends DdlJobFactory {
             moveDataToFileStoreTask.setTaskId(ID_GENERATOR.nextId());
             List<Long> taskIdList = new ArrayList<>();
             taskIdList.add(moveDataToFileStoreTask.getTaskId());
-            UpdateFileCommitTsTask updateFileCommitTsTask = new UpdateFileCommitTsTask(targetEngine.name(), schemaName, logicalTableName, taskIdList);
+            UpdateFileCommitTsTask updateFileCommitTsTask =
+                new UpdateFileCommitTsTask(targetEngine.name(), schemaName, logicalTableName, taskIdList);
             taskList.add(moveDataToFileStoreTask);
             taskList.add(updateFileCommitTsTask);
         } else if (Engine.isFileStore(sourceEngine) && targetEngine == Engine.INNODB) {

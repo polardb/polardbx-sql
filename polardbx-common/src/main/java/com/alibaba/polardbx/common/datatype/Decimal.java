@@ -45,6 +45,10 @@ public class Decimal extends Number implements Comparable<Decimal> {
 
     public static final Decimal MAX_UNSIGNED = Decimal.fromUnsigned(UInt64.fromLong(-1L));
 
+    public static final int MAX_64_BIT_PRECISION = 18;
+
+    public static final int MAX_128_BIT_PRECISION = 38;
+
     private final DecimalStructure decimalStructure;
 
     public Decimal() {
@@ -61,12 +65,7 @@ public class Decimal extends Number implements Comparable<Decimal> {
 
     public Decimal(long longVal, int scale) {
         this(new DecimalStructure());
-        // parse long & set scale.
-        DecimalConverter.longToDecimal(longVal, this.decimalStructure);
-        // shift by scale value.
-        FastDecimalUtils.shift(this.decimalStructure, this.decimalStructure, -scale);
-
-        FastDecimalUtils.round(this.decimalStructure, this.decimalStructure, scale, HALF_UP);
+        this.decimalStructure.setLongWithScale(longVal, scale);
     }
 
     public static Decimal fromBigDecimal(BigDecimal bd) {
@@ -213,5 +212,35 @@ public class Decimal extends Number implements Comparable<Decimal> {
 
     public Decimal copy() {
         return new Decimal(decimalStructure.copy());
+    }
+
+    /**
+     * shift by newScale and get the decimal64 value
+     * Warning1: change the internal data of current decimal value!
+     * Warning2: the result long value is inaccurate
+     */
+    public long unscaleInternal(int newScale) {
+        if (newScale != 0) {
+            FastDecimalUtils.shift(this.getDecimalStructure(), this.getDecimalStructure(),
+                newScale);
+        }
+        return this.longValue();
+    }
+
+    /**
+     * get the unscaled long value of current decimal
+     */
+    public long unscale() {
+        return unscale(new DecimalStructure());
+    }
+
+    public long unscale(DecimalStructure bufferStructure) {
+        Decimal decimal = this;
+        if (scale() != 0) {
+            decimal = new Decimal(bufferStructure);
+            FastDecimalUtils.shift(this.getDecimalStructure(), bufferStructure,
+                this.scale());
+        }
+        return decimal.longValue();
     }
 }

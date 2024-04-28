@@ -82,6 +82,7 @@ public class CheckGsiTask extends BaseBackfillTask {
     private final boolean primaryBroadCast;
     private final boolean gsiBroadCast;
     private Map<String, String> virtualColumnMap;
+    private Map<String, String> backfillColumnMap;
 
     public static CheckGsiTask create(CheckGsiPrepareData prepareData) {
         return new CheckGsiTask(
@@ -95,12 +96,14 @@ public class CheckGsiTask extends BaseBackfillTask {
                 prepareData.getSpeedLimit(),
                 prepareData.getSpeedMin(),
                 prepareData.getParallelism(),
-                prepareData.getEarlyFailNumber()
+                prepareData.getEarlyFailNumber(),
+                prepareData.isUseBinary()
             ),
             prepareData.isCorrect(),
             prepareData.getExtraCmd(),
             false,
             false,
+            null,
             null
         );
     }
@@ -116,7 +119,8 @@ public class CheckGsiTask extends BaseBackfillTask {
                         String extraCmd,
                         boolean primaryBroadCast,
                         boolean gsiBroadCast,
-                        Map<String, String> virtualColumnMap) {
+                        Map<String, String> virtualColumnMap,
+                        Map<String, String> backfillColumnMap) {
         super(schemaName);
         this.tableName = tableName;
         this.indexName = indexName;
@@ -128,6 +132,7 @@ public class CheckGsiTask extends BaseBackfillTask {
         this.primaryBroadCast = primaryBroadCast;
         this.gsiBroadCast = gsiBroadCast;
         this.virtualColumnMap = virtualColumnMap;
+        this.backfillColumnMap = backfillColumnMap;
     }
 
     @Override
@@ -140,7 +145,7 @@ public class CheckGsiTask extends BaseBackfillTask {
             return;
         }
 
-        if (isUseFastChecker(ec) && MapUtils.isNotEmpty(virtualColumnMap)) {
+        if (MapUtils.isNotEmpty(virtualColumnMap) || MapUtils.isNotEmpty(backfillColumnMap)) {
             throw GeneralUtil.nestedException(
                 "Fast checker failed. Please try to rollback/recover this job");
         }
@@ -217,7 +222,7 @@ public class CheckGsiTask extends BaseBackfillTask {
             return;
         }
 
-        if (isUseFastChecker(ec) && MapUtils.isNotEmpty(virtualColumnMap)) {
+        if (MapUtils.isNotEmpty(virtualColumnMap) || MapUtils.isNotEmpty(backfillColumnMap)) {
             throw GeneralUtil.nestedException(
                 "Fast checker failed. Please try to rollback/recover this job");
         }
@@ -262,15 +267,12 @@ public class CheckGsiTask extends BaseBackfillTask {
     private boolean fastCheck(ExecutionContext ec, Map<String, Set<String>> srcPhyDbAndTables,
                               Map<String, Set<String>> dstPhyDbAndTables) {
         long startTime = System.currentTimeMillis();
-        SQLRecorderLogger.ddlLogger.warn(MessageFormat
+        SQLRecorderLogger.ddlLogger.info(MessageFormat
             .format("FastChecker for GSI, schema [{0}] logical src table [{1}] logic dst table [{2}] start",
                 schemaName, tableName, indexName));
 
-        final int parallelism = ec.getParamManager().getInt(ConnectionParams.GSI_FASTCHECKER_PARALLELISM);
-        final int maxRetryTimes = ec.getParamManager().getInt(ConnectionParams.FASTCHECKER_RETRY_TIMES);
-
         FastChecker fastChecker =
-            GsiFastChecker.create(schemaName, tableName, indexName, virtualColumnMap, parallelism, ec);
+            GsiFastChecker.create(schemaName, tableName, indexName, virtualColumnMap, backfillColumnMap, ec);
         if (dstPhyDbAndTables != null) {
             fastChecker.setDstPhyDbAndTables(dstPhyDbAndTables);
         }
@@ -281,40 +283,22 @@ public class CheckGsiTask extends BaseBackfillTask {
 
         boolean fastCheckResult = false;
 
-        int tryTimes = 0;
-        while (tryTimes < maxRetryTimes && !fastCheckResult) {
-            try {
-                fastCheckResult = fastChecker.check(ec);
-            } catch (TddlNestableRuntimeException e) {
-                if (StringUtils.containsIgnoreCase(e.getMessage(), "acquire lock timeout")) {
-                    //if acquire lock timeout, we will retry
-                    if (tryTimes < maxRetryTimes - 1) {
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(2000L * (1 + tryTimes));
-                        } catch (InterruptedException ex) {
-                            throw new TddlNestableRuntimeException(ex);
-                        }
-                    } else {
-                        throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER,
-                            "gsi fastchecker retry exceed max times", e);
-                    }
-                } else {
-                    //other exception, we simply throw out
-                    throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER,
-                        "gsi fastchecker failed to check", e);
-                }
-            } finally {
-                tryTimes += 1;
-
-                SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
-                    "FastChecker for GSI, schema [{0}] logical src table [{1}] logic dst table [{2}] finish, time use [{3}], check result [{4}]",
-                    schemaName, tableName, indexName,
-                    (System.currentTimeMillis() - startTime) / 1000.0,
-                    fastCheckResult ? "pass" : "not pass")
-                );
-                if (!fastCheckResult) {
-                    EventLogger.log(EventType.DDL_WARN, "FastChecker failed");
-                }
+        try {
+            fastCheckResult = fastChecker.check(ec);
+        } catch (TddlNestableRuntimeException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CHECKER,
+                "gsi fastchecker failed to check", e);
+        } finally {
+            SQLRecorderLogger.ddlLogger.warn(MessageFormat.format(
+                "FastChecker for GSI, schema [{0}] logical src table [{1}] logic dst table [{2}] finish, time use [{3}], check result [{4}]",
+                schemaName, tableName, indexName,
+                (System.currentTimeMillis() - startTime) / 1000.0,
+                fastCheckResult ? "pass" : "not pass")
+            );
+            if (!fastCheckResult) {
+                EventLogger.log(EventType.DDL_WARN, "FastChecker failed");
+            } else {
+                EventLogger.log(EventType.DDL_INFO, "FastChecker succeed");
             }
         }
 

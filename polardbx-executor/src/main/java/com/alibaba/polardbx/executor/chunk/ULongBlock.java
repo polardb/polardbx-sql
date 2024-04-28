@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -57,6 +58,13 @@ public class ULongBlock extends AbstractBlock {
         super(DataTypes.ULongType, positionCount, valueIsNull, hasNull);
         this.values = Preconditions.checkNotNull(values);
         updateSizeInfo();
+    }
+
+    public static ULongBlock from(ULongBlock other, int selSize, int[] selection) {
+        return new ULongBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyLongArray(other.values, selection, selSize));
     }
 
     @Override
@@ -124,6 +132,15 @@ public class ULongBlock extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(values[pos + arrayOffset]);
+        }
+    }
+
+    @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
             return super.hashCodeVector();
@@ -137,6 +154,17 @@ public class ULongBlock extends AbstractBlock {
     }
 
     @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Long.hashCode(values[position + arrayOffset]);
+        }
+    }
+
+    @Override
     public DataType getType() {
         return DataTypes.ULongType;
     }
@@ -144,7 +172,7 @@ public class ULongBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof ULongBlock) {
-            ULongBlock outputVectorSlot = (ULongBlock) output;
+            ULongBlock outputVectorSlot = output.cast(ULongBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -165,7 +193,7 @@ public class ULongBlock extends AbstractBlock {
         if (!(another instanceof ULongBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        ULongBlock vectorSlot = (ULongBlock) another;
+        ULongBlock vectorSlot = another.cast(ULongBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }

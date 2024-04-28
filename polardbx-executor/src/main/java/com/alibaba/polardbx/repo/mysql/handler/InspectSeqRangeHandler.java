@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.InspectSeqRangeSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
@@ -67,7 +68,8 @@ public class InspectSeqRangeHandler extends AbstractDalHandler {
 
         // Get current ranges from all servers.
         List<List<Map<String, Object>>> resultSets =
-            SyncManagerHelper.sync(new InspectSeqRangeSyncAction(schemaName, seqName), schemaName);
+            SyncManagerHelper.sync(new InspectSeqRangeSyncAction(schemaName, seqName), schemaName,
+                SyncScope.ALL);
         for (List<Map<String, Object>> resultSet : resultSets) {
             if (resultSet != null) {
                 for (Map<String, Object> row : resultSet) {

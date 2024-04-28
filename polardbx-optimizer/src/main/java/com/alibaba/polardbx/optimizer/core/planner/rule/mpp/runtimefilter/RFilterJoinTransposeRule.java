@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp.runtimefilter;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
+import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Streams;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.core.rel.HashJoin;
-import com.alibaba.polardbx.optimizer.core.rel.SemiHashJoin;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptUtil;
@@ -94,7 +94,11 @@ public class RFilterJoinTransposeRule extends RelOptRule {
         if (join instanceof HashJoin) {
             buildNode = ((HashJoin) join).getBuildNode();
             probeNode = ((HashJoin) join).getProbeNode();
+        } else if (join instanceof SemiHashJoin) {
+            buildNode = ((SemiHashJoin) join).getBuildNode();
+            probeNode = ((SemiHashJoin) join).getProbeNode();
         }
+
         final JoinChildInfo buildChildInfo = new JoinChildInfo(join, buildNode);
         final JoinChildInfo probeChildInfo = new JoinChildInfo(join, probeNode);
 
@@ -208,9 +212,9 @@ public class RFilterJoinTransposeRule extends RelOptRule {
 
         public static Boolean[] compareEqualKeysTypeEquals(JoinChildInfo child1, JoinChildInfo child2) {
             return Streams.zip(
-                child1.equalsKeys.stream().map(child1::getDataTypeOfField),
-                child2.equalsKeys.stream().map(child2::getDataTypeOfField),
-                Object::equals)
+                    child1.equalsKeys.stream().map(child1::getDataTypeOfField),
+                    child2.equalsKeys.stream().map(child2::getDataTypeOfField),
+                    Object::equals)
                 .toArray(Boolean[]::new);
         }
 

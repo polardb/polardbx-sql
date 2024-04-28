@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
@@ -48,6 +49,7 @@ import static com.google.common.truth.Truth.assertWithMessage;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
 
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public abstract class GsiDMLTest extends CrudBasedLockTestCase {
 
     // { table name: [primary key, sharding key] }

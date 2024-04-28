@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.NodeSelector;
-import com.alibaba.polardbx.gms.node.Node;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 
 import javax.inject.Inject;
 import java.util.List;

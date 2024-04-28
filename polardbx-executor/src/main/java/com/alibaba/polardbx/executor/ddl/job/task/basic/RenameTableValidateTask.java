@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlKind;
 
 @Getter
 @TaskName(name = "RenameTableValidateTask")
@@ -42,6 +43,7 @@ public class RenameTableValidateTask extends BaseValidateTask {
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
         TableValidator.validateTableNonExistence(schemaName, newLogicalTableName, executionContext);
+        TableValidator.validateTableWithCCI(schemaName, logicalTableName, executionContext, SqlKind.RENAME_TABLE);
         GsiValidator.validateAllowRenameOnTable(schemaName, logicalTableName, executionContext);
     }
 

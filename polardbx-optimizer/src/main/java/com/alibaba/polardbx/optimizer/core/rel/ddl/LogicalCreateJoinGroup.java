@@ -16,12 +16,9 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import org.apache.calcite.plan.RelOptCluster;
-import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.ddl.CreateJoinGroup;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlCreateJoinGroup;
-import org.apache.calcite.sql.SqlDdl;
+import org.apache.commons.lang3.StringUtils;
 
 /**
  * Created by luoyanxin.
@@ -29,15 +26,18 @@ import org.apache.calcite.sql.SqlDdl;
  * @author luoyanxin
  */
 public class LogicalCreateJoinGroup extends BaseDdlOperation {
-    public LogicalCreateJoinGroup(RelOptCluster cluster,
-                                  RelTraitSet traitSet,
-                                  SqlDdl sqlDdl, RelDataType rowType) {
-        super(cluster, traitSet, sqlDdl, rowType);
+    public LogicalCreateJoinGroup(CreateJoinGroup input) {
+        super(input);
     }
 
     @Override
     public String getSchemaName() {
-        return ((SqlCreateJoinGroup) nativeSqlNode).getSchemaName();
+        String schemaName = ((SqlCreateJoinGroup) nativeSqlNode).getSchemaName();
+        if (StringUtils.isBlank(schemaName)) {
+            return super.getSchemaName();
+        } else {
+            return schemaName;
+        }
     }
 
     @Override
@@ -59,6 +59,6 @@ public class LogicalCreateJoinGroup extends BaseDdlOperation {
     }
 
     public static LogicalCreateJoinGroup create(CreateJoinGroup input) {
-        return new LogicalCreateJoinGroup(input.getCluster(), input.getTraitSet(), input.getAst(), input.getRowType());
+        return new LogicalCreateJoinGroup(input);
     }
 }

@@ -27,6 +27,8 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -56,6 +58,7 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.PhyShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterFunction;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterInstance;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterJoinGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterProcedure;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterRule;
@@ -93,7 +96,10 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableSplitPartiti
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAlterTableTruncatePartition;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAnalyzeTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckCci;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalConvertAllSequences;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalClearFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
@@ -119,6 +125,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTableGroup;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalGenericDdl;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalImportDatabase;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalImportSequence;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalInsertOverwrite;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalInspectIndex;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalMergeTableGroup;
@@ -155,6 +163,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttleImpl;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.rel.core.DynamicValues;
 import org.apache.calcite.rel.core.TableModify;
 import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.dal.Dal;
@@ -164,6 +173,7 @@ import org.apache.calcite.rel.ddl.AlterFileStorageAsOfTimestamp;
 import org.apache.calcite.rel.ddl.AlterFileStorageBackup;
 import org.apache.calcite.rel.ddl.AlterFileStoragePurgeBeforeTimestamp;
 import org.apache.calcite.rel.ddl.AlterFunction;
+import org.apache.calcite.rel.ddl.AlterInstance;
 import org.apache.calcite.rel.ddl.AlterJoinGroup;
 import org.apache.calcite.rel.ddl.AlterProcedure;
 import org.apache.calcite.rel.ddl.AlterRule;
@@ -190,6 +200,8 @@ import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.AnalyzeTable;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
+import org.apache.calcite.rel.ddl.ConvertAllSequences;
+import org.apache.calcite.rel.ddl.ClearFileStorage;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateFunction;
@@ -201,6 +213,7 @@ import org.apache.calcite.rel.ddl.CreateProcedure;
 import org.apache.calcite.rel.ddl.CreateStoragePool;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.rel.ddl.CreateTableGroup;
+import org.apache.calcite.rel.ddl.CreateView;
 import org.apache.calcite.rel.ddl.DropDatabase;
 import org.apache.calcite.rel.ddl.DropFileStorage;
 import org.apache.calcite.rel.ddl.DropFunction;
@@ -212,7 +225,10 @@ import org.apache.calcite.rel.ddl.DropProcedure;
 import org.apache.calcite.rel.ddl.DropStoragePool;
 import org.apache.calcite.rel.ddl.DropTable;
 import org.apache.calcite.rel.ddl.DropTableGroup;
+import org.apache.calcite.rel.ddl.DropView;
 import org.apache.calcite.rel.ddl.GenericDdl;
+import org.apache.calcite.rel.ddl.ImportDatabase;
+import org.apache.calcite.rel.ddl.ImportSequence;
 import org.apache.calcite.rel.ddl.InspectIndex;
 import org.apache.calcite.rel.ddl.MergeTableGroup;
 import org.apache.calcite.rel.ddl.MoveDatabase;
@@ -255,12 +271,11 @@ import org.apache.calcite.sql.SqlAlterTableRepartitionLocalPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartition;
 import org.apache.calcite.sql.SqlAlterTableSplitPartitionByHotValue;
 import org.apache.calcite.sql.SqlAlterTableTruncatePartition;
+import org.apache.calcite.sql.SqlCheckColumnarIndex;
 import org.apache.calcite.sql.SqlCheckGlobalIndex;
 import org.apache.calcite.sql.SqlCreateTable;
-import org.apache.calcite.sql.SqlCreateView;
 import org.apache.calcite.sql.SqlDal;
 import org.apache.calcite.sql.SqlDelete;
-import org.apache.calcite.sql.SqlDropView;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexHint;
 import org.apache.calcite.sql.SqlKind;
@@ -272,6 +287,7 @@ import org.apache.calcite.sql.SqlRebalance;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.calcite.sql.SqlShow;
 import org.apache.calcite.sql.SqlShowLocalityInfo;
+import org.apache.calcite.sql.SqlShowPhysicalDdl;
 import org.apache.calcite.sql.SqlShowTables;
 import org.apache.calcite.sql.SqlUpdate;
 import org.apache.calcite.util.Pair;
@@ -357,8 +373,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     private boolean existsOSSTable;
 
     private boolean existsCheckSum = false;
+    private boolean existsUnpushableAgg = false;
+    private boolean existsCheckSumV2 = false;
 
     private boolean outFileStatistics = false;
+
+    private boolean existsUnPushedDynamicValues = false;
 
     public ToDrdsRelVisitor() {
     }
@@ -374,6 +394,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     public RelNode visit(LogicalAggregate aggregate) {
         this.existsGroupingSets = CBOUtil.isGroupSets(aggregate) || existsGroupingSets;
         this.existsCheckSum = CBOUtil.isCheckSum(aggregate) || this.existsCheckSum;
+        this.existsUnpushableAgg = CBOUtil.containUnpushableAgg(aggregate) || this.existsUnpushableAgg;
+        this.existsCheckSumV2 = CBOUtil.isCheckSumV2(aggregate) || this.existsCheckSumV2;
         return super.visit(aggregate);
     }
 
@@ -495,6 +517,25 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             // Dealing with force index(`xxx`), `xxx` will decoded as string.
             .map(indexNode -> GlobalIndexMeta.getIndexName(RelUtils.lastStringValue(indexNode.getIndexList().get(0))))
             .flatMap(indexName -> {
+                // check columnar index first
+                final String columnarIndexNameUnwrapped = GlobalIndexMeta.getColumnarWrappedName(tableName, indexName,
+                    schemaName, plannerContext.getExecutionContext());
+                if (columnarIndexNameUnwrapped != null) {
+                    indexName = columnarIndexNameUnwrapped;
+                }
+                if (GlobalIndexMeta.getColumnarIndexType(tableName, indexName,
+                    schemaName, plannerContext.getExecutionContext()) == IndexType.PUBLISHED_COLUMNAR) {
+                    final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
+                    final LogicalTableScan columnarTableScan =
+                        LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
+                            scan.getFlashback(),
+                            null);
+                    this.withIndexHint = true;
+                    // remove force index for physical sql
+                    scan.setIndexNode(null);
+                    return Optional.of(new OSSTableScan(columnarTableScan, lockMode));
+                }
+
                 final String unwrapped = GlobalIndexMeta
                     .getGsiWrappedName(tableName, indexName, schemaName, plannerContext.getExecutionContext());
                 if (unwrapped != null) {
@@ -594,7 +635,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         List<RexNode> rexNodeList = Lists.newArrayList();
         for (RexNode r : project.getProjects()) {
             if (r instanceof RexCall) {
-                existsWindow = containsWindowExpr((RexCall) r);
+                existsWindow |= containsWindowExpr((RexCall) r);
             }
             existsNonPushDownFunc |= RexUtils.containsUnPushableFunction(r, false);
             RexNode rexNode = r.accept(replaceTableScanInFilterSubQueryFinder);
@@ -722,6 +763,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
             CheckModifyLimitation.check(modify, plannerContext);
 
+            final boolean modifyFkReferenced = CheckModifyLimitation.checkModifyFkReferenced(modify,
+                this.plannerContext.getExecutionContext());
+
             TableModify newPlan;
             Map<String, TableProperties> targetTableProperties;
             Map<String, TableProperties> refTableProperties;
@@ -758,6 +802,11 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     .forEach(tp -> updateAllTableSingleWithSameTgFlag(tp.getPartInfo()));
 
                 this.modifyShardingColumn |= CheckModifyLimitation.checkUpsertModifyShardingColumn(logicalInsert);
+
+                if (modifyFkReferenced) {
+                    logicalInsert.setModifyForeignKey(true);
+                }
+
             } else { // UPDATE / DELETE
                 // Currently we do not allow create GSI on broadcast or single table
                 targetTableProperties = new HashMap<>();
@@ -800,9 +849,6 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
                 final LogicalModify logicalModify = new LogicalModify(modify);
                 this.modifyShardingColumn |= CheckModifyLimitation.checkModifyShardingColumn(logicalModify);
-
-                final boolean modifyFkReferenced = CheckModifyLimitation.checkModifyFkReferenced(logicalModify,
-                    this.plannerContext.getExecutionContext());
 
                 if (CheckModifyLimitation.checkModifyFkReferencing(logicalModify,
                     this.plannerContext.getExecutionContext()) ||
@@ -886,6 +932,15 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 } else if (TStringUtil.equalsIgnoreCase(fromSchema, "information_schema")) {
                     schemaName = ((SqlShowLocalityInfo) sqlDal).getSchema();
                 }
+            } else if (kind.belongsTo(SqlKind.LOGICAL_SHOW_WITH_SCHEMA) && kind == SqlKind.SHOW_PHYSICAL_DDL) {
+                String fromSchema = ((SqlShowPhysicalDdl) sqlDal).getSchema();
+                if (!TStringUtil.equalsIgnoreCase(fromSchema, "information_schema") && !TStringUtil
+                    .equalsIgnoreCase(fromSchema, "mysql")) {
+                    schemaName = ((SqlShowPhysicalDdl) sqlDal).getSchema();
+                } else if (ConfigDataMode.isPolarDbX() && TStringUtil
+                    .equalsIgnoreCase(fromSchema, "information_schema")) {
+                    schemaName = ((SqlShowPhysicalDdl) sqlDal).getSchema();
+                }
             } else if (kind.belongsTo(SqlKind.LOGICAL_SHOW_WITH_TABLE)) {
                 if (sqlDal.getTableName() instanceof SqlIdentifier
                     && ((SqlIdentifier) sqlDal.getTableName()).names.size() == 2) {
@@ -913,8 +968,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     if (!TStringUtil.equalsIgnoreCase("information_schema", schemaNameInTable) && !TStringUtil
                         .equalsIgnoreCase("mysql", schemaNameInTable)) {
                         schemaName = ((SqlIdentifier) sqlDal.getTableName()).names.get(0);
-                    } else if (TStringUtil
-                        .equalsIgnoreCase("information_schema", schemaNameInTable)) {
+                    } else if (TStringUtil.equalsIgnoreCase("information_schema", schemaNameInTable)) {
                         schemaName = ((SqlIdentifier) sqlDal.getTableName()).names.get(0);
                     }
                 }
@@ -1006,6 +1060,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     return LogicalDal.create(dalNode, dbIndex, phyTable, null);
                 }
             }
+        } else if (other instanceof DynamicValues) {
+            if (!InstanceVersion.isMYSQL80() || !plannerContext.getExecutionContext().getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_VALUES_PUSHDOWN)) {
+                this.existsUnPushedDynamicValues = true;
+            }
+            return super.visit(other);
         } else {
             return super.visit(other);
         }
@@ -1120,6 +1180,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
             } else if (ddl.getSqlNode() instanceof SqlCheckGlobalIndex) {
                 return LogicalCheckGsi.create((GenericDdl) ddl, (SqlCheckGlobalIndex) ddl.getSqlNode());
 
+            } else if (ddl.getSqlNode() instanceof SqlCheckColumnarIndex) {
+                return LogicalCheckCci.create((GenericDdl) ddl, (SqlCheckColumnarIndex) ddl.getSqlNode());
+
             } else if (ddl instanceof GenericDdl) {
                 return LogicalGenericDdl.create((GenericDdl) ddl);
 
@@ -1202,7 +1265,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
             } else if (ddl instanceof DropFileStorage) {
                 return LogicalDropFileStorage.create(ddl);
-
+            } else if (ddl instanceof ClearFileStorage) {
+                return LogicalClearFileStorage.create(ddl);
             } else if (ddl instanceof CreateFileStorage) {
                 return LogicalCreateFileStorage.create(ddl);
             } else if (ddl instanceof CreateStoragePool) {
@@ -1217,6 +1281,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalAnalyzeTable.create((AnalyzeTable) ddl);
             } else if (ddl instanceof PushDownUdf) {
                 return LogicalPushDownUdf.create((PushDownUdf) ddl);
+            } else if (ddl instanceof CreateView) {
+                return LogicalCreateView.create((CreateView) ddl);
+            } else if (ddl instanceof DropView) {
+                return LogicalDropView.create((DropView) ddl);
             } else if (ddl instanceof CreateFunction) {
                 return LogicalCreateFunction.create((CreateFunction) ddl);
 
@@ -1238,6 +1306,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalAlterFunction.create((AlterFunction) ddl);
             } else if (ddl instanceof AlterDatabase) {
                 return LogicalAlterDatabase.create((AlterDatabase) ddl);
+            } else if (ddl instanceof ImportDatabase) {
+                return LogicalImportDatabase.create((ImportDatabase) ddl);
+            } else if (ddl instanceof ImportSequence) {
+                return LogicalImportSequence.create((ImportSequence) ddl);
+            } else if (ddl instanceof AlterInstance) {
+                return LogicalAlterInstance.create((AlterInstance) ddl);
             } else {
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_UNSUPPORTED,
                     "operation " + ddl.getSqlNode().getKind());
@@ -1251,16 +1325,14 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalDropDatabase.create((DropDatabase) ddl);
             }
 
-            if (ddl.getSqlNode() instanceof SqlCreateView) {
-                return convertCreateView(ddl);
-
-            } else if (ddl.getSqlNode() instanceof SqlDropView) {
-                return convertDropView(ddl);
-
-            } else if (ddl instanceof CreateMaterializedView) {
+            if (ddl instanceof CreateMaterializedView) {
                 return convertCreateMaterializedView((CreateMaterializedView) ddl);
             } else if (ddl.getSqlNode() instanceof SqlRebalance) {
                 return LogicalRebalance.create((GenericDdl) ddl, (SqlRebalance) ddl.getSqlNode());
+            } else if (ddl.getSqlNode() instanceof SqlCheckGlobalIndex) {
+                return LogicalCheckGsi.create((GenericDdl) ddl, (SqlCheckGlobalIndex) ddl.getSqlNode());
+            } else if (ddl.getSqlNode() instanceof SqlCheckColumnarIndex) {
+                return LogicalCheckCci.create((GenericDdl) ddl, (SqlCheckColumnarIndex) ddl.getSqlNode());
             } else if (ddl instanceof ChangeConsensusRole) {
                 return LogicalChangeConsensusLeader.create((ChangeConsensusRole) ddl);
             } else if (ddl instanceof AlterSystemSetConfig) {
@@ -1277,6 +1349,8 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                 return LogicalCreateJoinGroup.create((CreateJoinGroup) ddl);
             } else if (ddl instanceof DropJoinGroup) {
                 return LogicalDropJoinGroup.create(ddl);
+            } else if (ddl instanceof ConvertAllSequences) {
+                return LogicalConvertAllSequences.create((ConvertAllSequences) ddl);
             }
 
             if (ddl instanceof SequenceDdl) {
@@ -1292,52 +1366,10 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         return ddl.kind().belongsTo(SqlKind.DDL_SUPPORTED_BY_NEW_ENGINE);
     }
 
-    private RelNode convertCreateView(final DDL ddl) {
-        final SqlCreateView sqlCreateView = (SqlCreateView) ddl.getSqlNode();
-
-        SqlNodeList columns = sqlCreateView.getColumnList();
-        List<String> columnList = null;
-        if (columns != null && columns.size() > 0) {
-            columnList = columns.getList().stream().map(x -> x.toString()).map(SQLUtils::normalizeNoTrim)
-                .collect(Collectors.toList());
-        }
-
-        String schemaName;
-        String viewName;
-        int nameSize = sqlCreateView.getName().names.size();
-        if (nameSize == 2) {
-            schemaName = sqlCreateView.getName().names.get(0);
-            viewName = sqlCreateView.getName().names.get(1);
-        } else {
-            schemaName = OptimizerContext.getContext(null).getSchemaName();
-            viewName = sqlCreateView.getName().names.get(nameSize - 1);
-        }
-
-        return new LogicalCreateView(ddl.getCluster(), sqlCreateView.isReplace(), schemaName, viewName, columnList,
-            sqlCreateView.getQuery());
-    }
-
     private RelNode convertCreateMaterializedView(final CreateMaterializedView ddl) {
         CreateMaterializedView newView = (CreateMaterializedView) super.visit(ddl);
         return LogicalCreateMaterializedView.createMaterializedView(
             newView, newView.getTraitSet().replace(DrdsConvention.NONE), ddl.bRefresh);
-    }
-
-    private RelNode convertDropView(final DDL ddl) {
-        final SqlDropView sqlDropView = (SqlDropView) ddl.getSqlNode();
-
-        String schemaName;
-        String viewName;
-        int nameSize = sqlDropView.getName().names.size();
-        if (nameSize == 2) {
-            schemaName = sqlDropView.getName().names.get(0);
-            viewName = sqlDropView.getName().names.get(1);
-        } else {
-            schemaName = OptimizerContext.getContext(null).getSchemaName();
-            viewName = sqlDropView.getName().names.get(nameSize - 1);
-        }
-
-        return new LogicalDropView(ddl.getCluster(), schemaName, viewName, sqlDropView.isIfExists());
     }
 
     private RelNode convertDropMaterializedView(final DropMaterializedView ddl) {
@@ -1757,8 +1789,9 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     public boolean existsCannotPushDown() {
         return existsWindow ||
             existsIntersect ||
-            existsMinus || existsCheckSum || existsNonPushDownFunc ||
-            (modifyBroadcastTable && containUncertainValue);
+            existsMinus || existsCheckSum || existsUnpushableAgg || existsNonPushDownFunc ||
+            (modifyBroadcastTable && containUncertainValue) || existsCheckSumV2 ||
+            existsUnPushedDynamicValues;
     }
 
     public boolean isContainOnlineModifyColumnTable() {
@@ -1782,6 +1815,14 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
     }
     public boolean isExistsCheckSum() {
         return existsCheckSum;
+    }
+
+    public boolean isExistsUnpushableAgg() {
+        return existsUnpushableAgg;
+    }
+
+    public boolean isExistsCheckSumV2() {
+        return existsCheckSumV2;
     }
 
     public boolean isOutFileStatistics() {

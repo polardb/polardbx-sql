@@ -60,7 +60,7 @@ public class IfVectorizedExpression extends AbstractVectorizedExpression {
 
         // handle when expression and yield then selections and else selections
         whenOperator.eval(ctx);
-        long[] whenVector = ((LongBlock) whenBlock).longArray();
+        long[] whenVector = (whenBlock.cast(LongBlock.class)).longArray();
 
         if (selectionInUse) {
             for (int i = 0; i < batchSize; i++) {

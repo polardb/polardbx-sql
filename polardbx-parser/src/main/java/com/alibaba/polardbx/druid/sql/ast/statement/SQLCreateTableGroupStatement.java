@@ -34,6 +34,7 @@ public class SQLCreateTableGroupStatement extends SQLStatementImpl implements SQ
     protected SQLName name;
     protected boolean ifNotExists = false;
     protected SQLPartitionBy sqlPartitionBy;
+    protected boolean single = false;
     protected SQLExpr locality;
 
     public SQLCreateTableGroupStatement() {
@@ -76,6 +77,14 @@ public class SQLCreateTableGroupStatement extends SQLStatementImpl implements SQ
             x.setParent(this);
         }
         this.sqlPartitionBy = x;
+    }
+
+    public boolean isSingle() {
+        return single;
+    }
+
+    public void setSingle(boolean single) {
+        this.single = single;
     }
 
     public String getLocality() {

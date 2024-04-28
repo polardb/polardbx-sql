@@ -35,6 +35,19 @@ public class ForeignColsRecord implements SystemTableRecord {
     public String refColName;
     public long pos;
 
+    public ForeignColsRecord() {
+    }
+
+    public ForeignColsRecord(String schemaName, String tableName, String indexName, String forColName,
+                             String refColName, long pos) {
+        this.schemaName = schemaName;
+        this.tableName = tableName;
+        this.indexName = indexName;
+        this.forColName = forColName;
+        this.refColName = refColName;
+        this.pos = pos;
+    }
+
     @Override
     public ForeignColsRecord fill(ResultSet rs) throws SQLException {
         this.id = rs.getLong("id");
@@ -48,9 +61,8 @@ public class ForeignColsRecord implements SystemTableRecord {
     }
 
     protected Map<Integer, ParameterContext> buildInsertParams() {
-        Map<Integer, ParameterContext> params = new HashMap<>(8);
+        Map<Integer, ParameterContext> params = new HashMap<>(7);
         int index = 0;
-        MetaDbUtil.setParameter(++index, params, ParameterMethod.setLong, this.id);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.schemaName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.tableName);
         MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, this.indexName);

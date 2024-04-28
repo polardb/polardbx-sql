@@ -30,6 +30,7 @@
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
 import java.io.Closeable;
+import java.util.List;
 
 public interface StageScheduler extends Closeable {
     /**
@@ -43,9 +44,15 @@ public interface StageScheduler extends Closeable {
 
     int getTaskNum();
 
+    int requireChildOutputNum();
+
     int getDriverParallelism();
 
     @Override
     default void close() {
+    }
+
+    default List<Integer> getPrunePartitions() {
+        return null;
     }
 }

@@ -61,7 +61,8 @@ public class SystemDbHelper {
     public static final String CDC_DB_NAME = "__cdc__";
     public static final String CDC_DB_CHARSET = "utf8mb4";
     public static final String CDC_DB_COLLATION = "utf8mb4_general_ci";
-    private final static String[] buildInDb = {INFO_SCHEMA_DB_NAME, CDC_DB_NAME, DEFAULT_DB_NAME, DEFAULT_META_DB_NAME};
+    private final static String[] buildInDb =
+        {INFO_SCHEMA_DB_NAME, CDC_DB_NAME, DEFAULT_DB_NAME, DEFAULT_META_DB_NAME};
     private final static String[] buildInDbExcludeCdc = {INFO_SCHEMA_DB_NAME, DEFAULT_DB_NAME};
 
     public static void checkOrCreateDefaultDb(MetaDbDataSource metaDbDs) {
@@ -98,12 +99,12 @@ public class SystemDbHelper {
             dbInfoAccessor.setConnection(metaDbConn);
             DbInfoRecord dbInfo = dbInfoAccessor.getDbInfoByDbName(SystemDbHelper.CDC_DB_NAME);
             if (!(dbInfo != null && dbInfo.dbStatus == DbInfoRecord.DB_STATUS_RUNNING)) {
-                CreateDbInfo createDbInfo = DbTopologyManager
+                CreateDbInfo cdcDbInfo = DbTopologyManager
                     .initCreateDbInfo(SystemDbHelper.CDC_DB_NAME, SystemDbHelper.CDC_DB_CHARSET,
                         SystemDbHelper.CDC_DB_COLLATION, new LocalityDesc(),
                         null, DbInfoRecord.DB_TYPE_CDC_DB, true, -1, 1);
-                createDbInfo.dbType = DbInfoRecord.DB_TYPE_CDC_DB;
-                DbTopologyManager.createLogicalDb(createDbInfo);
+                cdcDbInfo.dbType = DbInfoRecord.DB_TYPE_CDC_DB;
+                DbTopologyManager.createLogicalDb(cdcDbInfo);
             }
         } catch (Throwable ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex, "failed to create cdc db, err is " +

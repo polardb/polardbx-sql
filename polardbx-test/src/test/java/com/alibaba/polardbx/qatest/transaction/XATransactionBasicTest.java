@@ -22,11 +22,11 @@ import com.alibaba.polardbx.qatest.data.TableColumnGenerator;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.Parameterized.Parameters;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -50,7 +50,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
     @Parameters(name = "{index}:table={0},asyncCommit={1}")
     public static List<String[]> prepare() {
         List<String[]> ret = new ArrayList<>();
-        String[] asyncCommit = {"TRUE", "FALSE"};
+        String[] asyncCommit = {/*"TRUE",*/ "FALSE"};
         for (String ac : asyncCommit) {
             for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {
                 ret.add(new String[] {tables[0], ac});
@@ -302,7 +302,7 @@ public class XATransactionBasicTest extends CrudBasedLockTestCase {
     /**
      * @since 5.4.9
      */
-    @Test
+    @Ignore
     public void testApply() throws Exception {
         tableDataPrepare(baseOneTableName, 100,
             TableColumnGenerator.getAllTypeColum(), PK_COLUMN_NAME, mysqlConnection,

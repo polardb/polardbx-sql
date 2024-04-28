@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.io.Closer;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.common.io.Closer;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.calcite.sql.OutFileParams;
 
 import java.io.IOException;
@@ -87,7 +87,7 @@ public class GenericSpiller implements Spiller {
     @Override
     public List<Iterator<Chunk>> getSpills(long maxChunkNum) {
         return singleStreamSpillers.stream()
-            .map( spiller -> spiller.getSpilledChunks(maxChunkNum))
+            .map(spiller -> spiller.getSpilledChunks(maxChunkNum))
             .collect(toList());
     }
 

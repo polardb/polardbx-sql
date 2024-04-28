@@ -40,7 +40,7 @@ public class ActionLockResource implements BalanceAction {
     public ActionLockResource(String schema, Set<String> exclusiveResourceSet) {
         this.schema = schema;
         this.exclusiveResourceSet = new HashSet<>();
-        if(exclusiveResourceSet != null){
+        if (exclusiveResourceSet != null) {
             this.exclusiveResourceSet.addAll(exclusiveResourceSet);
         }
     }
@@ -57,7 +57,7 @@ public class ActionLockResource implements BalanceAction {
 
     @Override
     public String getStep() {
-        if(CollectionUtils.isEmpty(exclusiveResourceSet)){
+        if (CollectionUtils.isEmpty(exclusiveResourceSet)) {
             return "Lock()";
         }
         return "Lock(" + Joiner.on(",").join(exclusiveResourceSet) + ")";

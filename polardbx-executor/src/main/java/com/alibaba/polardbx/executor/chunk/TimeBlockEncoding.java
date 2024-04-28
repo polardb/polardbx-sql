@@ -49,7 +49,7 @@ public class TimeBlockEncoding implements BlockEncoding {
 
     @Override
     public void writeBlock(SliceOutput sliceOutput, Block block) {
-        TimeBlock timeBlock = (TimeBlock) block;
+        TimeBlock timeBlock = block.cast(TimeBlock.class);
 
         // write scale value
         DataType dataType = timeBlock.getDataType();

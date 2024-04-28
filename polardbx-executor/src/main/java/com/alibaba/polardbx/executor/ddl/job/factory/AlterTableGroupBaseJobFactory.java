@@ -16,13 +16,21 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.EmptyTableGroupValidateTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableGroupFinalMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyExecutorInitTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
+import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
@@ -47,6 +55,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.commons.lang3.StringUtils;
 
@@ -60,14 +69,13 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
-import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
-
 /**
  * @author luoyanxin
  */
 public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
 
     protected static final String SET_NEW_TABLE_GROUP = "alter table `%s` set tablegroup=''";
+    protected static final String SET_TARGET_TABLE_GROUP = "alter table `%s` set tablegroup='%s'";
 
     @Deprecated
     protected final DDL ddl;
@@ -189,6 +197,9 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
         if (StringUtils.isNotEmpty(preparedData.getTargetTableGroup())) {
             resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTargetTableGroup()));
         }
+        if (StringUtils.isNotEmpty(preparedData.getTargetImplicitTableGroupName())) {
+            resources.add(concatWithDot(preparedData.getSchemaName(), preparedData.getTargetImplicitTableGroupName()));
+        }
         for (String relatedPart : preparedData.getRelatedPartitions()) {
             resources.add(concatWithDot(concatWithDot(preparedData.getSchemaName(), preparedData.getTableGroupName()),
                 relatedPart));
@@ -236,7 +247,7 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
             .getTableGroupConfigByName(alterTableSplitPartitionPreparedData.getTableGroupName());
         String logicTableName = preparedData.getTableName();
         if (StringUtils.isEmpty(logicTableName)) {
-            logicTableName = tableGroupConfig.getAllTables().get(0).getTableName();
+            logicTableName = tableGroupConfig.getAllTables().get(0);
         }
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicTableName);
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
@@ -295,6 +306,12 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
         return outdatedPartitionGroupId;
     }
 
+    protected void attacheCdcFinalMarkTask(ExecutableDdlJob executableDdlJob) {
+        CdcAlterTableGroupFinalMarkTask cdcAlterTableGroupFinalMarkTask =
+            new CdcAlterTableGroupFinalMarkTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
+        executableDdlJob.appendTask(cdcAlterTableGroupFinalMarkTask);
+    }
+
     public Map<String, Set<String>> getTheDeletedPartitionsLocation(String schemaName, String tableName) {
         Map<String, Set<String>> deletedPhyTables = new HashMap<>();
 
@@ -339,4 +356,71 @@ public abstract class AlterTableGroupBaseJobFactory extends DdlJobFactory {
         return deletedPhyTables;
     }
 
+    public ExecutableDdlJob withImplicitTableGroup(ExecutionContext ec) {
+        executionContext.getDdlContext().setDdlType(DdlType.ALTER_TABLE_RENAME_PARTITION);
+        String implicitTableGroup = preparedData.getTargetImplicitTableGroupName();
+        assert implicitTableGroup != null;
+        TableGroupConfig tgConfig = OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
+            .getTableGroupConfigByName(implicitTableGroup);
+        if (tgConfig == null) {
+            return createTableGroupAndRedo(ec);
+        } else if (tgConfig.isEmpty()) {
+            return setTableGroupAndRedo(ec);
+        } else {
+            throw new RuntimeException("unexpected");
+        }
+    }
+
+    public ExecutableDdlJob createTableGroupAndRedo(ExecutionContext ec) {
+        String implicitTableGroup = preparedData.getTargetImplicitTableGroupName();
+        List<DdlTask> taskList = new ArrayList<>();
+        ExecutableDdlJob job = new ExecutableDdlJob();
+        CreateTableGroupValidateTask createTableGroupValidateTask =
+            new CreateTableGroupValidateTask(preparedData.getSchemaName(),
+                ImmutableList.of(implicitTableGroup));
+        taskList.add(createTableGroupValidateTask);
+        CreateTableGroupAddMetaTask createTableGroupAddMetaTask = new CreateTableGroupAddMetaTask(
+            preparedData.getSchemaName(), implicitTableGroup, null,
+            null, false, true);
+        taskList.add(createTableGroupAddMetaTask);
+        TableGroupsSyncTask tableGroupsSyncTask =
+            new TableGroupsSyncTask(preparedData.getSchemaName(), ImmutableList.of(implicitTableGroup));
+        taskList.add(tableGroupsSyncTask);
+        SubJobTask subJobAddToImplicitTableGroup =
+            new SubJobTask(preparedData.getSchemaName(),
+                String.format(SET_TARGET_TABLE_GROUP, preparedData.getTableName(), implicitTableGroup),
+                null);
+        SubJobTask redoTask =
+            new SubJobTask(preparedData.getSchemaName(), preparedData.getSourceSql(), null);
+        subJobAddToImplicitTableGroup.setParentAcquireResource(true);
+        redoTask.setParentAcquireResource(true);
+        taskList.add(subJobAddToImplicitTableGroup);
+        taskList.add(redoTask);
+        job.addSequentialTasks(taskList);
+        ec.getParamManager().getProps()
+            .put(ConnectionProperties.ONLY_MANUAL_TABLEGROUP_ALLOW, Boolean.FALSE.toString());
+        return job;
+    }
+
+    public ExecutableDdlJob setTableGroupAndRedo(ExecutionContext ec) {
+        String implicitTableGroup = preparedData.getTargetImplicitTableGroupName();
+        List<DdlTask> taskList = new ArrayList<>();
+        ExecutableDdlJob job = new ExecutableDdlJob();
+        EmptyTableGroupValidateTask emptyTableGroupValidateTask =
+            new EmptyTableGroupValidateTask(preparedData.getSchemaName(), implicitTableGroup);
+        SubJobTask subJobAddToImplicitTableGroup =
+            new SubJobTask(preparedData.getSchemaName(), String.format(SET_TARGET_TABLE_GROUP, implicitTableGroup),
+                null);
+        SubJobTask redoTask =
+            new SubJobTask(preparedData.getSchemaName(), preparedData.getSourceSql(), null);
+        subJobAddToImplicitTableGroup.setParentAcquireResource(true);
+        redoTask.setParentAcquireResource(true);
+        taskList.add(emptyTableGroupValidateTask);
+        taskList.add(subJobAddToImplicitTableGroup);
+        taskList.add(redoTask);
+        job.addSequentialTasks(taskList);
+        ec.getParamManager().getProps()
+            .put(ConnectionProperties.ONLY_MANUAL_TABLEGROUP_ALLOW, Boolean.FALSE.toString());
+        return job;
+    }
 }

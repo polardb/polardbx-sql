@@ -36,7 +36,6 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSplitPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -47,7 +46,6 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -90,10 +88,10 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableGroupSplitPartitionPreparedData.getTableGroupName(),
-                tablesVersion, true, alterTableGroupSplitPartitionPreparedData.getTargetPhysicalGroups());
+                tablesVersion, true, alterTableGroupSplitPartitionPreparedData.getTargetPhysicalGroups(), false);
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(alterTableGroupSplitPartitionPreparedData.getTableGroupName());
-        String firstTbInTg = tableGroupConfig.getAllTables().get(0).getLogTbRec().getTableName();
+        String firstTbInTg = tableGroupConfig.getAllTables().get(0);
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(firstTbInTg);
         PartitionInfo partitionInfo = tableMeta.getPartitionInfo();
 
@@ -170,6 +168,7 @@ public class AlterTableGroupSplitPartitionJobFactory extends AlterTableGroupBase
 
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
 
+        attacheCdcFinalMarkTask(executableDdlJob);
         return executableDdlJob;
     }
 

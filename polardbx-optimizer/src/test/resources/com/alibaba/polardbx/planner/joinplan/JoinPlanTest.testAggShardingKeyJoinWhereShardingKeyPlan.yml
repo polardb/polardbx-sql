@@ -18,3 +18,10 @@
 
   plan: |
     phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb]", sql="select count(*) as `count(*)` from ? as `a` inner join ? as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = 1)) group by `a`.`name` order by count(*)")
+
+-
+  sql: |
+    select count(1) from test_hash_tb a join test_hash_tb b where a.id=b.id and a.id=1 group by a.name order by count(1);
+
+  plan: |
+    phytableoperation(tables="optest_0001.[test_hash_tb, test_hash_tb]", sql="select count(1) as `count(1)` from ? as `a` inner join ? as `b` where ((`a`.`id` = `b`.`id`) and (`a`.`id` = 1)) group by `a`.`name` order by count(1)")

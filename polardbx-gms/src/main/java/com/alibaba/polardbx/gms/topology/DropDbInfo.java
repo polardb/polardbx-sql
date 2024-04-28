@@ -31,6 +31,13 @@ public class DropDbInfo {
 
     private long ts;
 
+    /**
+     * 用于import database场景
+     * 为true表示仅删除逻辑层元信息，保留物理库
+     * 默认为false
+     */
+    private boolean reservePhyDb = false;
+
     public String getDbName() {
         return dbName;
     }
@@ -69,5 +76,13 @@ public class DropDbInfo {
 
     public void setTs(long ts) {
         this.ts = ts;
+    }
+
+    public boolean isReservePhyDb() {
+        return reservePhyDb;
+    }
+
+    public void setReservePhyDb(boolean reservePhyDb) {
+        this.reservePhyDb = reservePhyDb;
     }
 }

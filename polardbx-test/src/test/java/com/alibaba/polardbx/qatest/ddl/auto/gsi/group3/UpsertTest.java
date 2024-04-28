@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.gsi.group3;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
@@ -49,6 +50,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
     private static final String DML_USE_NEW_DUP_CHECKER = "DML_USE_NEW_DUP_CHECKER=TRUE";
     private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
     private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
+    private static final String DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE = "DML_CHECK_JSON_BY_STRING_COMPARE=FALSE";
 
     private boolean useAffectedRows;
     private Connection oldTddl;
@@ -2595,6 +2597,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly_usingGsi() {
         final String tableName = "upsert_test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -2686,6 +2689,7 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly() {
         final String tableName = "upsert_test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -5336,7 +5340,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         insert = String.format(
             "insert into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}') on duplicate key update a=1,b=2,c='{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}'",
             tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + insert, "");
 
         hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
@@ -5366,7 +5371,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
             JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
             JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
 
-            String select = String.format("select * from %s where b != current_user()", tableName);
+            String select =
+                String.format("/*+TDDL:enable_mpp=false*/select * from %s where b != current_user()", tableName);
             ResultSet resultSet = JdbcUtil.executeQuery(select, tddlConnection);
             List<List<String>> allResult = JdbcUtil.getStringResult(resultSet, true);
             Assert.assertEquals(0, allResult.size());
@@ -5391,7 +5397,8 @@ public class UpsertTest extends DDLBaseNewDBTestCase {
         insert = String.format(
             "insert into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}') on duplicate key update a=1,b=2,c='{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}'",
             tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + insert, "");
         JdbcUtil.executeUpdateSuccess(tddlConnection, insert);
 

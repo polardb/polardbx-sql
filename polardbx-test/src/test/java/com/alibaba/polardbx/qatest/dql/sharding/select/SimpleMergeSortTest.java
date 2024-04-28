@@ -30,7 +30,8 @@ public class SimpleMergeSortTest extends ReadBaseTestCase {
 
     @Test
     public void testFixedOrderResult() {
-        String sql = "/*+TDDL:PREFETCH_EXECUTE_POLICY=1*/select pk from " + baseOneTableName + " limit 10 ";
+        String sql =
+            "/*+TDDL:PREFETCH_EXECUTE_POLICY=1 enable_mpp=false*/select pk from " + baseOneTableName + " limit 10 ";
         ResultSet tddlRs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         List<List<Object>> firstResults = JdbcUtil.getAllResult(tddlRs, false);
 
@@ -43,7 +44,8 @@ public class SimpleMergeSortTest extends ReadBaseTestCase {
 
     @Test
     public void testVerifyTraceNum() {
-        String sql = "/*+TDDL:PREFETCH_EXECUTE_POLICY=1*/select * from " + baseOneTableName + " limit 1 ";
+        String sql =
+            "/*+TDDL:PREFETCH_EXECUTE_POLICY=1 enable_mpp=false*/select * from " + baseOneTableName + " limit 1 ";
         Assert.assertTrue(getTraceCount(sql) <= 2);
     }
 

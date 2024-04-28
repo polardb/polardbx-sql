@@ -58,6 +58,7 @@ import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.rebalance.RebalanceTarget;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -79,12 +80,22 @@ import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.balancer.policy.PolicyPartitionBalance.MAX_TABLEGROUP_SOLVED_BY_LP;
-import static com.alibaba.polardbx.executor.balancer.policy.PolicyUtils.getGroupDetails;
 
 /**
  * Move partitions between storage node if un-balanced.
@@ -167,6 +178,13 @@ public class PolicyDataBalance implements BalancePolicy {
         List<GroupStats.GroupsOfStorage> groupList = stats.getGroups();
         if (CollectionUtils.isEmpty(groupList)) {
             return Collections.emptyList();
+        }
+        if (StoragePoolManager.getInstance().isTriggered()) {
+            List<String> storageInsts =
+                StoragePoolManager.getInstance().getStoragePoolInfo(StoragePoolManager.DEFAULT_STORAGE_POOL_NAME)
+                    .getDnLists();
+            groupList =
+                groupList.stream().filter(o -> storageInsts.contains(o.storageInst)).collect(Collectors.toList());
         }
         List<BucketOfGroups> buckets = groupList.stream().map(BucketOfGroups::new).collect(Collectors.toList());
 

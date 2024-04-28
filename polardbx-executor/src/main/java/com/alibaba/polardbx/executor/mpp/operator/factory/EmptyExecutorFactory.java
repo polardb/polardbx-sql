@@ -36,4 +36,5 @@ public class EmptyExecutorFactory extends ExecutorFactory {
         EmptyExecutor exec = new EmptyExecutor(columnMetaList);
         return exec;
     }
+
 }

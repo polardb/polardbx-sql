@@ -22,7 +22,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
-import org.apache.commons.collections.CollectionUtils;
 
 import java.sql.Connection;
 import java.util.List;

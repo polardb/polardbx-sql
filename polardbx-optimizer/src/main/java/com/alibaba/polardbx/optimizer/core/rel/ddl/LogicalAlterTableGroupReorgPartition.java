@@ -70,7 +70,7 @@ public class LogicalAlterTableGroupReorgPartition extends LogicalAlterTableReorg
 
         OptimizerContext oc = OptimizerContext.getContext(schemaName);
         TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigByName(tableGroupName);
-        String firstTableName = tableGroupConfig.getAllTables().get(0).getTableName();
+        String firstTableName = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo = oc.getPartitionInfoManager().getPartitionInfo(firstTableName);
 
         PartitionByDefinition partByDef = partitionInfo.getPartitionBy();

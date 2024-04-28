@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Future;
 
@@ -27,7 +28,7 @@ public class AsyncUtils {
 
     private static final Logger logger = LoggerFactory.getLogger(AsyncUtils.class);
 
-    public static void waitAll(List<Future> futures) {
+    public static void waitAll(Collection<Future> futures) {
         List<Throwable> exceptions = new ArrayList<>();
 
         for (Future future : futures) {

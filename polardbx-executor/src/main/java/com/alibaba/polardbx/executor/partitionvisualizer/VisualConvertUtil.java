@@ -16,24 +16,22 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer;
 
-import java.util.Map;
-
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.partitionvisualizer.model.PartitionHeatInfo;
-
 import io.airlift.slice.Slice;
+
+import java.util.Map;
 
 /**
  * @author ximing.yd
- * @date 2022/4/14 3:29 下午
  */
 public class VisualConvertUtil {
 
     private static final Logger logger = LoggerFactory.getLogger(VisualConvertUtil.class);
 
-    public static String generateBound(PartitionHeatInfo pInfo){
+    public static String generateBound(PartitionHeatInfo pInfo) {
         if (pInfo == null) {
             logger.warn("pInfo is null");
             return "-,-,-,-";
@@ -43,7 +41,7 @@ public class VisualConvertUtil {
     }
 
     //为了在bound按照字母序排序时不会出现错乱
-    public static String fillZero(Integer originNum){
+    public static String fillZero(Integer originNum) {
         if (originNum == null) {
             logger.warn("originNum is null");
             return "-";
@@ -60,58 +58,55 @@ public class VisualConvertUtil {
         return originNum.toString();
     }
 
-
     public static String generatePartitionHeatInfoKey(PartitionHeatInfo pInfo) {
         return String.format("%s,%s,%s", pInfo.getSchemaName(), pInfo.getLogicalTable(), pInfo.getPartitionName());
     }
 
-
-    public static String getObjString(String key, Map<String, Object> objMap){
+    public static String getObjString(String key, Map<String, Object> objMap) {
         if (objMap.get(key) instanceof Slice) {
-            return ((Slice)objMap.get(key)).toStringUtf8();
+            return ((Slice) objMap.get(key)).toStringUtf8();
         }
         if (objMap.get(key) instanceof String) {
-            return ((String)objMap.get(key));
+            return ((String) objMap.get(key));
         }
         return "";
     }
 
-    public static Integer getObjInteger(String key, Map<String, Object> objMap){
+    public static Integer getObjInteger(String key, Map<String, Object> objMap) {
         if (objMap.get(key) instanceof UInt64) {
-            return ((UInt64)objMap.get(key)).intValue();
+            return ((UInt64) objMap.get(key)).intValue();
         }
         if (objMap.get(key) instanceof Number) {
-            return ((Number)objMap.get(key)).intValue();
+            return ((Number) objMap.get(key)).intValue();
         }
         if (objMap.get(key) instanceof Integer) {
-            return ((Integer)objMap.get(key));
+            return ((Integer) objMap.get(key));
         }
         return 0;
     }
 
-    public static Long getObjLong(String key, Map<String, Object> objMap){
+    public static Long getObjLong(String key, Map<String, Object> objMap) {
         if (objMap.get(key) instanceof UInt64) {
-            return ((UInt64)objMap.get(key)).longValue();
+            return ((UInt64) objMap.get(key)).longValue();
         }
         if (objMap.get(key) instanceof Number) {
-            return ((Number)objMap.get(key)).longValue();
+            return ((Number) objMap.get(key)).longValue();
         }
         if (objMap.get(key) instanceof Long) {
-            return ((Long)objMap.get(key));
+            return ((Long) objMap.get(key));
         }
         return 0L;
     }
 
-
     public static Long getObjLong(Object obj) {
         if (obj instanceof UInt64) {
-            return ((UInt64)obj).longValue();
+            return ((UInt64) obj).longValue();
         }
         if (obj instanceof Number) {
-            return ((Number)obj).longValue();
+            return ((Number) obj).longValue();
         }
         if (obj instanceof Long) {
-            return ((Long)obj);
+            return ((Long) obj);
         }
         return 0L;
     }

@@ -54,6 +54,11 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
     }
 
+    public PlanTestCommon(String caseName, String targetEnvFile, int sqlIndex, String sql, String expectedPlan,
+                          String lineNum) {
+        super(caseName, targetEnvFile, sqlIndex, sql, expectedPlan, lineNum);
+    }
+
     public PlanTestCommon(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum,
                           String expect, String nodetree, String struct) {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum, expect, nodetree, struct);
@@ -74,6 +79,15 @@ public abstract class PlanTestCommon extends BasePlannerTest {
         final String[] planStr = new String[1];
 
         ExecutionContext executionContext = new ExecutionContext(appName);
+        ExecutionPlan executionPlan = getExecutionPlan(testSql, executionContext);
+        assertPlanProperty(executionPlan.getPlan());
+
+        planStr[0] = returnPlanStr(executionContext, executionPlan.getPlan());
+
+        return removeSubqueryHashCode(planStr[0], executionPlan.getPlan(), null);
+    }
+
+    protected ExecutionPlan getExecutionPlan(String testSql, ExecutionContext executionContext) {
         executionContext.setParams(new Parameters());
         SqlNode ast = parserSqlNode(executionContext, testSql);
 
@@ -135,12 +149,7 @@ public abstract class PlanTestCommon extends BasePlannerTest {
             }
             executionPlan.setPlan(node);
         }
-
-        assertPlanProperty(executionPlan.getPlan());
-
-        planStr[0] = returnPlanStr(executionContext, executionPlan.getPlan());
-
-        return removeSubqueryHashCode(planStr[0], executionPlan.getPlan(), null);
+        return executionPlan;
     }
 
     protected String returnPlanStr(ExecutionContext executionContext, RelNode plan) {

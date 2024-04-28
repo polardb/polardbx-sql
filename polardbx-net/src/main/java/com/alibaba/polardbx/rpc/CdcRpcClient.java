@@ -93,7 +93,6 @@ public class CdcRpcClient extends AbstractLifecycle implements Lifecycle {
             .forTarget(CdcTargetUtil.getDumperTarget(streamName))
             .usePlaintext()
             .maxInboundMessageSize(0xFFFFFF + 5 + 0xFF)
-            .flowControlWindow(1048576 * 500)
             .build();
         return CdcServiceGrpc.newStub(channel);
     }

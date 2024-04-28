@@ -16,14 +16,13 @@
 
 package org.apache.calcite.sql;
 
+import org.apache.calcite.sql.parser.SqlParserPos;
+
 import java.util.Arrays;
 import java.util.List;
 
-import org.apache.calcite.sql.parser.SqlParserPos;
-
 /**
  * @author chenmo.cm
- * @date 2019/1/23 12:07 AM
  */
 public class SqlAlterTableDropIndex extends SqlAlterSpecification {
     private static final SqlOperator OPERATOR =
@@ -31,22 +30,21 @@ public class SqlAlterTableDropIndex extends SqlAlterSpecification {
 
     /**
      * Creates a SqlAlterTableDropIndex.
-     *
-     * @param indexName
-     * @param tableName
-     * @param pos
      */
-    public SqlAlterTableDropIndex(SqlIdentifier tableName, SqlIdentifier indexName , String sql, SqlParserPos pos) {
+    public SqlAlterTableDropIndex(SqlIdentifier tableName, SqlIdentifier indexName, SqlIdentifier originIndexName,
+                                  String sql, SqlParserPos pos) {
         super(pos);
         this.tableName = tableName;
         this.originTableName = tableName;
+        this.originIndexName = originIndexName;
         this.indexName = indexName;
         this.sourceSql = sql;
     }
 
-    private SqlNode tableName;
+    final private SqlIdentifier tableName;
     final private SqlIdentifier originTableName;
     final private SqlIdentifier indexName;
+    final private SqlIdentifier originIndexName;
     final private String sourceSql;
 
     @Override
@@ -56,11 +54,7 @@ public class SqlAlterTableDropIndex extends SqlAlterSpecification {
 
     @Override
     public List<SqlNode> getOperandList() {
-        return Arrays.asList(tableName,indexName);
-    }
-
-    public void setTargetTable(SqlNode tableName) {
-        this.tableName = tableName;
+        return Arrays.asList(tableName, indexName);
     }
 
     @Override
@@ -80,6 +74,10 @@ public class SqlAlterTableDropIndex extends SqlAlterSpecification {
         return indexName;
     }
 
+    public SqlIdentifier getOriginIndexName() {
+        return originIndexName;
+    }
+
     public String getSourceSql() {
         return sourceSql;
     }
@@ -89,5 +87,11 @@ public class SqlAlterTableDropIndex extends SqlAlterSpecification {
     }
 
     @Override
-    public boolean supportFileStorage() { return true;}
+    public boolean supportFileStorage() {
+        return true;
+    }
+
+    public SqlAlterTableDropIndex replaceIndexName(SqlIdentifier newIndexName) {
+        return new SqlAlterTableDropIndex(tableName, newIndexName, originIndexName, sourceSql, pos);
+    }
 }

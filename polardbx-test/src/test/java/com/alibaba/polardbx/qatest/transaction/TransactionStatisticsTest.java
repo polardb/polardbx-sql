@@ -2,6 +2,7 @@ package com.alibaba.polardbx.qatest.transaction;
 
 import com.alibaba.polardbx.qatest.CrudBasedLockTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import net.jcip.annotations.NotThreadSafe;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -11,6 +12,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+@NotThreadSafe
 public class TransactionStatisticsTest extends CrudBasedLockTestCase {
     private final static String dbName = "TransactionStatisticsTestDB";
     private final static String tbName = "TransactionStatisticsTestTB";
@@ -27,7 +29,7 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
     }
 
     @AfterClass
-    public static void after() throws SQLException {
+    public static void after() throws SQLException, InterruptedException {
         try (final Connection conn = getPolardbxConnection0()) {
             JdbcUtil.executeSuccess(conn, "DROP DATABASE IF EXISTS " + dbName);
         }
@@ -70,7 +72,8 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             Assert.assertTrue("Can not find the trx.", rs.next());
 
             String trxType = rs.getString("TRX_TYPE");
-            Assert.assertTrue("Trx type should be TSO, but is " + trxType, "TSO".equalsIgnoreCase(trxType));
+            Assert.assertTrue("Trx type should be TsoTransaction, but is " + trxType,
+                "TsoTransaction".equalsIgnoreCase(trxType));
 
             long idleTime = rs.getLong("IDLE_TIME");
             Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
@@ -112,6 +115,7 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             }
         }
 
+        JdbcUtil.executeSuccess(conn0, "SET ENABLE_XA_TSO = FALSE");
         JdbcUtil.executeSuccess(conn0, "SET TRANSACTION_POLICY = XA");
         JdbcUtil.executeSuccess(conn0, "BEGIN");
         JdbcUtil.executeSuccess(conn0, "SELECT * FROM " + tbName);
@@ -135,7 +139,8 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             Assert.assertTrue("Can not find the trx.", rs.next());
 
             String trxType = rs.getString("TRX_TYPE");
-            Assert.assertTrue("Trx type should be XA, but is " + trxType, "XA".equalsIgnoreCase(trxType));
+            Assert.assertTrue("Trx type should be XATransaction, but is " + trxType,
+                "XATransaction".equalsIgnoreCase(trxType));
 
             long idleTime = rs.getLong("IDLE_TIME");
             Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
@@ -198,7 +203,8 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             Assert.assertTrue("Can not find the trx.", rs.next());
 
             String trxType = rs.getString("TRX_TYPE");
-            Assert.assertTrue("Trx type should be TSO_RO, but is " + trxType, "TSO_RO".equalsIgnoreCase(trxType));
+            Assert.assertTrue("Trx type should be ReadOnlyTsoTransaction, but is " + trxType,
+                "ReadOnlyTsoTransaction".equalsIgnoreCase(trxType));
 
             long idleTime = rs.getLong("IDLE_TIME");
             Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
@@ -260,7 +266,8 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             Assert.assertTrue("Can not find the trx.", rs.next());
 
             String trxType = rs.getString("TRX_TYPE");
-            Assert.assertTrue("Trx type should be TSO, but is " + trxType, "TSO".equalsIgnoreCase(trxType));
+            Assert.assertTrue("Trx type should be TsoTransaction, but is " + trxType,
+                "TsoTransaction".equalsIgnoreCase(trxType));
 
             long idleTime = rs.getLong("IDLE_TIME");
             Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
@@ -301,6 +308,7 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             }
         }
 
+        JdbcUtil.executeSuccess(conn0, "SET ENABLE_XA_TSO = FALSE");
         JdbcUtil.executeSuccess(conn0, "SET TRANSACTION_POLICY = XA");
         JdbcUtil.executeSuccess(conn0, "BEGIN");
         JdbcUtil.executeSuccess(conn0, "INSERT INTO " + tbName + " VALUES (100), (101)");
@@ -325,7 +333,8 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
             Assert.assertTrue("Can not find the trx.", rs.next());
 
             String trxType = rs.getString("TRX_TYPE");
-            Assert.assertTrue("Trx type should be XA, but is " + trxType, "XA".equalsIgnoreCase(trxType));
+            Assert.assertTrue("Trx type should be XATransaction, but is " + trxType,
+                "XATransaction".equalsIgnoreCase(trxType));
 
             long idleTime = rs.getLong("IDLE_TIME");
             Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
@@ -345,6 +354,79 @@ public class TransactionStatisticsTest extends CrudBasedLockTestCase {
                 afterCrossGroup = rs.getLong("TRANS_COUNT_CROSS_GROUP");
                 Assert.assertTrue("after.TRANS_COUNT_XA should > before.TRANS_COUNT_XA", after > before);
                 Assert.assertTrue("after.TRANS_COUNT_XA_RW should > before.TRANS_COUNT_XA_RW", afterRW > beforeRW);
+                Assert.assertTrue("after.TRANS_COUNT_CROSS_GROUP should > before.TRANS_COUNT_CROSS_GROUP",
+                    afterCrossGroup > beforeCrossGroup);
+            }
+        }
+    }
+
+    /**
+     * XA_TSO should be treated as TSO trx.
+     */
+    @Test
+    public void testXATsoReadWrite() throws SQLException, InterruptedException {
+        if (isMySQL80()) {
+            return;
+        }
+        final Connection conn0 = getPolardbxConnection(dbName);
+        final Connection conn1 = getPolardbxConnection(dbName);
+
+        long before = 0, after = 0, beforeRW = 0, afterRW = 0, beforeCrossGroup = 0, afterCrossGroup = 0;
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(conn1, "SHOW TRANS STATS")) {
+            while (rs.next()) {
+                before = rs.getLong("TRANS_COUNT_TSO");
+                beforeRW = rs.getLong("TRANS_COUNT_TSO_RW");
+                beforeCrossGroup = rs.getLong("TRANS_COUNT_CROSS_GROUP");
+            }
+        }
+
+        JdbcUtil.executeSuccess(conn0, "SET ENABLE_XA_TSO = TRUE");
+        JdbcUtil.executeSuccess(conn0, "SET TRANSACTION_POLICY = XA");
+        JdbcUtil.executeSuccess(conn0, "BEGIN");
+        JdbcUtil.executeSuccess(conn0, "INSERT INTO " + tbName + " VALUES (100), (101)");
+        JdbcUtil.executeSuccess(conn0, "DELETE FROM " + tbName + " WHERE id in (100, 101)");
+
+        // Make it a slow trans.
+        Thread.sleep(3000);
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(conn1, "SHOW TRANS STATS")) {
+            while (rs.next()) {
+                long curSlowTransCount = rs.getLong("CUR_SLOW_TRANS_COUNT");
+                long curSlowTransCountRo = rs.getLong("CUR_SLOW_TRANS_COUNT_RW");
+                long curSlowTransTimeMaxRo = rs.getLong("CUR_SLOW_TRANS_TIME_MAX_RW");
+                Assert.assertTrue("CUR_SLOW_TRANS_COUNT should > 0", curSlowTransCount > 0);
+                Assert.assertTrue("CUR_SLOW_TRANS_COUNT_RW should > 0", curSlowTransCountRo > 0);
+                Assert.assertTrue("CUR_SLOW_TRANS_TIME_MAX_RW should > 3000", curSlowTransTimeMaxRo > 3000);
+            }
+        }
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(conn0,
+            "SELECT * FROM INFORMATION_SCHEMA.polardbx_trx WHERE schema = '" + dbName + "'")) {
+            Assert.assertTrue("Can not find the trx.", rs.next());
+
+            String trxType = rs.getString("TRX_TYPE");
+            Assert.assertTrue("Trx type should be XATsoTransaction, but is " + trxType,
+                "XATsoTransaction".equalsIgnoreCase(trxType));
+
+            long idleTime = rs.getLong("IDLE_TIME");
+            Assert.assertTrue("Idle time should > 3000000 us, but is " + idleTime, idleTime > 3000000);
+
+            long writeRows = rs.getLong("WRITE_ROWS");
+            Assert.assertEquals("Read rows should = 4, but is " + writeRows, 4, writeRows);
+
+            Assert.assertFalse("More than 1 trx in this schema.", rs.next());
+        }
+
+        JdbcUtil.executeSuccess(conn0, "COMMIT");
+
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(conn1, "SHOW TRANS STATS")) {
+            while (rs.next()) {
+                after = rs.getLong("TRANS_COUNT_TSO");
+                afterRW = rs.getLong("TRANS_COUNT_TSO_RW");
+                afterCrossGroup = rs.getLong("TRANS_COUNT_CROSS_GROUP");
+                Assert.assertTrue("after.TRANS_COUNT_TSO should > before.TRANS_COUNT_TSO", after > before);
+                Assert.assertTrue("after.TRANS_COUNT_TSO_RW should > before.TRANS_COUNT_TSO_RW", afterRW > beforeRW);
                 Assert.assertTrue("after.TRANS_COUNT_CROSS_GROUP should > before.TRANS_COUNT_CROSS_GROUP",
                     afterCrossGroup > beforeCrossGroup);
             }

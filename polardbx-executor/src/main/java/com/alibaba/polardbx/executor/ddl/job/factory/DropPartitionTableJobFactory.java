@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.DropEntitySecurityAttrTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropPartitionTableValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.DropTableHideTableMetaTask;
@@ -33,6 +34,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
 
@@ -41,15 +43,21 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
+
 public class DropPartitionTableJobFactory extends DropTableJobFactory {
 
     private List<Long> tableGroupIds = new ArrayList<>();
 
     private ExecutionContext executionContext;
 
-    public DropPartitionTableJobFactory(PhysicalPlanData physicalPlanData, ExecutionContext executionContext) {
+    private DropTablePreparedData dropTablePreparedData = null;
+
+    public DropPartitionTableJobFactory(PhysicalPlanData physicalPlanData, ExecutionContext executionContext,
+                                        DropTablePreparedData dropTablePreparedData) {
         super(physicalPlanData);
         this.executionContext = executionContext;
+        this.dropTablePreparedData = dropTablePreparedData;
     }
 
     @Override
@@ -73,7 +81,8 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
         DropTableHideTableMetaTask dropTableHideTableMetaTask =
             new DropTableHideTableMetaTask(schemaName, logicalTableName);
         DropTablePhyDdlTask phyDdlTask = new DropTablePhyDdlTask(schemaName, physicalPlanData);
-        CdcDdlMarkTask cdcDdlMarkTask = new CdcDdlMarkTask(schemaName, physicalPlanData, false, false);
+        CdcDdlMarkTask cdcDdlMarkTask =
+            new CdcDdlMarkTask(schemaName, physicalPlanData, false, false, DEFAULT_DDL_VERSION_ID);
         DropPartitionTableRemoveMetaTask removeMetaTask =
             new DropPartitionTableRemoveMetaTask(schemaName, logicalTableName);
 
@@ -111,7 +120,16 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
                 new UpdateTableRemoveTsTask(engine.name(), schemaName, logicalTableName, ts);
             tasks.add(updateTableRemoveTsTask);
         }
-        tasks.add(phyDdlTask);
+
+        if (!dropTablePreparedData.isImportTable()) {
+            tasks.add(phyDdlTask);
+        }
+
+        DropEntitySecurityAttrTask desaTask = createDESATask();
+        if (desaTask != null) {
+            tasks.add(desaTask);
+        }
+
         if (!Engine.isFileStore(engine)) {
             tasks.add(cdcDdlMarkTask);
         }
@@ -131,7 +149,9 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
 
         executableDdlJob.setValidateTask(validateTask);
         executableDdlJob.setDropTableHideTableMetaTask(dropTableHideTableMetaTask);
-        executableDdlJob.setPhyDdlTask(phyDdlTask);
+        if (!dropTablePreparedData.isImportTable()) {
+            executableDdlJob.setPhyDdlTask(phyDdlTask);
+        }
         if (!Engine.isFileStore(engine)) {
             executableDdlJob.setCdcDdlMarkTask(cdcDdlMarkTask);
         }
@@ -157,6 +177,9 @@ public class DropPartitionTableJobFactory extends DropTableJobFactory {
             String tgName = tableGroupConfig.getTableGroupRecord().getTg_name();
             resources.add(concatWithDot(schemaName, tgName));
         }
+
+        // exclude foreign key tables
+        FactoryUtils.getFkTableExcludeResources(schemaName, logicalTableName, resources);
     }
 
 }

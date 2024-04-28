@@ -1,47 +1,30 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.accumulator;
 
+import com.alibaba.polardbx.common.IOrderInvariantHash;
 import com.alibaba.polardbx.common.OrderInvariantHasher;
 import com.alibaba.polardbx.executor.accumulator.state.NullableCheckSumGroupState;
-import com.alibaba.polardbx.executor.calc.AbstractAggregator;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
-import java.util.List;
+public class CheckSumMergeAccumulator implements Accumulator {
 
-public class CheckSumMergeAccumulator extends AbstractAggregator {
-    private final List<DataType> inputTypes;
+    private static final DataType[] INPUT_TYPES = new DataType[] {DataTypes.LongType};
 
-    private NullableCheckSumGroupState groupState;
+    private final NullableCheckSumGroupState groupState;
 
     private final static byte SEPARATOR_TAG = (byte) 255;
     private final static byte NULL_TAG = (byte) 254;
 
-    public CheckSumMergeAccumulator(int index, DataType outType, int filterArg, List<DataType> inputTypes) {
-        super(new int[] {index}, false, new DataType[] {outType}, outType, filterArg);
-        this.inputTypes = inputTypes;
+    public CheckSumMergeAccumulator(int capacity) {
+        this.groupState = new NullableCheckSumGroupState(capacity, OrderInvariantHasher.class);
     }
 
     @Override
-    public void open(int capacity) {
-        groupState = new NullableCheckSumGroupState(capacity);
+    public DataType[] getInputTypes() {
+        return INPUT_TYPES;
     }
 
     @Override
@@ -63,7 +46,7 @@ public class CheckSumMergeAccumulator extends AbstractAggregator {
             orderInvariantHasher.add(toMerge);
             groupState.set(groupId, orderInvariantHasher);
         } else {
-            OrderInvariantHasher orderInvariantHasher = groupState.getHasher(groupId);
+            IOrderInvariantHash orderInvariantHasher = groupState.getHasher(groupId);
             orderInvariantHasher.add(toMerge);
         }
     }
@@ -75,11 +58,6 @@ public class CheckSumMergeAccumulator extends AbstractAggregator {
         } else {
             bb.writeLong(groupState.get(groupId));
         }
-    }
-
-    @Override
-    public void resetToInitValue(int groupId) {
-        this.groupState.set(groupId, null);
     }
 
     @Override

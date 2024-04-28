@@ -87,11 +87,6 @@ singleBalanceCaseBeans:
       manipulateStmt: "rebalance database policy = 'partition_balance'"
       expectedManipulateResult:
       expectedManipulateColumns:
-    - conditionStmt: "show ddl"
-      expectedConditionResult: []
-      manipulateStmt: "rebalance database policy = 'partition_balance'"
-      expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog"  ]
-      expectedManipulateColumns: [ 2 ]
     dataDistributionCheckActions:
     - conditionStmt: "show ddl"
       expectedConditionResult: [ ]

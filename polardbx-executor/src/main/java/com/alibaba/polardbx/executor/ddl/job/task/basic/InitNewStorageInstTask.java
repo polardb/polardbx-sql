@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
@@ -25,7 +26,10 @@ import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
+import com.alibaba.polardbx.gms.topology.DbInfoAccessor;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
 import java.sql.Connection;
@@ -64,18 +68,33 @@ public class InitNewStorageInstTask extends BaseGmsTask {
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         long socketTimeoutVal = socketTimeout != null ? socketTimeout : -1;
-        for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfos.entrySet()) {
-            for (Pair<String, String> pair : entry.getValue()) {
-                //update the type to removable
-                ScaleOutUtils.updateGroupType(schemaName, Arrays.asList(pair.getKey()),
-                    DbGroupInfoRecord.GROUP_TYPE_ADDED, DbGroupInfoRecord.GROUP_TYPE_REMOVING,
-                    metaDbConnection);
-                ScaleOutUtils.doRemoveNewGroupFromDb(schemaName, pair.getKey(), pair.getValue(),
-                    entry.getKey(), socketTimeoutVal, LOGGER, metaDbConnection);
-                FailPoint.injectRandomExceptionFromHint(executionContext);
-                FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        try (Connection conn = MetaDbUtil.getConnection()) {
+            conn.setAutoCommit(false);
+            DbInfoAccessor accessor = new DbInfoAccessor();
+            accessor.setConnection(metaDbConnection);
+
+            //avoid rollback parallelly
+            accessor.getDbInfoByDbNameForUpdate(schemaName);
+            for (Map.Entry<String, List<Pair<String, String>>> entry : instGroupDbInfos.entrySet()) {
+                for (Pair<String, String> pair : entry.getValue()) {
+                    //update the type to removable
+                    ScaleOutUtils.updateGroupType(schemaName, Arrays.asList(pair.getKey()),
+                        DbGroupInfoRecord.GROUP_TYPE_ADDED, DbGroupInfoRecord.GROUP_TYPE_REMOVING,
+                        conn);
+                    ScaleOutUtils.doRemoveNewGroupFromDb(schemaName, pair.getKey(), pair.getValue(),
+                        entry.getKey(), socketTimeoutVal, LOGGER, conn);
+                    FailPoint.injectRandomExceptionFromHint(executionContext);
+                    FailPoint.injectRandomSuspendFromHint(executionContext);
+                }
             }
+            conn.commit();
+        } catch (Exception ex) {
+            SQLRecorderLogger.ddlLogger.error("InitNewStorageInstTask rollback failed due to:" + ex.getMessage());
+            throw GeneralUtil.nestedException(ex);
         }
+
+        CommonMetaChanger.sync(MetaDbDataIdBuilder.getDbTopologyDataId(schemaName));
     }
 
     @Override
@@ -95,6 +114,5 @@ public class InitNewStorageInstTask extends BaseGmsTask {
 
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
-        CommonMetaChanger.sync(MetaDbDataIdBuilder.getDbTopologyDataId(schemaName));
     }
 }

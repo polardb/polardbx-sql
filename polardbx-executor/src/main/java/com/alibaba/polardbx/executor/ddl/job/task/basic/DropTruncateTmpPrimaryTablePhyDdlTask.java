@@ -55,7 +55,8 @@ public class DropTruncateTmpPrimaryTablePhyDdlTask extends BasePhyDdlTask {
         Map<String, List<List<String>>> tableTopology = builder.getTableTopology();
         List<PhyDdlTableOperation> physicalPlans = builder.getPhysicalPlans();
         //generate a "drop table" physical plan
-        PhysicalPlanData physicalPlanData = DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans);
+        PhysicalPlanData physicalPlanData =
+            DdlJobDataConverter.convertToPhysicalPlanData(tableTopology, physicalPlans, executionContext);
         this.physicalPlanData = physicalPlanData;
 
         super.executeImpl(executionContext);

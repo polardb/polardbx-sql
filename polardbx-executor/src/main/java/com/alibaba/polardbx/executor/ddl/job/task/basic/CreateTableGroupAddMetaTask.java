@@ -33,21 +33,27 @@ public class CreateTableGroupAddMetaTask extends BaseGmsTask {
     private String tableGroupName;
     private String locality;
     private String partitionDefinition;
+    private boolean single;
+    private boolean withImplicit;
 
     @JSONCreator
     public CreateTableGroupAddMetaTask(String schemaName,
                                        String tableGroupName,
                                        String locality,
-                                       String partitionDefinition) {
+                                       String partitionDefinition,
+                                       boolean single,
+                                       boolean withImplicit) {
         super(schemaName, "");
         this.tableGroupName = tableGroupName;
         this.locality = locality;
         this.partitionDefinition = partitionDefinition;
+        this.single = single;
+        this.withImplicit = withImplicit;
     }
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
-        updateSupportedCommands(true, false, metaDbConnection);
+        updateSupportedCommands(true, withImplicit, metaDbConnection);
         TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
         tableGroupAccessor.setConnection(metaDbConnection);
         TableGroupRecord tableGroupRecord = new TableGroupRecord();
@@ -56,8 +62,13 @@ public class CreateTableGroupAddMetaTask extends BaseGmsTask {
         tableGroupRecord.locality = locality;
         tableGroupRecord.setInited(0);
         tableGroupRecord.meta_version = 1L;
-        tableGroupRecord.manual_create = 1;
-        tableGroupRecord.partition_definition = partitionDefinition;
+        tableGroupRecord.manual_create = withImplicit ? 0 : 1;
+        if (single) {
+            tableGroupRecord.tg_type = TableGroupRecord.TG_TYPE_NON_DEFAULT_SINGLE_TBL_TG;
+            tableGroupRecord.partition_definition = "SINGLE";
+        } else {
+            tableGroupRecord.partition_definition = partitionDefinition;
+        }
         tableGroupAccessor.addNewTableGroup(tableGroupRecord);
     }
 }

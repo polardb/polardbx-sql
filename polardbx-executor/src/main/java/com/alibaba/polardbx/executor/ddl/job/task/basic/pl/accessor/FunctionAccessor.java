@@ -46,7 +46,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.*;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.DEF_ROUTINE_CATALOG;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.FUNCTION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_CHARACTER_SET_CLIENT;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_COLLATION_CONNECTION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MOCK_DATABASE_COLLATION;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.MYSQL;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.NO_SQL;
+import static com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants.SQL;
 
 public class FunctionAccessor extends AbstractAccessor {
     private static final Logger logger = LoggerFactory.getLogger(FunctionAccessor.class);

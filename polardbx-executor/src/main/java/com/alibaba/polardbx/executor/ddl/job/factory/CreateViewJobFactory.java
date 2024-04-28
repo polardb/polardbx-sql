@@ -1,0 +1,91 @@
+package com.alibaba.polardbx.executor.ddl.job.factory;
+
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateViewStatement;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateViewAddMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateViewMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateViewSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.ValidateCreateViewTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
+import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
+import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.dialect.DbType;
+import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
+import com.alibaba.polardbx.optimizer.core.planner.Planner;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateView;
+import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import com.alibaba.polardbx.optimizer.planmanager.PlanManagerUtil;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.google.common.collect.Lists;
+import org.apache.calcite.sql.TDDLSqlSelect;
+
+import java.util.List;
+import java.util.Set;
+
+public class CreateViewJobFactory extends DdlJobFactory {
+
+    private final LogicalCreateView logicalCreateView;
+
+    ExecutionContext executionContext;
+
+    public CreateViewJobFactory(LogicalCreateView logicalCreateView, ExecutionContext ec) {
+        this.logicalCreateView = logicalCreateView;
+        this.executionContext = ec;
+    }
+
+    @Override
+    protected void validate() {
+    }
+
+    @Override
+    protected ExecutableDdlJob doCreate() {
+
+        String schemaName = logicalCreateView.getSchemaName();
+        String viewName = logicalCreateView.getViewName();
+        boolean isReplace = logicalCreateView.isReplace();
+        boolean isAlter = logicalCreateView.isAlter();
+        List<String> columnList = logicalCreateView.getColumnList();
+        String viewDefinition = RelUtils.toNativeSql(logicalCreateView.getDefinition(), DbType.MYSQL);
+        String planString = null;
+        String planType = null;
+
+        if (logicalCreateView.getDefinition() instanceof TDDLSqlSelect) {
+            TDDLSqlSelect tddlSqlSelect = (TDDLSqlSelect) logicalCreateView.getDefinition();
+            if (tddlSqlSelect.getHints() != null && tddlSqlSelect.getHints().size() != 0) {
+                String withHintSql =
+                    ((SQLCreateViewStatement) FastsqlUtils.parseSql(executionContext.getSql()).get(0)).getSubQuery()
+                        .toString();
+                // FIXME: by now only support SMP plan.
+                executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_MPP, false);
+                executionContext.getExtraCmds().put(ConnectionProperties.ENABLE_PARAMETER_PLAN, false);
+                ExecutionPlan executionPlan =
+                    Planner.getInstance().plan(withHintSql, executionContext.copy());
+                if (PlanManagerUtil.canConvertToJson(executionPlan, executionContext.getParamManager())) {
+                    planString = PlanManagerUtil.relNodeToJson(executionPlan.getPlan());
+                    planType = "SMP";
+                }
+            }
+        }
+
+        DdlTask validateTask = new ValidateCreateViewTask(schemaName, viewName, isReplace);
+        DdlTask addMetaTask = new CreateViewAddMetaTask(schemaName, viewName,
+            isReplace, columnList, viewDefinition, planString, planType);
+
+        DdlTask cdcMarkTask = new CdcCreateViewMarkTask(schemaName, viewName, isAlter);
+        DdlTask syncTask = new CreateViewSyncTask(schemaName, viewName);
+
+        ExecutableDdlJob executableDdlJob = new ExecutableDdlJob();
+        executableDdlJob.addSequentialTasks(Lists.newArrayList(validateTask, addMetaTask, cdcMarkTask, syncTask));
+        return executableDdlJob;
+    }
+
+    @Override
+    protected void excludeResources(Set<String> resources) {
+        resources.add(concatWithDot(logicalCreateView.getSchemaName(), logicalCreateView.getViewName()));
+    }
+
+    @Override
+    protected void sharedResources(Set<String> resources) {
+    }
+}

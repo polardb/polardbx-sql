@@ -18,9 +18,11 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupLocation;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
@@ -32,6 +34,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTablePartitionHelper;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
@@ -90,7 +93,7 @@ public class LogicalAlterTableGroupMergePartition extends LogicalAlterTableMerge
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_EMPTY,
                 "can't modify the empty tablegroup:" + tableGroupName);
         }
-        String firstTableInTg = tableGroupConfig.getTables().get(0).getTableName();
+        String firstTableInTg = tableGroupConfig.getTables().get(0);
 
         PartitionInfo partitionInfo =
             ec.getSchemaManager(schemaName).getTable(firstTableInTg).getPartitionInfo();
@@ -135,8 +138,13 @@ public class LogicalAlterTableGroupMergePartition extends LogicalAlterTableMerge
                 preparedData.setTemplatePartNames(templatePartNames);
 
             } else {
+                TableGroupRecord tableGroupRecord = tableGroupConfig.getTableGroupRecord();
+                List<String> partNames = new ArrayList<>();
+                List<Pair<String, String>> subPartNamePairs = new ArrayList<>();
+                PartitionInfoUtil.getPartitionName(partitionInfo, partNames, subPartNamePairs);
+
                 List<String> newPhyPartNames =
-                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupConfig, 1,
+                    PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs, 1,
                         new TreeSet<>(String::compareToIgnoreCase), true);
                 preparedData.setNewPhysicalPartName(newPhyPartNames.get(0));
             }
@@ -210,7 +218,7 @@ public class LogicalAlterTableGroupMergePartition extends LogicalAlterTableMerge
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupMergePartition alterTableGroupMergePartition = (AlterTableGroupMergePartition) relDdl;
         String tableGroupName = alterTableGroupMergePartition.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

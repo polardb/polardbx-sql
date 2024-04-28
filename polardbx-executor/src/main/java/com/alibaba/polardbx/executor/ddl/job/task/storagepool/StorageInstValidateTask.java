@@ -37,6 +37,7 @@ public class StorageInstValidateTask extends BaseValidateTask {
     private List<String> validStorageInsts;
     private String schemaName;
     private Boolean checkAttached;
+    private Boolean checkAlived;
     private Boolean checkIdle;
 
     public StorageInstValidateTask(String schemaName, String instId, List<String> validStorageInsts) {
@@ -44,17 +45,31 @@ public class StorageInstValidateTask extends BaseValidateTask {
         this.schemaName = schemaName;
         this.instId = instId;
         this.validStorageInsts = validStorageInsts;
+        this.checkAlived = true;
         this.checkAttached = true;
         this.checkIdle = true;
     }
 
-    @JSONCreator
     public StorageInstValidateTask(String schemaName, String instId, List<String> validStorageInsts,
                                    Boolean checkAttached, Boolean checkIdle) {
         super(schemaName);
         this.schemaName = schemaName;
         this.instId = instId;
         this.validStorageInsts = validStorageInsts;
+        this.checkAlived = true;
+        this.checkAttached = checkAttached;
+        this.checkIdle = checkIdle;
+    }
+
+    @JSONCreator
+    public StorageInstValidateTask(String schemaName, String instId, List<String> validStorageInsts,
+                                   Boolean checkAlived,
+                                   Boolean checkAttached, Boolean checkIdle) {
+        super(schemaName);
+        this.schemaName = schemaName;
+        this.instId = instId;
+        this.validStorageInsts = validStorageInsts;
+        this.checkAlived = checkAlived;
         this.checkAttached = checkAttached;
         this.checkIdle = checkIdle;
     }
@@ -64,7 +79,7 @@ public class StorageInstValidateTask extends BaseValidateTask {
         if (GeneralUtil.isEmpty(validStorageInsts)) {
             throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS, "valid storage insts can't be empty");
         }
-        StoragePoolValidator.validateStoragePool(instId, validStorageInsts, checkAttached, checkIdle);
+        StoragePoolValidator.validateStoragePool(instId, validStorageInsts, checkAlived, checkAttached, checkIdle);
     }
 
     @Override

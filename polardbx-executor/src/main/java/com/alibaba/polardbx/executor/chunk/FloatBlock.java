@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 
 import com.google.common.base.Preconditions;
+import io.airlift.slice.XxHash64;
 import org.openjdk.jol.info.ClassLayout;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
@@ -32,6 +33,8 @@ public class FloatBlock extends AbstractBlock {
 
     private float[] values;
 
+    private boolean forDeletedOrcScan = false;
+
     public FloatBlock(DataType dataType, int slotLen) {
         super(dataType, slotLen);
         this.values = new float[slotLen];
@@ -41,6 +44,22 @@ public class FloatBlock extends AbstractBlock {
     public FloatBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, float[] values) {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
+        updateSizeInfo();
+    }
+
+    public static FloatBlock from(FloatBlock other, int selSize, int[] selection) {
+        FloatBlock block = new FloatBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyFloatArray(other.values, selection, selSize));
+        block.forDeletedOrcScan = other.forDeletedOrcScan;
+        return block;
+    }
+
+    public FloatBlock(DataType dataType, int slotLen, boolean forDeletedOrcScan) {
+        super(dataType, slotLen);
+        this.values = new float[slotLen];
+        this.forDeletedOrcScan = forDeletedOrcScan;
         updateSizeInfo();
     }
 
@@ -89,6 +108,15 @@ public class FloatBlock extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxHash64.hash(Float.floatToRawIntBits(values[pos + arrayOffset]));
+        }
+    }
+
+    @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
             return super.hashCodeVector();
@@ -99,6 +127,17 @@ public class FloatBlock extends AbstractBlock {
             hashes[position] = Float.hashCode(values[position + arrayOffset]);
         }
         return hashes;
+    }
+
+    @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Float.hashCode(values[position + arrayOffset]);
+        }
     }
 
     @Override
@@ -118,7 +157,7 @@ public class FloatBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof FloatBlock) {
-            FloatBlock outputVectorSlot = (FloatBlock) output;
+            FloatBlock outputVectorSlot = output.cast(FloatBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -139,7 +178,7 @@ public class FloatBlock extends AbstractBlock {
         if (!(another instanceof FloatBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        FloatBlock vectorSlot = (FloatBlock) another;
+        FloatBlock vectorSlot = another.cast(FloatBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }
@@ -180,5 +219,6 @@ public class FloatBlock extends AbstractBlock {
         estimatedSize = INSTANCE_SIZE + sizeOf(isNull) + sizeOf(values);
         elementUsedBytes = Byte.BYTES * positionCount + Float.BYTES * positionCount;
     }
+
 }
 

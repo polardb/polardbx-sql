@@ -57,6 +57,7 @@ import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.TableModify;
+import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalJoin;
@@ -88,6 +89,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.validate.SqlValidatorUtil;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.Pair;
+import org.apache.calcite.util.Util;
 import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
@@ -125,23 +127,7 @@ public class PushDownOpt {
     private DbType dbType;
     private LogicalView tableScan;
     private TableModify tableModify;
-
-    /**
-     * <pre>
-     * 用来解决 tb_a a JOIN tb_a b 时 Calcite 自动修改为 b 中的同名列改名的问题
-     * 改名的代码在：SqlValidatorUtil.addFields()
-     * 解决思路：提前存一份没改过名字的列信息, 同时建立列与表的关系，用于通过列名查找拆分键序号
-     *
-     * plainRowType: store the original field name rowtype
-     * plainRefRowType: store the current field name rowtype
-     * plainRefIndex: store index to the plainRowType, List[Pair(refIndex, tableName)]
-     * </pre>
-     */
-
-    private RelDataType plainRowType;
-    private RelDataType plainRefRowType;
-    private List<Pair<Integer, String>> plainRefIndex;
-
+    private PlainRows plainRows;
     /**
      * index of list: the table index of logical table in the LV
      * Map<String, Comparative>: the comp info of the the index of  logical table in LV
@@ -163,8 +149,7 @@ public class PushDownOpt {
         this.aggIsPushed = false;
         this.relOptSchema = RelUtils.buildCatalogReader(tableScan.getSchemaName(), ec);
         this.builder = createBuilderAndScan(relOptSchema);
-        this.plainRowType = tableScan.getRowType();
-        initPlainRefIndex(plainRowType, tableScan.getLogicalTableName());
+        this.plainRows = new PlainRows(tableScan.getRowType(), tableScan.getLogicalTableName());
     }
 
     public PushDownOpt(LogicalView tableScan, RelNode rel, DbType dbType, ExecutionContext ec) {
@@ -173,8 +158,8 @@ public class PushDownOpt {
         this.relOptSchema = RelUtils.buildCatalogReader(tableScan.getSchemaName(), ec);
         this.builder = createBuilder(relOptSchema);
         this.builder.push(rel);
-        this.plainRowType = rel.getRowType();
-        initPlainRefIndex(plainRowType, tableScan.getLogicalTableName());
+        // don't re-calculate real rowType unless it is necessary
+        this.plainRows = new PlainRows(rel.getRowType(), tableScan.getLogicalTableName());
     }
 
     private PushDownOpt(PushDownOpt pushDownOpt) {
@@ -185,9 +170,7 @@ public class PushDownOpt {
         this.aggIsPushed = pushDownOpt.aggIsPushed;
         this.nativeSqlNodeHintCache = pushDownOpt.nativeSqlNodeHintCache;
         this.tableModify = pushDownOpt.tableModify;
-        this.plainRowType = pushDownOpt.plainRowType;
-        this.plainRefRowType = pushDownOpt.plainRefRowType;
-        this.plainRefIndex = pushDownOpt.plainRefIndex;
+        this.plainRows = pushDownOpt.plainRows.copy();
         this.comparatives = pushDownOpt.comparatives;
         this.fullComparatives = pushDownOpt.fullComparatives;
         this.allPartPruneSteps = pushDownOpt.allPartPruneSteps;
@@ -198,12 +181,7 @@ public class PushDownOpt {
         newPushDownOpt.tableScan = logicalView;
         newPushDownOpt.builder = createBuilder(relOptSchema);
         newPushDownOpt.builder.push(rel);
-        if (this.plainRefIndex != null) {
-            newPushDownOpt.plainRefIndex = new ArrayList<>();
-            for (Pair<Integer, String> pair : this.plainRefIndex) {
-                newPushDownOpt.plainRefIndex.add(Pair.of(pair.getKey(), pair.getValue()));
-            }
-        }
+
         if (this.comparatives != null) {
             newPushDownOpt.comparatives = new ArrayList<>();
             for (Map<String, Comparative> m : this.comparatives) {
@@ -231,13 +209,6 @@ public class PushDownOpt {
             newPushDownOpt.updatePartRoutingPlanInfo(partRoutingPlanInfo);
         }
         return newPushDownOpt;
-    }
-
-    private void initPlainRefIndex(RelDataType rowType, String tableName) {
-        plainRefIndex = new ArrayList<>(rowType.getFieldCount());
-        for (int i = 0; i < rowType.getFieldCount(); i++) {
-            plainRefIndex.add(Pair.of(i, tableName));
-        }
     }
 
     private RelBuilder createBuilder(RelOptSchema relOptSchema) {
@@ -272,9 +243,7 @@ public class PushDownOpt {
              * 根据 Project 的列更新对于底层 rowType 的引用
              * </pre>
              */
-            if (!relNode.getRowType().equals(plainRowType)) {
-                updateRefIndex(project);
-            }
+            plainRows = plainRows.updateRefIndex(project);
             return;
         }
 
@@ -292,7 +261,7 @@ public class PushDownOpt {
             aggIsPushed = true;
             LogicalAggregate agg = (LogicalAggregate) relNode;
             pushAgg(agg, builder);
-            updateRefIndex(agg);
+            plainRows = plainRows.updateRefIndex(agg);
             return;
         }
 
@@ -378,12 +347,13 @@ public class PushDownOpt {
         builder.addRuleInstance(FilterMergeRule.INSTANCE);
         builder.addRuleInstance(FilterConditionSimplifyRule.INSTANCE);
         builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
-        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE_WONT_IGNORE_REX_SUBQUERY);
         builder.addGroupEnd();
 
         builder.addGroupBegin();
         builder.addRuleInstance(FilterReorderRule.INSTANCE);
         builder.addGroupEnd();
+
         HepPlanner planner = new HepPlanner(builder.build());
         planner.stopOptimizerTrace();
         planner.setRoot(getPushedRelNode());
@@ -446,7 +416,7 @@ public class PushDownOpt {
          */
         builder.addGroupBegin();
         builder.addRuleInstance(FilterMergeRule.INSTANCE);
-        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE_WONT_IGNORE_REX_SUBQUERY);
         builder.addRuleInstance(AggregateProjectMergeRule.INSTANCE);
         builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
         builder.addGroupEnd();
@@ -475,7 +445,7 @@ public class PushDownOpt {
 
         builder.addGroupBegin();
         builder.addRuleInstance(FilterMergeRule.INSTANCE);
-        builder.addRuleInstance(ProjectMergeRule.INSTANCE);
+        builder.addRuleInstance(ProjectMergeRule.INSTANCE_WONT_IGNORE_REX_SUBQUERY);
         builder.addRuleInstance(ProjectRemoveRule.INSTANCE);
         builder.addGroupEnd();
         builder.addGroupBegin();
@@ -504,11 +474,11 @@ public class PushDownOpt {
 
     public void pushJoin(Join join, LogicalView rightView, List<RexNode> leftFilters, List<RexNode> rightFilters,
                          RelOptCluster cluster) {
-        RelDataType leftType = tableScan.buildCurRowType();
-        extendPlainRefIndex(rightView.getPlainRefIndex());
-
-        plainRowType = deriveJoinType(cluster.getTypeFactory(), leftType, rightView.buildCurRowType());
-        plainRefRowType = plainRowType;
+        plainRows = plainRows.updateRefIndexForJoin(
+            cluster.getTypeFactory(),
+            tableScan.buildCurRowType(),
+            rightView.buildCurRowType(),
+            rightView.getPushDownOpt().getPlainRows());
 
         // push TableScan
         RelNode rPushedNode = rightView.getPushedRelNode();
@@ -530,17 +500,12 @@ public class PushDownOpt {
 
     public void pushSemiJoin(LogicalSemiJoin join, LogicalView rightView, List<RexNode> leftFilters,
                              List<RexNode> rightFilters, RelOptCluster cluster) {
-        RelDataType leftType = tableScan.buildCurRowType();
-        RelDataType rightType = rightView.buildCurRowType();
-        if (join.getJoinType() == JoinRelType.LEFT) {
-            extendPlainRefIndex(rightView.getPlainRefIndex().subList(0, 1));
-            plainRowType = SqlValidatorUtil.createLeftSemiJoinType(cluster.getTypeFactory(), leftType, rightType, null,
-                join.getSystemFieldList(), 1);
-        } else {
-            extendPlainRefIndex(new ArrayList<>());
-            plainRowType = leftType;
-        }
-        plainRefRowType = plainRowType;
+        plainRows = plainRows.updateRefIndexForSemiJoin(
+            join,
+            cluster.getTypeFactory(),
+            tableScan.buildCurRowType(),
+            rightView.buildCurRowType(),
+            rightView.getPushDownOpt().getPlainRows());
     }
 
     private void updateComparative(Map<String, Map<String, Comparative>> inferred,
@@ -688,18 +653,18 @@ public class PushDownOpt {
     }
 
     public RelDataType getPlainRowType() {
-        return plainRowType;
+        return plainRows.getPlainRowType();
     }
 
     public TableModify getTableModify() {
         return tableModify;
     }
 
-    private Pair<Integer, String> defaultRefIndex() {
+    private static Pair<Integer, String> defaultRefIndex() {
         return Pair.of(-1, "");
     }
 
-    private boolean isDefaultRefIndex(Pair<Integer, String> refIndex) {
+    private static boolean isDefaultRefIndex(Pair<Integer, String> refIndex) {
         return Optional.ofNullable(refIndex).map(r -> r.getKey() == -1).orElse(false);
     }
 
@@ -707,134 +672,8 @@ public class PushDownOpt {
         return left.getKey().equals(rightRefIndex) && TStringUtil.equalsIgnoreCase(left.getValue(), rightTableName);
     }
 
-    /**
-     * 根据 Project 的投影列,更新输出结果对于对底层列的引用序号
-     */
-    private void updateRefIndex(LogicalProject project) {
-        List<RexNode> exprs = project.getChildExps();
-        List<Pair<Integer, String>> newRefIndex = new ArrayList<>(exprs.size());
-        for (RexNode expr : exprs) {
-            newRefIndex.add(getRefIndex(expr));
-        }
-
-        plainRefIndex = newRefIndex;
-        plainRefRowType = project.getRowType();
-    }
-
-    private void updateRefIndex(LogicalAggregate agg) {
-        List<Pair<Integer, String>> newRefIndex = new ArrayList<>();
-        for (int ref : agg.getGroupSet()) {
-            newRefIndex.add(plainRefIndex.get(ref));
-        }
-
-        for (int i = 0; i < agg.getAggCallList().size(); i++) {
-            newRefIndex.add(defaultRefIndex());
-        }
-
-        plainRefIndex = newRefIndex;
-        plainRefRowType = agg.getRowType();
-    }
-
-    private Pair<Integer, String> getRefIndex(RexNode expr) {
-        if (expr.getKind() == SqlKind.CAST) {
-            return getRefIndex(((RexCall) expr).getOperands().get(0));
-        }
-
-        if (expr instanceof RexInputRef) {
-            RexInputRef inputRef = (RexInputRef) expr;
-            return plainRefIndex.get(inputRef.getIndex());
-        }
-
-        return defaultRefIndex();
-    }
-
-    public int getRefByColumnName(String tableName, String columnName, boolean last) {
-        Preconditions.checkArgument(StringUtils.isNotEmpty(columnName));
-        RelMetadataQuery metadataQuery = this.getPushedRelNode().getCluster().getMetadataQuery();
-        boolean oldIgnoreProjectDeriveOriginColumn = metadataQuery.isIgnoreProjectDeriveOriginColumn();
-        try {
-            metadataQuery.setIgnoreProjectDeriveOriginColumn(true);
-            List<RelDataTypeField> fields = plainRowType.getFieldList();
-            /**
-             * 从后向前找
-             */
-            if (last) {
-                for (int i = plainRowType.getFieldCount() - 1; i >= 0; i--) {
-                    if (!columnName.equalsIgnoreCase(fields.get(i).getName())) {
-                        continue;
-                    }
-
-                    for (int j = 0; j < plainRefIndex.size(); j++) {
-                        if (sameRefIndex(plainRefIndex.get(j), i, tableName)) {
-                            final Set<RelColumnOrigin> origins = metadataQuery.getColumnOrigins(builder.peek(), j);
-                            if (origins == null || origins.size() != 1) {
-                                continue;
-                            } else {
-                                return j;
-                            }
-                        }
-                    }
-                }
-
-                // 没有找到
-                return -1;
-            }
-
-            /**
-             * 从前向后找
-             */
-            for (int i = 0; i < plainRowType.getFieldCount(); i++) {
-                if (!columnName.equalsIgnoreCase(fields.get(i).getName())) {
-                    continue;
-                }
-
-                for (int j = 0; j < plainRefIndex.size(); j++) {
-                    if (sameRefIndex(plainRefIndex.get(j), i, tableName)) {
-                        final Set<RelColumnOrigin> origins = metadataQuery.getColumnOrigins(builder.peek(), j);
-                        if (origins == null || origins.size() != 1) {
-                            continue;
-                        } else {
-                            return j;
-                        }
-                    }
-                }
-            }
-
-            // 没有找到
-            return -1;
-        } finally {
-            metadataQuery.setIgnoreProjectDeriveOriginColumn(oldIgnoreProjectDeriveOriginColumn);
-        }
-    }
-
     public List<Pair<Integer, String>> getPlainRefIndex() {
-        return plainRefIndex;
-    }
-
-    private void extendPlainRefIndex(List<Pair<Integer, String>> refIndex) {
-        List<Pair<Integer, String>> newPlainRefIndex = new ArrayList<>();
-
-        IntStream.range(0, this.plainRefIndex.size()).forEach(index -> {
-            final Pair<Integer, String> p = this.plainRefIndex.get(index);
-            if (isDefaultRefIndex(p)) {
-                newPlainRefIndex.add(defaultRefIndex());
-            } else {
-                newPlainRefIndex.add(Pair.of(index, p.getValue()));
-            }
-        });
-
-        final int offset = plainRefIndex.size();
-
-        IntStream.range(0, refIndex.size()).forEach(index -> {
-            final Pair<Integer, String> p = refIndex.get(index);
-            if (isDefaultRefIndex(p)) {
-                newPlainRefIndex.add(defaultRefIndex());
-            } else {
-                newPlainRefIndex.add(Pair.of(offset + index, p.getValue()));
-            }
-        });
-
-        this.plainRefIndex = newPlainRefIndex;
+        return plainRows.getPlainRefIndex();
     }
 
     /**
@@ -853,37 +692,16 @@ public class PushDownOpt {
     }
 
     public void setPlainRowType(RelDataType plainRowType) {
-        this.plainRowType = plainRowType;
+        this.plainRows = plainRows.setPlainRowType(plainRowType);
     }
 
     public RelDataType buildCurRowType() {
-        RelDataTypeFactory factory = tableScan.getCluster().getTypeFactory();
-        List<RelDataTypeField> fieldList = new ArrayList<>(plainRefIndex.size());
-
-        for (int i = 0; i < plainRefIndex.size(); i++) {
-            int value = plainRefIndex.get(i).getKey();
-            final RelDataTypeField field;
-            if (value == -1) {
-                field = plainRefRowType.getFieldList().get(i);
-            } else {
-                field = plainRowType.getFieldList().get(value);
-            }
-            fieldList.add(new RelDataTypeFieldImpl(field.getName(), i, field.getType()));
-        }
-        return factory.createStructType(fieldList);
+        return plainRows.buildCurRowType(
+            tableScan.getCluster().getTypeFactory());
     }
 
-    public Pair<String, String> getTableAndColumnName(int i) {
-        Pair<Integer, String> pair = plainRefIndex.get(i);
-        int value = pair.getKey();
-        String tableName = pair.getValue();
-        String columnName;
-        if (value == -1) {
-            columnName = plainRefRowType.getFieldNames().get(i);
-        } else {
-            columnName = plainRowType.getFieldNames().get(value);
-        }
-        return Pair.of(tableName, columnName);
+    public PlainRows getPlainRows() {
+        return plainRows;
     }
 
     public DbType getDbType() {
@@ -1111,4 +929,333 @@ public class PushDownOpt {
         }
     }
 
+    class PlainRefCalculator extends RelShuttleImpl {
+        private PlainRows nodePlainRows;
+        RelDataTypeFactory factory;
+
+        public PlainRefCalculator(RelNode node) {
+            this.factory = node.getCluster().getTypeFactory();
+        }
+
+        @Override
+        public RelNode visit(LogicalProject project) {
+            super.visit(project);
+            nodePlainRows = nodePlainRows.updateRefIndex(project);
+            return project;
+        }
+
+        @Override
+        public RelNode visit(LogicalAggregate agg) {
+            super.visit(agg);
+            plainRows = nodePlainRows.updateRefIndex(agg);
+            return agg;
+        }
+
+        @Override
+        public RelNode visit(LogicalJoin join) {
+            visitChild(join, 1, join.getInput(1));
+            RelDataType rightType = nodePlainRows.buildCurRowType(factory);
+            PlainRows rightPlainRows = nodePlainRows;
+
+            visitChild(join, 0, join.getInput(0));
+            RelDataType leftType = nodePlainRows.buildCurRowType(factory);
+
+            nodePlainRows = nodePlainRows.updateRefIndexForJoin(
+                factory,
+                leftType,
+                rightType,
+                rightPlainRows);
+            return join;
+        }
+
+        @Override
+        public RelNode visit(LogicalSemiJoin semiJoin) {
+            visitChild(semiJoin, 1, semiJoin.getInput(1));
+            RelDataType rightType = nodePlainRows.buildCurRowType(factory);
+            PlainRows rightPlainRows = nodePlainRows;
+
+            visitChild(semiJoin, 0, semiJoin.getInput(0));
+            RelDataType leftType = nodePlainRows.buildCurRowType(factory);
+
+            nodePlainRows = nodePlainRows.updateRefIndexForSemiJoin(
+                semiJoin,
+                factory,
+                leftType,
+                rightType,
+                rightPlainRows);
+            return semiJoin;
+        }
+
+        @Override
+        public RelNode visit(TableScan scan) {
+            this.nodePlainRows = new PlainRows(scan.getRowType(), Util.last(scan.getTable().getQualifiedName()));
+            return tableScan;
+        }
+    }
+
+    public void calculateRowType() {
+        PlainRefCalculator calculator = new PlainRefCalculator(getPushedRelNode());
+        getPushedRelNode().accept(calculator);
+        this.plainRows = calculator.nodePlainRows;
+    }
+
+    public int getRefByColumnName(String tableName, String columnName, boolean last, boolean ignoreDerive) {
+        return plainRows.getRefByColumnName(tableName, columnName, last, ignoreDerive, getPushedRelNode());
+    }
+
+    class PlainRows {
+
+        /**
+         * <pre>
+         * 用来解决 tb_a a JOIN tb_a b 时 Calcite 自动修改为 b 中的同名列改名的问题
+         * 改名的代码在：SqlValidatorUtil.addFields()
+         * 解决思路：提前存一份没改过名字的列信息, 同时建立列与表的关系，用于通过列名查找拆分键序号
+         *
+         * plainRowType: store the original field name rowtype
+         * plainRefRowType: store the current field name rowtype
+         * plainRefIndex: store index to the plainRowType, List[Pair(refIndex, tableName)]
+         * </pre>
+         */
+
+        private final RelDataType plainRowType;
+        private final RelDataType plainRefRowType;
+        private final List<Pair<Integer, String>> plainRefIndex;
+
+        public PlainRows(RelDataType rowType, String tableName) {
+            this.plainRowType = rowType;
+            this.plainRefIndex = initPlainRefIndex(plainRowType, tableName);
+            this.plainRefRowType = null;
+        }
+
+        public PlainRows(RelDataType plainRowType, RelDataType plainRefRowType,
+                         List<Pair<Integer, String>> plainRefIndex) {
+            this.plainRowType = plainRowType;
+            this.plainRefRowType = plainRefRowType;
+            this.plainRefIndex = plainRefIndex;
+        }
+
+        private List<Pair<Integer, String>> initPlainRefIndex(RelDataType rowType, String tableName) {
+            List<Pair<Integer, String>> newPlainRefIndex = new ArrayList<>(rowType.getFieldCount());
+            for (int i = 0; i < rowType.getFieldCount(); i++) {
+                newPlainRefIndex.add(Pair.of(i, tableName));
+            }
+            return newPlainRefIndex;
+        }
+
+        public RelDataType getPlainRowType() {
+            return plainRowType;
+        }
+
+        public List<Pair<Integer, String>> getPlainRefIndex() {
+            return plainRefIndex;
+        }
+
+        public PlainRows setPlainRowType(RelDataType plainRowType) {
+            return new PlainRows(plainRowType,
+                this.plainRefRowType,
+                this.plainRefIndex);
+        }
+
+        private Pair<Integer, String> getRefIndex(List<Pair<Integer, String>> plainRefIndex, RexNode expr) {
+            if (expr.getKind() == SqlKind.CAST) {
+                return getRefIndex(plainRefIndex, ((RexCall) expr).getOperands().get(0));
+            }
+
+            if (expr instanceof RexInputRef) {
+                RexInputRef inputRef = (RexInputRef) expr;
+                return plainRefIndex.get(inputRef.getIndex());
+            }
+
+            return defaultRefIndex();
+        }
+
+        /**
+         * 根据 Project 的投影列,更新输出结果对于对底层列的引用序号
+         */
+        private PlainRows updateRefIndex(LogicalProject project) {
+            List<RexNode> exprs = project.getChildExps();
+            List<Pair<Integer, String>> newRefIndex = new ArrayList<>(exprs.size());
+            for (RexNode expr : exprs) {
+                newRefIndex.add(getRefIndex(plainRefIndex, expr));
+            }
+
+            return new PlainRows(
+                this.getPlainRowType(),
+                project.getRowType(),
+                newRefIndex);
+        }
+
+        private PlainRows updateRefIndex(LogicalAggregate agg) {
+            List<Pair<Integer, String>> newRefIndex = new ArrayList<>();
+            for (int ref : agg.getGroupSet()) {
+                newRefIndex.add(plainRefIndex.get(ref));
+            }
+
+            for (int i = 0; i < agg.getAggCallList().size(); i++) {
+                newRefIndex.add(defaultRefIndex());
+            }
+
+            return new PlainRows(
+                this.getPlainRowType(),
+                agg.getRowType(),
+                newRefIndex);
+        }
+
+        private PlainRows updateRefIndexForJoin(
+            RelDataTypeFactory factory,
+            RelDataType leftType,
+            RelDataType rightType,
+            PlainRows rightPlainRows) {
+            RelDataType newPlainType = deriveJoinType(factory, leftType, rightType);
+            return new PlainRows(
+                newPlainType,
+                newPlainType,
+                extendPlainRefIndex(rightPlainRows.getPlainRefIndex()));
+
+        }
+
+        private PlainRows updateRefIndexForSemiJoin(
+            LogicalSemiJoin semiJoin,
+            RelDataTypeFactory factory,
+            RelDataType leftType,
+            RelDataType rightType,
+            PlainRows rightPlainRows) {
+            RelDataType newPlainType;
+            List<Pair<Integer, String>> newPlainRefIndex;
+            if (semiJoin.getJoinType() == JoinRelType.LEFT) {
+                newPlainRefIndex = extendPlainRefIndex(rightPlainRows.getPlainRefIndex().subList(0, 1));
+                newPlainType =
+                    SqlValidatorUtil.createLeftSemiJoinType(factory, leftType, rightType, null,
+                        semiJoin.getSystemFieldList(), 1);
+            } else {
+                newPlainRefIndex = extendPlainRefIndex(new ArrayList<>());
+                newPlainType = leftType;
+            }
+            return new PlainRows(
+                newPlainType,
+                newPlainType,
+                newPlainRefIndex);
+        }
+
+        private List<Pair<Integer, String>> extendPlainRefIndex(
+            List<Pair<Integer, String>> refIndex) {
+            List<Pair<Integer, String>> newPlainRefIndex = new ArrayList<>();
+
+            IntStream.range(0, this.plainRefIndex.size()).forEach(index -> {
+                final Pair<Integer, String> p = this.plainRefIndex.get(index);
+                if (isDefaultRefIndex(p)) {
+                    newPlainRefIndex.add(defaultRefIndex());
+                } else {
+                    newPlainRefIndex.add(Pair.of(index, p.getValue()));
+                }
+            });
+
+            final int offset = this.plainRefIndex.size();
+
+            IntStream.range(0, refIndex.size()).forEach(index -> {
+                final Pair<Integer, String> p = refIndex.get(index);
+                if (isDefaultRefIndex(p)) {
+                    newPlainRefIndex.add(defaultRefIndex());
+                } else {
+                    newPlainRefIndex.add(Pair.of(offset + index, p.getValue()));
+                }
+            });
+
+            return newPlainRefIndex;
+        }
+
+        /**
+         * @param tableName table name of the column
+         * @param columnName name of the column
+         * @param last search from head or from tail
+         * @param ignoreDerive ignore derived column or not
+         * @param node root of relNode tree
+         * @return search the serial number of column in the relNode tree
+         */
+        public int getRefByColumnName(String tableName, String columnName, boolean last,
+                                      boolean ignoreDerive, RelNode node) {
+            Preconditions.checkArgument(StringUtils.isNotEmpty(columnName));
+            RelMetadataQuery metadataQuery = node.getCluster().getMetadataQuery();
+            boolean oldIgnoreProjectDeriveOriginColumn = metadataQuery.isIgnoreProjectDeriveOriginColumn();
+            try {
+                metadataQuery.setIgnoreProjectDeriveOriginColumn(true);
+                List<RelDataTypeField> fields = plainRowType.getFieldList();
+                int loc;
+                for (int i = 0; i < plainRowType.getFieldCount(); i++) {
+                    // search from head or from tail
+                    loc = last ? plainRowType.getFieldCount() - 1 - i : i;
+                    if (!columnName.equalsIgnoreCase(fields.get(loc).getName())) {
+                        continue;
+                    }
+
+                    for (int j = 0; j < plainRefIndex.size(); j++) {
+                        if (!sameRefIndex(plainRefIndex.get(j), loc, tableName)) {
+                            continue;
+                        }
+                        if (ignoreDerive) {
+                            if (metadataQuery.getColumnOrigin(node, j) != null) {
+                                return j;
+                            }
+                        } else {
+                            final Set<RelColumnOrigin> origins = metadataQuery.getColumnOrigins(node, j);
+                            if (origins != null && origins.size() == 1) {
+                                return j;
+                            }
+                        }
+                    }
+                }
+                // 没有找到
+                return -1;
+            } finally {
+                metadataQuery.setIgnoreProjectDeriveOriginColumn(oldIgnoreProjectDeriveOriginColumn);
+            }
+        }
+
+        public RelDataType buildCurRowType(
+            RelDataTypeFactory factory) {
+            return buildCurRowType(factory,
+                this.plainRowType,
+                this.plainRefRowType,
+                this.plainRefIndex
+            );
+        }
+
+        PlainRows copy() {
+            if (this.plainRefIndex != null) {
+                List<Pair<Integer, String>> newRefIndex = new ArrayList<>(plainRefIndex.size());
+                for (Pair<Integer, String> pair : this.plainRefIndex) {
+                    newRefIndex.add(Pair.of(pair.getKey(), pair.getValue()));
+                }
+                return new PlainRows(
+                    this.plainRowType,
+                    this.plainRefRowType,
+                    newRefIndex);
+            }
+
+            return new PlainRows(
+                this.plainRowType,
+                this.plainRefRowType,
+                null);
+        }
+
+        public RelDataType buildCurRowType(
+            RelDataTypeFactory factory,
+            RelDataType plainRowType,
+            RelDataType plainRefRowType,
+            List<Pair<Integer, String>> plainRefIndex) {
+            List<RelDataTypeField> fieldList = new ArrayList<>(plainRefIndex.size());
+
+            for (int i = 0; i < plainRefIndex.size(); i++) {
+                int value = plainRefIndex.get(i).getKey();
+                final RelDataTypeField field;
+                if (value == -1) {
+                    field = plainRefRowType.getFieldList().get(i);
+                } else {
+                    field = plainRowType.getFieldList().get(value);
+                }
+                fieldList.add(new RelDataTypeFieldImpl(field.getName(), i, field.getType()));
+            }
+            return factory.createStructType(fieldList);
+        }
+    }
 }

@@ -26,6 +26,7 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.AlterSystemRefreshStorageSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalAlterSystemRefreshStorage;
 import org.apache.calcite.rel.RelNode;
@@ -56,7 +57,8 @@ public class LogicalAlterSystemRefreshStorageHandler extends HandlerCommon {
 
     private void syncRefreshStorage(String dnId, String vipAddr, String user, String encPasswd) {
         try {
-            SyncManagerHelper.sync(new AlterSystemRefreshStorageSyncAction(dnId, vipAddr, user, encPasswd));
+            SyncManagerHelper.sync(new AlterSystemRefreshStorageSyncAction(dnId, vipAddr, user, encPasswd),
+                SyncScope.ALL);
         } catch (Throwable e) {
             logger.error(e);
             throw new TddlNestableRuntimeException(e);

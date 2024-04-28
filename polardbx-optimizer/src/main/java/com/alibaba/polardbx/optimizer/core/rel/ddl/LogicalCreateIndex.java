@@ -31,15 +31,17 @@ import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateIndexWithGsiPreparedData;
-import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.ddl.CreateIndex;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexOption;
+import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
 import java.util.ArrayList;
@@ -55,10 +57,21 @@ public class LogicalCreateIndex extends LogicalTableOperation {
     private List<CreateLocalIndexPreparedData> createLocalIndexPreparedDataList = new ArrayList<>();
     private CreateIndexWithGsiPreparedData createIndexWithGsiPreparedData;
 
+    private final SqlCreateIndex normalizedOriginalDdl;
+
     public LogicalCreateIndex(CreateIndex createIndex) {
         super(createIndex);
         this.sqlCreateIndex = (SqlCreateIndex) relDdl.sqlNode;
         this.indexName = sqlCreateIndex.getIndexName().getLastName();
+
+        // createIndex.sqlNode will be modified in ReplaceTableNameWithQuestionMarkVisitor
+        // after that the table name of CREATE TABLE statement will be replaced with a question mark
+        // which will cause an error in CHECK COLUMNAR META and CDC.
+        // The right way might be copy a new SqlNode in ReplaceTableNameWithQuestionMarkVisitor
+        // every time when table name is replaced (as a SqlShuttle should do).
+        // But change ReplaceTableNameWithQuestionMarkVisitor will affect all kinds of ddl statement,
+        // should be done sometime later and tested carefully
+        this.normalizedOriginalDdl = (SqlCreateIndex) SqlNode.clone(relDdl.sqlNode);
     }
 
     public static LogicalCreateIndex create(CreateIndex createIndex) {
@@ -73,6 +86,10 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         return sqlCreateIndex.createClusteredIndex();
     }
 
+    public boolean isColumnar() {
+        return sqlCreateIndex.createCci();
+    }
+
     public SqlCreateIndex getSqlCreateIndex() {
         return this.sqlCreateIndex;
     }
@@ -81,16 +98,27 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         return createLocalIndexPreparedDataList;
     }
 
+    public SqlCreateIndex getNormalizedOriginalDdl() {
+        return normalizedOriginalDdl;
+    }
+
     public CreateIndexWithGsiPreparedData getCreateIndexWithGsiPreparedData() {
         return createIndexWithGsiPreparedData;
     }
 
     public void prepareData() {
-        if (sqlCreateIndex.createGsi()) {
+        if (isColumnar()) {
+            prepareColumnarData();
+        } else if (isGsi()) {
             prepareLocalIndexWithGsiData();
         } else {
             prepareStandaloneLocalIndexData(false);
         }
+    }
+
+    private void prepareColumnarData() {
+        createIndexWithGsiPreparedData = new CreateIndexWithGsiPreparedData();
+        createIndexWithGsiPreparedData.setGlobalIndexPreparedData(prepareGsiData());
     }
 
     /**
@@ -143,7 +171,10 @@ public class LogicalCreateIndex extends LogicalTableOperation {
                 OptimizerContext.getContext(schemaName).getPartitionInfoManager();
             partitionInfo = partitionInfoManager.getPartitionInfo(tableName);
             isBroadcast = partitionInfo.isBroadcastTable();
-            locality = partitionInfo.getLocality();
+            if (!isColumnar()) {
+                // Do not set locality for cci
+                locality = partitionInfo.getLocality();
+            }
         } else {
             isBroadcast = primaryTableRule.isBroadcast();
         }
@@ -173,7 +204,10 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             localPartitionDefinitionInfo,
             unique,
             sqlCreateIndex.createClusteredIndex(),
-            null,
+            sqlCreateIndex.createCci(),
+            sqlCreateIndex.getTableGroupName(),
+            sqlCreateIndex.isWithImplicitTableGroup(),
+            sqlCreateIndex.getEngineName(),
             locality,
             ((CreateIndex) relDdl).getPartBoundExprInfo(),
             sqlCreateIndex.getOriginalSql()
@@ -182,6 +216,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         preparedData.setPrimaryPartitionInfo(partitionInfo);
         preparedData.setPrimaryTableRule(primaryTableRule);
         preparedData.setSqlCreateIndex(sqlCreateIndex);
+        preparedData.setOriginSqlCreateIndex(normalizedOriginalDdl);
         preparedData.setTableVersion(primaryTableMeta.getVersion());
         preparedData.setVisible(sqlCreateIndex.isVisible());
         if (isNewPartDb) {
@@ -210,6 +245,19 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             preparedData.setIndexType(
                 null == sqlCreateIndex.getIndexType() ? null : sqlCreateIndex.getIndexType().name()
             );
+        }
+
+        if (preparedData.isWithImplicitTableGroup()) {
+            TableGroupInfoManager tableGroupInfoManager =
+                OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager();
+            String tableGroupName = preparedData.getTableGroupName() == null ? null :
+                ((SqlIdentifier) preparedData.getTableGroupName()).getLastName();
+            assert tableGroupName != null;
+            if (tableGroupInfoManager.getTableGroupConfigByName(tableGroupName) == null) {
+                preparedData.getRelatedTableGroupInfo().put(tableGroupName, true);
+            } else {
+                preparedData.getRelatedTableGroupInfo().put(tableGroupName, false);
+            }
         }
 
         return preparedData;
@@ -276,7 +324,7 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             if (null == sqlCreateIndex.getIndexResiding()) {
                 // Need rewrite.
                 if (rewrite) {
-                    sqlCreateIndex = sqlCreateIndex.rebuildToGsi(null, null, false);
+                    sqlCreateIndex = sqlCreateIndex.rebuildToGsi(null, null);
                 }
                 return true;
             }
@@ -284,4 +332,9 @@ public class LogicalCreateIndex extends LogicalTableOperation {
         return false;
     }
 
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getCreateIndexWithGsiPreparedData()) {
+            getCreateIndexWithGsiPreparedData().setDdlVersionId(ddlVersionId);
+        }
+    }
 }

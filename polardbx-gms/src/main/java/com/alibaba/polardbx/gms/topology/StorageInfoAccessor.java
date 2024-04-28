@@ -99,9 +99,6 @@ public class StorageInfoAccessor extends AbstractAccessor {
     private static final String GET_MASTER_INST_ID_FOR_SERVER =
         "select distinct inst_id, inst_kind from storage_info where status!=2 and inst_kind=0 limit 1";
 
-    private static final String GET_SLAVE_ALL_INST_ID_FOR_SERVER =
-        "select distinct inst_id, inst_kind from storage_info where status!=2 and inst_kind=1";
-
     private static final String GET_ALL_INST_ID_FOR_SERVER =
         "select distinct inst_id, storage_inst_id from storage_info where status!=2";
 
@@ -404,36 +401,6 @@ public class StorageInfoAccessor extends AbstractAccessor {
                     return null;
                 }
                 return storageInstIdList.get(0);
-            } catch (Throwable ex) {
-                throw ex;
-            } finally {
-                if (rs != null) {
-                    rs.close();
-                }
-                if (stmt != null) {
-                    stmt.close();
-                }
-            }
-
-        } catch (Exception e) {
-            logger.error("Failed to query the system table '" + STORAGE_INFO_TABLE + "'", e);
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query", STORAGE_INFO_TABLE,
-                e.getMessage());
-        }
-    }
-
-    public List<String> getServerReadOnlyInstIdSetFromStorageInfo() {
-        try {
-            PreparedStatement stmt = null;
-            ResultSet rs = null;
-            try {
-                stmt = this.connection.prepareStatement(GET_SLAVE_ALL_INST_ID_FOR_SERVER);
-                rs = stmt.executeQuery();
-                List<String> storageInstIdList = Lists.newArrayList();
-                while (rs.next()) {
-                    storageInstIdList.add(rs.getString(1));
-                }
-                return storageInstIdList;
             } catch (Throwable ex) {
                 throw ex;
             } finally {

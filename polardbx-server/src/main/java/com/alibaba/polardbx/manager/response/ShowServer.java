@@ -89,7 +89,7 @@ public final class ShowServer {
 
         // write rows
         byte packetId = eof.packetId;
-        RowDataPacket row = getRow(c.getCharset());
+        RowDataPacket row = getRow(c.getResultSetCharset());
         row.packetId = ++packetId;
         proxy = row.write(proxy);
 

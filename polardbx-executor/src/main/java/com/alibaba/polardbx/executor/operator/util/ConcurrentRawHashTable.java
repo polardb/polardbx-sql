@@ -21,9 +21,6 @@ import it.unimi.dsi.fastutil.Hash;
 import it.unimi.dsi.fastutil.HashCommon;
 import org.openjdk.jol.info.ClassLayout;
 
-import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicIntegerArray;
-
 /**
  * An concurrent hash table implementation mapping a hash code to an integer value
  *
@@ -54,17 +51,14 @@ public class ConcurrentRawHashTable implements Hash {
 
         this.n = HashCommon.arraySize(size, loadFactor);
         this.mask = n - 1;
-
-        int[] keys = new int[n];
-        Arrays.fill(keys, NOT_EXISTS);
-        this.keys = new AtomicIntegerArray(keys);
+        this.keys = new AtomicIntegerArray(n, NOT_EXISTS);
     }
 
     public ConcurrentRawHashTable(int size) {
         this(size, selectLoadFactor(size));
     }
 
-    private static float selectLoadFactor(int size) {
+    public static float selectLoadFactor(int size) {
         if (size >= 100_000_000) { // more than 100M records
             return DEFAULT_LOAD_FACTOR;
         } else if (size >= 10_000_000) { // more than 10M records
@@ -115,7 +109,18 @@ public class ConcurrentRawHashTable implements Hash {
         return keys.get(h);
     }
 
-    public long estimateSize() {
+    public long estimateSizeInBytes() {
         return INSTANCE_SIZE + keys.length() * Integer.BYTES;
+    }
+
+    public static long estimateSizeInBytes(int size) {
+        long lengthOfHashTable = HashCommon.arraySize(
+            size, ConcurrentRawHashTable.selectLoadFactor(size));
+
+        return INSTANCE_SIZE + lengthOfHashTable * Integer.BYTES;
+    }
+
+    public int size() {
+        return n;
     }
 }

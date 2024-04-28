@@ -16,13 +16,17 @@
 
 package com.alibaba.polardbx.server.handler;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseCollect;
 import com.alibaba.polardbx.server.response.CollectStatistic;
 import com.alibaba.polardbx.server.util.LogUtils;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
 
 public class CollectHandler {
+    private static final Logger logger = LoggerFactory.getLogger("STATISTICS");
+
     public static boolean handle(ByteString stmt, ServerConnection c, int offset) {
         int rs = ServerParseCollect.parse(stmt, offset);
         boolean recordSql = true;
@@ -36,6 +40,7 @@ public class CollectHandler {
                 return c.execute(stmt, false);
             }
         } catch (Throwable ex) {
+            logger.error(ex);
             sqlEx = ex;
             throw ex;
         } finally {

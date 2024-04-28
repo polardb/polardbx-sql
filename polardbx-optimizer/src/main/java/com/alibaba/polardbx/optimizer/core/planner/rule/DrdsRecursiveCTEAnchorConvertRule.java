@@ -17,31 +17,36 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.google.common.base.Predicates;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.core.RecursiveCTEAnchor;
-import org.apache.calcite.rel.core.RelFactories;
-import org.apache.calcite.rel.logical.LogicalSort;
 
 public class DrdsRecursiveCTEAnchorConvertRule extends ConverterRule {
-    public static final DrdsRecursiveCTEAnchorConvertRule INSTANCE = new DrdsRecursiveCTEAnchorConvertRule();
+    public static final DrdsRecursiveCTEAnchorConvertRule SMP_INSTANCE =
+        new DrdsRecursiveCTEAnchorConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsRecursiveCTEAnchorConvertRule() {
-        super(RecursiveCTEAnchor.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsRecursiveCTEAnchorConvertRule");
+    public static final DrdsRecursiveCTEAnchorConvertRule COL_INSTANCE =
+        new DrdsRecursiveCTEAnchorConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsRecursiveCTEAnchorConvertRule(Convention outConvention) {
+        super(RecursiveCTEAnchor.class, Convention.NONE, outConvention, "DrdsRecursiveCTEAnchorConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final RecursiveCTEAnchor recursiveCTEAnchor = (RecursiveCTEAnchor) rel;
         return new RecursiveCTEAnchor(recursiveCTEAnchor.getCluster(),
-            recursiveCTEAnchor.getTraitSet().simplify().replace(DrdsConvention.INSTANCE),
+            recursiveCTEAnchor.getTraitSet().simplify().replace(outConvention),
             recursiveCTEAnchor.getCteName(), recursiveCTEAnchor.getRowType());
     }
 }

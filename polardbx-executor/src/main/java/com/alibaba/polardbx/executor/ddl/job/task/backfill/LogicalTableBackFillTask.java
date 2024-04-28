@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.GsiBackfill;
 import lombok.Getter;
 
+import java.util.List;
 import java.util.Map;
 
 @TaskName(name = "LogicalTableBackFillTask")
@@ -35,16 +36,31 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
     public String sourceTableName;
     public String targetTableName;
     public Map<String, String> virtualColumns;
+    public Map<String, String> backfillColumnMap;
+    public List<String> modifyStringColumns;
+    public boolean useChangeSet;
+    public boolean modifyColumn;
+    public boolean mirrorCopy;
 
     @JSONCreator
     public LogicalTableBackFillTask(String schemaName,
                                     String sourceTableName,
                                     String targetTableName,
-                                    Map<String, String> virtualColumns) {
+                                    Map<String, String> virtualColumns,
+                                    Map<String, String> backfillColumnMap,
+                                    List<String> modifyStringColumns,
+                                    boolean useChangeSet,
+                                    boolean mirrorCopy,
+                                    boolean modifyColumn) {
         super(schemaName);
         this.sourceTableName = sourceTableName;
         this.targetTableName = targetTableName;
         this.virtualColumns = virtualColumns;
+        this.backfillColumnMap = backfillColumnMap;
+        this.modifyStringColumns = modifyStringColumns;
+        this.useChangeSet = useChangeSet;
+        this.modifyColumn = modifyColumn;
+        this.mirrorCopy = mirrorCopy;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -54,6 +70,11 @@ public class LogicalTableBackFillTask extends BaseBackfillTask implements Remote
         executionContext.setBackfillId(getTaskId());
         GsiBackfill backFillPlan =
             GsiBackfill.createGsiBackfill(schemaName, sourceTableName, targetTableName, executionContext);
+        backFillPlan.setUseChangeSet(useChangeSet);
+        backFillPlan.setModifyColumn(modifyColumn);
+        backFillPlan.setMirrorCopy(mirrorCopy);
+        backFillPlan.setModifyStringColumns(modifyStringColumns);
+        backFillPlan.setBackfillColumnMap(backfillColumnMap);
         backFillPlan.setVirtualColumnMap(virtualColumns);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);

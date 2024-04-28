@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.cdc.TablesExtInfo;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -27,9 +27,9 @@ import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.sync.LockTablesSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
-import com.alibaba.polardbx.executor.sync.TablesMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.sync.UnlockTableSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -102,6 +102,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
                     timeUnit
                 ),
                 schemaName,
+                SyncScope.ALL,
                 true
             );
 
@@ -135,7 +136,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
             CdcManagerHelper.getInstance()
                 .notifyDdlNew(schemaName, tableName, "RENAME_TABLE",
                     ddlSql, ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(),
-                    DdlVisibility.Public, params, true, newTableTopologies.get(i),
+                    CdcDdlMarkVisibility.Public, params, true, newTableTopologies.get(i),
                     new Pair<>(collates.get(i), cdcMetas.get(i)));
         }
 
@@ -144,6 +145,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
             SyncManagerHelper.sync(
                 new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit,
                     executionContext.getConnId(), false),
+                SyncScope.ALL,
                 true);
         } catch (Throwable t) {
             LOGGER.error(String.format(
@@ -168,6 +170,7 @@ public class RenameTablesCdcSyncTask extends TablesSyncTask {
                     executionContext.getTraceId()
                 ),
                 schemaName,
+                SyncScope.ALL,
                 true
             );
 

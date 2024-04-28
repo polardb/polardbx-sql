@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="spm_baseline">
+        <Create><![CDATA[
+            create table if not exists `spm_baseline` (
+              `id` bigint not null,
+              `inst_id` varchar(64) default '',
+              `schema_name` varchar(64) not null default '',
+              `gmt_modified` timestamp default current_timestamp on update current_timestamp,
+              `gmt_created` timestamp default current_timestamp,
+              `sql` mediumtext not null,
+              `table_set` text not null,
+              `extend_field` longtext default null comment 'json string extend field',
+              primary key `id_key` (`inst_id`, `schema_name`, `id`)
+            ) engine=innodb default charset=utf8;
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="spm_plan">
+        <Create><![CDATA[
+            create table if not exists `spm_plan` (
+              `id` bigint(20) not null,
+              `inst_id` varchar(64) default '',
+              `schema_name` varchar(64) not null,
+              `baseline_id` bigint(20) not null,
+              `gmt_modified` timestamp default current_timestamp on update current_timestamp,
+              `gmt_created` timestamp default current_timestamp,
+              `last_execute_time` timestamp null default null,
+              `plan` longtext not null,
+              `plan_type` varchar(255) null,
+              `plan_error` longtext null,
+              `choose_count` bigint(20) not null,
+              `cost` double not null,
+              `estimate_execution_time` double not null,
+              `accepted` tinyint(4) not null,
+              `fixed` tinyint(4) not null,
+              `trace_id` varchar(255) not null,
+              `origin` varchar(255) default null,
+              `estimate_optimize_time` double default null,
+              `cpu` double default null,
+              `memory` double default null,
+              `io` double default null,
+              `net` double default null,
+              `tables_hashcode` bigint not null,
+              `extend_field` longtext default null comment 'json string extend field',
+              primary key `primary_key` (`inst_id`, `schema_name`, `id`, `baseline_id`)
+            ,  key `baseline_id_key` (`schema_name`, `baseline_id`)
+            ) engine=innodb default charset=utf8;
+        ]]></Create>
+    </SystemTable>
+</SystemTables>

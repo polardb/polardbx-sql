@@ -21,7 +21,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.TableSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableHideTableMetaTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropGsiTableRemoveMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.DropPartitionGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiDropCleanUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateGsiExistenceTask;

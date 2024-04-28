@@ -12,7 +12,7 @@ c1,route_rs
 1,p1
 explain select * from h_myf1bintbint2bint where c1=1;
 Logical ExecutionPlan
-LogicalView(tables="h_myf1bintbint2bint[p1]", sql="SELECT `c1`, `c2` FROM `h_myf1bintbint2bint` AS `h_myf1bintbint2bint` WHERE (`c1` = ?)")
+PhyTableOperation(tables="h_myf1bintbint2bint[p1]", sql="SELECT `h_myf1bintbint2bint`.`c1`, `h_myf1bintbint2bint`.`c2` FROM ? AS `h_myf1bintbint2bint` WHERE (`h_myf1bintbint2bint`.`c1` = ?)", params="1")
 select * from h_myf1bintbint2bint where c1=2;
 c1,c2
 2,2
@@ -35,14 +35,14 @@ create table h_myf1bintbint2bint_3(
 partition by hash(myf1bintbint2bint(c1, c2))
 partitions 2;
 multi columns used
-## error_msg: $# multi columns with using partition #$
+## error_msg: $# partition column count mismatch #$
 create table h_myf1bintbint2bint_4(
 c1 bigint not null,
 c2 bigint not null
 )
 partition by hash(myf1bintbint2bint(c1,1),myf1bintbint2bint(c2,1))
 partitions 2;
-multi columns with using partition
+partition column count mismatch
 # ok
 create table r_myf1bintbint2bint(
 c1 bigint not null,

@@ -18,9 +18,6 @@ package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.ArchiveMode;
 import com.alibaba.polardbx.common.Engine;
-import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
-import com.alibaba.polardbx.common.constants.SequenceAttribute;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -29,11 +26,9 @@ import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectQuery;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
-import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -46,9 +41,10 @@ import com.alibaba.polardbx.executor.ddl.job.factory.CreatePartitionTableWithGsi
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableSelectJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.CreateTableWithGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.PureCdcDdlMark4CreateTableJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.ReimportTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.factory.oss.CreatePartitionOssTableJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.LogicalInsertTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.ColumnValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ConstraintValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.ForeignKeyValidator;
@@ -56,26 +52,28 @@ import com.alibaba.polardbx.executor.ddl.job.validator.IndexValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateGsi;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionTable;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateTable;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.handler.LogicalShowCreateTableHandler;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.executor.utils.DdlUtils;
+import com.alibaba.polardbx.executor.utils.StandardToEnterpriseEditionUtil;
+import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.limit.LimitValidator;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskAccessor;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.topology.DbGroupInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.DefaultExprUtil;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
-import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
@@ -83,6 +81,7 @@ import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.BaseDdlOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.CreateTablePreparedData;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -91,16 +90,14 @@ import com.alibaba.polardbx.optimizer.parse.visitor.ContextParameters;
 import com.alibaba.polardbx.optimizer.parse.visitor.FastSqlToCalciteNodeVisitor;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import groovy.sql.Sql;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupUtils;
+import io.grpc.netty.shaded.io.netty.util.internal.StringUtil;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.CreateTable;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
-import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.rel.ddl.CreateTable;
+import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlColumnDeclaration;
@@ -109,28 +106,27 @@ import org.apache.calcite.sql.SqlDataTypeSpec;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
-import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlLiteral;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
-import org.apache.calcite.sql.SqlSelect;
-import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlPartitionBy;
+import org.apache.calcite.sql.SqlPartitionByHash;
+import org.apache.calcite.sql.SqlPartitionValue;
+import org.apache.calcite.sql.SqlPartitionValueItem;
+import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlShowCreateTable;
-import org.apache.calcite.sql.dialect.MysqlSqlDialect;
+import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.sql.SqlSubPartitionBy;
+import org.apache.calcite.sql.SqlSubPartitionByHash;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.type.BasicSqlType;
-import org.apache.calcite.sql.type.SqlTypeFamily;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Pair;
-import org.apache.hadoop.yarn.webapp.hamlet2.Hamlet;
 import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -175,6 +171,33 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         sqlCreateTable = (SqlCreateTable) logicalCreateTable.relDdl.sqlNode;
 
+        // return job factory for cdc ddl mark in case of creating table if not exits, if table already exist
+        final String schemaName = logicalDdlPlan.getSchemaName();
+        final String logicalTableName = logicalDdlPlan.getTableName();
+        boolean tableExists = TableValidator.checkIfTableExists(schemaName, logicalTableName);
+        if (tableExists && sqlCreateTable.isIfNotExists()) {
+            LimitValidator.validateTableNameLength(schemaName);
+            LimitValidator.validateTableNameLength(logicalTableName);
+
+            // Prompt "show warning" only.
+            DdlHelper.storeFailedMessage(schemaName, ERROR_TABLE_EXISTS,
+                " Table '" + logicalTableName + "' already exists", executionContext);
+            executionContext.getDdlContext().setUsingWarning(true);
+
+            return new PureCdcDdlMark4CreateTableJobFactory(schemaName, logicalTableName).create();
+        }
+
+        //import table, reimport table
+        boolean importTable = executionContext.getParamManager().getBoolean(ConnectionParams.IMPORT_TABLE);
+        boolean reImportTable = executionContext.getParamManager().getBoolean(ConnectionParams.REIMPORT_TABLE);
+        if (importTable) {
+            logicalCreateTable.setImportTable(true);
+        }
+        if (reImportTable) {
+            logicalCreateTable.setReImportTable(true);
+        }
+
+        LikeTableInfo likeTableInfo = null;
         if (sqlCreateTable.getLikeTableName() != null) {
             final String sourceCreateTableSql = generateCreateTableSqlForLike(sqlCreateTable, executionContext);
             MySqlCreateTableStatement stmt =
@@ -213,9 +236,20 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
                     "cannot create table using ARCHIVE_MODE if the engine of target table is INNODB.");
             }
 
+            List<String> dictColumns;
+            if ((dictColumns = sqlCreateTable.getDictColumns()) != null) {
+                createTableLikeSqlAst.setDictColumns(dictColumns);
+            }
+
+            if (!Engine.isFileStore(engine) && dictColumns != null) {
+                throw GeneralUtil.nestedException(
+                    "cannot create table with DICTIONARY_COLUMNS if the engine of target table is INNODB.");
+            }
+
             SqlIdentifier sourceTableName = (SqlIdentifier) sqlCreateTable.getLikeTableName();
             String sourceSchema =
                 sourceTableName.names.size() > 1 ? sourceTableName.names.get(0) : executionContext.getSchemaName();
+            likeTableInfo = new LikeTableInfo(sourceSchema, sourceTableName.getLastName());
 
             SqlIdentifier targetTableName = (SqlIdentifier) sqlCreateTable.getName();
             String targetSchema =
@@ -340,6 +374,8 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             expandTableGroupDefinition(logicalCreateTable.relDdl, logicalCreateTable.getSchemaName(), executionContext);
         }
         logicalCreateTable.prepareData(executionContext);
+        final Long versionId = DdlUtils.generateVersionId(executionContext);
+        logicalCreateTable.setDdlVersionId(versionId);
         if (flag) {
             String createTableSql = logicalCreateTable.getNativeSql();
             String insertIntoSql = logicalCreateTable.getCreateTablePreparedData().getSelectSql();
@@ -349,15 +385,15 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(logicalCreateTable.getSchemaName());
         if (!isNewPartDb) {
             if (logicalCreateTable.isWithGsi()) {
-                return buildCreateTableWithGsiJob(logicalCreateTable, executionContext);
+                return buildCreateTableWithGsiJob(logicalCreateTable, executionContext, likeTableInfo);
             } else {
-                return buildCreateTableJob(logicalCreateTable, executionContext);
+                return buildCreateTableJob(logicalCreateTable, executionContext, likeTableInfo);
             }
         } else {
             if (logicalCreateTable.isWithGsi()) {
-                return buildCreatePartitionTableWithGsiJob(logicalCreateTable, executionContext);
+                return buildCreatePartitionTableWithGsiJob(logicalCreateTable, executionContext, likeTableInfo);
             } else {
-                return buildCreatePartitionTableJob(logicalCreateTable, executionContext);
+                return buildCreatePartitionTableJob(logicalCreateTable, executionContext, likeTableInfo);
             }
         }
     }
@@ -376,7 +412,7 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         SqlCreateTable sqlCreateTable = (SqlCreateTable) createTable.sqlNode;
         String tableGroupName = sqlCreateTable.getTableGroupName() == null ? null :
             ((SqlIdentifier) sqlCreateTable.getTableGroupName()).getLastName();
-        if (StringUtils.isEmpty(tableGroupName)) {
+        if (StringUtils.isEmpty(tableGroupName) || sqlCreateTable.isWithImplicitTableGroup()) {
             return;
         }
 
@@ -386,35 +422,56 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         if (tableGroupConfig == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS, tableGroupName);
         }
-        String partitionDef = tableGroupConfig.getPreDefinePartitionInfo();
+        String partitionDef = TableGroupUtils.getPreDefinePartitionInfo(tableGroupConfig, ec);
         if (StringUtils.isEmpty(partitionDef)) {
             return;
         }
-        SqlPartitionBy tableSqlPartitionBy = (SqlPartitionBy) sqlCreateTable.getSqlPartition();
-        SQLPartitionBy fastSqlPartitionBy = FastsqlUtils.parsePartitionBy(partitionDef, true);
-        FastSqlToCalciteNodeVisitor visitor =
-            new FastSqlToCalciteNodeVisitor(new ContextParameters(false), ec);
-        fastSqlPartitionBy.accept(visitor);
-        SqlPartitionBy tableGroupSqlPartitionBy = (SqlPartitionBy) visitor.getSqlNode();
+        boolean isSingle = tableGroupConfig.getTableGroupRecord().isSingleTableGroup()
+            || tableGroupConfig.isEmpty() && partitionDef.trim().equalsIgnoreCase("SINGLE");
+        if (!isSingle) {
 
-        validateSqlPartitionBy(tableGroupSqlPartitionBy, sqlCreateTable);
+            SqlPartitionBy tableSqlPartitionBy = (SqlPartitionBy) sqlCreateTable.getSqlPartition();
+            SQLPartitionBy fastSqlPartitionBy = FastsqlUtils.parsePartitionBy(partitionDef, true);
+            if (!tableGroupConfig.isEmpty()) {
+                //i.e.  partition by udf_hash(Mymurmurhash64var(c1)), Mymurmurhash64var(int) is not a valid column definition,
+                // but it will be as part of result when /*+TDDL:cmd_extra(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/ show create full table
+                fastSqlPartitionBy.getColumnsDefinition().clear();
+            }
+            if (fastSqlPartitionBy.getSubPartitionBy() != null) {
+                fastSqlPartitionBy.getSubPartitionBy().getColumnsDefinition().clear();
+            }
+            FastSqlToCalciteNodeVisitor visitor =
+                new FastSqlToCalciteNodeVisitor(new ContextParameters(false), ec);
+            fastSqlPartitionBy.accept(visitor);
+            SqlPartitionBy tableGroupSqlPartitionBy = (SqlPartitionBy) visitor.getSqlNode();
 
-        tableGroupSqlPartitionBy.getColumns().clear();
-        tableGroupSqlPartitionBy.getColumns().addAll(tableSqlPartitionBy.getColumns());
+            validateSqlPartitionBy(tableGroupSqlPartitionBy, sqlCreateTable);
 
-        SqlSubPartitionBy sqlSubPartitionBy = tableGroupSqlPartitionBy.getSubPartitionBy();
-        if (sqlSubPartitionBy != null) {
-            sqlSubPartitionBy.getColumns().clear();
-            sqlSubPartitionBy.getColumns().addAll(tableSqlPartitionBy.getSubPartitionBy().getColumns());
+            tableGroupSqlPartitionBy.getColumns().clear();
+            tableGroupSqlPartitionBy.getColumns().addAll(tableSqlPartitionBy.getColumns());
+
+            SqlSubPartitionBy sqlSubPartitionBy = tableGroupSqlPartitionBy.getSubPartitionBy();
+            if (sqlSubPartitionBy != null) {
+                sqlSubPartitionBy.getColumns().clear();
+                sqlSubPartitionBy.getColumns().addAll(tableSqlPartitionBy.getSubPartitionBy().getColumns());
+            }
+
+            normlizePartitionBy(tableGroupSqlPartitionBy);
+            normlizeSubPartitionBy(sqlSubPartitionBy);
+
+            sqlCreateTable.setSqlPartition(tableGroupSqlPartitionBy);
+
+            SqlConverter sqlConverter = SqlConverter.getInstance(schemaName, ec);
+            PlannerContext plannerContext = PlannerContext.getPlannerContext(createTable.getCluster());
+
+            Map<SqlNode, RexNode> partRexInfoCtx =
+                sqlConverter.convertPartition(tableGroupSqlPartitionBy, plannerContext);
+
+            ((CreateTable) (createTable)).getPartBoundExprInfo().putAll(partRexInfoCtx);
+        } else {
+            sqlCreateTable.setSingle(true);
+            sqlCreateTable.setSqlPartition(null);
         }
-        sqlCreateTable.setSqlPartition(tableGroupSqlPartitionBy);
-
-        SqlConverter sqlConverter = SqlConverter.getInstance(schemaName, ec);
-        PlannerContext plannerContext = PlannerContext.getPlannerContext(createTable.getCluster());
-
-        Map<SqlNode, RexNode> partRexInfoCtx = sqlConverter.convertPartition(tableGroupSqlPartitionBy, plannerContext);
-
-        ((CreateTable) (createTable)).getPartBoundExprInfo().putAll(partRexInfoCtx);
     }
 
     private void validateSqlPartitionBy(SqlPartitionBy tableGroupSqlPartitionBy, SqlCreateTable sqlCreateTable) {
@@ -449,8 +506,6 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             }
         }
 
-        tableSqlPartitionBy.getColumns();
-        sqlCreateTable.getColDefs();
         SqlSubPartitionBy tgSqlSubPartitionBy = tableGroupSqlPartitionBy.getSubPartitionBy();
         SqlSubPartitionBy tbSqlSubPartitionBy = tableSqlPartitionBy.getSubPartitionBy();
         if (tgSqlSubPartitionBy != null && tbSqlSubPartitionBy == null) {
@@ -490,6 +545,55 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         final String schemaName = logicalDdlPlan.getSchemaName();
         final String logicalTableName = logicalDdlPlan.getTableName();
         boolean isNewPart = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+
+        //validate import/reimport table
+        boolean isImportTable = executionContext.getParamManager().getBoolean(ConnectionParams.IMPORT_TABLE);
+        boolean reImportTable = executionContext.getParamManager().getBoolean(ConnectionParams.REIMPORT_TABLE);
+        if (isImportTable || reImportTable) {
+            String locality = sqlCreateTable.getLocality();
+            if (StringUtil.isNullOrEmpty(locality)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "physical table's locality is required when import table");
+            }
+            LocalityDesc localityDesc = LocalityDesc.parse(locality);
+            if (localityDesc.getDnList().size() != 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "only one DN Id is allowed");
+            }
+            String dnName = localityDesc.getDnList().get(0);
+            List<DbGroupInfoRecord> dbGroupInfoRecords =
+                DbTopologyManager.getAllDbGroupInfoRecordByInstId(schemaName, dnName);
+            if (dbGroupInfoRecords.size() != 1) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "it's not allowed to import table when db group size exceeds 1");
+            }
+
+            String phyDbName = dbGroupInfoRecords.get(0).phyDbName;
+
+            Set<String> phyTables =
+                StandardToEnterpriseEditionUtil.queryPhysicalTableListFromPhysicalDabatase(dnName, phyDbName);
+            if (!phyTables.contains(logicalTableName)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    String.format("physical table [%s] not found when %s table in schema [%s] instantId [%s]",
+                        logicalTableName,
+                        isImportTable ? "import" : "reimport",
+                        schemaName, dnName)
+                );
+            }
+
+            if (reImportTable) {
+                Set<String> logicalTables =
+                    StandardToEnterpriseEditionUtil.getTableNamesFromLogicalDatabase(schemaName, executionContext);
+                if (!logicalTables.contains(logicalTableName)) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        String.format("logical table [%s] not found when reimport table in schema [%s]",
+                            logicalTableName, schemaName));
+                }
+            }
+
+            //use database-level locality, so no need of table-level locality
+            sqlCreateTable.setLocality(null);
+        }
 
         if (isNewPart) {
             if (sqlCreateTable.isBroadCast()) {
@@ -548,16 +652,9 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
 
         boolean tableExists = TableValidator.checkIfTableExists(schemaName, logicalTableName);
         if (tableExists && sqlCreateTable.isIfNotExists()) {
-            DdlContext ddlContext = executionContext.getDdlContext();
-            CdcManagerHelper.getInstance().notifyDdlNew(schemaName, logicalTableName, SqlKind.CREATE_TABLE.name(),
-                ddlContext.getDdlStmt(), ddlContext.getDdlType(), null, null,
-                DdlVisibility.Public, buildExtendParameter(executionContext));
-
-            // Prompt "show warning" only.
-            DdlHelper.storeFailedMessage(schemaName, ERROR_TABLE_EXISTS,
-                " Table '" + logicalTableName + "' already exists", executionContext);
-            executionContext.getDdlContext().setUsingWarning(true);
-            return true;
+            // do nothing
+        } else if (reImportTable) {
+            // do nothing
         } else if (tableExists) {
             throw new TddlRuntimeException(ERR_TABLE_ALREADY_EXISTS, logicalTableName);
         }
@@ -574,7 +671,8 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         return false;
     }
 
-    protected DdlJob buildCreateTableJob(LogicalCreateTable logicalCreateTable, ExecutionContext executionContext) {
+    protected DdlJob buildCreateTableJob(LogicalCreateTable logicalCreateTable, ExecutionContext executionContext,
+                                         LikeTableInfo likeTableInfo) {
         CreateTablePreparedData createTablePreparedData = logicalCreateTable.getCreateTablePreparedData();
 
         DdlPhyPlanBuilder createTableBuilder =
@@ -588,7 +686,9 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             createTablePreparedData.getSpecialDefaultValueFlags(),
             createTablePreparedData.getAddedForeignKeys(),
             physicalPlanData,
-            executionContext
+            createTablePreparedData.getDdlVersionId(),
+            executionContext,
+            likeTableInfo
         );
         logicalCreateTable.setAffectedRows(ret.getAffectRows());
         if (createTablePreparedData.getSelectSql() != null) {
@@ -599,7 +699,8 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
     }
 
     protected DdlJob buildCreatePartitionTableJob(LogicalCreateTable logicalCreateTable,
-                                                  ExecutionContext executionContext) {
+                                                  ExecutionContext executionContext,
+                                                  LikeTableInfo likeTableInfo) {
         PartitionTableType partitionTableType = PartitionTableType.SINGLE_TABLE;
         if (logicalCreateTable.isPartitionTable()) {
             partitionTableType = PartitionTableType.PARTITION_TABLE;
@@ -613,15 +714,17 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
             new CreatePartitionTableBuilder(logicalCreateTable.relDdl, createTablePreparedData, executionContext,
                 partitionTableType).build();
         PhysicalPlanData physicalPlanData = createTableBuilder.genPhysicalPlanData();
+
         Engine tableEngine = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getEngine();
         ArchiveMode archiveMode = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getArchiveMode();
+        List<String> dictColumns = ((SqlCreateTable) logicalCreateTable.relDdl.sqlNode).getDictColumns();
 
         if (Engine.isFileStore(tableEngine)) {
             CreatePartitionOssTableJobFactory ret = new CreatePartitionOssTableJobFactory(
                 createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
                 createTablePreparedData.getSpecialDefaultValues(),
                 createTablePreparedData.getSpecialDefaultValueFlags(),
-                physicalPlanData, executionContext, createTablePreparedData, tableEngine, archiveMode);
+                physicalPlanData, executionContext, createTablePreparedData, tableEngine, archiveMode, dictColumns);
             if (createTablePreparedData.getSelectSql() != null) {
                 ret.setSelectSql(createTablePreparedData.getSelectSql());
             }
@@ -630,24 +733,38 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         }
 
         PartitionInfo partitionInfo = createTableBuilder.getPartitionInfo();
-        CreatePartitionTableJobFactory ret = new CreatePartitionTableJobFactory(
-            createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
-            createTablePreparedData.getSpecialDefaultValues(),
-            createTablePreparedData.getSpecialDefaultValueFlags(),
-            createTablePreparedData.getAddedForeignKeys(),
-            physicalPlanData, executionContext, createTablePreparedData, partitionInfo);
 
-        if (createTablePreparedData.getSelectSql() != null) {
-            ret.setSelectSql(createTablePreparedData.getSelectSql());
+        if (logicalCreateTable.isReImportTable()) {
+            return new ReimportTableJobFactory(createTablePreparedData.isAutoPartition(),
+                createTablePreparedData.isTimestampColumnDefault(),
+                createTablePreparedData.getSpecialDefaultValues(),
+                createTablePreparedData.getSpecialDefaultValueFlags(),
+                createTablePreparedData.getAddedForeignKeys(),
+                physicalPlanData, executionContext, createTablePreparedData, partitionInfo).create();
+
+        } else {
+            CreatePartitionTableJobFactory ret = new CreatePartitionTableJobFactory(
+                createTablePreparedData.isAutoPartition(), createTablePreparedData.isTimestampColumnDefault(),
+                createTablePreparedData.getSpecialDefaultValues(),
+                createTablePreparedData.getSpecialDefaultValueFlags(),
+                createTablePreparedData.getAddedForeignKeys(),
+                physicalPlanData, executionContext, createTablePreparedData, partitionInfo, likeTableInfo);
+
+            if (createTablePreparedData.getSelectSql() != null) {
+                ret.setSelectSql(createTablePreparedData.getSelectSql());
+            }
+            logicalCreateTable.setAffectedRows(ret.getAffectRows());
+            return ret.create();
         }
-        logicalCreateTable.setAffectedRows(ret.getAffectRows());
-        return ret.create();
     }
 
     private DdlJob buildCreateTableWithGsiJob(LogicalCreateTable logicalCreateTable,
-                                              ExecutionContext executionContext) {
+                                              ExecutionContext executionContext,
+                                              LikeTableInfo likeTableInfo) {
         CreateTableWithGsiPreparedData createTableWithGsiPreparedData =
             logicalCreateTable.getCreateTableWithGsiPreparedData();
+        createTableWithGsiPreparedData.getPrimaryTablePreparedData().setLikeTableInfo(likeTableInfo);
+
         CreateTableWithGsiJobFactory ret = new CreateTableWithGsiJobFactory(
             logicalCreateTable.relDdl,
             createTableWithGsiPreparedData,
@@ -661,9 +778,11 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
     }
 
     private DdlJob buildCreatePartitionTableWithGsiJob(LogicalCreateTable logicalCreateTable,
-                                                       ExecutionContext executionContext) {
+                                                       ExecutionContext executionContext,
+                                                       LikeTableInfo likeTableInfo) {
         CreateTableWithGsiPreparedData createTableWithGsiPreparedData =
             logicalCreateTable.getCreateTableWithGsiPreparedData();
+        createTableWithGsiPreparedData.getPrimaryTablePreparedData().setLikeTableInfo(likeTableInfo);
         CreatePartitionTableWithGsiJobFactory ret = new CreatePartitionTableWithGsiJobFactory(
             logicalCreateTable.relDdl,
             createTableWithGsiPreparedData,
@@ -758,8 +877,15 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         RelNode selectRelNode = selectPlan.getPlan();
         SqlSelect selectFinshed = (SqlSelect) selectPlan.getAst();
         SqlNodeList selectList = selectFinshed.getSelectList();
+
         // 获取数据行的类型
-        List<RelDataTypeField> selectRowTypes = selectRelNode.getRowType().getFieldList();
+        List<ColumnMeta> columnMetaList = selectPlan.getCursorMeta().getColumns();
+        List<RelDataTypeField> selectRowTypes = new ArrayList<>(columnMetaList.size());
+        for (int i = 0; i < columnMetaList.size(); i++) {
+            ColumnMeta columnMeta = columnMetaList.get(i);
+            selectRowTypes.add(
+                new RelDataTypeFieldImpl(columnMeta.getOriginColumnName(), i, columnMeta.getField().getRelType()));
+        }
 
         List<Pair<SqlIdentifier, SqlColumnDeclaration>> createCols = sqlCreateTable.getColDefs();
 
@@ -892,4 +1018,64 @@ public class LogicalCreateTableHandler extends LogicalCommonDdlHandler {
         return new AffectRowCursor(affectRows);
     }
 
+    protected void normlizePartitionBy(SqlPartitionBy partitionBy) {
+        boolean key = partitionBy instanceof SqlPartitionByHash &&
+            ((SqlPartitionByHash) partitionBy).isKey();
+        if (key) {
+            int partCols = partitionBy.getColumns().size();
+            for (SqlNode sqlPartition : partitionBy.getPartitions()) {
+                SqlPartitionValue sqlPartitionValue = ((SqlPartition) sqlPartition).getValues();
+                while (sqlPartitionValue.getItems().size() < partCols) {
+                    SqlPartitionValueItem item =
+                        new SqlPartitionValueItem(new SqlIdentifier("MAXVALUE", SqlParserPos.ZERO));
+                    item.setMaxValue(true);
+                    sqlPartitionValue.getItems().add(item);
+                }
+            }
+        }
+        SqlSubPartitionBy subPartitionBy = partitionBy.getSubPartitionBy();
+        if (subPartitionBy == null) {
+            return;
+        }
+        boolean keySubPart = subPartitionBy instanceof SqlSubPartitionByHash &&
+            ((SqlSubPartitionByHash) subPartitionBy).isKey();
+        if (!keySubPart) {
+            return;
+        }
+        int subPartCols = subPartitionBy.getColumns().size();
+        for (SqlNode sqlPartition : partitionBy.getPartitions()) {
+            List<SqlNode> subPartitions = ((SqlPartition) sqlPartition).getSubPartitions();
+            for (SqlNode sqlSubPartition : subPartitions) {
+                SqlPartitionValue sqlPartitionValue = ((SqlSubPartition) sqlSubPartition).getValues();
+                while (sqlPartitionValue.getItems().size() < subPartCols) {
+                    SqlPartitionValueItem item =
+                        new SqlPartitionValueItem(new SqlIdentifier("MAXVALUE", SqlParserPos.ZERO));
+                    item.setMaxValue(true);
+                    sqlPartitionValue.getItems().add(item);
+                }
+            }
+
+        }
+    }
+
+    protected void normlizeSubPartitionBy(SqlSubPartitionBy subPartitionBy) {
+        if (subPartitionBy == null) {
+            return;
+        }
+        boolean key = subPartitionBy instanceof SqlSubPartitionByHash &&
+            ((SqlSubPartitionByHash) subPartitionBy).isKey();
+        if (!key) {
+            return;
+        }
+        int partCols = subPartitionBy.getColumns().size();
+        for (SqlNode sqlPartition : subPartitionBy.getSubPartitions()) {
+            SqlPartitionValue sqlPartitionValue = ((SqlSubPartition) sqlPartition).getValues();
+            while (sqlPartitionValue.getItems().size() < partCols) {
+                SqlPartitionValueItem item =
+                    new SqlPartitionValueItem(new SqlIdentifier("MAXVALUE", SqlParserPos.ZERO));
+                item.setMaxValue(true);
+                sqlPartitionValue.getItems().add(item);
+            }
+        }
+    }
 }

@@ -473,17 +473,22 @@ public class MySqlSelectParser extends SQLSelectParser {
             } else {
                 tableSource = parseTableSource();
                 accept(Token.RPAREN);
-                if (lexer.token() == Token.AS
-                    && tableSource instanceof SQLValuesTableSource) {
-                    lexer.nextToken();
-                    String alias = lexer.stringVal();
-                    lexer.nextToken();
-                    tableSource.setAlias(alias);
-                    accept(Token.LPAREN);
-                    SQLValuesTableSource values = (SQLValuesTableSource) tableSource;
-                    this.exprParser.names(values.getColumns(), tableSource);
-                    accept(Token.RPAREN);
+                if (tableSource instanceof SQLValuesTableSource) {
+                    ((SQLValuesTableSource) tableSource).setBracket(true);
+                    if (lexer.token() == Token.AS) {
+                        lexer.nextToken();
+                        String alias = lexer.stringVal();
+                        lexer.nextToken();
+                        tableSource.setAlias(alias);
+                        if (lexer.token() == Token.LPAREN) {
+                            accept(Token.LPAREN);
+                            SQLValuesTableSource values = (SQLValuesTableSource) tableSource;
+                            this.exprParser.names(values.getColumns(), tableSource);
+                            accept(Token.RPAREN);
+                        }
+                    }
                 }
+
             }
 
             return parseTableSourceRest(tableSource);

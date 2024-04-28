@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -28,6 +30,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.DropViewSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
@@ -38,11 +41,15 @@ import com.alibaba.polardbx.optimizer.core.planner.Planner;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropMaterializedView;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropTable;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
-import com.alibaba.polardbx.optimizer.view.DrdsSystemTableView;
+import com.alibaba.polardbx.optimizer.view.PolarDbXSystemTableView;
+import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlDropTable;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
+
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 
 public class LogicalDropMaterializedViewHandler extends LogicalDropTableHandler {
 
@@ -102,6 +109,8 @@ public class LogicalDropMaterializedViewHandler extends LogicalDropTableHandler 
         // Handle the client DDL request on the worker side.
         handleDdlRequest(ddlJob, executionContext);
 
+        markDdlForCdc(executionContext, schemaName, tableName, executionContext.getOriginSql());
+
         //sync all nodes
         syncView(schemaName, tableName + "_Materialized");
 
@@ -110,7 +119,7 @@ public class LogicalDropMaterializedViewHandler extends LogicalDropTableHandler 
 
     public void syncView(String schemaName, String viewName) {
 
-        DrdsSystemTableView.Row row = OptimizerContext.getContext(schemaName).getViewManager().select(viewName);
+        SystemTableView.Row row = OptimizerContext.getContext(schemaName).getViewManager().select(viewName);
         if (row == null) {
             throw new TddlRuntimeException(ErrorCode.ERR_VIEW, "Unknown view " + viewName);
         }
@@ -119,11 +128,25 @@ public class LogicalDropMaterializedViewHandler extends LogicalDropTableHandler 
 
         if (!success) {
             throw new TddlRuntimeException(ErrorCode.ERR_VIEW,
-                "drop view fail for " + DrdsSystemTableView.TABLE_NAME + " can not write");
+                "drop view fail for " + PolarDbXSystemTableView.TABLE_NAME + " can not write");
         }
 
         ArrayList<String> viewList = new ArrayList<>();
         viewList.add(viewName);
-        SyncManagerHelper.sync(new DropViewSyncAction(schemaName, viewList), schemaName);
+        SyncManagerHelper.sync(new DropViewSyncAction(schemaName, viewList), schemaName, SyncScope.CURRENT_ONLY);
+    }
+
+    //TODO cdc@shengyu
+    private void markDdlForCdc(ExecutionContext executionContext, String schemaName, String viewName, String ddlSql) {
+        CdcManagerHelper.getInstance().notifyDdlNew(
+            schemaName,
+            viewName,
+            SqlKind.DROP_MATERIALIZED_VIEW.name(),
+            ddlSql,
+            DdlType.UNSUPPORTED,
+            null,
+            null,
+            CdcDdlMarkVisibility.Protected,
+            buildExtendParameter(executionContext));
     }
 }

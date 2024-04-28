@@ -70,6 +70,7 @@ import com.google.common.util.concurrent.RateLimiter;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.OptimizerHint;
 import org.apache.calcite.sql.SqlSelect;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.math.RandomUtils;
 import org.jetbrains.annotations.NotNull;
@@ -85,6 +86,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Future;
@@ -172,8 +174,6 @@ public class Extractor extends PhyOperationBuilderCommon {
 
     private final PhyTableOperation planSelectSample;
 
-    private final PhyTableOperation planSelectMinAndMaxSample;
-
     private boolean needBuildSubBoundList = true;
 
     private Map<String, List<Map<Integer, ParameterContext>>> backfillSubBoundList = new HashMap<>();
@@ -191,15 +191,16 @@ public class Extractor extends PhyOperationBuilderCommon {
 
     static private final Integer maxRandomInterval = 10000;
 
+    protected boolean useBinary;
+    protected final Set<String> notConvertColumns = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+
     protected Extractor(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                        long speedMin,
-                        long speedLimit,
-                        long parallelism,
+                        long speedMin, long speedLimit, long parallelism, boolean useBinary,
+                        List<String> modifyStringColumns,
                         PhyTableOperation planSelectWithMax, PhyTableOperation planSelectWithMin,
                         PhyTableOperation planSelectWithMinAndMax,
                         PhyTableOperation planSelectMaxPk,
                         PhyTableOperation planSelectSample,
-                        PhyTableOperation planSelectMinAndMaxSample,
                         List<Integer> primaryKeysId) {
         this.schemaName = schemaName;
         this.sourceTableName = sourceTableName;
@@ -209,12 +210,15 @@ public class Extractor extends PhyOperationBuilderCommon {
         this.rateLimiter = speedLimit <= 0 ? null : RateLimiter.create(speedLimit);
         this.nowSpeedLimit = speedLimit;
         this.parallelism = parallelism;
+        this.useBinary = useBinary;
+        if (CollectionUtils.isNotEmpty(modifyStringColumns)) {
+            this.notConvertColumns.addAll(modifyStringColumns);
+        }
         this.planSelectWithMax = planSelectWithMax;
         this.planSelectWithMin = planSelectWithMin;
         this.planSelectWithMinAndMax = planSelectWithMinAndMax;
         this.planSelectMaxPk = planSelectMaxPk;
         this.planSelectSample = planSelectSample;
-        this.planSelectMinAndMaxSample = planSelectMinAndMaxSample;
         //this.primaryKeys = primaryKeys;
         this.primaryKeysId = primaryKeysId;
         this.primaryKeysIdMap = new HashMap<>();
@@ -291,7 +295,7 @@ public class Extractor extends PhyOperationBuilderCommon {
             (ec) -> {
                 final Cursor cursor = ExecutorHelper.execute(plan, ec);
                 try {
-                    return Transformer.convertUpperBoundWithDefault(cursor, (columnMeta, i) -> {
+                    return Transformer.convertUpperBoundWithDefault(cursor, useBinary, (columnMeta, i) -> {
                         // Generate default parameter context for upper bound of empty source table
                         ParameterMethod defaultMethod = ParameterMethod.setString;
                         Object defaultValue = "0";
@@ -340,6 +344,17 @@ public class Extractor extends PhyOperationBuilderCommon {
             return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
         }
 
+        // local partition table not support yet
+        TableMeta tableMeta = baseEc.getSchemaManager(schemaName).getTable(sourceTableName);
+        if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
+            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+        }
+
+        //tables with primary key absent not support (e.g. ugsi)
+        if (!tableMeta.isHasPrimaryKey()) {
+            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
+        }
+
         boolean enableInnodbBtreeSampling = OptimizerContext.getContext(schemaName).getParamManager()
             .getBoolean(ConnectionParams.ENABLE_INNODB_BTREE_SAMPLING);
         if (!enableInnodbBtreeSampling) {
@@ -367,8 +382,7 @@ public class Extractor extends PhyOperationBuilderCommon {
             calSamplePercentage = samplePercentage;
         }
 
-        PhyTableOperation plan =
-            buildSamplePlanWithParam(dbIndex, phyTable, new ArrayList<>(), calSamplePercentage, false, false);
+        PhyTableOperation plan = buildSamplePlanWithParam(dbIndex, phyTable, calSamplePercentage);
 
         // Execute query
         final List<Map<Integer, ParameterContext>> resultList = executePhysicalPlan(baseEc, plan);
@@ -380,7 +394,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         // step must not less than zero
         int step = resultList.size() / splitCount;
         if (step <= 0) {
-            return null;
+            return initUpperBound(baseEc, ddlJobId, dbIndex, phyTable, primaryKeysId);
         }
 
         int subStep = step / splitCount;
@@ -507,9 +521,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         List<List<Map<Integer, ParameterContext>>> subUpperBoundList = new ArrayList<>();
         boolean notSplit = backfillObjects.get(0).extra.getSplitLevel() == null;
         if (notSplit) {
-            PhyTableOperation plan = buildSamplePlanWithParam(dbIndex, physicalTableName,
-                new ArrayList<>(), calSamplePercentage, false, false
-            );
+            PhyTableOperation plan = buildSamplePlanWithParam(dbIndex, physicalTableName, calSamplePercentage);
 
             // Execute query
             final List<Map<Integer, ParameterContext>> sampleResult = executePhysicalPlan(ec, plan);
@@ -991,6 +1003,17 @@ public class Extractor extends PhyOperationBuilderCommon {
                     return;
                 }
 
+                // local partition table not support yet
+                TableMeta tableMeta = ec.getSchemaManager(schemaName).getTable(sourceTableName);
+                if (tableMeta.getLocalPartitionDefinitionInfo() != null) {
+                    return;
+                }
+
+                //tables with primary key absent not support (e.g. ugsi)
+                if (!tableMeta.isHasPrimaryKey()) {
+                    return;
+                }
+
                 List<GsiBackfillManager.BackfillObjectRecord> newBackfillObjects =
                     splitPhysicalBatch(ec, remainingRows, dbIndex, phyTable, backfillObjects);
 
@@ -1082,7 +1105,8 @@ public class Extractor extends PhyOperationBuilderCommon {
         try {
             // Extract
             extractCursor = ExecutorHelper.execute(extractPlan, extractEc);
-            result = com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam(extractCursor);
+            result = com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam(extractCursor, useBinary,
+                notConvertColumns);
         } finally {
             if (extractCursor != null) {
                 extractCursor.close(new ArrayList<>());
@@ -1210,29 +1234,14 @@ public class Extractor extends PhyOperationBuilderCommon {
     /**
      * Build plan for physical sample select.
      *
-     * @param params pk column value of last batch
      * @return built plan
      */
-    protected PhyTableOperation buildSamplePlanWithParam(String dbIndex, String phyTable,
-                                                         List<ParameterContext> params, float calSamplePercentage,
-                                                         boolean withLowerBound, boolean withUpperBound) {
+    protected PhyTableOperation buildSamplePlanWithParam(String dbIndex, String phyTable, float calSamplePercentage) {
         Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
 
-        int nextParamIndex = 2;
-
-        // Parameters for where(DNF)
-        if (withLowerBound && withUpperBound) {
-            for (ParameterContext param : params) {
-                planParams.put(nextParamIndex,
-                    new ParameterContext(param.getParameterMethod(),
-                        new Object[] {nextParamIndex, param.getArgs()[1]}));
-                nextParamIndex++;
-            }
-        }
-
-        PhyTableOperation phyTableOperation = withLowerBound ? planSelectMinAndMaxSample : planSelectSample;
+        PhyTableOperation phyTableOperation = planSelectSample;
         SqlSelect sqlSelect = (SqlSelect) phyTableOperation.getNativeSqlNode().clone();
         OptimizerHint optimizerHint = new OptimizerHint();
         optimizerHint.addHint("+sample_percentage(" + calSamplePercentage + ")");
@@ -1271,6 +1280,7 @@ public class Extractor extends PhyOperationBuilderCommon {
     public static class ExtractorInfo {
         TableMeta sourceTableMeta;
         List<String> targetTableColumns;
+        List<String> realTargetTableColumns;
         List<String> primaryKeys;
 
         /**
@@ -1287,10 +1297,14 @@ public class Extractor extends PhyOperationBuilderCommon {
          */
         List<Integer> primaryKeysId;
 
-        public ExtractorInfo(TableMeta sourceTableMeta, List<String> targetTableColumns, List<String> primaryKeys,
+        public ExtractorInfo(TableMeta sourceTableMeta,
+                             List<String> targetTableColumns,
+                             List<String> realTargetTableColumns,
+                             List<String> primaryKeys,
                              List<Integer> appearedKeysId) {
             this.sourceTableMeta = sourceTableMeta;
             this.targetTableColumns = targetTableColumns;
+            this.realTargetTableColumns = realTargetTableColumns;
             this.primaryKeys = primaryKeys;
             this.primaryKeysId = appearedKeysId;
         }
@@ -1301,6 +1315,10 @@ public class Extractor extends PhyOperationBuilderCommon {
 
         public List<String> getTargetTableColumns() {
             return targetTableColumns;
+        }
+
+        public List<String> getRealTargetTableColumns() {
+            return realTargetTableColumns;
         }
 
         public List<String> getPrimaryKeys() {
@@ -1335,7 +1353,7 @@ public class Extractor extends PhyOperationBuilderCommon {
         final TableMeta targetTableMeta = sm.getTable(targetTableName);
         final List<String> targetTableColumns;
         if (onlyReadColumns) {
-            targetTableColumns = targetTableMeta.getReadColumns()
+            targetTableColumns = targetTableMeta.getAllColumns()
                 .stream()
                 .filter(columnMeta -> !skipGeneratedColumn || !columnMeta.isGeneratedColumn())
                 .map(ColumnMeta::getName)
@@ -1366,6 +1384,23 @@ public class Extractor extends PhyOperationBuilderCommon {
             }
         }
 
-        return new ExtractorInfo(sourceTableMeta, targetTableColumns, primaryKeys, appearedKeysId);
+        // online change column 在源表和目标表上找正确的 column
+        List<String> sourceTableColumnsAfterMapping = new ArrayList<>(targetTableColumns.size());
+        List<String> targetTableColumnsAfterMapping = new ArrayList<>(targetTableColumns.size());
+        for (String columnName : targetTableColumns) {
+            ColumnMeta columnMeta = targetTableMeta.getColumn(columnName);
+            if (columnMeta.getMappingName() != null) {
+                if (!columnMeta.getMappingName().isEmpty()) {
+                    sourceTableColumnsAfterMapping.add(columnMeta.getMappingName());
+                    targetTableColumnsAfterMapping.add(columnName);
+                }
+            } else {
+                sourceTableColumnsAfterMapping.add(columnName);
+                targetTableColumnsAfterMapping.add(columnName);
+            }
+        }
+
+        return new ExtractorInfo(sourceTableMeta, sourceTableColumnsAfterMapping, targetTableColumnsAfterMapping,
+            primaryKeys, appearedKeysId);
     }
 }

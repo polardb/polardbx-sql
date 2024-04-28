@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.server;
 
-import com.google.common.base.Throwables;
-import com.google.common.reflect.TypeToken;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.SerializedChunk;
+import com.google.common.base.Throwables;
+import com.google.common.reflect.TypeToken;
 import io.airlift.slice.OutputStreamSliceOutput;
 import io.airlift.slice.RuntimeIOException;
 import io.airlift.slice.SliceOutput;

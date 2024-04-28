@@ -795,7 +795,7 @@ public class DropAddPrimaryKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         int c = 0;
         for (List<String> item : trace) {
             for (String s : item) {
-                if (StringUtils.containsIgnoreCase(s, targetStr)) {
+                if (StringUtils.containsIgnoreCase(s, targetStr + " ")) {
                     c++;
                 }
             }

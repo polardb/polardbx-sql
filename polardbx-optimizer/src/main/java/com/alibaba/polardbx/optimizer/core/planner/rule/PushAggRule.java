@@ -16,20 +16,20 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
-import com.google.common.base.Predicate;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.rule.TableRule;
+import com.google.common.base.Predicate;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;
@@ -99,6 +99,15 @@ public abstract class PushAggRule extends RelOptRule {
         return false;
     }
 
+    protected boolean containChecksumV2(LogicalAggregate agg) {
+        for (AggregateCall call : agg.getAggCallList()) {
+            if (call.getAggregation().getKind() == SqlKind.CHECK_SUM_V2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     protected boolean shouldPushAgg(LogicalView logicalView) {
         int pushAggInputRowCountThreshold = PlannerContext.getPlannerContext(logicalView).getParamManager()
             .getInt(ConnectionParams.PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD);
@@ -135,6 +144,14 @@ public abstract class PushAggRule extends RelOptRule {
             }
 
             if (containChecksum(aggregate)) {
+                return false;
+            }
+
+            if (CBOUtil.containUnpushableAgg(aggregate)) {
+                return false;
+            }
+
+            if (containChecksumV2(aggregate)) {
                 return false;
             }
 
@@ -201,11 +218,19 @@ public abstract class PushAggRule extends RelOptRule {
 
             LogicalView tableScan = (LogicalView) call.rels[1];
 
-            if(tableScan instanceof OSSTableScan) {
+            if (tableScan instanceof OSSTableScan) {
                 return false;
             }
 
             if (containChecksum(aggregate)) {
+                return false;
+            }
+
+            if (CBOUtil.containUnpushableAgg(aggregate)) {
+                return false;
+            }
+
+            if (containChecksumV2(aggregate)) {
                 return false;
             }
 
@@ -230,7 +255,7 @@ public abstract class PushAggRule extends RelOptRule {
                     return;
                 }
             }
-            aggregate.getAggOptimizationContext().setAggPushed(true);
+
             pushDownAggregate(call, aggregate, lv);
         }
     }
@@ -260,10 +285,8 @@ public abstract class PushAggRule extends RelOptRule {
         TddlRuleManager or =
             PlannerContext.getPlannerContext(aggregate).getExecutionContext()
                 .getSchemaManager(tableScan.getSchemaName()).getTddlRuleManager();
-        TableRule rt = or.getTableRule(tableScan.getShardingTable());
 
         List<String> shardColumns = or.getSharedColumns(tableScan.getShardingTable());
-        //TableRule rt = ruleManager.getTableRule(tableScan.getShardingTable());
 
         if (shardColumns == null || shardColumns.isEmpty()) {// 单表
             tableScan.push(aggregate);
@@ -277,7 +300,7 @@ public abstract class PushAggRule extends RelOptRule {
 
         for (String shardName : shardColumns) {
             boolean match = false;
-            int shardRef = tableScan.getRefByColumnName(tableScan.getShardingTable(), shardName, false);
+            int shardRef = tableScan.getRefByColumnName(tableScan.getShardingTable(), shardName, false, true);
             if (shardRef == -1) {
                 break;
             } else {
@@ -290,17 +313,6 @@ public abstract class PushAggRule extends RelOptRule {
                 }
             }
 
-            /**
-             * 聚合函数中的 distinct 也做为 group by 的一部分来处理。
-             */
-            // for(AggregateCall aggCall:aggregate.getAggCallList()){
-            // if (aggCall.isDistinct() && nameContains(aggCall.getArgList(),
-            // aggregate.getInput().getRowType(), shardName)) {
-            // match = true;
-            // break;
-            // }
-            //
-            // }
             if (!match) {
                 break;
             }
@@ -366,6 +378,7 @@ public abstract class PushAggRule extends RelOptRule {
                     logger.warn("Push agg with distinct error.");
                     return;
                 }
+                transformedAgg.getAggOptimizationContext().setAggPushed(true);
                 RelUtils.changeRowType(newTableScan, newType);
                 call.transformTo(transformedAgg);
                 return;
@@ -465,6 +478,7 @@ public abstract class PushAggRule extends RelOptRule {
                     "Unsupported agg function to push down:" + function.getKind().name());
             }
         }
+        aggregate.getAggOptimizationContext().setAggPushed(true);
         build(ctx, call, aggregate);
     }
 

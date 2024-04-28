@@ -45,16 +45,19 @@ public class SqlDropIndex extends SqlCreate {
     /**
      * Creates a SqlCreateIndex.
      */
-    public SqlDropIndex(SqlIdentifier indexName, SqlIdentifier tableName, String sql, SqlParserPos pos) {
+    public SqlDropIndex(SqlIdentifier indexName, SqlIdentifier originIndexName, SqlIdentifier tableName, String sql,
+                        SqlParserPos pos) {
         super(OPERATOR, SqlParserPos.ZERO, false, false);
         this.name = tableName;
         this.indexName = indexName;
+        this.originIndexName = originIndexName;
         this.sourceSql = sql;
         this.originTableName = tableName;
     }
 
     private SqlIdentifier originTableName;
     private SqlIdentifier indexName;
+    private SqlIdentifier originIndexName;
     private String sourceSql;
 
     @Override
@@ -121,11 +124,19 @@ public class SqlDropIndex extends SqlCreate {
         return indexName;
     }
 
+    public SqlIdentifier getOriginIndexName() {
+        return originIndexName;
+    }
+
     public SqlDropIndex replaceTableName(SqlIdentifier newTableName) {
-        return new SqlDropIndex(indexName, null == newTableName ? originTableName : newTableName, sourceSql, pos);
+        return new SqlDropIndex(indexName,
+            originIndexName,
+            null == newTableName ? originTableName : newTableName,
+            sourceSql,
+            pos);
     }
 
     public SqlDropIndex replaceIndexName(SqlIdentifier newIndexName) {
-        return new SqlDropIndex(newIndexName, originTableName, sourceSql, pos);
+        return new SqlDropIndex(newIndexName, originIndexName, originTableName, sourceSql, pos);
     }
 }

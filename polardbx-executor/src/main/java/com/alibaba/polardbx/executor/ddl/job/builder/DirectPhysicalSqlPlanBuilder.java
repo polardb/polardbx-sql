@@ -28,7 +28,6 @@ import org.apache.calcite.rel.core.DDL;
  */
 public class DirectPhysicalSqlPlanBuilder extends DdlPhyPlanBuilder {
 
-
     public DirectPhysicalSqlPlanBuilder(DDL ddl,
                                         ReorganizeLocalPartitionPreparedData preparedData,
                                         ExecutionContext executionContext) {
@@ -39,11 +38,11 @@ public class DirectPhysicalSqlPlanBuilder extends DdlPhyPlanBuilder {
     public void buildTableRuleAndTopology() {
         final String schemaName = ddlPreparedData.getSchemaName();
         final String tableName = ddlPreparedData.getTableName();
-        if(DbInfoManager.getInstance().isNewPartitionDb(ddlPreparedData.getSchemaName())){
+        if (DbInfoManager.getInstance().isNewPartitionDb(ddlPreparedData.getSchemaName())) {
             partitionInfo = OptimizerContext.getContext(ddlPreparedData.getSchemaName())
-                    .getPartitionInfoManager().getPartitionInfo(ddlPreparedData.getTableName());
+                .getPartitionInfoManager().getPartitionInfo(ddlPreparedData.getTableName());
             this.tableTopology = PartitionInfoUtil.buildTargetTablesFromPartitionInfo(partitionInfo);
-        }else {
+        } else {
             buildExistingTableRule(tableName);
             buildChangedTableTopology(schemaName, tableName);
         }

@@ -76,7 +76,7 @@ public class SqlModifyColumn extends SqlAlterSpecification {
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
         final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "MODIFY COLUMN", "");
 
-        colName.unparse(writer, leftPrec, rightPrec);
+        //colName.unparse(writer, leftPrec, rightPrec);
         colDef.unparse(writer, leftPrec, rightPrec);
 
         if (first) {

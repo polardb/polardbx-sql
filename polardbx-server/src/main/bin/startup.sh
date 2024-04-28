@@ -399,7 +399,7 @@ if [ -n "$str" ]; then
     fi
 
     if [ $freecount -ge 131072 ] ; then
-        JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=24g"
+        JAVA_OPTS="-server -Xms110g -Xmx110g -XX:MaxDirectMemorySize=16g"
     elif [ $freecount -ge 65536 ] ; then
         JAVA_OPTS="-server -Xms50g -Xmx50g -XX:MaxDirectMemorySize=12g"
     elif [ $freecount -ge 32768  ] ; then

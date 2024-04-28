@@ -63,7 +63,7 @@ public class LogicalAlterTableGroupExtractPartition extends LogicalAlterTableExt
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
                 "can't modify the tablegroup:" + tableGroupName + " when it's empty");
         }
-        String firstTableInTableGroup = tableGroupConfig.getTables().get(0).getTableName();
+        String firstTableInTableGroup = tableGroupConfig.getTables().get(0);
 
         assert sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupExtractPartition;
         SqlAlterTableGroupExtractPartition sqlAlterTableGroupExtractPartition =
@@ -242,7 +242,7 @@ public class LogicalAlterTableGroupExtractPartition extends LogicalAlterTableExt
     public boolean checkIfFileStorage(ExecutionContext executionContext) {
         AlterTableGroupExtractPartition alterTableGroupExtractPartition = (AlterTableGroupExtractPartition) relDdl;
         String tableGroupName = alterTableGroupExtractPartition.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

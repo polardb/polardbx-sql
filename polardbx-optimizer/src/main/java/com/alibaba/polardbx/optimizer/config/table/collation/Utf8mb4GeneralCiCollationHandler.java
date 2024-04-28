@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.config.table.collation;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.charset.SortKey;
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetHandler;
@@ -147,7 +149,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                     return 1;
                 }
                 // found '%'
-                if (wildCodePoint == '%') {
+                if (wildCodePoint == WILD_MANY) {
                     // found an anchor char
                     break;
                 }
@@ -155,7 +157,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 wildStr.setPosition(wildStrPositions[1]);
 
                 // found '\'
-                if (wildCodePoint == '\\' && wildStr.isReadable()) {
+                if (wildCodePoint == ESCAPE && wildStr.isReadable()) {
                     wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
                     if (wildCodePoint == INVALID_CODE) {
                         return 1;
@@ -171,7 +173,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 str.setPosition(strPositions[1]);
 
                 // found '_'
-                if (!escaped && wildCodePoint == '_') {
+                if (!escaped && wildCodePoint == WILD_ONE) {
                     // found an anchor char
                 } else {
                     int sliceWeight = getWeight(sliceCodePoint);
@@ -188,7 +190,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 }
             }
 
-            if (wildCodePoint == '%') {
+            if (wildCodePoint == WILD_MANY) {
                 // Remove any '%' and '_' from the wild search string
                 while (wildStr.isReadable()) {
                     wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
@@ -197,11 +199,11 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                         return 1;
                     }
 
-                    if (wildCodePoint == '%') {
+                    if (wildCodePoint == WILD_MANY) {
                         wildStr.setPosition(wildStrPositions[1]);
                         continue;
                     }
-                    if (wildCodePoint == '_') {
+                    if (wildCodePoint == WILD_ONE) {
                         wildStr.setPosition(wildStrPositions[1]);
                         sliceCodePoint = codepointOfUTF8(str, strPositions);
                         if (sliceCodePoint == INVALID_CODE) {
@@ -231,7 +233,7 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
                 }
                 wildStr.setPosition(wildStrPositions[1]);
 
-                if (wildCodePoint == '\\') {
+                if (wildCodePoint == ESCAPE) {
                     if (wildStr.isReadable()) {
                         wildCodePoint = codepointOfUTF8(wildStr, wildStrPositions);
                         if (wildCodePoint == INVALID_CODE) {

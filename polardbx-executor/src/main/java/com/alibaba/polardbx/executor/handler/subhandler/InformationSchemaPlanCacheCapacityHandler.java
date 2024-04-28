@@ -21,8 +21,8 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.FetchPlanCacheCapacitySyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaPlanCacheCapacity;
@@ -30,7 +30,6 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * 获取每个schema下plan cache的entry数量与总容量
@@ -49,7 +48,8 @@ public class InformationSchemaPlanCacheCapacityHandler extends BaseVirtualViewSu
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction(), SystemDbHelper.INFO_SCHEMA_DB_NAME);
+            SyncManagerHelper.sync(new FetchPlanCacheCapacitySyncAction(), SystemDbHelper.INFO_SCHEMA_DB_NAME,
+                SyncScope.CURRENT_ONLY);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

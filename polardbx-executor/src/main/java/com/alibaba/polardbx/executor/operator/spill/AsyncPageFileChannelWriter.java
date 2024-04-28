@@ -29,12 +29,12 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerde;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.PagesSerdeUtil;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.slice.OutputStreamSliceOutput;
 import io.airlift.slice.SliceOutput;
 
@@ -45,8 +45,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.alibaba.polardbx.executor.operator.spill.SingleStreamSpiller.NOT_BLOCKED;
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 public class AsyncPageFileChannelWriter {

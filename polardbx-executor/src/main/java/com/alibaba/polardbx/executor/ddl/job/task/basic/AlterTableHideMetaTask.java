@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -55,7 +56,7 @@ public class AlterTableHideMetaTask extends BaseGmsTask {
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         TableMetaChanger.showTableMeta(metaDbConnection, schemaName, logicalTableName, columnNames, indexNames);
         // Refresh table meta to make hidden columns visible after rollback.
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
         executionContext.refreshTableMeta();
     }
 

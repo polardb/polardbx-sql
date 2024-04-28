@@ -66,8 +66,7 @@
     from emp
 
   plan: |
-    LogicalView(tables="[0000-0003].emp_[0-6]", shardCount=28, sql="SELECT (CASE WHEN FALSE THEN CAST(2.1 AS DECIMAL(65, 0)) ELSE CAST(1 AS DECIMAL(65, 0)) END) AS `newcol` FROM `emp` AS `emp`")
-
+    logicalview(tables="[0000-0003].emp_[0-6]", shardcount=28, sql="select (case when false then cast(2.1 as decimal(65, 0)) else cast(1 as decimal(65, 0)) end) as `newcol` from `emp` as `emp`")
 - sql: |
     select * from user_log where true and userid=3
 

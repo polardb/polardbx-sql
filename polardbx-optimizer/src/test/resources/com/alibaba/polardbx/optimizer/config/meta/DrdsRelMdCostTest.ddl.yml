@@ -1,0 +1,87 @@
+single_tbl:
+  CREATE TABLE single_tbl(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  primary key(id)
+  ) SINGLE;
+
+broadcast_tbl:
+  CREATE TABLE broadcast_tbl(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  primary key(id)
+  ) BROADCAST;
+
+key_tbl:
+  CREATE TABLE key_tbl(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  birthday datetime not null,
+  primary key(id)
+  )
+  PARTITION BY KEY(name, id)
+  PARTITIONS 8;
+
+hash_tbl:
+  CREATE TABLE hash_tbl(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  birthday datetime not null,
+  primary key(id)
+  )
+  partition by hash(id)
+  partitions 8;
+
+hash_tbl_todays:
+  CREATE TABLE hash_tbl_todays(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  birthday datetime not null,
+  primary key(id)
+  )
+  PARTITION BY HASH(TO_DAYS(birthday))
+  PARTITIONS 8;
+
+hash_tbl2:
+  CREATE TABLE hash_tbl2(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  birthday datetime not null,
+  primary key(id)
+  )
+  PARTITION BY HASH(name, birthday)
+  PARTITIONS 8;
+
+orders:
+  CREATE TABLE orders(
+  order_id int,
+  order_time datetime not null)
+  PARTITION BY range columns(order_id,order_time)
+  (
+  PARTITION p1 VALUES LESS THAN (10000,'2021-01-01'),
+  PARTITION p2 VALUES LESS THAN (20000,'2021-01-01'),
+  PARTITION p3 VALUES LESS THAN (30000,'2021-01-01'),
+  PARTITION p4 VALUES LESS THAN (40000,'2021-01-01'),
+  PARTITION p5 VALUES LESS THAN (50000,'2021-01-01'),
+  PARTITION p6 VALUES LESS THAN (MAXVALUE,MAXVALUE)
+  );
+
+orders_todays:
+  CREATE TABLE orders_todays(
+  id int,
+  order_time datetime not null)
+  PARTITION BY RANGE(to_days(order_time))
+  (
+  PARTITION p1 VALUES LESS THAN (to_days('2021-01-01')),
+  PARTITION p2 VALUES LESS THAN (to_days('2021-04-01')),
+  PARTITION p3 VALUES LESS THAN (to_days('2021-07-01')),
+  PARTITION p4 VALUES LESS THAN (to_days('2021-10-01')),
+  PARTITION p5 VALUES LESS THAN (to_days('2022-01-01')),
+  PARTITION p6 VALUES LESS THAN (MAXVALUE)
+  );

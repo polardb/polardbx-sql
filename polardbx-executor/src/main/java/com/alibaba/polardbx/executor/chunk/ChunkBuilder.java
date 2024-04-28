@@ -17,15 +17,14 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.operator.util.BatchBlockWriter;
+import com.alibaba.polardbx.executor.operator.util.ObjectPools;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.stream.IntStream;
 
 public class ChunkBuilder {
 
@@ -34,20 +33,53 @@ public class ChunkBuilder {
     private int declaredPositions;
     private final int chunkLimit;
     private ExecutionContext context;
-    private final boolean enableDelay;
+    private final boolean enableBlockBuilderBatchWriting;
     private final boolean enableOssCompatible;
+    private final boolean useBlockWriter;
+    private ObjectPools objectPools;
+
+    public ChunkBuilder(List<DataType> types, int chunkLimit, ExecutionContext context, ObjectPools objectPools) {
+        this.types = types;
+        this.context = context;
+        this.objectPools = objectPools;
+
+        this.enableBlockBuilderBatchWriting =
+            context == null ? false :
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_BLOCK_BUILDER_BATCH_WRITING);
+        this.useBlockWriter =
+            context == null ? false : context.getParamManager().getBoolean(ConnectionParams.ENABLE_DRIVER_OBJECT_POOL);
+
+        this.enableOssCompatible = context == null ? true : context.isEnableOssCompatible();
+        blockBuilders = new BlockBuilder[types.size()];
+        if (useBlockWriter && objectPools != null) {
+            for (int i = 0; i < blockBuilders.length; i++) {
+                blockBuilders[i] = BatchBlockWriter.create(types.get(i), context, chunkLimit, objectPools);
+            }
+        } else {
+            for (int i = 0; i < blockBuilders.length; i++) {
+                blockBuilders[i] = BlockBuilders.create(types.get(i), context);
+            }
+        }
+
+        this.chunkLimit = chunkLimit;
+    }
 
     public ChunkBuilder(List<DataType> types, int chunkLimit, ExecutionContext context) {
         this.types = types;
         this.context = context;
 
-        this.enableDelay = context == null ? false : context.isEnableOssDelayMaterializationOnExchange();
+        this.useBlockWriter = false;
+        this.enableBlockBuilderBatchWriting =
+            context == null ? false :
+                context.getParamManager().getBoolean(ConnectionParams.ENABLE_BLOCK_BUILDER_BATCH_WRITING);
 
         this.enableOssCompatible = context == null ? true : context.isEnableOssCompatible();
         blockBuilders = new BlockBuilder[types.size()];
+
         for (int i = 0; i < blockBuilders.length; i++) {
             blockBuilders[i] = BlockBuilders.create(types.get(i), context);
         }
+
         this.chunkLimit = chunkLimit;
     }
 
@@ -84,127 +116,38 @@ public class ChunkBuilder {
 
         declaredPositions = 0;
 
-        for (int i = 0; i < blockBuilders.length; i++) {
-            blockBuilders[i] = blockBuilders[i].newBlockBuilder();
+        if (useBlockWriter && objectPools != null) {
+            for (int i = 0; i < blockBuilders.length; i++) {
+                blockBuilders[i] = blockBuilders[i].newBlockBuilder(objectPools, chunkLimit);
+            }
+        } else {
+            for (int i = 0; i < blockBuilders.length; i++) {
+                blockBuilders[i] = blockBuilders[i].newBlockBuilder();
+            }
+        }
+
+    }
+
+    public void appendTo(Block block, int channel, int[] selection, final int offsetInSelection,
+                         final int positionCount) {
+        BlockBuilder blockBuilder = blockBuilders[channel];
+        if (blockBuilder instanceof BatchBlockWriter) {
+            ((BatchBlockWriter) blockBuilder).copyBlock(block, selection, offsetInSelection, 0, positionCount);
+        } else {
+            if (enableBlockBuilderBatchWriting) {
+                block.writePositionTo(selection, offsetInSelection, positionCount, blockBuilder);
+            } else {
+                for (int i = 0; i < positionCount; i++) {
+                    block.writePositionTo(selection[i + offsetInSelection], blockBuilder);
+                }
+            }
         }
     }
 
     public void appendTo(Block block, int channel, int position) {
         BlockBuilder blockBuilder = blockBuilders[channel];
-        if (block.isNull(position)) {
-            blockBuilder.appendNull();
-        } else {
-            block.writePositionTo(position, blockBuilder);
-        }
-    }
-
-    public Chunk fromPartition(List<Integer> assignedPositions, Chunk sourceChunk) {
-        if (assignedPositions.isEmpty()) {
-            return null;
-        }
-
-        final int sourceChunkLimit = assignedPositions.size();
-        // pre-unbox
-        int[] positions = assignedPositions.stream().mapToInt(i -> i).toArray();
-        // for delay materialization
-        int selSize = sourceChunkLimit;
-        int[] newSelection;
-
-        Block[] targetBlocks = new Block[sourceChunk.getBlockCount()];
-        for (int channel = 0; channel < sourceChunk.getBlockCount(); channel++) {
-            Block sourceBlock = sourceChunk.getBlock(channel);
-            if (enableDelay
-                && (sourceBlock instanceof SliceBlock)
-                && selSize <= sourceBlock.getPositionCount()) {
-                SliceBlock sliceBlock = (SliceBlock) sourceBlock;
-
-                if (sliceBlock.getSelection() != null) {
-                    int[] oldSelection = sliceBlock.getSelection();
-                    newSelection = new int[selSize];
-                    for (int position = 0; position < selSize; position++) {
-                        newSelection[position] = oldSelection[positions[position]];
-                    }
-                } else {
-                    newSelection = positions;
-                }
-
-                // delay for slice block
-                targetBlocks[channel]
-                    = new SliceBlock((SliceType) ((SliceBlock) sourceBlock).getType(), 0, selSize,
-                    ((SliceBlock) sourceBlock).nulls(), ((SliceBlock) sourceBlock).offsets(),
-                    ((SliceBlock) sourceBlock).data(), newSelection, enableOssCompatible);
-
-            } else if (enableDelay
-                && (sourceBlock instanceof DecimalBlock)
-                && selSize <= sourceBlock.getPositionCount()) {
-                DecimalBlock decimalBlock = (DecimalBlock) sourceBlock;
-
-                if (decimalBlock.getSelection() != null) {
-                    int[] oldSelection = decimalBlock.getSelection();
-                    newSelection = new int[selSize];
-                    for (int position = 0; position < selSize; position++) {
-                        newSelection[position] = oldSelection[positions[position]];
-                    }
-                } else {
-                    newSelection = positions;
-                }
-
-                // delay for decimal block
-                targetBlocks[channel]
-                    = new DecimalBlock(DataTypes.DecimalType, decimalBlock.getMemorySegments(),
-                    decimalBlock.nulls(), decimalBlock.hasNull(), selSize,
-                    newSelection, decimalBlock.getState());
-            } else if (enableDelay
-                && (sourceBlock instanceof DateBlock)
-                && selSize <= sourceBlock.getPositionCount()) {
-                DateBlock dateBlock = (DateBlock) sourceBlock;
-
-                if (dateBlock.getSelection() != null) {
-                    int[] oldSelection = dateBlock.getSelection();
-                    newSelection = new int[selSize];
-                    for (int position = 0; position < selSize; position++) {
-                        newSelection[position] = oldSelection[positions[position]];
-                    }
-                } else {
-                    newSelection = positions;
-                }
-
-                // delay for date block
-                targetBlocks[channel]
-                    = new DateBlock(0, selSize,
-                    dateBlock.nulls(), dateBlock.getPacked(), dateBlock.getType(), dateBlock.getTimezone(),
-                    newSelection);
-
-            } else if (enableDelay
-                && (sourceBlock instanceof IntegerBlock)
-                && selSize <= sourceBlock.getPositionCount()) {
-                IntegerBlock integerBlock = (IntegerBlock) sourceBlock;
-
-                if (integerBlock.getSelection() != null) {
-                    int[] oldSelection = integerBlock.getSelection();
-                    newSelection = new int[selSize];
-                    for (int position = 0; position < selSize; position++) {
-                        newSelection[position] = oldSelection[positions[position]];
-                    }
-                } else {
-                    newSelection = positions;
-                }
-
-                // delay for date block
-                targetBlocks[channel]
-                    = new IntegerBlock(integerBlock.getType(), integerBlock.intArray(), integerBlock.nulls(),
-                    integerBlock.hasNull(), selSize, newSelection);
-            } else {
-                // normal
-                for (int position : positions) {
-                    sourceBlock.writePositionTo(position, blockBuilders[channel]);
-                }
-                targetBlocks[channel] = blockBuilders[channel].build();
-            }
-        }
-
-        declarePosition(sourceChunkLimit);
-        return new Chunk(sourceChunkLimit, targetBlocks);
+        // appendNull may have additional operations in certain block types
+        block.writePositionTo(position, blockBuilder);
     }
 
     public DataType getType(int channel) {
@@ -215,12 +158,20 @@ public class ChunkBuilder {
         return blockBuilders[channel];
     }
 
+    public void updateDeclarePosition(int update) {
+        declaredPositions += update;
+    }
+
     public void declarePosition() {
         declaredPositions++;
     }
 
     public void declarePosition(int positionCount) {
         declaredPositions = positionCount;
+    }
+
+    public int getDeclarePosition() {
+        return declaredPositions;
     }
 
     public BlockBuilder[] getBlockBuilders() {

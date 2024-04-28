@@ -94,20 +94,11 @@ public final class SystemConfig {
     // 全局黑名单,不允许访问任何DRDS DB,防攻击
     private volatile String blackIps = null;
     private volatile String whiteIps = null;
-    private volatile long slowSqlTime = 1000;
     // slow log记录sql的最大长度
     private volatile int slowSqlSizeThresold = 16384;
     private volatile int deadLockCheckPeriod = 5 * 100;
-    // manager统计采集周期
-    private volatile int maxConnection = 20000;
     // 是否开启manager端口的用户登录,临时兼容下老的系统监控,以后会关闭用户登录manager端口
     private volatile int allowManagerLogin = 1;
-
-    // 是不是内部corona的模式，提供端口号和ip，向manager获取clustername
-    private volatile int coronaMode = 0;
-
-    // 最大处理的package大小
-    private int maxAllowedPacket = 16 * 1024 * 1024;
 
     private int socketRecvBuffer = 32 * 1024;
     private int socketSendBuffer = 64 * 1024;
@@ -304,6 +295,8 @@ public final class SystemConfig {
      * enable auto warm up for logical db
      */
     private boolean enableLogicalDbWarmmingUp;
+
+    private String columnarOssDirectory;
 
     // information needed by oss
     private String engine;
@@ -610,14 +603,6 @@ public final class SystemConfig {
         this.whiteIps = whiteIps;
     }
 
-    public long getSlowSqlTime() {
-        return slowSqlTime;
-    }
-
-    public void setSlowSqlTime(long slowSqlTime) {
-        this.slowSqlTime = slowSqlTime;
-    }
-
     public int getDeadLockCheckPeriod() {
         return deadLockCheckPeriod;
     }
@@ -640,14 +625,6 @@ public final class SystemConfig {
 
     public void setSlowSqlSizeThresold(int slowSqlSizeThresold) {
         this.slowSqlSizeThresold = slowSqlSizeThresold;
-    }
-
-    public int getMaxConnection() {
-        return maxConnection;
-    }
-
-    public void setMaxConnection(int maxConnection) {
-        this.maxConnection = maxConnection;
     }
 
     public int getAllowManagerLogin() {
@@ -687,22 +664,6 @@ public final class SystemConfig {
     @Override
     public String toString() {
         return ToStringBuilder.reflectionToString(this, TddlToStringStyle.DEFAULT_STYLE);
-    }
-
-    public int getCoronaMode() {
-        return coronaMode;
-    }
-
-    public void setCoronaMode(int coronaMode) {
-        this.coronaMode = coronaMode;
-    }
-
-    public int getMaxAllowedPacket() {
-        return maxAllowedPacket;
-    }
-
-    public void setMaxAllowedPacket(int maxAllowedPacket) {
-        this.maxAllowedPacket = maxAllowedPacket;
     }
 
     public int getSocketRecvBuffer() {
@@ -1195,4 +1156,11 @@ public final class SystemConfig {
         this.allowMovingBalancedSingeTable = allowMovingBalancedSingeTable;
     }
 
+    public String getColumnarOssDirectory() {
+        return columnarOssDirectory;
+    }
+
+    public void setColumnarOssDirectory(String columnarOssDirectory) {
+        this.columnarOssDirectory = columnarOssDirectory;
+    }
 }

@@ -160,6 +160,45 @@ public class ConditionPropagator {
     }
 
     /**
+     * Get merged and distinct equivalent set of predicates.
+     *
+     * @param andFilters e.g. =($2, $0) =($5, $1) =($1, $3) =($2, $4)
+     * @return {0, 2, 4} and {1, 3, 5}
+     */
+    public static List<BitSet> buildMergedEquitySet(List<RexNode> andFilters) {
+        List<BitSet> equalitySets = new ArrayList<>();
+        for (RexNode filter : andFilters) {
+            if (SqlKind.EQUALS.equals(filter.getKind()) && filter instanceof RexCall) {
+                RexCall filterCall = (RexCall) filter;
+                RexNode leftRexNode = filterCall.getOperands().get(0);
+                RexNode rightRexNode = filterCall.getOperands().get(1);
+                if (leftRexNode instanceof RexInputRef && rightRexNode instanceof RexInputRef) {
+
+                    final int leftIndex = ((RexInputRef) leftRexNode).getIndex();
+                    final int rightIndex = ((RexInputRef) rightRexNode).getIndex();
+                    boolean found = false;
+                    for (int i = 0; i < equalitySets.size(); i++) {
+                        BitSet equalitySet = equalitySets.get(i);
+                        if (equalitySet.get(leftIndex) || equalitySet.get(rightIndex)) {
+                            equalitySet.set(leftIndex);
+                            equalitySet.set(rightIndex);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        BitSet equalitySet = new BitSet();
+                        equalitySet.set(leftIndex);
+                        equalitySet.set(rightIndex);
+                        equalitySets.add(equalitySet);
+                    }
+                }
+            }
+        }
+        return equalitySets;
+    }
+
+    /**
      * join condition graph for equal
      */
     static class JoinConditionGraph {

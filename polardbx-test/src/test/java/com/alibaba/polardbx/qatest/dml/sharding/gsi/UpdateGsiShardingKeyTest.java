@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.AfterClass;
@@ -41,6 +42,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectOrderAss
  * @author chenmo.cm
  */
 
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public class UpdateGsiShardingKeyTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();

@@ -625,6 +625,20 @@ public class CreateTableTest extends PartitionTestBase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
 
+    @Test
+    public void testBug54872787() {
+        String sql =
+            "CREATE TABLE `testBug54872787` ( `col0` date, `col1` date DEFAULT NULL, `col2` date, `col3` date, UNIQUE CLUSTERED INDEX `tb10_k1` (`col1`, `col3`) PARTITION BY HASH (TO_DAYS(`col1`)) PARTITIONS 16 SUBPARTITION BY HASH (TO_DAYS(`col3`)) SUBPARTITIONS 4 ) PARTITION BY HASH (TO_DAYS(`col1`)) PARTITIONS 16 SUBPARTITION BY HASH (TO_DAYS(`col2`)) SUBPARTITIONS 4;";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
+    @Test
+    public void testBug55930380() {
+        String sql =
+            "create table testBug55930380 (pk bigint not null AUTO_INCREMENT primary key, varchar_test varchar(255) default null ) ENGINE = InnoDB default charset = utf8 default collate = utf8mb3_general_ci";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+    }
+
     private static final String EMPTY = "";
 
     private String removeInvisibleChar(String sql) {

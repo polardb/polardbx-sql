@@ -98,6 +98,11 @@ public class PartClauseInfo {
 
     protected boolean isSubQueryInExpr = false;
 
+    /**
+     * Label if const expr is a virtual expr that col= anyValues
+     */
+    protected boolean isAnyValueEqCond = false;
+
     protected PartClauseInfo() {
     }
 
@@ -194,7 +199,7 @@ public class PartClauseInfo {
         sb.append("(");
         sb.append(input.toString());
         sb.append(",");
-        sb.append(isNull ? "null" : constExpr.toString());
+        sb.append(isAnyValueEqCond ? "any" : isNull ? "null" : constExpr.toString());
         sb.append(")");
         return sb.toString();
     }
@@ -242,5 +247,13 @@ public class PartClauseInfo {
 
     public void setSubQueryInExpr(boolean subQueryInExpr) {
         isSubQueryInExpr = subQueryInExpr;
+    }
+
+    public boolean isAnyValueEqCond() {
+        return isAnyValueEqCond;
+    }
+
+    public void setAnyValueEqCond(boolean anyValueEqCond) {
+        isAnyValueEqCond = anyValueEqCond;
     }
 }

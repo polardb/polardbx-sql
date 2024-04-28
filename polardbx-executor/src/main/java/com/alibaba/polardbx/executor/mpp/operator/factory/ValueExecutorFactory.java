@@ -36,10 +36,8 @@ public class ValueExecutorFactory extends ExecutorFactory {
     public Executor createExecutor(ExecutionContext context, int index) {
         int count = ExecUtils.getTupleCount(logicalValues, context);
         Executor exec = new ValueExec(count, CalciteUtils.getTypes(logicalValues.getRowType()), context);
-        exec.setId(logicalValues.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(logicalValues, exec, context);
-        }
+        registerRuntimeStat(exec, logicalValues, context);
         return exec;
     }
+
 }

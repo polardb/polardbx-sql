@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.config.meta;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.metadata.ChainedRelMetadataProvider;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMdCollation;
 import org.apache.calcite.rel.metadata.RelMdExplainVisibility;
 import org.apache.calcite.rel.metadata.RelMdExpressionLineage;
@@ -30,6 +31,8 @@ import org.apache.calcite.rel.metadata.RelMdUniqueKeys;
 public class
 DrdsRelMetadataProvider extends ChainedRelMetadataProvider {
     public static final DrdsRelMetadataProvider INSTANCE = new DrdsRelMetadataProvider();
+    public static final JaninoRelMetadataProvider DEFAULT =
+        JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE);
 
     protected DrdsRelMetadataProvider() {
         super(

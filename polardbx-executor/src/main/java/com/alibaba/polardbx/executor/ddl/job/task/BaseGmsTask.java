@@ -17,10 +17,14 @@
 package com.alibaba.polardbx.executor.ddl.job.task;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.ddl.job.meta.CommonMetaChanger;
+import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.commons.lang3.StringUtils;
 
 import java.sql.Connection;
 import java.util.concurrent.TimeUnit;
@@ -56,9 +60,11 @@ public abstract class BaseGmsTask extends BaseDdlTask {
     protected void onRollbackSuccess(ExecutionContext executionContext) {
         //this sync invocation may be deleted in the future
         //CommonMetaChanger.sync(MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName));
-        SyncManagerHelper.sync(
-            new TableMetaChangePreemptiveSyncAction(schemaName, logicalTableName, 1500L, 1500L,
-                TimeUnit.MICROSECONDS));
+        if (!StringUtils.isEmpty(logicalTableName)) {
+            SyncManagerHelper.sync(
+                new TableMetaChangePreemptiveSyncAction(schemaName, logicalTableName, 1500L, 1500L,
+                    TimeUnit.MICROSECONDS), SyncScope.ALL);
+        }
     }
 
     /**

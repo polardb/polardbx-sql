@@ -24,13 +24,13 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gms.GmsTableMetaManager;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.executor.sync.TableMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.util.AppNameUtil;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
@@ -42,7 +42,7 @@ import lombok.Getter;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.Map;
 
 /**
  * generate & insert gsiTable's metadata based on primaryTable's metadata
@@ -67,6 +67,8 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
     final boolean clusteredIndex;
     final IndexVisibility visibility;
     final boolean needOnlineSchemaChange;
+    final Map<String, String> columnMapping;
+    final List<String> addNewColumns;
 
     @JSONCreator
     public GsiInsertIndexMetaTask(String schemaName,
@@ -80,7 +82,9 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
                                   IndexStatus indexStatus,
                                   boolean clusteredIndex,
                                   final IndexVisibility visibility,
-                                  boolean needOnlineSchemaChange) {
+                                  boolean needOnlineSchemaChange,
+                                  Map<String, String> columnMapping,
+                                  List<String> addNewColumns) {
         super(schemaName, logicalTableName);
         this.indexName = indexName;
         this.columns = ImmutableList.copyOf(columns);
@@ -92,6 +96,8 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
         this.clusteredIndex = clusteredIndex;
         this.visibility = visibility;
         this.needOnlineSchemaChange = needOnlineSchemaChange;
+        this.columnMapping = columnMapping;
+        this.addNewColumns = addNewColumns;
         onExceptionTryRecoveryThenRollback();
     }
 
@@ -118,7 +124,10 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
             indexComment,
             indexType,
             indexStatus,
-            clusteredIndex
+            clusteredIndex,
+            false,
+            columnMapping,
+            addNewColumns
         );
 
         TableInfoManager tableInfoManager = new TableInfoManager();
@@ -174,7 +183,7 @@ public class GsiInsertIndexMetaTask extends BaseGmsTask {
 
         //sync have to be successful to continue
         if (needOnlineSchemaChange) {
-            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+            SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
             executionContext.refreshTableMeta();
         }
 

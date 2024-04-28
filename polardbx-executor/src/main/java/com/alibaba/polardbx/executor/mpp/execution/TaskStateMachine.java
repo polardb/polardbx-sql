@@ -29,9 +29,9 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.google.common.util.concurrent.ListenableFuture;
 import org.joda.time.DateTime;
 
 import javax.annotation.concurrent.ThreadSafe;
@@ -39,10 +39,10 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.alibaba.polardbx.executor.mpp.execution.TaskState.TERMINAL_TASK_STATES;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
-import static com.alibaba.polardbx.executor.mpp.execution.TaskState.TERMINAL_TASK_STATES;
 import static java.util.Objects.requireNonNull;
 
 @ThreadSafe

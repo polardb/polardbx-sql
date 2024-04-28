@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.sql.Connection;
@@ -34,7 +34,7 @@ import java.util.List;
 
 import static com.google.common.truth.Truth.assertThat;
 
-
+@CdcIgnore(ignoreReason = "cdc暂时未支持insert overwrite")
 public class InsertOverwriteTest extends DDLBaseNewDBTestCase {
 
     private final static String testTableName = "insert_overwrite_test";

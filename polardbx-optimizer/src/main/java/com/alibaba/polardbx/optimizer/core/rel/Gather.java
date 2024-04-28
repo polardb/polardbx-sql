@@ -17,7 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
@@ -121,7 +123,7 @@ public final class Gather extends Exchange {
 
     @Deprecated
     public static double estimateRowCount(RelNode rel) {
-        final RelMetadataQuery mq = RelMetadataQuery.instance();
+        final RelMetadataQuery mq = PlannerUtils.newMetadataQuery();
         return mq.getRowCount(rel.getInput(0));
     }
 

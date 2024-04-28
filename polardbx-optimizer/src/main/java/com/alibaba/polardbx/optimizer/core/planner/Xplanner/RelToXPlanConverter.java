@@ -16,14 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.Xplanner;
 
-import com.google.common.collect.ImmutableList;
-import com.mysql.cj.x.protobuf.PolarxExecPlan;
-import com.alibaba.polardbx.rpc.pool.XConnectionManager;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
 import com.alibaba.polardbx.optimizer.core.rel.Xplan.XPlanTableScan;
+import com.alibaba.polardbx.rpc.pool.XConnectionManager;
+import com.google.common.collect.ImmutableList;
+import com.mysql.cj.x.protobuf.PolarxExecPlan;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Project;
@@ -76,10 +76,19 @@ public class RelToXPlanConverter implements ReflectiveVisitor {
 
     public XPlanTemplate convert(RelNode e) {
         Result result = visitChild(0, e);
-        return null == result ? null :
-            new XPlanTemplate(result.getAnyPlan(),
-                ImmutableList.copyOf(util.getTableNames()),
-                ImmutableList.copyOf(util.getParamInfos()));
+        if (null == result) {
+            return null;
+        }
+
+        RelXPlanOptimizer.IndexFinder indexFinder = new RelXPlanOptimizer.IndexFinder();
+        indexFinder.go(e);
+        if (!indexFinder.found()) {
+            return null;
+        }
+        return new XPlanTemplate(result.getAnyPlan(),
+            ImmutableList.copyOf(util.getTableNames()),
+            ImmutableList.copyOf(util.getParamInfos()),
+            indexFinder.getIndex());
     }
 
     public Result visitChild(int i, RelNode e) {

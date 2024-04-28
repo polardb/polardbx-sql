@@ -5,7 +5,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` AS `b` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id` FOR UPDATE")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` as `b` from ? as `a` where (`a`.`id` = 1) order by `b` for update")
 
 - sql: |
     select a.id as b
@@ -24,7 +24,7 @@
 
   plan: |
 
-    LogicalView(tables="optest_0001.test_hash_tb", sql="SELECT `id` AS `b` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` = 1) ORDER BY `id` LOCK IN SHARE MODE")
+    phytableoperation(tables="optest_0001.[test_hash_tb]", sql="select `a`.`id` as `b` from ? as `a` where (`a`.`id` = 1) order by `b` lock in share mode")
 
 - sql: |
     select a.id as b

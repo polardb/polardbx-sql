@@ -1,0 +1,7 @@
+- sql: |
+    select ps_suppkey from partsupp where ps_partkey not in ( select p_partkey from part where p_comment like '%c%' );
+  plan: |
+    project(ps_suppkey="ps_suppkey")
+      semihashjoin(condition="ps_partkey = p_partkey", type="anti", build="inner", partition=[local])
+        osstablescan(tables="partsupp[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `ps_partkey`, `ps_suppkey` from `partsupp` as `partsupp`")
+        osstablescan(tables="part[p1,p2,p3,p4]", shardcount=4, partition=[local, remote], sql="select `p_partkey` from `part` as `part` where (`p_comment` like ?)")

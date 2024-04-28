@@ -17,9 +17,16 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
+import com.alibaba.polardbx.druid.DbType;
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
+import com.alibaba.polardbx.druid.sql.ast.statement.SQLAlterTableStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.parser.MySqlStatementParser;
+import com.alibaba.polardbx.druid.sql.parser.ByteString;
+import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
@@ -32,10 +39,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.calcite.sql.SqlKind;
 
 import java.sql.Connection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static com.alibaba.polardbx.common.cdc.ICdcManager.CDC_IS_GSI;
 import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcSqlUtils.SQL_PARSE_FEATURES;
 
 /**
  * created by ziyang.lb
@@ -47,20 +57,24 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
 
     private String tableGroup;
-    private String logicalTableName;
+    private String tableName;
     private SqlKind sqlKind;
     private Map<String, Set<String>> targetTableTopology;
     private String ddlStmt;
+    private CdcDdlMarkVisibility cdcDdlMarkVisibility;
 
     @JSONCreator
-    public CdcTableGroupDdlMarkTask(String tableGroup, String schemaName, String logicalTableName, SqlKind sqlKind,
-                                    Map<String, Set<String>> targetTableTopology, String ddlStmt) {
+    public CdcTableGroupDdlMarkTask(String tableGroup, String schemaName, String tableName, SqlKind sqlKind,
+                                    Map<String, Set<String>> targetTableTopology, String ddlStmt,
+                                    CdcDdlMarkVisibility cdcDdlMarkVisibility) {
         super(schemaName);
         this.tableGroup = tableGroup;
-        this.logicalTableName = logicalTableName;
+        this.tableName = tableName;
         this.sqlKind = sqlKind;
         this.targetTableTopology = targetTableTopology;
+
         this.ddlStmt = ddlStmt;
+        this.cdcDdlMarkVisibility = cdcDdlMarkVisibility;
     }
 
     @Override
@@ -70,16 +84,31 @@ public class CdcTableGroupDdlMarkTask extends BaseDdlTask {
     }
 
     private void mark4TableGroupChange(ExecutionContext executionContext) {
-        if (TableGroupNameUtil.isOssTg(tableGroup) || CBOUtil.isGsi(schemaName, logicalTableName)) {
+        Map<String, Object> param = buildExtendParameter(executionContext);
+
+        boolean isAlterIndex = false;
+        String markTableName = tableName;
+        // alter index ... on table ... , 使用主表的名字进行打标
+        List<SQLStatement> parseResult = SQLUtils.parseStatements(ddlStmt, DbType.mysql, SQL_PARSE_FEATURES);
+        if (!parseResult.isEmpty() && parseResult.get(0) instanceof SQLAlterTableStatement) {
+            SQLAlterTableStatement stmt = (SQLAlterTableStatement) parseResult.get(0);
+            if (stmt.getAlterIndexName() != null) {
+                isAlterIndex = true;
+                markTableName = SQLUtils.normalize(stmt.getTableName());
+                param.put(CDC_IS_GSI, true);
+            }
+        }
+
+        if (!isAlterIndex &&
+            (TableGroupNameUtil.isOssTg(tableGroup) || (CBOUtil.isGsi(schemaName, markTableName)))) {
             return;
         }
 
-        log.info("new topology for table {} is {}", logicalTableName, targetTableTopology);
+        log.info("new topology for table {} is {}, isAlterIndex {}", markTableName, targetTableTopology, isAlterIndex);
         DdlContext ddlContext = executionContext.getDdlContext();
 
-        CdcManagerHelper.getInstance()
-            .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlStmt, DdlType.ALTER_TABLEGROUP,
-                ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
-                buildExtendParameter(executionContext), true, targetTableTopology);
+        CdcManagerHelper.getInstance().notifyDdlNew(schemaName, markTableName, sqlKind.name(), ddlStmt,
+            DdlType.ALTER_TABLEGROUP, ddlContext.getJobId(), getTaskId(), cdcDdlMarkVisibility, param, true,
+            targetTableTopology);
     }
 }

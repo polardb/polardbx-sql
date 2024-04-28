@@ -2,6 +2,8 @@
 <html lang="en">
 <head xmlns="http://www.w3.org/1999/html" xmlns="http://www.w3.org/1999/html">
     <meta charset="utf-8">
+    <meta name="description" content="Timeline - PolarDB-X">
+    <title>Timeline - PolarDB-X</title>
 
     <link href="vendor/bootstrap/css/bootstrap.css" rel="stylesheet" type="text/css">
 
@@ -14,12 +16,17 @@
             padding: 0px;
         }
 
+        .vis.timeline .labelset .vlabel {
+            height: 40px;
+        }
+
         .vis.timeline .labelset .vlabel .inner {
             padding: 0px;
+            color: #87CEFA
         }
 
         .vis.timeline .item.range {
-            height: 3px;
+            height: 4px;
         }
 
         .vis.timeline .red {
@@ -92,10 +99,8 @@
 
 <div class="container">
     <div class="page-header">
-        <h1>PolarDBX :: Query <span id="queryId"></span></h1>
+        <h1>PolarDB-X :: Query <span id="queryId"></span></h1>
     </div>
-
-    <h2>Timeline</h2>
 
     <div id="legend">
         <div>
@@ -104,49 +109,57 @@
         </div>
         <div>
             <div class="green bar"></div>
-            <div class="text">First split started</div>
+            <div class="text">First started</div>
         </div>
         <div>
             <div class="bar empty"></div>
             <div class="text">Ended</div>
         </div>
     </div>
-    <div id="timeline"></div>
+
+    <h2>Task Timeline</h2>
+
+    <div id="task-timeline"></div>
+
+    <h2>Split Timeline</h2>
+
+    <div id="split-timeline"></div>
 </div>
 
 </body>
 
 <script>
-    d3.json('/v1/query/' + window.location.search.substring(1), function (query) {
-        d3.select('#queryId').text(query.queryId);
-        renderTimeline(query);
+    d3.json('/v1/query/stats/' + window.location.search.substring(1), function (data) {
+        d3.select('#queryId').text(data.queryId);
+        renderTaskTimeline(data);
+        renderSplitTimeline(data);
     });
 
-    function renderTimeline(data) {
+    function renderTaskTimeline(data) {
         function getTasks(stage) {
             return [].concat.apply(
-                stage.tasks,
+                stage.taskStats,
                 stage.subStages.map(getTasks));
         }
 
-        tasks = getTasks(data.outputStage);
+        let tasks = getTasks(data.outputStage);
         tasks = tasks.map(function (task) {
             return {
                 taskId: task.taskStatus.taskId.substring(task.taskStatus.taskId.indexOf('.') + 1),
                 time: {
-                    create: task.stats.createTime,
-                    firstStart: task.stats.firstStartTime,
-                    end: task.stats.endTime,
+                    create: task.detailedStats.createTime,
+                    firstStart: task.detailedStats.firstStartTime,
+                    end: task.detailedStats.endTime,
                 },
             };
         });
 
-        var groups = new vis.DataSet();
-        var items = new vis.DataSet();
-        for (var i = 0; i < tasks.length; i++) {
-            var task = tasks[i];
-            var stageId = task.taskId.substr(0, task.taskId.indexOf("."));
-            var taskNumber = task.taskId.substr(task.taskId.indexOf(".") + 1);
+        const groups = new vis.DataSet();
+        const items = new vis.DataSet();
+        for (let i = 0; i < tasks.length; i++) {
+            const task = tasks[i];
+            const stageId = task.taskId.substring(0, task.taskId.indexOf("."));
+            const taskNumber = task.taskId.substring(task.taskId.indexOf(".") + 1);
             if (taskNumber == 0) {
                 groups.add({
                     id: stageId,
@@ -173,7 +186,62 @@
             });
         }
 
-        var options = {
+        const options = {
+            stack: false,
+            groupOrder: 'sort',
+            padding: 0,
+            margin: 0,
+            itemMargin: 10,
+            clickToUse: true,
+        };
+
+        const container = document.getElementById('task-timeline');
+
+        new vis.Timeline(container, items, groups, options);
+    }
+
+    function renderSplitTimeline(data) {
+        function getTasks(task) {
+            return [].concat.apply(
+                task.taskStats,
+                task.subStages.map(getTasks));
+        }
+        let splits = []
+        let tasks = getTasks(data.outputStage);
+        for (let i = 0; i < tasks.length; i++) {
+            splits = splits.concat(tasks[i].detailedStats.driverStats)
+        }
+
+        const groups = new vis.DataSet();
+        const items = new vis.DataSet();
+        for (let i = 0; i < splits.length; i++) {
+            const split = splits[i];
+            const fullId = split.driverId.substring(split.driverId.indexOf(".") + 1);
+            let thirdDotIndex = fullId.indexOf(".", fullId.indexOf(".", fullId.indexOf(".") + 1) + 1);
+            const fullPipelineId = fullId.substring(0, thirdDotIndex);
+            const splitId = fullId.substring(thirdDotIndex + 1);
+            if (splitId === '1') {
+                // splitId starts from 1, not 0
+                groups.add({
+                    id: fullPipelineId,
+                    content: fullPipelineId,
+                    sort: fullPipelineId,
+                    subgroupOrder: 'sort',
+                });
+            }
+            let startTime = new Date(split.startMillis);
+            let endTime = new Date(split.endMillis);
+            items.add({
+                group: fullPipelineId,
+                start: startTime,
+                end: endTime,
+                className: 'green',
+                subgroup: splitId,
+                sort: splitId,
+            });
+        }
+
+        const options = {
             stack: false,
             groupOrder: 'sort',
             padding: 0,
@@ -181,9 +249,10 @@
             clickToUse: true,
         };
 
-        var container = document.getElementById('timeline');
+        const container = document.getElementById('split-timeline');
 
-        var timeline = new vis.Timeline(container, items, groups, options);
+        new vis.Timeline(container, items, groups, options);
     }
+
 </script>
 </html>

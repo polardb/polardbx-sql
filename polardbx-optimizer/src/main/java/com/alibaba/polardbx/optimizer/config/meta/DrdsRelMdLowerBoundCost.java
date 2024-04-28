@@ -17,13 +17,16 @@
 package com.alibaba.polardbx.optimizer.config.meta;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.volcano.RelSubset;
 import org.apache.calcite.plan.volcano.VolcanoPlanner;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.JoinRelType;
+import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.metadata.ReflectiveRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMdLowerBoundCost;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
@@ -69,6 +72,10 @@ public class DrdsRelMdLowerBoundCost extends RelMdLowerBoundCost {
     public RelOptCost getLowerBoundCost(RelNode node,
                                         RelMetadataQuery mq, VolcanoPlanner planner) {
         RelOptCost selfCost;
+
+        if (planner.isEnableColumnar()) {
+            return getLowerBoundCostForColumnar(node, mq, planner);
+        }
         if (planner.isLogical(node)) {
             if (node instanceof Join) {
                 Join join = (Join) node;
@@ -154,6 +161,81 @@ public class DrdsRelMdLowerBoundCost extends RelMdLowerBoundCost {
                     / CostModelWeight.NET_BUFFER_SIZE));
 
         return bkaJoinCumulativeCost;
+    }
+
+    public RelOptCost getLowerBoundCostForColumnar(RelNode node,
+                                                   RelMetadataQuery mq, VolcanoPlanner planner) {
+        RelOptCost selfCost;
+        if (planner.isLogical(node)) {
+            if (node instanceof Join) {
+                selfCost = columnarHashJoinCumulativeCostLowerBound((Join) node, mq, planner);
+            } else if (node instanceof OSSTableScan) {
+                selfCost = mq.getNonCumulativeCost(node);
+            } else {
+                selfCost = planner.getCostFactory().makeZeroCost();
+            }
+        } else {
+            selfCost = mq.getNonCumulativeCost(node);
+        }
+        if (selfCost != null && selfCost.isInfinite()) {
+            selfCost = null;
+        }
+        for (RelNode input : node.getInputs()) {
+            RelOptCost lb = mq.getLowerBoundCost(input, planner);
+            if (lb != null) {
+                selfCost = selfCost == null ? lb : selfCost.plus(lb);
+            }
+        }
+        return selfCost;
+    }
+
+    private RelOptCost columnarHashJoinCumulativeCostLowerBound(Join join, RelMetadataQuery mq,
+                                                                VolcanoPlanner planner) {
+        final double leftRowCount = mq.getRowCount(join.getLeft());
+        final double rightRowCount = mq.getRowCount(join.getRight());
+
+        final RelDataType buildSideRowType;
+
+        final double probeRowCount;
+        final double buildRowCount;
+
+        boolean hashLeft = true;
+        if (join instanceof LogicalJoin) {
+            if (join.getJoinType() == JoinRelType.INNER) {
+                hashLeft = false;
+            }
+        } else {
+            hashLeft = false;
+        }
+        if (!hashLeft) {
+            buildRowCount = rightRowCount;
+            probeRowCount = leftRowCount;
+            buildSideRowType = join.getRight().getRowType();
+        } else {
+            if (leftRowCount < rightRowCount) {
+                buildRowCount = leftRowCount;
+                probeRowCount = rightRowCount;
+                buildSideRowType = join.getLeft().getRowType();
+            } else {
+                buildRowCount = rightRowCount;
+                probeRowCount = leftRowCount;
+                buildSideRowType = join.getRight().getRowType();
+            }
+        }
+
+        double buildWeight = CostModelWeight.INSTANCE.getBuildWeight();
+        double probeWeight = CostModelWeight.INSTANCE.getProbeWeight();
+
+        double rowCount = probeRowCount + buildRowCount;
+
+        double hashJoinCpu = buildWeight * buildRowCount + probeWeight * probeRowCount;
+
+        double hashJoinMemory =
+            MemoryEstimator.estimateRowSizeInHashTable(buildSideRowType) * buildRowCount;
+
+        RelOptCost hashJoinCost =
+            planner.getCostFactory().makeCost(rowCount, hashJoinCpu, hashJoinMemory, 0, 0);
+        return hashJoinCost;
     }
 
     private RelOptCost hashJoinCumulativeCostLowerBound(Join join, RelMetadataQuery mq, VolcanoPlanner planner) {

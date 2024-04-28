@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
@@ -27,14 +26,19 @@ import com.alibaba.polardbx.gms.metadb.cdc.BinlogStreamRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlShowBinaryStreams;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.List;
 
 public class LogicalShowBinaryStreamsHandler extends HandlerCommon {
-    private static final Logger logger = LoggerFactory.getLogger(LogicalShowBinaryStreamsHandler.class);
+    private static final Logger cdcLogger = SQLRecorderLogger.cdcLogger;
 
     public LogicalShowBinaryStreamsHandler(IRepository repo) {
         super(repo);
@@ -42,6 +46,11 @@ public class LogicalShowBinaryStreamsHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        SqlShowBinaryStreams sqlShowBinaryStreams =
+            (SqlShowBinaryStreams) ((LogicalShow) logicalPlan).getNativeSqlNode();
+        SqlNode with = sqlShowBinaryStreams.getWith();
+        String groupName = with == null ? null : RelUtils.lastStringValue(with);
+
         ArrayResultCursor result = new ArrayResultCursor("SHOW BINARY STREAMS");
         result.addColumn("Group", DataTypes.StringType);
         result.addColumn("Stream", DataTypes.StringType);
@@ -52,7 +61,12 @@ public class LogicalShowBinaryStreamsHandler extends HandlerCommon {
         BinlogStreamAccessor binlogStreamAccessor = new BinlogStreamAccessor();
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             binlogStreamAccessor.setConnection(metaDbConn);
-            List<BinlogStreamRecord> streams = binlogStreamAccessor.listAllStream();
+            List<BinlogStreamRecord> streams;
+            if (groupName == null) {
+                streams = binlogStreamAccessor.listAllStream();
+            } else {
+                streams = binlogStreamAccessor.listStreamInGroup(groupName);
+            }
             if (streams == null) {
                 throw new TddlNestableRuntimeException("binlog multi stream is not support...");
             }
@@ -61,7 +75,7 @@ public class LogicalShowBinaryStreamsHandler extends HandlerCommon {
                     stream.getGroupName(), stream.getStreamName(), stream.getFileName(), stream.getPosition()});
             }
         } catch (SQLException e) {
-            logger.error("get binlog x stream fail", e);
+            cdcLogger.error("get binlog x stream fail", e);
         }
         return result;
     }

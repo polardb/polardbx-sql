@@ -28,7 +28,6 @@ import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.logical.LogicalJoin;
 import org.apache.calcite.rel.logical.LogicalProject;
-import org.apache.calcite.rel.rules.JoinPushThroughJoinRule;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexPermuteInputsShuttle;
@@ -54,7 +53,8 @@ public class OuterJoinLAsscomRule extends AbstractJoinLAsscomRule {
 
     public static final OuterJoinLAsscomRule PROJECT_INSTANCE = new OuterJoinLAsscomRule(
         operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
             operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
         RelFactories.LOGICAL_BUILDER,
         "OuterJoinReorderRule:OuterJoinLAsscomRule:Project");
@@ -85,10 +85,13 @@ public class OuterJoinLAsscomRule extends AbstractJoinLAsscomRule {
             return false;
         }
 
-        if (bottomJoin.getJoinReorderContext().isHasCommuteZigZag()) {
+        if (!topJoin.getJoinType().isOuterJoin() && !bottomJoin.getJoinType().isOuterJoin()) {
             return false;
         }
 
+        if (bottomJoin.getJoinReorderContext().isHasCommuteZigZag()) {
+            return false;
+        }
         if (topJoin.getJoinReorderContext().isHasTopPushThrough()
             /** we enable isHasCommute for lacking of OuterJoinAssocRule:Left */
 //                || topJoin.getJoinReorderContext().isHasCommute()
@@ -176,12 +179,6 @@ public class OuterJoinLAsscomRule extends AbstractJoinLAsscomRule {
             return null;
         }
 
-        // Split the condition of bottomJoin into a conjunction. Each of the
-        // parts that use columns from B will need to be pulled up.
-        final List<RexNode> bottomIntersecting = new ArrayList<>();
-        final List<RexNode> bottomNonIntersecting = new ArrayList<>();
-        JoinPushThroughJoinRule.split(bottomJoin.getCondition(), bBitSet, bottomIntersecting, bottomNonIntersecting);
-
         // target: | A       | C      |
         // source: | A       | B | C      |
         final Mappings.TargetMapping bottomMapping =
@@ -192,8 +189,6 @@ public class OuterJoinLAsscomRule extends AbstractJoinLAsscomRule {
         final List<RexNode> newBottomList = new ArrayList<>();
         new RexPermuteInputsShuttle(bottomMapping, relA, relC)
             .visitList(intersecting, newBottomList);
-        new RexPermuteInputsShuttle(bottomMapping, relA, relC)
-            .visitList(bottomNonIntersecting, newBottomList);
         final RexBuilder rexBuilder = cluster.getRexBuilder();
         RexNode newBottomCondition =
             RexUtil.composeConjunction(rexBuilder, newBottomList, false);
@@ -212,8 +207,9 @@ public class OuterJoinLAsscomRule extends AbstractJoinLAsscomRule {
         final List<RexNode> newTopList = new ArrayList<>();
         new RexPermuteInputsShuttle(topMapping, newBottomJoin, relB)
             .visitList(nonIntersecting, newTopList);
+        // bottom condition should be pulled to top join, as 'inner join on xx' differs from 'outer join on xx'
         new RexPermuteInputsShuttle(topMapping, newBottomJoin, relB)
-            .visitList(bottomIntersecting, newTopList);
+            .visitList(RelOptUtil.conjunctions(bottomJoin.getCondition()), newTopList);
         RexNode newTopCondition =
             RexUtil.composeConjunction(rexBuilder, newTopList, false);
         @SuppressWarnings("SuspiciousNameCombination") final Join newTopJoin =

@@ -16,14 +16,12 @@
 
 package com.alibaba.polardbx.common.oss.filesystem;
 
-import com.alibaba.polardbx.common.oss.filesystem.cache.FileReadRequest;
 import com.aliyun.oss.model.OSSObjectSummary;
 import com.aliyun.oss.model.ObjectListing;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.util.concurrent.MoreExecutors;
-import com.google.common.util.concurrent.UncheckedExecutionException;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -58,11 +56,19 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.FS_OSS_BLOCK_SIZE_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.FS_OSS_BLOCK_SIZE_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.KEEPALIVE_TIME_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.KEEPALIVE_TIME_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_PAGING_KEYS_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MAX_PAGING_KEYS_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MULTIPART_UPLOAD_PART_SIZE_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.MULTIPART_UPLOAD_PART_SIZE_KEY;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.UPLOAD_ACTIVE_BLOCKS_DEFAULT;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.UPLOAD_ACTIVE_BLOCKS_KEY;
 import static com.alibaba.polardbx.common.oss.filesystem.OSSUtils.intOption;
 import static com.alibaba.polardbx.common.oss.filesystem.OSSUtils.longOption;
 import static com.alibaba.polardbx.common.oss.filesystem.OSSUtils.objectRepresentsDirectory;
-import static com.alibaba.polardbx.common.oss.filesystem.Constants.*;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
@@ -109,7 +115,14 @@ public class OSSFileSystem extends FileSystem {
     @Override
     public FSDataOutputStream append(Path path, int bufferSize,
                                      Progressable progress) throws IOException {
-        throw new IOException("Append is not supported!");
+        String key = pathToKey(path);
+        OSSAppendOutputStream ossAppendOutputStream = new OSSAppendOutputStream(getConf(),
+            store,
+            key,
+            bufferSize,
+            new SemaphoredDelegatingExecutor(boundedThreadPool, blockOutputActiveBlocks, true),
+            getRateLimiter());
+        return new FSDataOutputStream(ossAppendOutputStream, statistics, ossAppendOutputStream.getOssFilePosition());
     }
 
     @Override
@@ -296,7 +309,7 @@ public class OSSFileSystem extends FileSystem {
     }
 
     public FileStatus getFileStatusImpl(Path path) throws IOException {
-        Path qualifiedPath = path.makeQualified(uri, workingDir);
+        Path qualifiedPath = path.makeQualified(uri, getWorkingDirectory());
         String key = pathToKey(qualifiedPath);
 
         // Root always exists
@@ -434,15 +447,15 @@ public class OSSFileSystem extends FileSystem {
      * @param path the path of the file.
      * @return the key of the object that represents the file.
      */
-    private String pathToKey(Path path) {
+    public String pathToKey(Path path) {
         if (!path.isAbsolute()) {
-            path = new Path(workingDir, path);
+            path = new Path(getWorkingDirectory(), path);
         }
 
         return path.toUri().getPath().substring(1);
     }
 
-    private Path keyToPath(String key) {
+    public Path keyToPath(String key) {
         return new Path("/" + key);
     }
 
@@ -469,10 +482,9 @@ public class OSSFileSystem extends FileSystem {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Ignoring: " + objKey);
                         }
-                        continue;
                     } else {
                         Path keyPath = keyToPath(objectSummary.getKey())
-                            .makeQualified(uri, workingDir);
+                            .makeQualified(uri, getWorkingDirectory());
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Adding: fi: " + keyPath);
                         }
@@ -487,9 +499,8 @@ public class OSSFileSystem extends FileSystem {
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Ignoring: " + prefix);
                         }
-                        continue;
                     } else {
-                        Path keyPath = keyToPath(prefix).makeQualified(uri, workingDir);
+                        Path keyPath = keyToPath(prefix).makeQualified(uri, getWorkingDirectory());
                         if (LOG.isDebugEnabled()) {
                             LOG.debug("Adding: rd: " + keyPath);
                         }
@@ -520,14 +531,9 @@ public class OSSFileSystem extends FileSystem {
     @Override
     public RemoteIterator<LocatedFileStatus> listFiles(
         final Path f, final boolean recursive) throws IOException {
-        Path qualifiedPath = f.makeQualified(uri, workingDir);
+        Path qualifiedPath = f.makeQualified(uri, getWorkingDirectory());
         final FileStatus status = getFileStatus(qualifiedPath);
-        PathFilter filter = new PathFilter() {
-            @Override
-            public boolean accept(Path path) {
-                return status.isFile() || !path.equals(f);
-            }
-        };
+        PathFilter filter = path -> status.isFile() || !path.equals(f);
         FileStatusAcceptor acceptor =
             new FileStatusAcceptor.AcceptFilesOnly(qualifiedPath);
         return innerList(f, status, filter, acceptor, recursive);
@@ -542,7 +548,7 @@ public class OSSFileSystem extends FileSystem {
     @Override
     public RemoteIterator<LocatedFileStatus> listLocatedStatus(final Path f,
                                                                final PathFilter filter) throws IOException {
-        Path qualifiedPath = f.makeQualified(uri, workingDir);
+        Path qualifiedPath = f.makeQualified(uri, getWorkingDirectory());
         final FileStatus status = getFileStatus(qualifiedPath);
         FileStatusAcceptor acceptor =
             new FileStatusAcceptor.AcceptAllButSelf(qualifiedPath);
@@ -554,7 +560,7 @@ public class OSSFileSystem extends FileSystem {
                                                         final PathFilter filter,
                                                         final FileStatusAcceptor acceptor,
                                                         final boolean recursive) throws IOException {
-        Path qualifiedPath = f.makeQualified(uri, workingDir);
+        Path qualifiedPath = f.makeQualified(uri, getWorkingDirectory());
         String key = pathToKey(qualifiedPath);
 
         if (status.isFile()) {

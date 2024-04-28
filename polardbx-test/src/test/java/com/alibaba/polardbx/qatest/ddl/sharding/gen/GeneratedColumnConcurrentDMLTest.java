@@ -165,8 +165,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -263,8 +267,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -399,8 +407,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -479,8 +491,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -577,8 +593,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -659,8 +679,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             results.add(threadPool.submit(task));
         }
 
-        for (Future<Void> result : results) {
-            result.get();
+        try {
+            for (Future<Void> result : results) {
+                result.get();
+            }
+        } finally {
+            threadPool.shutdown();
         }
     }
 
@@ -745,7 +769,12 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
                                 try {
                                     JdbcUtil.executeUpdateSuccess(connection, sql);
                                 } catch (AssertionError e) {
-                                    if (!changed) {
+                                    if (e.getMessage().contains("Lock wait timeout exceeded") || e.getMessage()
+                                        .contains("Deadlock found")) {
+                                        // ignore
+                                        totalCount.getAndDecrement();
+                                    } else if ((e.getMessage().contains("Unknown target column") || e.getMessage()
+                                        .contains("not found")) && !changed) {
                                         changed = true;
                                         generator = generator2;
                                         totalCount.getAndDecrement();
@@ -888,6 +917,11 @@ public class GeneratedColumnConcurrentDMLTest extends DDLBaseNewDBTestCase {
             } catch (Throwable e) {
                 e.printStackTrace();
                 throw (e);
+            } finally {
+                //报错需设置退出信号,防止线程泄漏
+                shouldStop.set(true);
+                totalCount.set(FILL_COUNT);
+                threadPool.shutdown();
             }
 
             if (withGsi) {

@@ -166,34 +166,6 @@ public class PartitionPruneStepBuilder {
         return finalStep;
     }
 
-    public static PartitionPruneStep generatePointSelectPruneStepInfo(String dbName,
-                                                                      String tbName,
-                                                                      List<Object> pointValue,
-                                                                      List<DataType> pointValueOpTypes,
-                                                                      ExecutionContext ec,
-                                                                      ExecutionContext[] newEcOutput) {
-        OptimizerContext opCtx = OptimizerContext.getContext(dbName);
-        if (opCtx == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR, String.format("No found database %s", dbName));
-        }
-        String targetDbName = opCtx.getSchemaName();
-        if (!DbInfoManager.getInstance().isNewPartitionDb(targetDbName)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                "Only support tables created by syntax 'partition by'", dbName);
-        }
-
-        TableMeta tableMeta = opCtx.getLatestSchemaManager().getTable(tbName);
-        if (tableMeta == null) {
-            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
-                String.format("No found partition table %s", tbName));
-        }
-
-        PartitionInfo partInfo = tableMeta.getPartitionInfo();
-
-        RelDataType tbRelRowType = tableMeta.getRowType(PartitionPrunerUtils.getTypeFactory());
-        return generatePointSelectPruneStepInfo(pointValue, pointValueOpTypes, ec, newEcOutput, partInfo, tbRelRowType);
-    }
-
     public static PartitionPruneStep generatePointSelectPruneStepInfo(List<Object> pointValue,
                                                                       List<DataType> pointValueOpTypes,
                                                                       ExecutionContext ec,
@@ -273,8 +245,7 @@ public class PartitionPruneStepBuilder {
         }
 
         PartitionPruneStep pointSelectStep = null;
-        if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
-            || partInfo.getTableType() == PartitionTableType.GSI_TABLE) {
+        if (partInfo.getTableType().isA(PartitionTableType.PARTITIONED_TABLE)) {
             // Build PartPred expr
             int partColValueCnt = pointValue.size();
             if (partColValueCnt > partColFldList.size()) {
@@ -478,10 +449,11 @@ public class PartitionPruneStepBuilder {
                 PartClauseItem oneEqExprClauseItem = eqExprClauseItems.get(i);
                 PartClauseInfo oneEqExprClause = oneEqExprClauseItem.getClauseInfo();
                 stepContext.addPartPredIntoContext(oneEqExprClause);
-                eqExprSteps.addAll(stepContext.enumPrefixPredAndGenPruneSteps());
-                stepContext.resetPrefixPartPredPathCtx();
                 partKeyIdxClauseItemMap.put(oneEqExprClause.getPartKeyIndex(), oneEqExprClauseItem);
             }
+            eqExprSteps.addAll(stepContext.enumPrefixPredAndGenPruneSteps());
+            stepContext.resetPrefixPartPredPathCtx();
+
             int partColCnt = stepContext.getPartByDef().getPartitionFieldList().size();
             int prefixPartColCnt = 0;
             for (int i = 0; i < partColCnt; i++) {
@@ -536,7 +508,7 @@ public class PartitionPruneStepBuilder {
         List<PartitionPruneStep> subStepList = new ArrayList<>();
         List<PartClauseItem> subItemList = clauseItem.getItemList();
         Map<String, PartitionPruneStep> duplicateStepsCache = new HashMap<>();
-        boolean enableRangeMerge = stepContext.isDnfFormula();
+        boolean enableRangeMerge = stepContext.isDnfFormula() && stepContext.isEnableIntervalMerging();
 
         for (int i = 0; i < subItemList.size(); i++) {
             PartClauseItem subItem = subItemList.get(i);
@@ -601,7 +573,7 @@ public class PartitionPruneStepBuilder {
         List<PartClauseItem> subItemList = clauseItem.getItemList();
         Map<String, PartitionPruneStep> duplicateStepsCache = new HashMap<>();
         boolean isDnfFormula = stepContext.isDnfFormula();
-        boolean enableRangeMerge = stepContext.isDnfFormula();
+        boolean enableRangeMerge = stepContext.isDnfFormula() && stepContext.isEnableIntervalMerging();
         List<PartClauseItem> partKeyOpItems = subItemList;
         if (!partKeyOpItems.isEmpty()) {
             boolean findAlwayFalseItem = false;
@@ -789,7 +761,7 @@ public class PartitionPruneStepBuilder {
         }
 
         /**
-         * The the partition function operator if it exits, or its value will be null
+         * Check the partition function operator if it exits, or its value will be null
          */
         PartClauseInfo clauseInfo = partIntervalArr[0].getPartClause();
         SqlOperator partFuncOp =
@@ -879,10 +851,6 @@ public class PartitionPruneStepBuilder {
         break;
         }
         return pruneSteps;
-    }
-
-    private static void checkIfNeedDoFullScan() {
-
     }
 
     private static void buildVectorialRangeForMultiPartCols(PartPruneStepBuildingContext currFullContext,
@@ -1736,6 +1704,7 @@ public class PartitionPruneStepBuilder {
          */
         PartClauseItem clauseItem =
             PartClauseInfoPreProcessor.convertToPartClauseItem(stepContext.getPartByDef(), relRowType, rewrotePartPred,
+                null,
                 stepContext);
 
         /**

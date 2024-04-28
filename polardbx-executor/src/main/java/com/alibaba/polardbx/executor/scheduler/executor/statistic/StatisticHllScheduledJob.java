@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.scheduler.executor.statistic;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -32,9 +34,12 @@ import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.optimizeralert.OptimizerAlertUtil;
 import com.google.common.collect.Lists;
 import org.apache.commons.lang.StringUtils;
+import org.glassfish.jersey.internal.guava.Sets;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -70,6 +75,7 @@ import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUti
 public class StatisticHllScheduledJob extends SchedulerExecutor {
 
     private final ExecutableScheduledJob executableScheduledJob;
+    private boolean fromScheduleJob = true;
 
     public StatisticHllScheduledJob(final ExecutableScheduledJob executableScheduledJob) {
         this.executableScheduledJob = executableScheduledJob;
@@ -83,6 +89,12 @@ public class StatisticHllScheduledJob extends SchedulerExecutor {
         String remark = "";
         try {
             // check conf
+            // test code
+            boolean interruptedTest = InstConfUtil.getBool(ConnectionParams.ALERT_STATISTIC_INTERRUPT);
+            if (interruptedTest) {
+                throw new TddlRuntimeException(ErrorCode.ERR_STATISTIC_JOB_INTERRUPTED,
+                    "statistic job is interrupted by alert test");
+            }
             boolean enableStatisticBackground =
                 InstConfUtil.getBool(ConnectionParams.ENABLE_BACKGROUND_STATISTIC_COLLECTION);
             if (!enableStatisticBackground) {
@@ -99,18 +111,21 @@ public class StatisticHllScheduledJob extends SchedulerExecutor {
                 return succeedExit(scheduleId, fireTime, remark);
             }
 
-            //mark as RUNNING
-            boolean casSuccess =
-                ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
-            if (!casSuccess) {
-                ModuleLogInfo.getInstance()
-                    .logRecord(
-                        Module.SCHEDULE_JOB,
-                        STATE_CHANGE_FAIL,
-                        new String[] {STATISTIC_HLL_SKETCH + "," + fireTime, QUEUED.name(), RUNNING.name()},
-                        WARNING);
-                return false;
+            if (fromScheduleJob) {
+                //mark as RUNNING
+                boolean casSuccess =
+                    ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
+                if (!casSuccess) {
+                    ModuleLogInfo.getInstance()
+                        .logRecord(
+                            Module.SCHEDULE_JOB,
+                            STATE_CHANGE_FAIL,
+                            new String[] {STATISTIC_HLL_SKETCH + "," + fireTime, QUEUED.name(), RUNNING.name()},
+                            WARNING);
+                    return false;
+                }
             }
+
             List<String> schemas = DbInfoManager.getInstance().getDbList();
             ModuleLogInfo.getInstance()
                 .logRecord(
@@ -130,8 +145,15 @@ public class StatisticHllScheduledJob extends SchedulerExecutor {
                 if (SystemDbHelper.isDBBuildIn(schema)) {
                     continue;
                 }
+                if (!OptimizerContext.getActiveSchemaNames().contains(schema)) {
+                    continue;
+                }
 
-                Set<String> logicalTableSet = StatisticManager.getInstance().getTableNamesCollected(schema);
+                Set<String> logicalTableSet = Sets.newHashSet();
+                for (TableMeta tableMeta : OptimizerContext.getContext(schema).getLatestSchemaManager()
+                    .getAllUserTables()) {
+                    logicalTableSet.add(tableMeta.getTableName().toLowerCase());
+                }
                 long start = System.currentTimeMillis();
                 List<String> toRemoveList = Lists.newLinkedList();
                 for (String logicalTableName : logicalTableSet) {
@@ -265,18 +287,32 @@ public class StatisticHllScheduledJob extends SchedulerExecutor {
     }
 
     private boolean succeedExit(long scheduleId, long fireTime, String remark) {
+        if (fromScheduleJob) {
+            return true;
+        }
         long finishTime = System.currentTimeMillis() / 1000;
         //mark as SUCCESS
         return ScheduledJobsManager.casStateWithFinishTime(scheduleId, fireTime, RUNNING, SUCCESS, finishTime, remark);
     }
 
     private void errorExit(long scheduleId, long fireTime, String error) {
-        //mark as fail
-        ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, null, error);
+        if (fromScheduleJob) {
+            //mark as fail
+            ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, null, error);
+        }
+
+        OptimizerAlertUtil.statisticErrorAlert();
     }
 
     @Override
     public Pair<Boolean, String> needInterrupted() {
+        if (!fromScheduleJob) {
+            return Pair.of(false, "not from schedule job");
+        }
         return ExecUtils.needSketchInterrupted();
+    }
+
+    public void setFromScheduleJob(boolean fromScheduleJob) {
+        this.fromScheduleJob = fromScheduleJob;
     }
 }

@@ -30,3 +30,15 @@
         HashAgg(group="name", count(*)="SUM(count(*))")
           Gather(concurrent=true)
             LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `test_hash_tb`.`name`, COUNT(*) AS `count(*)` FROM `test_hash_tb` AS `test_hash_tb` INNER JOIN `test_hash_tb` AS `test_hash_tb0` ON (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) GROUP BY `test_hash_tb`.`name`")
+
+-
+  sql: |
+    select count(1) from test_hash_tb a join test_hash_tb b where a.id=b.id group by a.name order by count(1);
+
+  plan: |
+
+    memsort(sort="count(1) asc")
+      project(count(1)="count(1)")
+        hashagg(group="name", count(1)="sum(count(1))")
+          gather(concurrent=true)
+            logicalview(tables="[0000-0003].test_hash_tb", shardcount=4, sql="select `test_hash_tb`.`name`, count(*) as `count(1)` from `test_hash_tb` as `test_hash_tb` inner join `test_hash_tb` as `test_hash_tb0` on (`test_hash_tb`.`id` = `test_hash_tb0`.`id`) group by `test_hash_tb`.`name`")

@@ -174,8 +174,7 @@ public class PartitionInfoManager extends AbstractLifecycle {
         if (partInfoCtx == null) {
             return false;
         }
-        return partInfoCtx.getPartInfo().getTableType() == PartitionTableType.PARTITION_TABLE
-            || partInfoCtx.getPartInfo().getTableType() == PartitionTableType.GSI_TABLE;
+        return partInfoCtx.getPartInfo().getTableType().isA(PartitionTableType.PARTITIONED_TABLE);
     }
 
     public boolean isBroadcastTable(String tbName) {

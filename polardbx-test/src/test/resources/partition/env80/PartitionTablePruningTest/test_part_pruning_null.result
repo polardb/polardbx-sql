@@ -17,19 +17,19 @@ EXPLAIN SELECT a
 FROM tbl_ubigint
 WHERE a IS NULL;
 Logical ExecutionPlan
-LogicalView(tables="tbl_ubigint[p2]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` IS NULL)")
+PhyTableOperation(tables="tbl_ubigint[p2]", sql="SELECT `tbl_ubigint`.`a` AS `a` FROM ? AS `tbl_ubigint` WHERE (`tbl_ubigint`.`a` IS NULL)")
 EXPLAIN SELECT a
 FROM tbl_ubigint
 WHERE a = 0;
 Logical ExecutionPlan
-LogicalView(tables="tbl_ubigint[p3]", sql="SELECT `a` FROM `tbl_ubigint` AS `tbl_ubigint` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_ubigint[p3]", sql="SELECT `tbl_ubigint`.`a` AS `a` FROM ? AS `tbl_ubigint` WHERE (`tbl_ubigint`.`a` = ?)", params="0")
 EXPLAIN SELECT a
 FROM tbl_datetime
 WHERE a IS NULL;
 Logical ExecutionPlan
-LogicalView(tables="tbl_datetime[p2]", sql="SELECT `a` FROM `tbl_datetime` AS `tbl_datetime` WHERE (`a` IS NULL)")
+PhyTableOperation(tables="tbl_datetime[p2]", sql="SELECT `tbl_datetime`.`a` AS `a` FROM ? AS `tbl_datetime` WHERE (`tbl_datetime`.`a` IS NULL)")
 EXPLAIN SELECT a
 FROM tbl_varchar
 WHERE a IS NULL;
 Logical ExecutionPlan
-LogicalView(tables="tbl_varchar[p2]", sql="SELECT `a` FROM `tbl_varchar` AS `tbl_varchar` WHERE (`a` IS NULL)")
+PhyTableOperation(tables="tbl_varchar[p2]", sql="SELECT `tbl_varchar`.`a` AS `a` FROM ? AS `tbl_varchar` WHERE (`tbl_varchar`.`a` IS NULL)")

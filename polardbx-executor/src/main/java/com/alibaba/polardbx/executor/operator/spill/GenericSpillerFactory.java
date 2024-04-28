@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.inject.Inject;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.inject.Inject;
 import org.apache.calcite.sql.OutFileParams;
 
 import java.util.List;

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.type.RelDataType;
@@ -51,6 +52,13 @@ public class DirectShardingKeyTableOperation extends BaseTableOperation {
         initShardProcessor(logicalPlan, logTableName, ec);
     }
 
+    /**
+     * for ut test only
+     */
+    public DirectShardingKeyTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
+    }
+
     @Override
     public void setDbIndex(String dbIndex) {
         this.dbIndex = dbIndex;
@@ -66,7 +74,6 @@ public class DirectShardingKeyTableOperation extends BaseTableOperation {
     public Pair<String, String> getDbIndexAndTableName(ExecutionContext ec) {
         return shardProcessor.shard(ec.getParams().getCurrentParameter(), ec);
     }
-
 
     @Override
     public Pair<String, Map<Integer, ParameterContext>> getDbIndexAndParam(Map<Integer, ParameterContext> param,

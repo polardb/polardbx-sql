@@ -18,7 +18,15 @@ import ReactDOMServer from "react-dom/server";
 import * as dagreD3 from "dagre-d3";
 import * as d3 from "d3";
 
-import {formatRows, getStageStateColor, initializeGraph, initializeSvg, truncateString} from "../utils";
+import {
+    formatDurationNs,
+    formatNumber,
+    formatRows,
+    getStageStateColor,
+    initializeGraph,
+    initializeSvg,
+    truncateString
+} from "../utils";
 import {QueryHeader} from "./QueryHeader";
 
 type
@@ -77,7 +85,7 @@ class StageStatistics extends React.Component<StageStatisticsProps, StageStatist
                 remoteSources: element.fragmentIds,
             });
         })
-        node.last
+        // node.last
         // result.set(node.id, {
         //     id: node.id,
         //     name: node['name'],
@@ -101,16 +109,17 @@ class StageStatistics extends React.Component<StageStatisticsProps, StageStatist
                     <h3 className="margin-top: 0">Stage {stage.id}</h3>
                     {stage.state}
                     <hr/>
-                    CPU: {stats.totalCpuTime}<br/>
+                    CpuTime: {stats.totalCpuTimeNanos} ms<br/>
                     {stats.fullyBlocked ?
-                        <div style={{color: '#ff0000'}}>Blocked: {stats.totalBlockedTime} </div> :
-                        <div>Blocked: {stats.totalBlockedTime} </div>
+                        <div style={{color: '#ff0000'}}>BlockedTime: {formatDurationNs(stats.totalBlockedTimeNanos)} </div> :
+                        <div>BlockedTime: {formatDurationNs(stats.totalBlockedTimeNanos)} </div>
                     }
-                    Memory: {stats.totalMemoryReservation}
+                    {/*Memory: {stats.totalMemoryReservation}*/}
                     <br/>
                     PipelineExecs: {"Q:" + stats.queuedPipelineExecs + ", R:" + stats.runningPipelineExecs + ", F:" + stats.completedPipelineExecs}
                     <hr/>
-                    Input: {stats.processedInputDataSize + " / " + formatRows(stats.processedInputPositions)}
+                    {/*Input: {stats.processedInputDataSize + " / " + formatRows(stats.processedInputPositions)}*/}
+                    Input: {formatRows(stats.processedInputPositions)}
                 </div>
             </div>
         );
@@ -192,7 +201,7 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
 
     refreshLoop() {
         clearTimeout(this.timeoutId); // to stop multiple series of refreshLoop from going on simultaneously
-        fetch('/v1/query/' + this.props.queryId)
+        fetch('/v1/query/stats/' + this.props.queryId)
             .then(response => response.json())
             .then(query => {
                 this.setState({
@@ -233,6 +242,13 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
         graph.setParent(stageRootNodeId, clusterId);
         graph.setEdge("node-" + stage.root, stageRootNodeId, {style: "visibility: hidden"});
 
+        const stageOperatorsMap: Map<number, any> = new Map();
+        if (stage.stageStats.operatorSummaries) {
+            stage.stageStats.operatorSummaries.forEach(opSummary => {
+                stageOperatorsMap.set(opSummary.operatorId, opSummary);
+            });
+        }
+
         stage.nodes.forEach(node => {
             const nodeId = "node-" + node.id;
             const nodeHtml = ReactDOMServer.renderToString(<PlanNode {...node}/>);
@@ -241,10 +257,20 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
             graph.setParent(nodeId, clusterId);
 
             node.sources.forEach(source => {
-                graph.setEdge("node-" + source, nodeId, {class: "plan-edge", arrowheadClass: "plan-arrowhead"});
+                if (stageOperatorsMap.has(source)) {
+                    graph.setEdge("node-" + source, nodeId, {
+                        class: "plan-edge",
+                        arrowheadClass: "plan-arrowhead",
+                        label: formatRows(stageOperatorsMap.get(source).outputRowCount),
+                        labelStyle: "color: #fff; font-weight: bold; font-size: 16px;",
+                        labelType: "html",
+                    });
+                } else {
+                    graph.setEdge("node-" + source, nodeId, {class: "plan-edge", arrowheadClass: "plan-arrowhead"});
+                }
             });
 
-            if (node.remoteSources != undefined && node.remoteSources.length > 0) {
+            if (node.remoteSources !== undefined && node.remoteSources.length > 0) {
                 graph.setNode(nodeId, {label: '', shape: "circle"});
 
                 node.remoteSources.forEach(sourceId => {
@@ -255,7 +281,7 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
                             class: "plan-edge",
                             style: "stroke-width: 4px",
                             arrowheadClass: "plan-arrowhead",
-                            label: sourceStats.outputDataSize + " / " + formatRows(sourceStats.outputPositions),
+                            label: formatRows(sourceStats.outputPositions),
                             labelStyle: "color: #fff; font-weight: bold; font-size: 24px;",
                             labelType: "html",
                         });
@@ -350,15 +376,17 @@ export class LivePlan extends React.Component<LivePlanProps, LivePlanState> {
         return (
             <div>
                 {queryHeader}
-                <div className="row">
-                    <div className="col-xs-12">
-                        {loadingMessage}
-                        <div id="live-plan" className="graph-container">
-                            <div className="pull-right">
-                                {this.state.ended ? "Scroll to zoom." : "Zoom disabled while query is running."} Click
-                                stage to view additional statistics
+                <div className="info-container-next">
+                    <div className="row ">
+                        <div className="col-xs-12">
+                            {loadingMessage}
+                            <div id="live-plan" className="graph-container">
+                                <div className="pull-right">
+                                    {this.state.ended ? "Scroll to zoom." : "Zoom disabled while query is running."} Click
+                                    stage to view additional statistics
+                                </div>
+                                <svg id="plan-canvas"/>
                             </div>
-                            <svg id="plan-canvas"/>
                         </div>
                     </div>
                 </div>

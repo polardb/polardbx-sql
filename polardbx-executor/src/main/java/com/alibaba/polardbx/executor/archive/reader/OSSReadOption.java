@@ -41,12 +41,13 @@ public class OSSReadOption {
     private List<PruningResult> pruningResultList;
 
     private long maxMergeDistance;
+    private boolean isColumnarIndex;
 
     public OSSReadOption(TypeDescription readSchema, OSSColumnTransformer ossColumnMapping,
                          SearchArgument searchArgument, String[] columns, String tableName, Engine engine,
                          List<String> tableFileList, List<FileMeta> phyTableFileMetas,
                          List<PruningResult> pruningResultList,
-                         long maxMergeDistance) {
+                         long maxMergeDistance, boolean isColumnarIndex) {
         this.readSchema = readSchema;
         this.ossColumnTransformer = ossColumnMapping;
         this.searchArgument = searchArgument;
@@ -57,6 +58,7 @@ public class OSSReadOption {
         this.phyTableFileMetas = phyTableFileMetas;
         this.pruningResultList = pruningResultList;
         this.maxMergeDistance = maxMergeDistance;
+        this.isColumnarIndex = isColumnarIndex;
     }
 
     public Engine getEngine() {
@@ -125,6 +127,10 @@ public class OSSReadOption {
 
     public long getMaxMergeDistance() {
         return maxMergeDistance;
+    }
+
+    public boolean isColumnarIndex() {
+        return isColumnarIndex;
     }
 
     @Override

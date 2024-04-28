@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -44,6 +46,13 @@ public class ByteBlock extends AbstractBlock {
         super(arrayOffset, positionCount, valueIsNull);
         this.values = Preconditions.checkNotNull(values);
         updateSizeInfo();
+    }
+
+    public static ByteBlock from(ByteBlock other, int selSize, int[] selection) {
+        return new ByteBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyByteArray(other.values, selection, selSize));
     }
 
     @Override
@@ -102,6 +111,15 @@ public class ByteBlock extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(values[pos + arrayOffset]);
+        }
+    }
+
+    @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
             return super.hashCodeVector();
@@ -115,6 +133,17 @@ public class ByteBlock extends AbstractBlock {
     }
 
     @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Byte.hashCode(values[position + arrayOffset]);
+        }
+    }
+
+    @Override
     public DataType getType() {
         return DataTypes.ByteType;
     }
@@ -122,7 +151,7 @@ public class ByteBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof ByteBlock) {
-            ByteBlock outputVectorSlot = (ByteBlock) output;
+            ByteBlock outputVectorSlot = output.cast(ByteBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -143,7 +172,7 @@ public class ByteBlock extends AbstractBlock {
         if (!(another instanceof ByteBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        ByteBlock vectorSlot = (ByteBlock) another;
+        ByteBlock vectorSlot = another.cast(ByteBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }

@@ -29,8 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -44,10 +42,12 @@ import com.alibaba.polardbx.executor.mpp.execution.StateMachine;
 import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.executor.mpp.execution.TaskManager;
 import com.alibaba.polardbx.executor.mpp.execution.TaskStatus;
-import com.alibaba.polardbx.gms.node.HostAddressCache;
 import com.alibaba.polardbx.executor.mpp.server.TaskResource;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.alibaba.polardbx.gms.node.HostAddressCache;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.http.client.FullJsonResponseHandler;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.Request;

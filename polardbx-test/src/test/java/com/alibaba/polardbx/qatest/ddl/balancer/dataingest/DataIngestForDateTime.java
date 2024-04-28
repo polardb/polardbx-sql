@@ -39,6 +39,7 @@ public class DataIngestForDateTime extends DataIngest {
         LocalDate date = LocalDate.of(year, month, day);
         ps.setDate(1, Date.valueOf(date));
         this.idSum += year + month + day;
+        this.idSum = this.idSum % MOD_DIVISOR;
     }
 
     @Override

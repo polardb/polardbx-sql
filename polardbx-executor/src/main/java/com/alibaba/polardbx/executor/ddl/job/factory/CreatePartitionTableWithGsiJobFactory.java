@@ -16,35 +16,55 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory;
 
+import com.alibaba.polardbx.common.ColumnarTableOptions;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.CreatePartitionTableWithGsiBuilder;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.gsi.CreatePartitionGsiJobFactory;
+import com.alibaba.polardbx.executor.ddl.job.factory.gsi.columnar.CreateColumnarIndexJobFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.InsertIntoTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcDdlMarkTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.CciSchemaEvolutionTask;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.WaitColumnarTableCreationTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.GsiStatisticsInfoSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateColumnarIndex;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionGsi;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreatePartitionTable;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateSelect;
-import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4InsertOverwrite;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.data.LikeTableInfo;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateTableWithGsiPreparedData;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlIdentifier;
+import org.apache.calcite.sql.SqlIndexDefinition;
+import org.apache.calcite.sql.SqlNode;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.calcite.sql.dialect.MysqlSqlDialect;
+import org.apache.commons.lang.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.TreeMap;
 
 /**
  * @author guxu
  */
 public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
+    private static final Logger logger = LoggerFactory.getLogger(CreatePartitionTableWithGsiJobFactory.class);
 
     @Deprecated
     private final DDL ddl;
@@ -58,11 +78,23 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
     private final String primaryTableName;
 
     private final ExecutionContext executionContext;
+
     private String selectSql;
+
+    private final SqlCreateTable normalizedOriginalDdl;
 
     public CreatePartitionTableWithGsiJobFactory(@Deprecated DDL ddl,
                                                  CreateTableWithGsiPreparedData preparedData,
                                                  ExecutionContext executionContext) {
+        // ddl.sqlNode will be modified in ReplaceTableNameWithQuestionMarkVisitor
+        // after that the table name of CREATE TABLE statement will be replaced with a question mark
+        // which will cause an error in CHECK COLUMNAR META and CDC.
+        // The right way might be copy a new SqlNode in ReplaceTableNameWithQuestionMarkVisitor
+        // every time when table name is replaced (as a SqlShuttle should do).
+        // But change ReplaceTableNameWithQuestionMarkVisitor will affect all kinds of ddl statement,
+        // should be done sometime later and tested carefully
+        this.normalizedOriginalDdl = (SqlCreateTable) SqlNode.clone(ddl.sqlNode);
+
         CreatePartitionTableWithGsiBuilder createTableWithGsiBuilder =
             new CreatePartitionTableWithGsiBuilder(ddl, preparedData, executionContext);
 
@@ -80,7 +112,6 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
 
         this.schemaName = preparedData.getPrimaryTablePreparedData().getSchemaName();
         this.primaryTableName = preparedData.getPrimaryTablePreparedData().getTableName();
-
     }
 
     @Override
@@ -98,14 +129,16 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
                 primaryTableTopology,
                 primaryTablePhysicalPlans,
                 false,
-                isAutoPartition);
+                isAutoPartition,
+                executionContext);
         CreatePartitionTableJobFactory ret =
             new CreatePartitionTableJobFactory(preparedData.getPrimaryTablePreparedData().isAutoPartition(),
                 preparedData.getPrimaryTablePreparedData().isTimestampColumnDefault(),
                 preparedData.getPrimaryTablePreparedData().getSpecialDefaultValues(),
                 preparedData.getPrimaryTablePreparedData().getSpecialDefaultValueFlags(),
                 preparedData.getPrimaryTablePreparedData().getAddedForeignKeys(),
-                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null);
+                physicalPlanData, executionContext, preparedData.getPrimaryTablePreparedData(), null,
+                preparedData.getPrimaryTablePreparedData().getLikeTableInfo());
 //        ret.setSelectSql(selectSql);
         ExecutableDdlJob thisParentJob = ret.create();
         if (preparedData.getPrimaryTablePreparedData().isNeedToGetTableGroupLock()) {
@@ -121,35 +154,104 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         result.combineTasks(createTableJob);
         result.addExcludeResources(createTableJob.getExcludeResources());
 
+        final List<WaitColumnarTableCreationTask> cciWaitList = new ArrayList<>();
+        final List<CciSchemaEvolutionTask> schemaEvolutionInitializer = new ArrayList<>();
         Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
+        Map<String, DdlTask> indexAddPartitionMetaTasks = new TreeMap<>(String::compareToIgnoreCase);
         for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
-            final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
-            ExecutableDdlJob thisJob =
-                CreatePartitionGsiJobFactory.create4CreateTableWithGsi(ddl, gsiPreparedData, executionContext);
-            DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
-                gsiPreparedData.getSchemaName(),
-                gsiPreparedData.getPrimaryTableName(),
-                gsiPreparedData.getIndexTableName(),
-                GsiStatisticsSyncAction.INSERT_RECORD,
-                null);
-            thisJob.appendTask(gsiStatisticsInfoTask);
-            if (gsiPreparedData.isNeedToGetTableGroupLock()) {
-                return thisJob;
+            final CreateGlobalIndexPreparedData indexPreparedData = entry.getValue();
+            if (indexPreparedData.isColumnarIndex()) {
+                // Clustered columnar index
+                final ExecutableDdlJob4CreateColumnarIndex cciJob = (ExecutableDdlJob4CreateColumnarIndex)
+                    CreateColumnarIndexJobFactory.create4CreateCci(ddl, indexPreparedData, executionContext);
+                if (indexPreparedData.isNeedToGetTableGroupLock()) {
+                    return cciJob;
+                }
+                cciJob.removeTaskRelationship(
+                    cciJob.getInsertColumnarIndexMetaTask(),
+                    cciJob.getWaitColumnarTableCreationTask()
+                );
+
+                cciWaitList.add(cciJob.getWaitColumnarTableCreationTask());
+
+                // Add cci tasks
+                result.combineTasks(cciJob);
+
+                // Add relationship with before tasks
+                result.addTaskRelationship(
+                    createTableJob.getCreateTableAddTablesMetaTask(),
+                    cciJob.getCreateColumnarIndexValidateTask()
+                );
+
+                // Add Relationship with after tasks
+                result.addTaskRelationship(cciJob.getInsertColumnarIndexMetaTask(), createTableJob.getCdcDdlMarkTask());
+
+                // Add exclusive resources
+                result.addExcludeResources(cciJob.getExcludeResources());
+
+                // Replace index definition in normalizedOriginalDdl
+                normalizedOriginalDdl.replaceCciDef(
+                    entry.getKey(),
+                    indexPreparedData.getIndexDefinition());
+
+                schemaEvolutionInitializer.add(CciSchemaEvolutionTask.createCci(schemaName,
+                    indexPreparedData.getPrimaryTableName(),
+                    indexPreparedData.getIndexTableName(),
+                    buildColumnarOptions(indexPreparedData.getIndexDefinition()),
+                    indexPreparedData.getDdlVersionId()));
+
+                // TODO is CreateGsiPreCheckTask necessary ?
+            } else {
+                // Global secondary index
+                ExecutableDdlJob thisJob =
+                    CreatePartitionGsiJobFactory.create4CreateTableWithGsi(ddl, indexPreparedData, executionContext);
+                DdlTask gsiStatisticsInfoTask = new GsiStatisticsInfoSyncTask(
+                    indexPreparedData.getSchemaName(),
+                    indexPreparedData.getPrimaryTableName(),
+                    indexPreparedData.getIndexTableName(),
+                    GsiStatisticsSyncAction.INSERT_RECORD,
+                    null);
+                thisJob.appendTask(gsiStatisticsInfoTask);
+                if (indexPreparedData.isNeedToGetTableGroupLock()) {
+                    return thisJob;
+                }
+                ExecutableDdlJob4CreatePartitionGsi gsiJob = (ExecutableDdlJob4CreatePartitionGsi) thisJob;
+                result.combineTasks(gsiJob);
+                result.addTaskRelationship(
+                    createTableJob.getCreateTableAddTablesMetaTask(),
+                    gsiJob.getCreateGsiValidateTask()
+                );
+                result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
+                result.addExcludeResources(gsiJob.getExcludeResources());
+                result.addTask(gsiJob.getCreateGsiPreCheckTask());
+                result.addTaskRelationship(createTableJob.getCreatePartitionTableValidateTask(),
+                    gsiJob.getCreateGsiPreCheckTask());
+                result.addTaskRelationship(gsiJob.getCreateGsiPreCheckTask(),
+                    createTableJob.getCreateTableAddTablesPartitionInfoMetaTask());
+                indexAddPartitionMetaTasks.put(indexPreparedData.getIndexTableName(),
+                    gsiJob.getCreateTableAddTablesPartitionInfoMetaTask());
             }
-            ExecutableDdlJob4CreatePartitionGsi gsiJob = (ExecutableDdlJob4CreatePartitionGsi) thisJob;
-            result.combineTasks(gsiJob);
-            result.addTaskRelationship(
-                createTableJob.getCreateTableAddTablesMetaTask(),
-                gsiJob.getCreateGsiValidateTask()
-            );
-            result.addTaskRelationship(gsiJob.getLastTask(), createTableJob.getCdcDdlMarkTask());
-            result.addExcludeResources(gsiJob.getExcludeResources());
-            result.addTask(gsiJob.getCreateGsiPreCheckTask());
-            result.addTaskRelationship(createTableJob.getCreatePartitionTableValidateTask(),
-                gsiJob.getCreateGsiPreCheckTask());
-            result.addTaskRelationship(gsiJob.getCreateGsiPreCheckTask(),
-                createTableJob.getCreateTableAddTablesPartitionInfoMetaTask());
         }
+        addDependence(indexAddPartitionMetaTasks, result);
+
+        if (!cciWaitList.isEmpty()) {
+            final CdcDdlMarkTask cdcDdlMarkTask = createTableJob.getCdcDdlMarkTask();
+
+            // Try to set CDC_ORIGINAL_DDL with this.normalizedOriginalDdl
+            updateOriginalDdlSql(cdcDdlMarkTask);
+            cdcDdlMarkTask.addSchemaEvolutionInitializers(schemaEvolutionInitializer);
+
+            result.removeTaskRelationship(
+                cdcDdlMarkTask,
+                createTableJob.getCreateTableShowTableMetaTask());
+            DdlTask last = cdcDdlMarkTask;
+            for (WaitColumnarTableCreationTask cciWait : cciWaitList) {
+                result.addTaskRelationship(last, cciWait);
+                last = cciWait;
+            }
+            result.addTaskRelationship(last, createTableJob.getCreateTableShowTableMetaTask());
+        }
+
         if (selectSql != null) {
             InsertIntoTask
                 insertIntoTask = new InsertIntoTask(schemaName, primaryTableName, selectSql, null, 0);
@@ -166,6 +268,51 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
         return result;
     }
 
+    private Map<String, String> buildColumnarOptions(SqlIndexDefinition indexDefinition) {
+        Map<String, String> options = new HashMap<>();
+        if (indexDefinition != null && CollectionUtils.isNotEmpty(indexDefinition.getDictColumns())) {
+            String columns = indexDefinition.getDictColumns().stream()
+                .map(sqlIndexColumnName -> SqlIdentifier.surroundWithBacktick(sqlIndexColumnName.getColumnNameStr()))
+                .collect(Collectors.joining(","));
+            options.put(ColumnarTableOptions.DICTIONARY_COLUMNS, columns);
+        }
+        return options;
+    }
+
+    @SuppressWarnings("CatchMayIgnoreException")
+    private void updateOriginalDdlSql(CdcDdlMarkTask cdcDdlMarkTask) {
+        try {
+            // Call SqlCreateTable.toSqlString(SqlDialect dialect) will get user-input create table statement;
+            // Call SqlCreateTable.unparse(SqlWriter writer, int leftPrec, int rightPrec) will get create table
+            // statement with cci name replaced (suffix added).
+            // For GDN use, we need cci name without suffix
+            final String normalizedOriginalDdl = this.normalizedOriginalDdl
+//                .toSqlString(MysqlSqlDialect.DEFAULT, false)
+                .toString();
+            cdcDdlMarkTask.setNormalizedOriginalDdl(normalizedOriginalDdl);
+        } catch (Exception ignored) {
+            logger.error(
+                "Failed to get normalized original ddl statement, might cause CHECK COLUMNAR META report an error",
+                ignored);
+        }
+    }
+
+    private void addDependence(Map<String, DdlTask> indexAddPartitionMetaTasks, ExecutableDdlJob result) {
+        Map<String, CreateGlobalIndexPreparedData> gsiPreparedDataMap = preparedData.getIndexTablePreparedDataMap();
+        for (Map.Entry<String, CreateGlobalIndexPreparedData> entry : gsiPreparedDataMap.entrySet()) {
+            final CreateGlobalIndexPreparedData gsiPreparedData = entry.getValue();
+            if (primaryTableName.equalsIgnoreCase(gsiPreparedData.getTableGroupAlignWithTargetTable())) {
+                //do nothing;
+            } else if (StringUtils.isNotEmpty(gsiPreparedData.getTableGroupAlignWithTargetTable())) {
+                DdlTask curIndexAddMeta = indexAddPartitionMetaTasks.get(gsiPreparedData.getIndexTableName());
+                DdlTask depandIndexAddMeta =
+                    indexAddPartitionMetaTasks.get(gsiPreparedData.getTableGroupAlignWithTargetTable());
+                result.addTaskRelationship(depandIndexAddMeta, curIndexAddMeta);
+            }
+
+        }
+    }
+
     @Override
     protected void excludeResources(Set<String> resources) {
         resources.add(concatWithDot(schemaName, primaryTableName));
@@ -173,6 +320,11 @@ public class CreatePartitionTableWithGsiJobFactory extends DdlJobFactory {
             indexTablePhysicalPlansMap.keySet().forEach(indexTableName -> {
                 resources.add(concatWithDot(schemaName, indexTableName));
             });
+        }
+        if (preparedData.getPrimaryTablePreparedData() != null
+            && preparedData.getPrimaryTablePreparedData().getLikeTableInfo() != null) {
+            LikeTableInfo likeTableInfo = preparedData.getPrimaryTablePreparedData().getLikeTableInfo();
+            resources.add(concatWithDot(likeTableInfo.getSchemaName(), likeTableInfo.getTableName()));
         }
     }
 

@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.scaleout.backfill;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
@@ -27,8 +26,6 @@ import com.alibaba.polardbx.executor.backfill.BatchConsumer;
 import com.alibaba.polardbx.executor.backfill.Extractor;
 import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.cursor.Cursor;
-import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
-import com.alibaba.polardbx.executor.partitionmanagement.backfill.AlterTableGroupExtractor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import org.apache.calcite.rel.RelNode;
 
@@ -59,6 +56,7 @@ public class BackfillExecutor {
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_MIN);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_SPEED_LIMITATION);
         final long parallelism = baseEc.getParamManager().getLong(ConnectionParams.SCALEOUT_BACKFILL_PARALLELISM);
+        final boolean useBinary = baseEc.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
 
         if (null == baseEc.getServerVariables()) {
             baseEc.setServerVariables(new HashMap<>());
@@ -68,11 +66,11 @@ public class BackfillExecutor {
         Extractor extractor;
         if (isChangeSet) {
             extractor = ChangeSetExecutor
-                .create(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
-                    baseEc);
+                .create(schemaName, tableName, tableName, batchSize, speedMin, speedLimit, parallelism, useBinary,
+                    null, sourcePhyTables, baseEc);
         } else {
             extractor = MoveTableExtractor
-                .create(schemaName, tableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
+                .create(schemaName, tableName, batchSize, speedMin, speedLimit, parallelism, useBinary, sourcePhyTables,
                     baseEc);
         }
         final Loader loader =

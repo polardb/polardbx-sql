@@ -36,6 +36,7 @@ import org.apache.calcite.rex.RexSystemVar;
 import org.apache.calcite.rex.RexTableInputRef;
 import org.apache.calcite.rex.RexVisitorImpl;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -45,9 +46,19 @@ import java.util.stream.Collectors;
 public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
     private final List<DataType<?>> inputTypes;
 
+    /**
+     * Collect all indexes in inputRefs.
+     */
+    private final List<Integer> inputRefIndexes;
+
     public InputRefTypeChecker(List<DataType<?>> inputTypes) {
         super(true);
         this.inputTypes = inputTypes;
+        this.inputRefIndexes = new ArrayList<>();
+    }
+
+    public List<Integer> getInputRefIndexes() {
+        return inputRefIndexes;
     }
 
     @Override
@@ -58,6 +69,10 @@ public class InputRefTypeChecker extends RexVisitorImpl<RexNode> {
         }
         DataType<?> columnType = inputTypes.get(inputRefIndex);
         DataType<?> inputRefType = DataTypeUtil.calciteToDrdsType(inputRef.getType());
+
+        // collect indexes in inputRefs.
+        inputRefIndexes.add(inputRefIndex);
+
         // force the input ref and column to be consistent.
         if (!DataTypeUtil.equalsSemantically(columnType, inputRefType)) {
             // lossy transfer

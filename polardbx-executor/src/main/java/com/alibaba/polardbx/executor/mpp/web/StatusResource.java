@@ -16,11 +16,11 @@
 
 package com.alibaba.polardbx.executor.mpp.web;
 
-import com.sun.management.OperatingSystemMXBean;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.gms.node.NodeVersion;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryPool;
+import com.sun.management.OperatingSystemMXBean;
 import io.airlift.node.NodeInfo;
 
 import javax.inject.Inject;

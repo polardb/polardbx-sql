@@ -42,10 +42,14 @@ import com.alibaba.polardbx.optimizer.core.rel.TableId;
 import com.alibaba.polardbx.optimizer.exception.OptimizerException;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
+import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.JoinInfo;
+import org.apache.calcite.rel.metadata.RelColumnOrigin;
+import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -75,6 +79,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * @author lingce.ldm 2017-07-06 21:39
@@ -737,4 +742,39 @@ public class CalciteUtils {
         Pair<String, String> dbAndTb = new Pair<>(schemaName, tbName);
         return dbAndTb;
     }
+
+    public static List<List<String[]>> buildOriginColumnNames(RelNode relNode) {
+        RelMetadataQuery mq = PlannerUtils.newMetadataQuery();
+        List<Set<RelColumnOrigin>> originsList = mq.getColumnOriginNames(relNode);
+        List<List<String[]>> originColumnNames = new ArrayList<>();
+        for (int i = 0; i < originsList.size(); i++) {
+            Set<RelColumnOrigin> origins = originsList.get(i);
+            List<String[]> originColumnName = new ArrayList<>(origins.size());
+            for (RelColumnOrigin origin : origins) {
+                List<String> tableNames = origin.getOriginTable().getQualifiedName();
+                if (tableNames.size() != 2) {
+                    continue;
+                }
+                //change gsi table name to primary table name
+                if (origin.getOriginTable() instanceof RelOptTableImpl) {
+                    RelOptTableImpl originTable = (RelOptTableImpl) origin.getOriginTable();
+                    if (originTable.getImplTable() instanceof TableMeta) {
+                        TableMeta originTableMeta = (TableMeta) originTable.getImplTable();
+                        if (originTableMeta.isGsi()) {
+                            tableNames = new ArrayList<>();
+                            tableNames.add(originTableMeta.getGsiTableMetaBean().gsiMetaBean.tableSchema);
+                            tableNames.add(originTableMeta.getGsiTableMetaBean().gsiMetaBean.tableName);
+                        }
+                    }
+                }
+                String schema = tableNames.get(0);
+                String table = tableNames.get(1);
+                String column = origin.getColumnName();
+                originColumnName.add(new String[] {schema, table, column});
+            }
+            originColumnNames.add(originColumnName);
+        }
+        return originColumnNames;
+    }
+
 }

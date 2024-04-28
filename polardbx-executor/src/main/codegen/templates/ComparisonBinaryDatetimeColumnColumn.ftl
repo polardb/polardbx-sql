@@ -41,42 +41,42 @@ public class ${className} extends AbstractVectorizedExpression {
 
         MutableChunk chunk = ctx.getPreAllocatedChunk();
         int batchSize = chunk.batchSize();
-        boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+            boolean isSelectionInUse = chunk.isSelectionInUse();
+            int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock leftInputVectorSlot =
+            RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+            RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
-        RandomAccessBlock rightInputVectorSlot =
+            RandomAccessBlock rightInputVectorSlot =
             chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        if (leftInputVectorSlot instanceof TimestampBlock && rightInputVectorSlot instanceof TimestampBlock) {
-            long[] array1 = ((TimestampBlock) leftInputVectorSlot).getPacked();
-            long[] array2 = ((TimestampBlock) rightInputVectorSlot).getPacked();
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            if (leftInputVectorSlot instanceof TimestampBlock && rightInputVectorSlot instanceof TimestampBlock) {
+            long[] array1 = (leftInputVectorSlot.cast(TimestampBlock.class)).getPacked();
+            long[] array2 = (rightInputVectorSlot.cast(TimestampBlock.class)).getPacked();
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
             if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    res[j] = (array1[j] ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+            for (int i = 0; i < batchSize; i++) {
+            int j = sel[i];
+            res[j] = (array1[j] ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
                     res[i] = (array1[i] ${operator.op} array2[i]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-                }
+            }
             }
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
-                children[1].getOutputIndex());
-        } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof ReferenceBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            children[1].getOutputIndex());
+            } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof ReferenceBlock) {
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
             if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
-                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
+            for (int i = 0; i < batchSize; i++) {
+            int j = sel[i];
+            long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
+            long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
 
-                    res[j] = lPack ${operator.op} rPack ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+            res[j] = lPack ${operator.op} rPack ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
@@ -84,39 +84,39 @@ public class ${className} extends AbstractVectorizedExpression {
                     long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, i);
 
                     res[i] = lPack ${operator.op} rPack ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-                }
+            }
             }
 
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
-                children[1].getOutputIndex());
-        } else if (leftInputVectorSlot instanceof TimestampBlock && rightInputVectorSlot instanceof ReferenceBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
-            long[] array1 = ((TimestampBlock) leftInputVectorSlot).getPacked();
+            children[1].getOutputIndex());
+            } else if (leftInputVectorSlot instanceof TimestampBlock && rightInputVectorSlot instanceof ReferenceBlock) {
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
+            long[] array1 = (leftInputVectorSlot.cast(TimestampBlock.class)).getPacked();
 
             if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
-                    res[j] = (array1[j] ${operator.op} rPack) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+            for (int i = 0; i < batchSize; i++) {
+            int j = sel[i];
+            long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, j);
+            res[j] = (array1[j] ${operator.op} rPack) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {
                     long rPack = VectorizedExpressionUtils.packedLong(rightInputVectorSlot, i);
                     res[i] = (array1[i] ${operator.op} rPack) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-                }
+            }
             }
 
             VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex(),
-                children[1].getOutputIndex());
-        } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof TimestampBlock) {
-            long[] res = ((LongBlock) outputVectorSlot).longArray();
+            children[1].getOutputIndex());
+            } else if (leftInputVectorSlot instanceof ReferenceBlock && rightInputVectorSlot instanceof TimestampBlock) {
+            long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
             long[] array2 = ((TimestampBlock) rightInputVectorSlot).getPacked();
 
             if (isSelectionInUse) {
-                for (int i = 0; i < batchSize; i++) {
-                    int j = sel[i];
-                    long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
-                    res[j] = (lPack ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+            for (int i = 0; i < batchSize; i++) {
+            int j = sel[i];
+            long lPack = VectorizedExpressionUtils.packedLong(leftInputVectorSlot, j);
+            res[j] = (lPack ${operator.op} array2[j]) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
                 }
             } else {
                 for (int i = 0; i < batchSize; i++) {

@@ -1690,26 +1690,6 @@ public class RelUtils {
         return (plan instanceof MergeSort && ((MergeSort) plan).getInput() instanceof LogicalView);
     }
 
-    public static boolean isAllSingleTableInSameSchema(Set<RelOptTable> scans) {
-        Set<String> schemas = Sets.newHashSet();
-        for (RelOptTable scan : scans) {
-            final List<String> qualifiedName = scan.getQualifiedName();
-            final String tableName = Util.last(qualifiedName);
-
-            final String schemaName = qualifiedName.size() == 2 ? qualifiedName.get(0) : null;
-            TddlRuleManager or = OptimizerContext.getContext(schemaName).getRuleManager();
-
-            schemas.add(schemaName);
-            if (!or.isTableInSingleDb(tableName) && !or.isBroadCast(tableName)) {
-                return false;
-            }
-        }
-        if (schemas.size() > 1) {
-            return false;
-        }
-        return true;
-    }
-
     public static boolean existUnPushableLastInsertId(RelNode node) {
         class CheckUnPushableRelVisitor extends RelVisitor {
             private boolean exists = false;

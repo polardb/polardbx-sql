@@ -16,15 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.inject.Inject;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ParamManager;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.Session;
@@ -39,6 +34,7 @@ import com.alibaba.polardbx.executor.mpp.operator.PipelineDepTree;
 import com.alibaba.polardbx.executor.mpp.operator.factory.LocalBufferExecutorFactory;
 import com.alibaba.polardbx.executor.mpp.operator.factory.PipelineFactory;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
+import com.alibaba.polardbx.executor.mpp.split.SplitManagerImpl;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -46,7 +42,13 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.inject.Inject;
 import io.airlift.units.Duration;
 import org.apache.calcite.rel.RelNode;
 
@@ -62,9 +64,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.INSERT_SELECT_LIMIT;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.UPDATE_DELETE_SELECT_LIMIT;
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
@@ -142,7 +144,8 @@ public class SqlQueryLocalExecution extends QueryExecution {
             LocalExecutionPlanner planner =
                 new LocalExecutionPlanner(context, null, parallelism, parallelism, 1,
                     context.getParamManager().getInt(ConnectionParams.PREFETCH_SHARDS), notificationExecutor,
-                    taskContext.isSpillable() ? spillerFactory : null, null, null, false);
+                    taskContext.isSpillable() ? spillerFactory : null, null, null, false,
+                    -1, -1, ImmutableMap.of(), new SplitManagerImpl());
             returnColumns = CalciteUtils.buildColumnMeta(physicalPlan, "Last");
 
             boolean syncMode = stateMachine.getSession().isLocalResultIsSync();

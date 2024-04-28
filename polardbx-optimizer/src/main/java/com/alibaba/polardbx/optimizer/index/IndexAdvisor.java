@@ -174,7 +174,8 @@ public class IndexAdvisor {
 
         RelNode unOptimizedPlan = executionContext.getUnOptimizedPlan();
         RelNode logicalPlan = Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
-        RelNode physicalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+        RelNode physicalPlan =
+            Planner.getInstance().optimizeByPlanEnumerator(unOptimizedPlan, logicalPlan, plannerContext);
         RelOptCost originalCost = mq.getCumulativeCost(physicalPlan);
 
         AdviceResult adviceResult = new AdviceResult(originalCost, executionPlan.getPlan());
@@ -200,7 +201,8 @@ public class IndexAdvisor {
                 }
 
                 RelNode newLogicalPlan = Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
-                RelNode finalPlan = Planner.getInstance().optimizeByPlanEnumerator(newLogicalPlan, plannerContext);
+                RelNode finalPlan =
+                    Planner.getInstance().optimizeByPlanEnumerator(unOptimizedPlan, newLogicalPlan, plannerContext);
                 RelOptCost finalCost = mq.getCumulativeCost(finalPlan);
                 Configuration finalConfiguration =
                     new Configuration(new HashSet<>(), finalCost, initContext.broadcastTables);
@@ -234,7 +236,8 @@ public class IndexAdvisor {
             // enumerate configuration
             Set<CandidateIndex> finalCandidateSet = enumerateConfiguration(candidateMap, logicalPlan, originalCost);
             WhatIfContext whatIfContext = beginWhatIf(logicalPlan, finalCandidateSet);
-            RelNode finalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+            RelNode finalPlan =
+                Planner.getInstance().optimizeByPlanEnumerator(unOptimizedPlan, logicalPlan, plannerContext);
             RelOptCost finalCost = mq.getCumulativeCost(finalPlan);
             endWhatIf(whatIfContext);
 
@@ -450,7 +453,7 @@ public class IndexAdvisor {
         }
 
         WhatIfContext whatIfContext = beginWhatIf(logicalPlan, candidateIndexSet);
-        RelNode physicalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+        RelNode physicalPlan = Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, logicalPlan, plannerContext);
         RelOptCost newCost = mq.getCumulativeCost(physicalPlan);
         endWhatIf(whatIfContext);
         // make the plan cost lower!
@@ -589,7 +592,7 @@ public class IndexAdvisor {
             if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
 
                 PartitionInfo partitionInfo = PartitionInfoBuilder
-                    .buildPartitionInfoByPartDefAst(schemaName, tableName, null, null,
+                    .buildPartitionInfoByPartDefAst(schemaName, tableName, null, false, null,
                         null, null,
                         new ArrayList<>(whatIfTableMeta.getPrimaryKey()),
                         whatIfTableMeta.getAllColumns(),
@@ -698,7 +701,7 @@ public class IndexAdvisor {
                     RelNode logicalPlan =
                         Planner.getInstance().optimizeBySqlWriter(unOptimizedPlan, plannerContext);
                     RelNode physicalPlan =
-                        Planner.getInstance().optimizeByPlanEnumerator(logicalPlan, plannerContext);
+                        Planner.getInstance().optimizeByPlanEnumerator(unOptimizedPlan, logicalPlan, plannerContext);
                     RelOptCost newCost = mq.getCumulativeCost(physicalPlan);
                     if (logger.isDebugEnabled()) {
                         StringBuilder sb = new StringBuilder("\n");

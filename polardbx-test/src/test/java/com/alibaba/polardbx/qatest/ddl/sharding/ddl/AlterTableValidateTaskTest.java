@@ -19,10 +19,6 @@ package com.alibaba.polardbx.qatest.ddl.sharding.ddl;
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Test;
-import org.junit.runners.Parameterized;
-
-import java.util.Arrays;
-import java.util.List;
 
 public class AlterTableValidateTaskTest extends AsyncDDLBaseNewDBTestCase {
     @Test
@@ -94,10 +90,21 @@ public class AlterTableValidateTaskTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Test
+    public void testAlterTableDropUnknownColumnLegacy() {
+        dropTableIfExists(tddlConnection, "mengshi1");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "create table mengshi1(a int,b char)");
+        JdbcUtil.executeUpdateFailed(tddlConnection,
+            "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/alter table mengshi1 drop column c1",
+            "Unknown column");
+    }
+
+    @Test
     public void testAlterTableDropUnknownColumn() {
         dropTableIfExists(tddlConnection, "mengshi1");
         JdbcUtil.executeUpdateSuccess(tddlConnection, "create table mengshi1(a int,b char)");
-        JdbcUtil.executeUpdateFailed(tddlConnection, "alter table mengshi1 drop column c1", "Unknown column");
+        JdbcUtil.executeUpdateFailed(tddlConnection,
+            "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=true)*/alter table mengshi1 drop column c1",
+            "check that column/key exists", "Unknown column");
     }
 
     @Test
@@ -379,7 +386,6 @@ public class AlterTableValidateTaskTest extends AsyncDDLBaseNewDBTestCase {
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table wumu1 modify column b int after c");
 
-        JdbcUtil.executeUpdateFailed(tddlConnection,
-            "alter table wumu1 modify column b char after c", "not recommended");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table wumu1 modify column b char after c");
     }
 }

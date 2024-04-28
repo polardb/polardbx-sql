@@ -752,7 +752,7 @@ public class StandardConvertletTable extends ReflectiveConvertletTable {
       SqlCall call) {
     final List<SqlNode> operands = call.getOperandList();
     final List<RexNode> exprs;
-    if (call.isCountStar()) {
+    if (call.isCountStar() || call.isCountLiteral()) {
       exprs = ImmutableList.of();
     } else {
       exprs = convertExpressionList(cx, operands,

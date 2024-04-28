@@ -16,7 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.common.utils.bloomfilter.FastIntBloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.ConcurrentIntBloomFilter;
 import it.unimi.dsi.fastutil.ints.IntIterator;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.junit.Test;
@@ -35,17 +35,17 @@ public class FastIntBloomFilterTest {
         Random rand = new Random();
 
         IntOpenHashSet hashSet = new IntOpenHashSet(NUM_ELEMENT);
-        FastIntBloomFilter bloomFilter = FastIntBloomFilter.create(NUM_ELEMENT);
+        ConcurrentIntBloomFilter bloomFilter = ConcurrentIntBloomFilter.create(NUM_ELEMENT);
         for (int i = 0; i < NUM_ELEMENT; i++) {
             int value = rand.nextInt();
-            bloomFilter.put(value);
+            bloomFilter.putInt(value);
             hashSet.add(value);
         }
 
         IntIterator iterator = hashSet.iterator();
         while (iterator.hasNext()) {
             int value = iterator.nextInt();
-            boolean result = bloomFilter.mightContain(value);
+            boolean result = bloomFilter.mightContainInt(value);
             assertTrue(result);
         }
 
@@ -54,7 +54,7 @@ public class FastIntBloomFilterTest {
         for (int i = 0; i < NUM_ELEMENT; i++) {
             int value = rand.nextInt();
             boolean truth = hashSet.contains(value);
-            boolean guess = bloomFilter.mightContain(value);
+            boolean guess = bloomFilter.mightContainInt(value);
             if (truth == true && guess == false) {
                 fail("false negative detected!");
             } else if (truth == false && guess == true) {

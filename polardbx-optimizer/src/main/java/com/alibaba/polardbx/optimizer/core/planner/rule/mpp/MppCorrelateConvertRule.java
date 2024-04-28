@@ -42,10 +42,10 @@ public class MppCorrelateConvertRule extends ConverterRule {
     public RelNode convert(RelNode rel) {
         final LogicalCorrelate correlate = (LogicalCorrelate) rel;
         return correlate.copy(correlate.getTraitSet().replace(MppConvention.INSTANCE), convert(correlate.getLeft(),
-            correlate.getLeft().getTraitSet()
-                .replace(MppConvention.INSTANCE)), convert(correlate.getRight(),
-            correlate.getRight().getTraitSet()
-                .replace(DrdsConvention.INSTANCE)), correlate.getCorrelationId(), correlate.getRequiredColumns(),
+                correlate.getLeft().getTraitSet()
+                    .replace(MppConvention.INSTANCE)), convert(correlate.getRight(),
+                correlate.getRight().getTraitSet()
+                    .replace(DrdsConvention.INSTANCE)), correlate.getCorrelationId(), correlate.getRequiredColumns(),
             correlate.getJoinType());
     }
 }

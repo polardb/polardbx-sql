@@ -113,7 +113,7 @@ public class SyncHandler {
                 PacketOutputProxyFactory.getInstance().createProxy(c).writeArrayAsPacket(OkPacket.OK);
             } else {
                 try {
-                    buffer = ResultSetUtil.resultSetToPacket(rs, c.getCharset(), c, new AtomicLong(), null,
+                    buffer = ResultSetUtil.resultSetToPacket(rs, c.getResultSetCharset(), c, new AtomicLong(), null,
                         ResultSetUtil.NO_SQL_SELECT_LIMIT);
                     int statusFlags = 2;
                     ResultSetUtil.eofToPacket(buffer, c, statusFlags);

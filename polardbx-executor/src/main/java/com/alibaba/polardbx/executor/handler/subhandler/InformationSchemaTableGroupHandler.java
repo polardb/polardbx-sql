@@ -21,7 +21,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -99,9 +98,8 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
 
                     boolean isSingleTbOrBroadcastTb = false;
                     if (tableCount > 0) {
-                        List<TablePartRecordInfoContext> tbInfoList = tableGroupConfig.getTables();
-                        for (int i = 0; i < tbInfoList.size(); i++) {
-                            String logTblName = tableGroupConfig.getTables().get(i).getLogTbRec().tableName;
+                        for (int i = 0; i < tableGroupConfig.getTables().size(); i++) {
+                            String logTblName = tableGroupConfig.getTables().get(i);
                             TableMeta tableMeta = schemaManager.getTable(logTblName);
                             PartitionInfo partInfo = tableMeta.getPartitionInfo();
                             PartitionTableType tableType = partInfo.getTableType();
@@ -113,7 +111,7 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                                 logTblCnt++;
                             }
                         }
-                        String firstTblName = tableGroupConfig.getTables().get(0).getLogTbRec().tableName;
+                        String firstTblName = tableGroupConfig.getTables().get(0);
                         TableMeta tableMeta = schemaManager.getTable(firstTblName);
                         PartitionInfo firstPartInfo = tableMeta.getPartitionInfo();
                         isSingleTbOrBroadcastTb = firstPartInfo.getTableType() == PartitionTableType.SINGLE_TABLE
@@ -183,9 +181,7 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                 } else {
                     if (tableGroupConfig.getTableCount() > 0) {
                         int tableCount = 0;
-                        for (TablePartRecordInfoContext context : tableGroupConfig
-                            .getAllTables()) {
-                            String tableName = context.getLogTbRec().tableName;
+                        for (String tableName : tableGroupConfig.getAllTables()) {
                             TableMeta tableMeta = schemaManager.getTable(tableName);
                             if (tableCount == 0) {
                                 try {
@@ -202,7 +198,7 @@ public class InformationSchemaTableGroupHandler extends BaseVirtualViewSubClassH
                             } else {
                                 sb.append(",");
                             }
-                            if (tableMeta.isGsi()) {
+                            if (tableMeta.isGsi() || tableMeta.isColumnar()) {
                                 String primaryTable = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
                                 String unwrapGsiName = TddlSqlToRelConverter.unwrapGsiName(tableName);
                                 tableName = String.format(LOGICAL_GSI_NAME, primaryTable, unwrapGsiName);

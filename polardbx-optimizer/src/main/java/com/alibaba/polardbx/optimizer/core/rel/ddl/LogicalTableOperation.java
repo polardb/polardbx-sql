@@ -65,6 +65,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                              SqlNode partitionings,
                                                              LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                              SqlNode tableGroupName,
+                                                             boolean withImplicitTableGroup,
                                                              SqlNode joinGroupName,
                                                              String locality,
                                                              Map<SqlNode, RexNode> partBoundExprInfo,
@@ -90,6 +91,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setPartitioning(partitionings);
         preparedData.setLocalPartitionDefinitionInfo(localPartitionDefinitionInfo);
         preparedData.setTableGroupName(tableGroupName);
+        preparedData.setWithImplicitTableGroup(withImplicitTableGroup);
         preparedData.setJoinGroupName(joinGroupName);
         preparedData.setPartBoundExprInfo(partBoundExprInfo);
         preparedData.setLocality(LocalityDesc.parse(locality));
@@ -110,36 +112,42 @@ public class LogicalTableOperation extends BaseDdlOperation {
                                                                          SqlNode dbPartitionBy,
                                                                          SqlNode dbPartitions,
                                                                          SqlNode tbPartitionBy,
-                                                                         SqlNode tbParititons,
+                                                                         SqlNode tbPartitions,
                                                                          SqlNode partitionings,
                                                                          LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                                          boolean isUnique,
                                                                          boolean clusteredIndex,
+                                                                         boolean columnarIndex,
                                                                          SqlNode tableGroupName,
+                                                                         boolean withImplicitTableGroup,
                                                                          Map<SqlNode, RexNode> partBoundExprInfo,
                                                                          String sourceSql) {
         return prepareCreateGlobalIndexData(primaryTableName, primaryTableDefinition, indexTableName, tableMeta,
             isShadow, autoPartition, isBroadcast, dbPartitionBy, dbPartitions,
-            tbPartitionBy, tbParititons, partitionings, localPartitionDefinitionInfo,
-            isUnique, clusteredIndex, tableGroupName, "", partBoundExprInfo, sourceSql);
+            tbPartitionBy, tbPartitions, partitionings, localPartitionDefinitionInfo,
+            isUnique, clusteredIndex, columnarIndex, tableGroupName, withImplicitTableGroup, null, "",
+            partBoundExprInfo, sourceSql);
     }
 
     protected CreateGlobalIndexPreparedData prepareCreateGlobalIndexData(String primaryTableName,
                                                                          String primaryTableDefinition,
                                                                          String indexTableName,
-                                                                         TableMeta tableMeta,
+                                                                         TableMeta primaryTableMeta,
                                                                          boolean isShadow,
                                                                          boolean autoPartition,
                                                                          boolean isBroadcast,
                                                                          SqlNode dbPartitionBy,
                                                                          SqlNode dbPartitions,
                                                                          SqlNode tbPartitionBy,
-                                                                         SqlNode tbParititons,
+                                                                         SqlNode tbPartitions,
                                                                          SqlNode partitionings,
                                                                          LocalPartitionDefinitionInfo localPartitionDefinitionInfo,
                                                                          boolean isUnique,
                                                                          boolean clusteredIndex,
+                                                                         boolean columnarIndex,
                                                                          SqlNode tableGroupName,
+                                                                         boolean withImplicitTableGroup,
+                                                                         SqlNode engineName,
                                                                          String locality,
                                                                          Map<SqlNode, RexNode> partBoundExprInfo,
                                                                          String sourceSql) {
@@ -152,9 +160,9 @@ public class LogicalTableOperation extends BaseDdlOperation {
         preparedData.setPrimaryTableDefinition(primaryTableDefinition);
 
         CreateTablePreparedData indexTablePreparedData =
-            prepareCreateTableData(tableMeta, isShadow, autoPartition,
+            prepareCreateTableData(primaryTableMeta, isShadow, autoPartition,
                 isBroadcast, dbPartitionBy, dbPartitions, tbPartitionBy,
-                tbParititons, partitionings, localPartitionDefinitionInfo, tableGroupName,
+                tbPartitions, partitionings, localPartitionDefinitionInfo, tableGroupName, withImplicitTableGroup,
                 null, locality, partBoundExprInfo, sourceSql, null, null);
 
         // Add all columns in primary table whose default value is binary, so binaryColumnDefaultValues may include
@@ -162,7 +170,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
         Map<String, String> specialDefaultValues = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, Long> specialDefaultValueFlags = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
-        for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+        for (ColumnMeta columnMeta : primaryTableMeta.getAllColumns()) {
             if (columnMeta.isBinaryDefault()) {
                 specialDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
                 specialDefaultValueFlags.put(columnMeta.getName(), ColumnsRecord.FLAG_BINARY_DEFAULT);
@@ -170,7 +178,7 @@ public class LogicalTableOperation extends BaseDdlOperation {
         }
 
         // Add all generated column expressions
-        for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+        for (ColumnMeta columnMeta : primaryTableMeta.getAllColumns()) {
             if (columnMeta.isLogicalGeneratedColumn()) {
                 specialDefaultValues.put(columnMeta.getName(), columnMeta.getField().getDefault());
                 specialDefaultValueFlags.put(columnMeta.getName(), ColumnsRecord.FLAG_LOGICAL_GENERATED_COLUMN);
@@ -182,6 +190,10 @@ public class LogicalTableOperation extends BaseDdlOperation {
 
         preparedData.setUnique(isUnique);
         preparedData.setClusteredIndex(clusteredIndex);
+        preparedData.setTableGroupName(tableGroupName);
+        preparedData.setWithImplicitTableGroup(withImplicitTableGroup);
+        preparedData.setColumnarIndex(columnarIndex);
+        preparedData.setEngineName(engineName);
 
         return preparedData;
     }

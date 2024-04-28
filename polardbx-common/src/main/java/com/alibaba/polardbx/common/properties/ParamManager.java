@@ -336,4 +336,17 @@ public class ParamManager {
     public Map<String, String> getProps() {
         return props;
     }
+
+    /**
+     * Get paramValue if exists, otherwise return {@param defaultValue}
+     * (instead of returning {@link ConfigParam#getDefault()})
+     */
+    public <V> V getWithDefault(ConfigParam param, Class<V> valueType, V defaultVal) {
+        Object v;
+        if ((v = getProps().get(param.getName())) != null) {
+            return DynamicConfig.parseValue(v.toString(), valueType, defaultVal);
+        } else {
+            return defaultVal;
+        }
+    }
 }

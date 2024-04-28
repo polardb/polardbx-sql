@@ -18,6 +18,7 @@ package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
@@ -26,6 +27,7 @@ import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import java.sql.Connection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -61,21 +63,21 @@ public class ServerInstIdManager extends AbstractLifecycle {
     protected void doInit() {
         loadMasterInstId();
         loadAllInstIdAndStorageIdSet();
-        loadAllHtapInstIds();
-        initInstType();
+        int instType = loadAllHtapInstIds();
+        initInstType(instType);
     }
 
     public void reload() {
         loadMasterInstId();
         loadAllInstIdAndStorageIdSet();
-        loadAllHtapInstIds();
-        initInstType();
+        int instType = loadAllHtapInstIds();
+        initInstType(instType);
         //here register the new storageIds listener after load the new learner InstId.
         registerLearnerStorageInstId();
     }
 
     public void registerLearnerStorageInstId() {
-        if (ServerInstIdManager.getInstance().isMasterInst()) {
+        if (ConfigDataMode.isMasterMode()) {
             StorageHaManager.getInstance().registerLearnerStorageInstId();
             StorageHaManager.getInstance().updateGroupConfigVersion();
         }
@@ -121,28 +123,46 @@ public class ServerInstIdManager extends AbstractLifecycle {
         }
     }
 
-    public synchronized void loadAllHtapInstIds() {
+    /**
+     * load the htap instIds, and return the current instId' type.
+     */
+    public synchronized int loadAllHtapInstIds() {
         try (Connection connection = MetaDbDataSource.getInstance().getConnection()) {
             ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
             serverInfoAccessor.setConnection(connection);
             this.htapLearnerInstIds = serverInfoAccessor.getAllHTAPReadOnlyInstIdList();
+
+            return serverInfoAccessor.getServerTypeByInstId(InstIdUtil.getInstId());
         } catch (Throwable ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw GeneralUtil.nestedException(ex);
         }
     }
 
-    protected void initInstType() {
+    public List<StorageInfoRecord> getSlaveStorageInfosByMasterStorageInstId(String masterStorageId) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
+            storageInfoAccessor.setConnection(metaDbConn);
+            return storageInfoAccessor.getSlaveStorageInfosByMasterStorageInstId(masterStorageId);
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
+    protected void initInstType(int type) {
         String instId = InstIdUtil.getInstId();
         if (instId.equalsIgnoreCase(masterInstId)) {
             instType = ServerInfoRecord.INST_TYPE_MASTER;
         } else {
-            instType = ServerInfoRecord.INST_TYPE_SLAVE;
+            if (type == ServerInfoRecord.INST_TYPE_MASTER) {
+                throw GeneralUtil.nestedException("The type of storage is invalid!");
+            } else if (type == ServerInfoRecord.INST_TYPE_COLUMNAR_SLAVE) {
+                instType = ServerInfoRecord.INST_TYPE_COLUMNAR_SLAVE;
+            } else {
+                instType = ServerInfoRecord.INST_TYPE_ROW_SLAVE;
+            }
         }
-    }
-
-    public boolean isMasterInst() {
-        return instType == ServerInfoRecord.INST_TYPE_MASTER;
     }
 
     public boolean isMasterInstId(String instId) {

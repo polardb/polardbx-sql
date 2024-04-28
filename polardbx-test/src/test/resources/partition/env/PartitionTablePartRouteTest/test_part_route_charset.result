@@ -39,9 +39,9 @@ Table,Create Table
 rc_tbl_utf8,CREATE TABLE `rc_tbl_utf8` (
 	`a` bigint(20) UNSIGNED NOT NULL,
 	`b` datetime NOT NULL,
-	`c` varchar(128) CHARACTER SET utf8 NOT NULL,
+	`c` varchar(128) NOT NULL,
 	KEY `auto_shard_key_c` USING BTREE (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
@@ -53,7 +53,7 @@ rc_tbl_gbk,CREATE TABLE `rc_tbl_gbk` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) CHARACTER SET gbk NOT NULL,
 	KEY `auto_shard_key_c` USING BTREE (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
@@ -65,7 +65,7 @@ rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) CHARACTER SET gbk NOT NULL,
 	KEY `i_c` (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
@@ -76,9 +76,9 @@ Table,Create Table
 rc_tbl_utf8,CREATE TABLE `rc_tbl_utf8` (
 	`a` bigint(20) UNSIGNED NOT NULL,
 	`b` datetime NOT NULL,
-	`c` varchar(128) CHARACTER SET utf8 NOT NULL,
+	`c` varchar(128) NOT NULL,
 	KEY `auto_shard_key_c` USING BTREE (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
@@ -90,7 +90,7 @@ rc_tbl_gbk,CREATE TABLE `rc_tbl_gbk` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) CHARACTER SET gbk NOT NULL,
 	KEY `auto_shard_key_c` USING BTREE (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,
@@ -102,7 +102,7 @@ rc_tbl_gbk_idx,CREATE TABLE `rc_tbl_gbk_idx` (
 	`b` datetime NOT NULL,
 	`c` varchar(128) CHARACTER SET gbk NOT NULL,
 	KEY `i_c` (`c`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
 PARTITION BY RANGE COLUMNS(`c`)
 (PARTITION p0 VALUES LESS THAN ('世界') ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN ('世界人民') ENGINE = InnoDB,

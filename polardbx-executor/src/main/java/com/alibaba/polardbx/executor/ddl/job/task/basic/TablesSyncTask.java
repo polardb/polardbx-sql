@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangePreemptiveSyncAction;
 import com.alibaba.polardbx.executor.sync.TablesMetaChangeSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Joiner;
 import lombok.Getter;
@@ -67,10 +68,11 @@ public class TablesSyncTask extends BaseSyncTask {
     public void executeImpl(ExecutionContext executionContext) {
         try {
             if (!preemptive) {
-                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames), true);
+                SyncManagerHelper.sync(new TablesMetaChangeSyncAction(schemaName, tableNames), SyncScope.ALL, true);
             } else {
                 SyncManagerHelper.sync(
                     new TablesMetaChangePreemptiveSyncAction(schemaName, tableNames, initWait, interval, timeUnit),
+                    SyncScope.ALL,
                     true);
             }
         } catch (Throwable t) {

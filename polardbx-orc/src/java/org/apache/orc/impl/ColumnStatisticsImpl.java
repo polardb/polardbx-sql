@@ -17,9 +17,6 @@
  */
 package org.apache.orc.impl;
 
-import java.time.chrono.ChronoLocalDate;
-import java.time.chrono.Chronology;
-import java.time.chrono.IsoChronology;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.serde2.io.DateWritable;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
@@ -38,11 +35,14 @@ import org.apache.orc.OrcProto;
 import org.apache.orc.StringColumnStatistics;
 import org.apache.orc.TimestampColumnStatistics;
 import org.apache.orc.TypeDescription;
+import org.threeten.extra.chrono.HybridChronology;
 
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.chrono.ChronoLocalDate;
+import java.time.chrono.Chronology;
+import java.time.chrono.IsoChronology;
 import java.util.TimeZone;
-import org.threeten.extra.chrono.HybridChronology;
 
 
 public class ColumnStatisticsImpl implements ColumnStatistics {
@@ -338,8 +338,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     private long sum = 0;
     private boolean hasMinimum = false;
     private boolean overflow = false;
+    private boolean recordFirstAndLatest = false;
+    private boolean hasFirstAndLatest = false;
 
-    IntegerStatisticsImpl() {
+    private Long first = null;
+    private Long latest = null;
+
+    IntegerStatisticsImpl(boolean recordFirstAndLatest) {
+      this.recordFirstAndLatest = recordFirstAndLatest;
     }
 
     IntegerStatisticsImpl(OrcProto.ColumnStatistics stats) {
@@ -357,6 +363,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       } else {
         overflow = true;
       }
+      if (intStat.hasFirst()) {
+        hasFirstAndLatest = true;
+        first = intStat.getFirst();
+      }
+      if (intStat.hasLatest()) {
+        hasFirstAndLatest = true;
+        latest = intStat.getLatest();
+      }
     }
 
     @Override
@@ -367,6 +381,9 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       maximum = Long.MIN_VALUE;
       sum = 0;
       overflow = false;
+      hasFirstAndLatest = false;
+      first = null;
+      latest = null;
     }
 
     @Override
@@ -386,6 +403,24 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         if ((value >= 0) == wasPositive) {
           overflow = (sum >= 0) != wasPositive;
         }
+      }
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          first = value;
+        }
+        latest = value;
+      }
+    }
+
+    @Override
+    public void updateNull() {
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          first = null;
+        }
+        latest = null;
       }
     }
 
@@ -414,6 +449,15 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
             overflow = (sum >= 0) != wasPositive;
           }
         }
+        if (recordFirstAndLatest) {
+          if (!hasFirstAndLatest) {
+            hasFirstAndLatest = otherInt.hasFirstAndLatest;
+            first = otherInt.first;
+            latest = otherInt.latest;
+          } else if (otherInt.hasFirstAndLatest) {
+            latest = otherInt.latest;
+          }
+        }
       } else {
         if (isStatsExists() && hasMinimum) {
           throw new IllegalArgumentException("Incompatible merging of integer column statistics");
@@ -433,6 +477,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       }
       if (!overflow) {
         intb.setSum(sum);
+      }
+      if (recordFirstAndLatest && hasFirstAndLatest) {
+        if (first != null) {
+          intb.setFirst(first);
+        }
+        if (latest != null) {
+          intb.setLatest(latest);
+        }
       }
       builder.setIntStatistics(intb);
       return builder;
@@ -459,6 +511,16 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     }
 
     @Override
+    public Long getFirst() {
+      return first;
+    }
+
+    @Override
+    public Long getLatest() {
+      return latest;
+    }
+
+    @Override
     public String toString() {
       StringBuilder buf = new StringBuilder(super.toString());
       if (hasMinimum) {
@@ -466,6 +528,12 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         buf.append(minimum);
         buf.append(" max: ");
         buf.append(maximum);
+      }
+      if (recordFirstAndLatest && hasFirstAndLatest) {
+        buf.append(" first: ");
+        buf.append(first);
+        buf.append(" latest: ");
+        buf.append(latest);
       }
       if (!overflow) {
         buf.append(" sum: ");
@@ -525,8 +593,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     private double minimum = Double.MAX_VALUE;
     private double maximum = Double.MIN_VALUE;
     private double sum = 0;
+    private boolean recordFirstAndLatest = false;
+    private boolean hasFirstAndLatest = false;
 
-    DoubleStatisticsImpl() {
+    private Double first = null;
+    private Double latest = null;
+
+    DoubleStatisticsImpl(boolean recordFirstAndLatest) {
+      this.recordFirstAndLatest = recordFirstAndLatest;
     }
 
     DoubleStatisticsImpl(OrcProto.ColumnStatistics stats) {
@@ -542,6 +616,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       if (dbl.hasSum()) {
         sum = dbl.getSum();
       }
+      if (dbl.hasFirst()) {
+        hasFirstAndLatest = true;
+        first = dbl.getFirst();
+      }
+      if (dbl.hasLatest()) {
+        hasFirstAndLatest = true;
+        latest = dbl.getLatest();
+      }
     }
 
     @Override
@@ -551,6 +633,9 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       minimum = Double.MAX_VALUE;
       maximum = Double.MIN_VALUE;
       sum = 0;
+      hasFirstAndLatest = false;
+      first = null;
+      latest = null;
     }
 
     @Override
@@ -565,6 +650,24 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         maximum = value;
       }
       sum += value;
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          first = value;
+        }
+        latest = value;
+      }
+    }
+
+    @Override
+    public void updateNull() {
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          first = null;
+        }
+        latest = null;
+      }
     }
 
     @Override
@@ -584,6 +687,15 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
           }
         }
         sum += dbl.sum;
+        if (recordFirstAndLatest) {
+          if (!hasFirstAndLatest) {
+            hasFirstAndLatest = dbl.hasFirstAndLatest;
+            first = dbl.first;
+            latest = dbl.latest;
+          } else if (dbl.hasFirstAndLatest) {
+            latest = dbl.latest;
+          }
+        }
       } else {
         if (isStatsExists() && hasMinimum) {
           throw new IllegalArgumentException("Incompatible merging of double column statistics");
@@ -602,6 +714,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         dbl.setMaximum(maximum);
       }
       dbl.setSum(sum);
+      if (recordFirstAndLatest && hasFirstAndLatest) {
+        if (first != null) {
+          dbl.setFirst(first);
+        }
+        if (latest != null) {
+          dbl.setLatest(latest);
+        }
+      }
       builder.setDoubleStatistics(dbl);
       return builder;
     }
@@ -622,6 +742,16 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     }
 
     @Override
+    public Double getFirst() {
+      return first;
+    }
+
+    @Override
+    public Double getLatest() {
+      return latest;
+    }
+
+    @Override
     public String toString() {
       StringBuilder buf = new StringBuilder(super.toString());
       if (hasMinimum) {
@@ -629,6 +759,12 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         buf.append(minimum);
         buf.append(" max: ");
         buf.append(maximum);
+      }
+      if (recordFirstAndLatest && hasFirstAndLatest) {
+        buf.append(" first: ");
+        buf.append(first);
+        buf.append(" latest: ");
+        buf.append(latest);
       }
       buf.append(" sum: ");
       buf.append(sum);
@@ -690,7 +826,17 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     private boolean isLowerBoundSet = false;
     private boolean isUpperBoundSet = false;
 
-    StringStatisticsImpl() {
+    private boolean recordFirstAndLatest = false;
+    private boolean hasFirstAndLatest = false;
+
+    private Text first = null;
+    private Text latest = null;
+
+    private boolean firstBound = false;
+    private boolean latestBound = false;
+
+    StringStatisticsImpl(boolean recordFirstAndLatest) {
+      this.recordFirstAndLatest = recordFirstAndLatest;
     }
 
     StringStatisticsImpl(OrcProto.ColumnStatistics stats) {
@@ -711,6 +857,22 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       if(str.hasSum()) {
         sum = str.getSum();
       }
+      if (str.hasFirst()) {
+        hasFirstAndLatest = true;
+        first = new Text(str.getFirst());
+      } else if (str.hasFirstBound()) {
+        hasFirstAndLatest = true;
+        first = new Text(str.getFirstBound());
+        firstBound = true;
+      }
+      if (str.hasLatest()) {
+        hasFirstAndLatest = true;
+        latest = new Text(str.getLatest());
+      } else if (str.hasLatestBound()) {
+        hasFirstAndLatest = true;
+        latest = new Text(str.getLatestBound());
+        latestBound = true;
+      }
     }
 
     @Override
@@ -721,6 +883,11 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       isLowerBoundSet = false;
       isUpperBoundSet = false;
       sum = 0;
+      hasFirstAndLatest = false;
+      first = null;
+      latest = null;
+      firstBound = false;
+      latestBound = false;
     }
 
     @Override
@@ -765,6 +932,44 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         }
       }
       sum += (long)length * repetitions;
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          if(length > MAX_BYTES_RECORDED) {
+            first = truncateLowerBound(bytes, offset);
+            latest = truncateUpperBound(bytes, offset);
+            firstBound = true;
+            latestBound = true;
+          } else {
+            first = latest = new Text();
+            latest.set(bytes, offset, length);
+            firstBound = false;
+            latestBound = false;
+          }
+        } else {
+          if(length > MAX_BYTES_RECORDED) {
+            latest = truncateUpperBound(bytes, offset);
+            latestBound = true;
+          } else {
+            latest = new Text();
+            latest.set(bytes, offset, length);
+            latestBound = false;
+          }
+        }
+      }
+    }
+
+    @Override
+    public void updateNull() {
+      if (recordFirstAndLatest) {
+        if (!hasFirstAndLatest) {
+          hasFirstAndLatest = true;
+          first = null;
+          firstBound = false;
+        }
+        latest = null;
+        latestBound = false;
+      }
     }
 
     @Override
@@ -794,6 +999,18 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
           }
         }
         sum += str.sum;
+        if (recordFirstAndLatest) {
+          if (!hasFirstAndLatest) {
+            hasFirstAndLatest = str.hasFirstAndLatest;
+            first = str.first;
+            firstBound = str.firstBound;
+            latest = str.latest;
+            latestBound = str.latestBound;
+          } else if (str.hasFirstAndLatest) {
+            latest = str.latest;
+            latestBound = str.latestBound;
+          }
+        }
       } else {
         if (isStatsExists()) {
           throw new IllegalArgumentException("Incompatible merging of string column statistics");
@@ -819,6 +1036,22 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
           str.setMaximum(maximum.toString());
         }
         str.setSum(sum);
+        if (recordFirstAndLatest) {
+          if (first != null) {
+            if (firstBound) {
+              str.setFirstBound(first.toString());
+            } else {
+              str.setFirst(first.toString());
+            }
+          }
+          if (latest != null) {
+            if (latestBound) {
+              str.setLatestBound(latest.toString());
+            } else {
+              str.setLatest(latest.toString());
+            }
+          }
+        }
       }
       result.setStringStatistics(str);
       return result;
@@ -874,6 +1107,30 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     }
 
     @Override
+    public String getFirst() {
+      if(firstBound) {
+        return null;
+      } else {
+        return first == null ? null : first.toString();
+      }
+    }
+    @Override
+    public String getLatest() {
+      if(latestBound) {
+        return null;
+      } else {
+        return latest == null ? null : latest.toString();
+      }
+    }
+    @Override
+    public String getFirstBound() {
+      return first == null ? null : first.toString();
+    }
+    @Override
+    public String getLatestBound() {
+      return latest == null ? null : latest.toString();
+    }
+    @Override
     public String toString() {
       StringBuilder buf = new StringBuilder(super.toString());
       if (minimum != null) {
@@ -889,6 +1146,20 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
           buf.append(" max: ");
         }
         buf.append(getUpperBound());
+        if (recordFirstAndLatest) {
+          if (firstBound) {
+            buf.append(" firstBound: ");
+          } else {
+            buf.append(" first: ");
+          }
+          buf.append(first == null ? null : first.toString());
+          if (latestBound) {
+            buf.append(" latestBound: ");
+          } else {
+            buf.append(" latest: ");
+          }
+          buf.append(latest == null ? null : latest.toString());
+        }
         buf.append(" sum: ");
         buf.append(sum);
       }
@@ -1296,8 +1567,7 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       if (dec.hasSum()) {
         hasSum = true;
         HiveDecimalWritable sumTmp = new HiveDecimalWritable(dec.getSum());
-        if (sumTmp.getHiveDecimal().integerDigitCount() + scale <=
-            TypeDescription.MAX_DECIMAL64_PRECISION) {
+        if (TypeUtils.isDecimal64Precision(sumTmp.getHiveDecimal().integerDigitCount() + scale)) {
           hasSum = true;
           sum = sumTmp.serialize64(scale);
           return;
@@ -1481,13 +1751,19 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     private int minimum = Integer.MAX_VALUE;
     private int maximum = Integer.MIN_VALUE;
     private final Chronology chronology;
+    private boolean recordFirstAndLatest = false;
+    private boolean hasFirstAndLatest = false;
+
+    private int first = 0;
+    private int latest = 0;
 
     static Chronology getInstance(boolean proleptic) {
       return proleptic ? IsoChronology.INSTANCE : HybridChronology.INSTANCE;
     }
 
-    DateStatisticsImpl(boolean convertToProleptic) {
+    DateStatisticsImpl(boolean convertToProleptic, boolean recordFirstAndLatest) {
       this.chronology = getInstance(convertToProleptic);
+      this.recordFirstAndLatest = recordFirstAndLatest;
     }
 
     DateStatisticsImpl(OrcProto.ColumnStatistics stats,
@@ -1505,6 +1781,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         minimum = DateUtils.convertDate(dateStats.getMinimum(),
             writerUsedProlepticGregorian, convertToProlepticGregorian);
       }
+      if (dateStats.hasFirst()) {
+        first = DateUtils.convertDate(dateStats.getFirst(),
+            writerUsedProlepticGregorian, convertToProlepticGregorian);
+      }
+      if (dateStats.hasLatest()) {
+        latest = DateUtils.convertDate(dateStats.getLatest(),
+            writerUsedProlepticGregorian, convertToProlepticGregorian);
+      }
     }
 
     @Override
@@ -1512,6 +1796,9 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       super.reset();
       minimum = Integer.MAX_VALUE;
       maximum = Integer.MIN_VALUE;
+      first = 0;
+      latest = 0;
+      hasFirstAndLatest = false;
     }
 
     @Override
@@ -1521,6 +1808,13 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       }
       if (maximum < value.getDays()) {
         maximum = value.getDays();
+      }
+      if (!hasFirstAndLatest) {
+        first = value.getDays();
+        latest = value.getDays();
+        hasFirstAndLatest = true;
+      } else {
+        latest = value.getDays();
       }
     }
 
@@ -1532,6 +1826,13 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       if (maximum < value) {
         maximum = value;
       }
+      if (!hasFirstAndLatest) {
+        first = value;
+        latest = value;
+        hasFirstAndLatest = true;
+      } else {
+        latest = value;
+      }
     }
 
     @Override
@@ -1540,6 +1841,15 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         DateStatisticsImpl dateStats = (DateStatisticsImpl) other;
         minimum = Math.min(minimum, dateStats.minimum);
         maximum = Math.max(maximum, dateStats.maximum);
+        if (recordFirstAndLatest) {
+          if (!hasFirstAndLatest) {
+            hasFirstAndLatest = dateStats.hasFirstAndLatest;
+            first = dateStats.first;
+            latest = dateStats.latest;
+          } else if (dateStats.hasFirstAndLatest) {
+            latest = dateStats.latest;
+          }
+        }
       } else {
         if (isStatsExists() && count != 0) {
           throw new IllegalArgumentException("Incompatible merging of date column statistics");
@@ -1556,6 +1866,10 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       if (count != 0) {
         dateStats.setMinimum(minimum);
         dateStats.setMaximum(maximum);
+        if (recordFirstAndLatest && hasFirstAndLatest) {
+          dateStats.setFirst(first);
+          dateStats.setLatest(latest);
+        }
       }
       result.setDateStatistics(dateStats);
       return result;
@@ -1600,6 +1914,23 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     }
 
     @Override
+    public Date getFirst() {
+      if (!hasFirstAndLatest) {
+        return null;
+      }
+      DateWritable maxDate = new DateWritable(first);
+      return maxDate.get();
+    }
+    @Override
+    public Date getLatest() {
+      if (!hasFirstAndLatest) {
+        return null;
+      }
+      DateWritable maxDate = new DateWritable(latest);
+      return maxDate.get();
+    }
+
+    @Override
     public String toString() {
       StringBuilder buf = new StringBuilder(super.toString());
       if (getNumberOfValues() != 0) {
@@ -1607,6 +1938,12 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
         buf.append(getMinimumLocalDate());
         buf.append(" max: ");
         buf.append(getMaximumLocalDate());
+        if (recordFirstAndLatest && hasFirstAndLatest) {
+          buf.append(" first: ");
+          buf.append(getFirst());
+          buf.append(" latest: ");
+          buf.append(getLatest());
+        }
       }
       return buf.toString();
     }
@@ -1998,6 +2335,14 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     throw new UnsupportedOperationException("Can't update timestamp");
   }
 
+  /**
+   * 为了适配统计第一行和最后一行，原来的接口没有考虑null值更新状态，目前适配了IntegerStatisticsImpl、DoubleStatisticsImpl、StringStatisticsImpl（列存目前用到的）
+   * 其它有需要再添加，默认什么都不用处理
+   */
+  public void updateNull() {
+
+  }
+
   public boolean isStatsExists() {
     return (count > 0 || hasNull == true);
   }
@@ -2051,12 +2396,10 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     return builder;
   }
 
-  public static ColumnStatisticsImpl create(TypeDescription schema) {
-    return create(schema, false);
-  }
-
   public static ColumnStatisticsImpl create(TypeDescription schema,
-                                            boolean convertToProleptic) {
+                                            boolean convertToProleptic,
+                                            boolean enableDecimal64,
+                                            boolean recordFirstAndLatest) {
     switch (schema.getCategory()) {
       case BOOLEAN:
         return new BooleanStatisticsImpl();
@@ -2064,25 +2407,26 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
       case SHORT:
       case INT:
       case LONG:
-        return new IntegerStatisticsImpl();
+        return new IntegerStatisticsImpl(recordFirstAndLatest);
       case LIST:
       case MAP:
         return new CollectionColumnStatisticsImpl();
       case FLOAT:
       case DOUBLE:
-        return new DoubleStatisticsImpl();
+        return new DoubleStatisticsImpl(recordFirstAndLatest);
       case STRING:
       case CHAR:
       case VARCHAR:
-        return new StringStatisticsImpl();
+        return new StringStatisticsImpl(recordFirstAndLatest);
       case DECIMAL:
-        if (schema.getPrecision() <= TypeDescription.MAX_DECIMAL64_PRECISION) {
-          return new Decimal64StatisticsImpl(schema.getScale());
+        if (enableDecimal64 && TypeUtils.isDecimal64Precision(schema.getPrecision())) {
+          return new IntegerStatisticsImpl(recordFirstAndLatest);
         } else {
-          return new DecimalStatisticsImpl();
+            // decimal stored as bytes
+            return new StringStatisticsImpl(recordFirstAndLatest);
         }
       case DATE:
-        return new DateStatisticsImpl(convertToProleptic);
+        return new DateStatisticsImpl(convertToProleptic, recordFirstAndLatest);
       case TIMESTAMP:
         return new TimestampStatisticsImpl();
       case TIMESTAMP_INSTANT:
@@ -2114,8 +2458,7 @@ public class ColumnStatisticsImpl implements ColumnStatistics {
     } else if (stats.hasStringStatistics()) {
       return new StringStatisticsImpl(stats);
     } else if (stats.hasDecimalStatistics()) {
-      if (schema != null &&
-          schema.getPrecision() <= TypeDescription.MAX_DECIMAL64_PRECISION) {
+      if (schema != null && TypeUtils.isDecimal64Precision(schema.getPrecision())) {
         return new Decimal64StatisticsImpl(schema.getScale(), stats);
       } else {
         return new DecimalStatisticsImpl(stats);

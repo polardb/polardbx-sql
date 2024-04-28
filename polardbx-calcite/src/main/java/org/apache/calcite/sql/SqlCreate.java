@@ -88,6 +88,14 @@ public abstract class SqlCreate extends SqlDdl {
     return false;
   }
 
+  public boolean createCci() {
+    return false;
+  }
+
+  public boolean createGsiOrCci() {
+    return createGsi() || createCci();
+  }
+
 }
 
 // End SqlCreate.java

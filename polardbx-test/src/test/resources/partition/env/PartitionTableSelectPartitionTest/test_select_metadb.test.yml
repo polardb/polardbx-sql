@@ -1,0 +1,2 @@
+## DISABLE_FAST_SQL_PARSER
+/*+TDDL:node('__META_DB__')*/select * from inst_config where id=0xFFFF;

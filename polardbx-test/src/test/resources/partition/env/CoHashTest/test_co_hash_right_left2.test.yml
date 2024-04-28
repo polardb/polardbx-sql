@@ -1,0 +1,76 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `t1_r_r4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(RIGHT(`order_id`, 4))
+(
+  PARTITION p1 VALUES LESS THAN(''),
+  PARTITION p2 VALUES LESS THAN('12'),
+  PARTITION p3 VALUES LESS THAN('123'),
+  PARTITION p4 VALUES LESS THAN('1234'),
+  PARTITION p5 VALUES LESS THAN('12345'),
+  PARTITION pm VALUES LESS THAN(maxvalue)
+);
+show create table t1_r_r4;
+
+explain select * from t1_r_r4 where `order_id` is null;
+explain select * from t1_r_r4 where `order_id` = '';
+explain select * from t1_r_r4 where `order_id` = '12';
+explain select * from t1_r_r4 where `order_id` = '123';
+explain select * from t1_r_r4 where `order_id` = '1234';
+explain select * from t1_r_r4 where `order_id` = '1001234';
+
+CREATE TABLE `t1_r_l4` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(LEFT(`order_id`, 4))
+(
+PARTITION p1 VALUES LESS THAN(''),
+PARTITION p2 VALUES LESS THAN('12'),
+PARTITION p3 VALUES LESS THAN('123'),
+PARTITION p4 VALUES LESS THAN('1234'),
+PARTITION p5 VALUES LESS THAN('12345'),
+PARTITION pm VALUES LESS THAN(maxvalue)
+);
+show create table t1_r_l4;
+
+explain select * from t1_r_l4 where `order_id` is null;
+explain select * from t1_r_l4 where `order_id` = '';
+explain select * from t1_r_l4 where `order_id` = '12';
+explain select * from t1_r_l4 where `order_id` = '123';
+explain select * from t1_r_l4 where `order_id` = '1234';
+explain select * from t1_r_l4 where `order_id` = '1234001';
+
+CREATE TABLE `t1_r_s24` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE(SUBSTR(`order_id`, 2, 4))
+(
+PARTITION p0 VALUES LESS THAN(''),
+PARTITION p1 VALUES LESS THAN('1'),
+PARTITION p2 VALUES LESS THAN('12'),
+PARTITION p3 VALUES LESS THAN('123'),
+PARTITION p4 VALUES LESS THAN('1234'),
+PARTITION p5 VALUES LESS THAN('12345'),
+PARTITION pm VALUES LESS THAN(maxvalue)
+);
+show create table t1_r_s24;
+
+explain select * from t1_r_s24 where `order_id` is null;
+explain select * from t1_r_s24 where `order_id` = '';
+explain select * from t1_r_s24 where `order_id` = '4';
+explain select * from t1_r_s24 where `order_id` = '41';
+explain select * from t1_r_s24 where `order_id` = '412';
+explain select * from t1_r_s24 where `order_id` = '4123';
+explain select * from t1_r_s24 where `order_id` = '41234';
+explain select * from t1_r_s24 where `order_id` = '41234001';

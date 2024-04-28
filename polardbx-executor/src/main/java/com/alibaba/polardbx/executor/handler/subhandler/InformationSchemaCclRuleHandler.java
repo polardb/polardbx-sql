@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.LogicalShowCclRuleHandler;
@@ -24,6 +23,7 @@ import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaCclRules;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
+import com.google.common.collect.Lists;
 import org.apache.calcite.sql.SqlShowCclRule;
 import org.apache.calcite.sql.SqlSpecialIdentifier;
 import org.apache.calcite.sql.parser.SqlParserPos;

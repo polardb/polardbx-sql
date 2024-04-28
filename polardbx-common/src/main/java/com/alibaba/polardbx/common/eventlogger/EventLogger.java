@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.common.eventlogger;
 
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
@@ -26,6 +27,9 @@ public class EventLogger {
     private final static String LOG_FORMAT = "%s %s %s";
 
     public static void log(EventType type, String msg) {
+        if (EventType.isTrxEvent(type) && !DynamicConfig.getInstance().isEnableTrxEventLog()) {
+            return;
+        }
         String logContent = String.format(LOG_FORMAT, type.getLevel().name(), type.name(), msg);
         logger.info(logContent);
     }

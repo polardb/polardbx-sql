@@ -16,19 +16,18 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer.model;
 
+import lombok.Data;
+
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import lombok.Data;
-
 /**
  * 热力图上的纵轴
  *
  * @author ximing.yd
- * @date 2021/12/20 上午11:11
  */
 @Data
 public class VisualAxis implements Serializable {

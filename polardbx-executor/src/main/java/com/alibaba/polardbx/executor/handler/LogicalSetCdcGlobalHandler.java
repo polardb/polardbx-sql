@@ -18,14 +18,14 @@ package com.alibaba.polardbx.executor.handler;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
-import com.alibaba.polardbx.gms.metadb.cdc.BinlogSystemConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.cdc.CdcConfigAccessor;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
+import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlSetCdcGlobal;
@@ -33,6 +33,7 @@ import org.apache.calcite.util.Pair;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * @author yudong
@@ -40,7 +41,7 @@ import java.util.List;
  **/
 public class LogicalSetCdcGlobalHandler extends HandlerCommon {
 
-    private static final Logger logger = LoggerFactory.getLogger(LogicalShowCdcStorageHandler.class);
+    private static final Logger cdcLogger = SQLRecorderLogger.cdcLogger;
 
     public LogicalSetCdcGlobalHandler(IRepository repo) {
         super(repo);
@@ -54,19 +55,19 @@ public class LogicalSetCdcGlobalHandler extends HandlerCommon {
         String configKeyPrefix = with == null ? "" : with.toString().replace("'", "") + ":";
 
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            BinlogSystemConfigAccessor accessor = new BinlogSystemConfigAccessor();
+            CdcConfigAccessor accessor = new CdcConfigAccessor();
             accessor.setConnection(metaDbConn);
-            MetaDbUtil.beginTransaction(metaDbConn);
+            Properties props = new Properties();
             for (Pair<SqlNode, SqlNode> pair : variableAssignmentList) {
                 String key = pair.getKey().toString();
                 key = key.replace("'", "");
                 String configKey = configKeyPrefix + key;
                 String configValue = pair.getValue().toString();
-                accessor.insert(configKey, configValue);
+                props.setProperty(configKey, configValue);
             }
-            MetaDbUtil.commit(metaDbConn);
+            accessor.updateInstConfigValue(props);
         } catch (Exception e) {
-            logger.error("set cdc global error", e);
+            cdcLogger.error("set cdc global error", e);
             throw new TddlNestableRuntimeException();
         }
 

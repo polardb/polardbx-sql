@@ -73,6 +73,13 @@ public class RelDistributions {
     return RelDistributionTraitDef.INSTANCE.canonize(trait);
   }
 
+  public static RelDistribution hashOss(Collection<? extends Number> numbers, int shard) {
+    ImmutableIntList list = ImmutableIntList.copyOf(numbers);
+    RelDistributionImpl trait =
+        new RelDistributionImpl(RelDistribution.Type.HASH_DISTRIBUTED, list, shard);
+    return RelDistributionTraitDef.INSTANCE.canonize(trait);
+  }
+
   /** Creates a range distribution. */
   public static RelDistribution range(Collection<? extends Number> numbers) {
     ImmutableIntList list = ImmutableIntList.copyOf(numbers);
@@ -81,8 +88,8 @@ public class RelDistributions {
     return RelDistributionTraitDef.INSTANCE.canonize(trait);
   }
 
-  public static RelDistribution of(RelDistribution.Type type, ImmutableIntList keys) {
-    RelDistribution distribution = new RelDistributionImpl(type, keys);
+  public static RelDistribution of(RelDistribution.Type type, ImmutableIntList keys, Integer shardCnt) {
+    RelDistribution distribution = new RelDistributionImpl(type, keys, shardCnt);
     return RelDistributionTraitDef.INSTANCE.canonize(distribution);
   }
 
@@ -104,9 +111,12 @@ public class RelDistributions {
     private final Type type;
     private final ImmutableIntList keys;
 
+    private final Integer shardCnt;
+
     public RelDistributionImpl(Type type, ImmutableIntList keys) {
       this.type = Preconditions.checkNotNull(type);
       this.keys = ImmutableIntList.copyOf(keys);
+      this.shardCnt = 0;
 //      assert type != Type.HASH_DISTRIBUTED
 //          || keys.size() < 2
 //          || Ordering.natural().isOrdered(keys)
@@ -116,22 +126,32 @@ public class RelDistributions {
           || keys.isEmpty();
     }
 
+    public RelDistributionImpl(Type type, ImmutableIntList keys, Integer shardCnt) {
+      this.type = Preconditions.checkNotNull(type);
+      this.keys = ImmutableIntList.copyOf(keys);
+      this.shardCnt = shardCnt == null ? 0 : shardCnt;
+      assert type == Type.HASH_DISTRIBUTED
+          || type == Type.RANDOM_DISTRIBUTED
+          || keys.isEmpty();
+    }
+
     @Override public int hashCode() {
-      return Objects.hash(type, keys);
+      return Objects.hash(type, keys, shardCnt);
     }
 
     @Override public boolean equals(Object obj) {
       return this == obj
           || obj instanceof RelDistributionImpl
           && type == ((RelDistributionImpl) obj).type
-          && keys.equals(((RelDistributionImpl) obj).keys);
+          && keys.equals(((RelDistributionImpl) obj).keys)
+          && shardCnt.equals(((RelDistributionImpl) obj).shardCnt);
     }
 
     @Override public String toString() {
       if (keys.isEmpty()) {
         return type.shortName;
       } else {
-        return type.shortName + keys;
+        return shardCnt > 0 ? type.shortName + keys + shardCnt : type.shortName + keys ;
       }
     }
 
@@ -141,6 +161,14 @@ public class RelDistributions {
 
     @Nonnull public List<Integer> getKeys() {
       return keys;
+    }
+
+    public boolean isShardWise() {
+      return shardCnt > 0;
+    }
+
+    @Nonnull public Integer getShardCnt() {
+      return shardCnt;
     }
 
     public RelDistributionTraitDef getTraitDef() {
@@ -158,7 +186,7 @@ public class RelDistributions {
       }
       List<Integer> mappedKeys0 = Mappings.apply2((Mapping) mapping, keys);
       ImmutableIntList mappedKeys = normalizeKeys(mappedKeys0);
-      return of(type, mappedKeys);
+      return of(type, mappedKeys, shardCnt);
     }
 
     public boolean satisfies(RelTrait trait) {
@@ -172,7 +200,7 @@ public class RelDistributions {
           case HASH_DISTRIBUTED:
             // The "leading edge" property of Range does not apply to Hash.
             // Only Hash[x, y] satisfies Hash[x, y].
-            return keys.equals(distribution.keys);
+            return keys.equals(distribution.keys) && shardCnt.equals(distribution.shardCnt);
           case RANGE_DISTRIBUTED:
             // Range[x, y] satisfies Range[x, y, z] but not Range[x]
             return Util.startsWith(distribution.keys, keys);
@@ -203,7 +231,11 @@ public class RelDistributions {
       if (type == distribution.getType()
           && (type == Type.HASH_DISTRIBUTED
               || type == Type.RANGE_DISTRIBUTED)) {
-        return ORDERING.compare(getKeys(), distribution.getKeys());
+        int order = ORDERING.compare(getKeys(), distribution.getKeys());
+        if (order == 0) {
+          return Integer.compare(getShardCnt(), distribution.getShardCnt());
+        }
+        return order;
       }
 
       return type.compareTo(distribution.getType());

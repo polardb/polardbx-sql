@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.mdl;
 
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
-import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 

@@ -1,0 +1,7 @@
+- sql: |
+    select * from lineitem, partsupp where ps_partkey = l_partkey and ps_comment = l_comment and ps_supplycost = l_linenumber;
+  plan: |
+    hashjoin(condition="ps_comment = l_comment and l_partkey = ps_partkey and l_linenumber = ps_supplycost", type="inner")
+      exchange(distribution=hash[1]4, collation=[])
+        osstablescan(tables="lineitem[p1,p2,p3,p4]", shardcount=4, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` from `lineitem` as `lineitem`")
+      osstablescan(tables="partsupp[p1,p2,p3,p4]", shardcount=4, partition=[remote], sql="select `ps_partkey`, `ps_suppkey`, `ps_availqty`, `ps_supplycost`, `ps_comment` from `partsupp` as `partsupp`")

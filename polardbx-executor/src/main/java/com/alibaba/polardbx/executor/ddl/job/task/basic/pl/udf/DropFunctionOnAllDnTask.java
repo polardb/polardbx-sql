@@ -42,12 +42,8 @@ public class DropFunctionOnAllDnTask extends BaseDdlTask {
     }
 
     @Override
-    protected void beforeTransaction(ExecutionContext executionContext) {
-        updateTaskStateInNewTxn(DdlTaskState.DIRTY);
-        executeImpl(executionContext);
-    }
-
-    public void executeImpl(ExecutionContext executionContext) {
+    protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        updateSupportedCommands(true, false, metaDbConnection);
         Set<String> allDnId = ExecUtils.getAllDnStorageId();
         for (String dnId : allDnId) {
             try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);

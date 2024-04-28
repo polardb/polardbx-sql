@@ -23,6 +23,8 @@ import com.alibaba.polardbx.common.utils.logger.MDC;
 public class LoggerUtil {
 
     private static final Logger loggerSpm = LoggerFactory.getLogger("spm");
+    // Statistics logger
+    public final static Logger statisticsLogger = LoggerFactory.getLogger("STATISTICS");
 
     public static void buildMDC(String schemaName) {
         if (TStringUtil.isNotEmpty(schemaName)) {

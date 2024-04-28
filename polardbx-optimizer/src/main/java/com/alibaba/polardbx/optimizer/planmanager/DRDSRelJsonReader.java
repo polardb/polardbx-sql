@@ -36,6 +36,7 @@ import org.apache.calcite.rel.RelCollations;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelPartitionWise;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.CorrelationId;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
@@ -441,6 +442,10 @@ public class DRDSRelJsonReader {
                 return relJson.toDistribution((Map<String, Object>) get("distribution"));
             }
 
+            public RelPartitionWise getPartitionWise() {
+                return relJson.toPartitionWise((Map<String, Object>) get("partitionWise"));
+            }
+
             public ImmutableList<ImmutableList<RexLiteral>> getTuples(String tag) {
                 //noinspection unchecked
                 final List<List> jsonTuples = (List) get(tag);
@@ -746,6 +751,10 @@ public class DRDSRelJsonReader {
 
             public RelDistribution getDistribution() {
                 return relJson.toDistribution((Map<String, Object>) get("distribution"));
+            }
+
+            public RelPartitionWise getPartitionWise() {
+                return relJson.toPartitionWise((Map<String, Object>) get("partitionWise"));
             }
 
             public ImmutableList<ImmutableList<RexLiteral>> getTuples(String tag) {

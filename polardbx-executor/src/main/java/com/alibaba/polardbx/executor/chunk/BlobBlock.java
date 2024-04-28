@@ -17,10 +17,13 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.optimizer.core.datatype.BlobType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import io.airlift.slice.XxHash64;
 
 import java.sql.Blob;
 import java.sql.SQLException;
+import java.util.Arrays;
 
 import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
 
@@ -30,8 +33,37 @@ import static com.alibaba.polardbx.common.CrcAccumulator.NULL_TAG;
  */
 public class BlobBlock extends ReferenceBlock<Blob> {
 
+    public BlobBlock(int positionCount) {
+        super(0, positionCount, new boolean[positionCount],
+            new Blob[positionCount], DataTypes.BlobType);
+    }
+
     public BlobBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values) {
         super(arrayOffset, positionCount, valueIsNull, values, DataTypes.BlobType);
+    }
+
+    public BlobBlock(DataType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull, Object[] values) {
+        super(arrayOffset, positionCount, valueIsNull, values, dataType);
+    }
+
+    public static BlobBlock from(BlobBlock other, int selSize, int[] selection) {
+        if (selection == null) {
+            // case 1: direct copy
+            return new BlobBlock(other.dataType, other.arrayOffset, selSize,
+                BlockUtils.copyNullArray(other.isNull, null, selSize),
+                Arrays.copyOf(other.values, other.values.length));
+        } else {
+            // case 2: copy selected
+            boolean[] targetNulls = BlockUtils.copyNullArray(other.isNull, selection, selSize);
+            Object[] targetValues = new Object[selSize];
+
+            for (int position = 0; position < selSize; position++) {
+                targetValues[position] = other.values[selection[position]];
+            }
+
+            return new BlobBlock(other.dataType, other.arrayOffset, selSize,
+                targetNulls, targetValues);
+        }
     }
 
     @Override
@@ -44,6 +76,9 @@ public class BlobBlock extends ReferenceBlock<Blob> {
         return isNull(position) ? null : getBlob(position);
     }
 
+    /**
+     * TODO dict
+     */
     @Override
     public boolean equals(int position, Block otherBlock, int otherPosition) {
         boolean n1 = isNull(position);
@@ -69,6 +104,23 @@ public class BlobBlock extends ReferenceBlock<Blob> {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        }
+        Blob blob = getBlob(pos);
+
+        com.alibaba.polardbx.optimizer.core.datatype.Blob value =
+            (com.alibaba.polardbx.optimizer.core.datatype.Blob) (DataTypes.BlobType).convertFrom(blob);
+
+        if (value == null) {
+            return NULL_HASH_CODE;
+        }
+
+        return XxHash64.hash(value.getSlice());
+    }
+
+    @Override
     public int checksum(int position) {
         if (isNull(position)) {
             return NULL_TAG;
@@ -83,5 +135,9 @@ public class BlobBlock extends ReferenceBlock<Blob> {
         } catch (SQLException e) {
             return NULL_TAG;
         }
+    }
+
+    public Blob[] blobArray() {
+        return (Blob[]) values;
     }
 }

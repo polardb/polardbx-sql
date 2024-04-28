@@ -1,6 +1,7 @@
 package com.alibaba.polardbx.qatest.statistic;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.google.common.collect.Lists;
 import org.junit.runners.Parameterized;
 
 import java.io.File;
@@ -46,6 +47,7 @@ public class StatisticsCostModelOssTpchTest extends StatisticCostModelTest {
                 e.printStackTrace();
             }
         });
+        testStructs = Lists.newArrayList();
         return testStructs;
     }
 }

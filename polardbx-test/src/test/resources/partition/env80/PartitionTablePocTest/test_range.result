@@ -28,7 +28,7 @@ FROM tbl_range
 WHERE a = 99
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl_range[p1]", sql="SELECT `a` FROM `tbl_range` AS `tbl_range` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl_range[p1]", sql="SELECT `tbl_range`.`a` FROM ? AS `tbl_range` WHERE (`tbl_range`.`a` = ?) ORDER BY `a`", params="99")
 SELECT *
 FROM tbl_range
 WHERE a = 99

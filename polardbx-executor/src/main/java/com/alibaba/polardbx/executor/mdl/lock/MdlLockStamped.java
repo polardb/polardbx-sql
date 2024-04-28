@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.executor.mdl.MdlKey;
 import com.alibaba.polardbx.executor.mdl.MdlLock;
-
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 import java.util.concurrent.locks.StampedLock;

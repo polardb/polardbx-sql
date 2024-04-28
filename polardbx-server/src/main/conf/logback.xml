@@ -654,20 +654,20 @@
     <appender name="SPM" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <File>${loggerRoot:-..}/logs/tddl/spm.log</File>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-                <!-- rollover daily -->
-                <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/spm-%d{yyyy-MM-dd}-%i.log.gz
-                </fileNamePattern>
-                <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
-                    <!-- or whenever the file size reaches 100MB -->
-                    <maxFileSize>512MB</maxFileSize>
-                </timeBasedFileNamingAndTriggeringPolicy>
-                <maxHistory>30</maxHistory>
-                <totalSizeCap>20GB</totalSizeCap>
+            <!-- rollover daily -->
+            <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/spm-%d{yyyy-MM-dd}-%i.log.gz
+            </fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- or whenever the file size reaches 100MB -->
+                <maxFileSize>512MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>20GB</totalSizeCap>
         </rollingPolicy>
         <encoder>
-                <pattern>
-                        %d{yyyy-MM-dd HH:mm:ss.SSS} %m%n
-                </pattern>
+            <pattern>
+                %d{yyyy-MM-dd HH:mm:ss.SSS} %m%n
+            </pattern>
         </encoder>
     </appender>
 
@@ -761,6 +761,69 @@
         </sift>
     </appender>
 
+    <appender name="INNER_SQL" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <Key>app</Key>
+            <DefaultValue>tddl</DefaultValue>
+        </discriminator>
+        <sift>
+            <appender name="INNER-SQL-{app}"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/${app}/inner_sql.log</File>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- rollover daily -->
+
+                    <fileNamePattern>${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/inner_sql-%d{yyyy-MM-dd}-%i.log.gz
+                    </fileNamePattern>
+                    <timeBasedFileNamingAndTriggeringPolicy
+                            class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <!-- or whenever the file size reaches 100MB -->
+                        <maxFileSize>512MB</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                    <maxHistory>7</maxHistory>
+                    <totalSizeCap>100GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <immediateFlush>true</immediateFlush>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} - [%X{CONNECTION}] %msg%n
+                    </pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
+
+
+    <appender name="COLUMNAR_TRANS" class="ch.qos.logback.classic.sift.SiftingAppender">
+        <discriminator>
+            <Key>app</Key>
+            <DefaultValue>tddl</DefaultValue>
+        </discriminator>
+        <sift>
+            <appender name="COLUMNAR_TRANS-{app}"
+                      class="ch.qos.logback.core.rolling.RollingFileAppender">
+                <File>${loggerRoot:-..}/logs/${app}/columnar-trans.log</File>
+                <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+                    <!-- rollover daily -->
+                    <fileNamePattern>
+                        ${loggerRoot:-..}/logs/${app}/%d{yyyy-MM-dd}/columnar-trans-%d{yyyy-MM-dd}-%i.log.gz
+                    </fileNamePattern>
+                    <timeBasedFileNamingAndTriggeringPolicy
+                            class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                        <maxFileSize>512MB</maxFileSize>
+                    </timeBasedFileNamingAndTriggeringPolicy>
+                    <maxHistory>30</maxHistory>
+                    <totalSizeCap>20GB</totalSizeCap>
+                </rollingPolicy>
+                <encoder>
+                    <pattern>
+                        %d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %m%n
+                    </pattern>
+                </encoder>
+            </appender>
+        </sift>
+    </appender>
+
     <appender name="asyncROOT" class="com.alibaba.polardbx.common.utils.logger.logback.AsyncAppender">
         <queueSize>100000</queueSize>
         <maxFlushTime>3000</maxFlushTime>
@@ -791,6 +854,24 @@
         <discardingThreshold>0</discardingThreshold>
         <neverBlock>true</neverBlock>
         <appender-ref ref="TRANS"/>
+    </appender>
+
+    <appender name="CDC_LOG" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <File>${loggerRoot:-..}/logs/tddl/cdc.log</File>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- rollover daily -->
+            <fileNamePattern>${loggerRoot:-..}/logs/tddl/%d{yyyy-MM-dd}/cdc-%d{yyyy-MM-dd}-%i.log.gz
+            </fileNamePattern>
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <!-- or whenever the file size reaches 100MB -->
+                <maxFileSize>512MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <maxHistory>14</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %p %m%n</pattern>
+        </encoder>
     </appender>
 
     <logger name="slow" additivity="false">
@@ -920,6 +1001,11 @@
         <appender-ref ref="SLOW_TRANS"/>
     </logger>
 
+    <logger name="inner_sql" additivity="false">
+        <level value="INFO"/>
+        <appender-ref ref="INNER_SQL"/>
+    </logger>
+
     <logger name="event" additivity="false">
         <level value="INFO"/>
         <appender-ref ref="EVENT"/>
@@ -957,6 +1043,12 @@
         <level value="info"/>
         <appender-ref ref="OSS"/>
     </logger>
+
+    <logger name="COLUMNAR_TRANS" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="COLUMNAR_TRANS"/>
+    </logger>
+
     <logger name="com.alibaba.polardbx.executor.mpp.discover" additivity="false">
         <level value="info"/>
         <appender-ref ref="MPP_LOG"/>
@@ -970,7 +1062,6 @@
         <level value="info"/>
         <appender-ref ref="MPP_LOG"/>
     </logger>
-
     <logger name="com.alibaba.polardbx.executor.mpp.server" additivity="false">
         <level value="info"/>
         <appender-ref ref="MPP_LOG"/>
@@ -982,6 +1073,10 @@
     <logger name="io.airlift" additivity="false">
         <level value="info"/>
         <appender-ref ref="MPP_LOG"/>
+    </logger>
+    <logger name="cdc_log" additivity="false">
+        <level value="info"/>
+        <appender-ref ref="CDC_LOG"/>
     </logger>
     <root level="WARN">
         <appender-ref ref="asyncROOT"/>

@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.executor.mpp.execution.TaskExecutor;
+import com.alibaba.polardbx.executor.mpp.split.OssSplit;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.Sets;
@@ -37,14 +39,22 @@ import com.alibaba.polardbx.executor.operator.ProducerExecutor;
 import com.alibaba.polardbx.executor.operator.SourceExec;
 import com.alibaba.polardbx.executor.operator.spill.MemoryRevoker;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Sets;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 
 import javax.annotation.concurrent.GuardedBy;
 import java.io.Closeable;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -53,12 +63,14 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.executor.operator.ConsumerExecutor.NOT_BLOCKED;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.alibaba.polardbx.executor.operator.ConsumerExecutor.NOT_BLOCKED;
 
 public class Driver implements Closeable {
 
+    private static final Logger EXECUTOR_LOG = LoggerFactory.getLogger(TaskExecutor.class);
     private static final Logger log = LoggerFactory.getLogger(Driver.class);
 
     private final ConcurrentMap<Integer, TaskSource> newSources = new ConcurrentHashMap<>();
@@ -112,6 +124,10 @@ public class Driver implements Closeable {
             PipelineDepTree.TreeNode pipeline = pipelineDepTree.getNode(driverExec.getPipelineId());
             buildDepOnAllConsumers = pipeline.isBuildDepOnAllConsumers();
         }
+    }
+
+    public DriverExec getDriverExec() {
+        return driverExec;
     }
 
     @Override

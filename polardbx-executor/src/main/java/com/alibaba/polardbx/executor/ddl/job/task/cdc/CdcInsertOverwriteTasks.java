@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
@@ -65,7 +65,7 @@ public class CdcInsertOverwriteTasks {
 
             String sql = "drop table if exists " + surroundWithBacktick(logicTableName);
             CdcManagerHelper.getInstance().notifyDdlNew(schemaName, logicTableName, SqlKind.DROP_TABLE.name(),
-                sql, DdlType.DROP_TABLE, getJobId(), getTaskId(), DdlVisibility.Public,
+                sql, DdlType.DROP_TABLE, getJobId(), getTaskId(), CdcDdlMarkVisibility.Public,
                 buildExtendParameter(executionContext));
         }
     }
@@ -103,7 +103,7 @@ public class CdcInsertOverwriteTasks {
 
                 CdcManagerHelper.getInstance()
                     .notifyDdlNew(schemaName, renameFrom, SqlKind.RENAME_TABLE.name(), sql, DdlType.RENAME_TABLE,
-                        getJobId(), getTaskId(), DdlVisibility.Public, params);
+                        getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, params);
             } else {
                 Map<String, Object> params = buildExtendParameter(executionContext);
                 params.put(ICdcManager.TABLE_NEW_NAME, renameTo);
@@ -114,7 +114,7 @@ public class CdcInsertOverwriteTasks {
 
                 CdcManagerHelper.getInstance()
                     .notifyDdlNew(schemaName, renameFrom, SqlKind.RENAME_TABLE.name(), sql, DdlType.RENAME_TABLE,
-                        getJobId(), getTaskId(), DdlVisibility.Public, params, true, topology);
+                        getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, params, true, topology);
             }
         }
     }

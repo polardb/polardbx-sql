@@ -43,28 +43,28 @@ public class ${className} extends AbstractVectorizedExpression {
         MutableChunk chunk = ctx.getPreAllocatedChunk();
         int batchSize = chunk.batchSize();
         boolean isSelectionInUse = chunk.isSelectionInUse();
-        int[] sel = chunk.selection();
+		int[] sel = chunk.selection();
 
-        if (leftIsNull) {
-            VectorizedExpressionUtils.setNulls(chunk, outputIndex);
-            return;
-        }
+		if (leftIsNull) {
+		VectorizedExpressionUtils.setNulls(chunk, outputIndex);
+		return;
+		}
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
+		RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+		RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
-        ${type.outputType}[] res = ((${type.outputVectorType}) outputVectorSlot).${type.outputType}Array();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
+        ${type.outputType}[] res = (outputVectorSlot.cast(${type.outputVectorType}.class)).${type.outputType}Array();
 
-        VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[1].getOutputIndex());
-        boolean[] outputNulls = outputVectorSlot.nulls();
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                ${type.outputType} right = (${type.outputType}) array2[j];
-                <#if operator.classHeader == "Modulo">
-                if (right == 0) {
-                    outputNulls[j] = true;
+		VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[1].getOutputIndex());
+		boolean[] outputNulls = outputVectorSlot.nulls();
+		if (isSelectionInUse) {
+		for (int i = 0; i < batchSize; i++) {
+		int j = sel[i];
+        ${type.outputType} right = (${type.outputType}) array2[j];
+        <#if operator.classHeader == "Modulo">
+			if (right == 0) {
+			outputNulls[j] = true;
                     right = 1;
                 }
                 </#if>

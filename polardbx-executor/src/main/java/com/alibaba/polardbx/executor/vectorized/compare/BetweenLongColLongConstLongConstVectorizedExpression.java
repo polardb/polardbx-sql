@@ -73,7 +73,7 @@ public class BetweenLongColLongConstLongConstVectorizedExpression extends Abstra
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = outputVectorSlot.cast(LongBlock.class).longArray();
 
         if (operand1IsNull || operand2IsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -84,7 +84,7 @@ public class BetweenLongColLongConstLongConstVectorizedExpression extends Abstra
             return;
         }
 
-        long[] array1 = ((LongBlock) leftInputVectorSlot).longArray();
+        long[] array1 = (leftInputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {

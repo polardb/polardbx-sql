@@ -61,6 +61,8 @@ public class TreeReaderFactory {
 
     boolean getUseUTCTimestamp();
 
+    boolean getUseDecimal64();
+
     String getWriterTimezone();
 
     OrcFile.Version getFileFormat();
@@ -76,6 +78,7 @@ public class TreeReaderFactory {
     private SchemaEvolution evolution;
     private boolean skipCorrupt = false;
     private boolean useUTCTimestamp = false;
+    private boolean useDecimal64 = false;
     private String writerTimezone;
     private OrcFile.Version fileFormat;
     private ReaderEncryption encryption;
@@ -99,6 +102,11 @@ public class TreeReaderFactory {
 
     public ReaderContext useUTCTimestamp(boolean useUTCTimestamp) {
       this.useUTCTimestamp = useUTCTimestamp;
+      return this;
+    }
+
+    public ReaderContext useDecimal64(boolean useDecimal64) {
+      this.useDecimal64 = useDecimal64;
       return this;
     }
 
@@ -132,6 +140,11 @@ public class TreeReaderFactory {
     @Override
     public boolean getUseUTCTimestamp() {
       return useUTCTimestamp;
+    }
+
+    @Override
+    public boolean getUseDecimal64() {
+      return useDecimal64;
     }
 
     @Override
@@ -1278,7 +1291,7 @@ public class TreeReaderFactory {
     private void nextVector(Decimal64ColumnVector result,
                             boolean[] isNull,
                             final int batchSize) throws IOException {
-      if (precision > TypeDescription.MAX_DECIMAL64_PRECISION) {
+      if (!TypeUtils.isDecimal64Precision(precision)) {
         throw new IllegalArgumentException("Reading large precision type into" +
             " Decimal64ColumnVector.");
       }
@@ -2381,51 +2394,49 @@ public class TreeReaderFactory {
       return ConvertTreeReaderFactory.createConvertTreeReader(readerType, context);
     }
     switch (readerTypeCategory) {
-      case BOOLEAN:
-        return new BooleanTreeReader(fileType.getId());
-      case BYTE:
-        return new ByteTreeReader(fileType.getId());
-      case DOUBLE:
-        return new DoubleTreeReader(fileType.getId());
-      case FLOAT:
-        return new FloatTreeReader(fileType.getId());
-      case SHORT:
-        return new ShortTreeReader(fileType.getId(), context);
-      case INT:
+    case BOOLEAN:
+      return new BooleanTreeReader(fileType.getId());
+    case BYTE:
+      return new ByteTreeReader(fileType.getId());
+    case DOUBLE:
+      return new DoubleTreeReader(fileType.getId());
+    case FLOAT:
+      return new FloatTreeReader(fileType.getId());
+    case SHORT:
+      return new ShortTreeReader(fileType.getId(), context);
+    case INT:
         return new IntTreeReader(fileType.getId(), context);
-      case LONG:
+    case LONG:
         return new LongTreeReader(fileType.getId(), context);
-      case STRING:
+    case STRING:
         return new StringTreeReader(fileType.getId(), context);
-      case CHAR:
+    case CHAR:
         return new CharTreeReader(fileType.getId(), readerType.getMaxLength());
-      case VARCHAR:
+    case VARCHAR:
         return new VarcharTreeReader(fileType.getId(), readerType.getMaxLength());
-      case BINARY:
+    case BINARY:
         return new BinaryTreeReader(fileType.getId(), context);
-      case TIMESTAMP:
+    case TIMESTAMP:
         return new TimestampTreeReader(fileType.getId(), context, false);
-      case TIMESTAMP_INSTANT:
+    case TIMESTAMP_INSTANT:
         return new TimestampTreeReader(fileType.getId(), context, true);
-      case DATE:
+    case DATE:
         return new DateTreeReader(fileType.getId(), context);
-      case DECIMAL:
-        if (version == OrcFile.Version.UNSTABLE_PRE_2_0 &&
-            fileType.getPrecision() <= TypeDescription.MAX_DECIMAL64_PRECISION){
-          return new Decimal64TreeReader(fileType.getId(), fileType.getPrecision(),
-              fileType.getScale(), context);
+    case DECIMAL:
+        if (context.getUseDecimal64() &&
+            TypeUtils.isDecimal64Precision(fileType.getPrecision())) {
+            return new LongTreeReader(fileType.getId(), context);
         }
-        return new DecimalTreeReader(fileType.getId(), fileType.getPrecision(),
-            fileType.getScale(), context);
-      case STRUCT:
+        return new VarcharTreeReader(fileType.getId(), readerType.getMaxLength());
+    case STRUCT:
         return new StructTreeReader(fileType.getId(), readerType, context);
-      case LIST:
+    case LIST:
         return new ListTreeReader(fileType.getId(), readerType, context);
-      case MAP:
+    case MAP:
         return new MapTreeReader(fileType.getId(), readerType, context);
-      case UNION:
+    case UNION:
         return new UnionTreeReader(fileType.getId(), readerType, context);
-      default:
+    default:
         throw new IllegalArgumentException("Unsupported type " +
             readerTypeCategory);
     }

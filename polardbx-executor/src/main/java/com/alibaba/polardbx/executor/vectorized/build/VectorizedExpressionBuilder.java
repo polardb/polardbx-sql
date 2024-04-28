@@ -85,6 +85,9 @@ public class VectorizedExpressionBuilder {
         MutableChunk preAllocatedChunk = MutableChunk.newBuilder(executionContext.getExecutorChunkLimit())
             .addEmptySlots(inputTypes)
             .addEmptySlots(converter.getOutputDataTypes())
+            .addChunkLimit(executionContext.getExecutorChunkLimit())
+            .addOutputIndexes(new int[] {expr.getOutputIndex()})
+            .addLiteralBitmap(converter.getLiteralBitmap())
             .build();
 
         return new Pair<>(expr, preAllocatedChunk);

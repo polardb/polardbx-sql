@@ -419,9 +419,13 @@ public class StorageHaChecker {
                 rs.next();
                 // Get the itself role for the current node which address is addr
                 String role = rs.getString("role");
+                // Get the itself role for the current node which address is addr
+                String instanceType = rs.getString("instance_type");
                 // Get the leader addr for the current node which address is addr
                 currentPaxosLeaderAddr = rs.getString("current_leader");
-                if (role != null) {
+                if (instanceType != null && StorageRole.LOGGER.getRole().equalsIgnoreCase(instanceType)) {
+                    roleVal = StorageRole.LOGGER;
+                } else if (role != null) {
 
                     if (isMasterStorage) {
                         roleVal = StorageRole.getStorageRoleByString(role);
@@ -500,12 +504,16 @@ public class StorageHaChecker {
                             if (StorageRole.LOGGER == nodeRoleVal) {
                                 nodeXPort = -1; // logger is NOT allowed to accepting any connections
                             } else {
+                                if (addr.equalsIgnoreCase(nodeAddr) && StorageRole.LOGGER == roleVal) {
+                                    nodeRoleVal = StorageRole.LOGGER;
+                                }
                                 try {
                                     nodeXPort = fetchXPortByAddr(nodeAddr, usr, passwd);
                                     // Another 3s consume if follower/learner down.
                                 } catch (Throwable ignore) {
                                     // Ignore it.
                                     nodeXPort = -1;
+                                    nodeRoleVal = StorageRole.LOGGER;
                                     MetaDbLogUtil.META_DB_LOG.warn(
                                         String.format("Fail to fetch xport from node[%s] role %s, and set xport=-1",
                                             nodeAddr, nodeRoleVal.name()));

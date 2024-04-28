@@ -17,8 +17,6 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.rel.BushyJoin;
 import com.alibaba.polardbx.optimizer.core.rel.Gather;
@@ -28,7 +26,9 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.ConditionPropagator;
+import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.PushDownUtils;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -680,7 +680,7 @@ public class BushyJoinClusteringRule extends RelOptRule {
         List<Integer> refs = new ArrayList<>();
         for (String col : columns) {
             int ref = logicalView.getRefByColumnName(tableName, col,
-                true);    // Basic Tables without any join, thus no differences are there between true and false
+                true, false);    // Basic Tables without any join, thus no differences are there between true and false
             /**
              * 在LogicalView 中不存在对于分区键的引用,不能下推
              */
@@ -701,7 +701,7 @@ public class BushyJoinClusteringRule extends RelOptRule {
         List<Integer> refs = new ArrayList<>();
         for (String col : columns) {
             int ref = logicalView.getRefByColumnName(tableName, col,
-                true);    // Basic Tables without any join, thus no differences are there between true and false
+                true, false);    // Basic Tables without any join, thus no differences are there between true and false
             /**
              * 在LogicalView 中不存在对于分区键的引用,不能下推
              */

@@ -102,6 +102,22 @@ public class ActionMoveGroups implements BalanceAction, Comparable<ActionMoveGro
     }
 
     @Override
+    public Long getBackfillRows() {
+        return actions.stream().map(o -> o.getBackfillRows()).mapToLong(o -> o).sum();
+    }
+
+    @Override
+    public Long getDiskSize() {
+        return actions.stream().map(o -> o.getDiskSize()).mapToLong(o -> o).sum();
+    }
+
+    @Override
+    public double getLogicalTableCount() {
+        List<String> tables = ScaleOutPlanUtil.getLogicalTables(schema);
+        return tables.size();
+    }
+
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;

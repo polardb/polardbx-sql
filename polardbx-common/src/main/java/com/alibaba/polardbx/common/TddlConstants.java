@@ -82,4 +82,6 @@ public class TddlConstants {
     public static final String SQL_MODE = "sql_mode";
 
     public static final String FOREIGN_KEY_PREFIX = "";
+
+    public static final int LONG_ENOUGH_TIMEOUT_FOR_DDL_ON_XPROTO_CONN = 7 * 24 * 60 * 60 * 1000;
 }

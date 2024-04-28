@@ -35,12 +35,28 @@ public class BinlogStreamAccessor extends AbstractAccessor {
         "select group_name, stream_name, latest_cursor, endpoint from `" + BINLOG_STREAM_TABLE
             + "` where `stream_name` = ?";
 
+    private static final String SELECT_BINLOG_STREAM_IN_GROUP =
+        "select group_name, stream_name, latest_cursor, endpoint from `" + BINLOG_STREAM_TABLE
+            + "` where `group_name` = ?";
+
     public List<BinlogStreamRecord> listAllStream() {
         try {
             return MetaDbUtil.query(LIST_BINLOG_STREAM_TARGET, BinlogStreamRecord.class, connection);
         } catch (Exception e) {
             MetaDbLogUtil.META_DB_LOG.error("Failed to query the system table '" + LIST_BINLOG_STREAM_TARGET + "'",
                 e);
+            return null;
+        }
+    }
+
+    public List<BinlogStreamRecord> listStreamInGroup(String groupName) {
+        try {
+            Map<Integer, ParameterContext> params = new HashMap<>();
+            MetaDbUtil.setParameter(1, params, ParameterMethod.setString, groupName);
+            return MetaDbUtil.query(SELECT_BINLOG_STREAM_IN_GROUP, params, BinlogStreamRecord.class, connection);
+        } catch (Exception e) {
+            MetaDbLogUtil.META_DB_LOG.error(
+                "Failed to query the system table '" + SELECT_BINLOG_STREAM_IN_GROUP + "'", e);
             return null;
         }
     }

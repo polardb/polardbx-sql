@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.spill.Spiller;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.Iterator;
 

@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.constants.TransactionAttribute;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.InstanceRole;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.gms.config.InstConfigManager;
 import com.alibaba.polardbx.gms.config.InstConfigReceiver;
@@ -87,11 +88,7 @@ public class MetaDbInstConfigManager extends AbstractLifecycle implements InstCo
         } else {
             newProps = new Properties();
         }
-
         this.propertiesInfoMap = newProps;
-        if ("true".equalsIgnoreCase(getInstProperty(ConnectionProperties.ENABLE_FAST_MOCK, "FALSE"))) {
-            ConfigDataMode.setMode(ConfigDataMode.Mode.FAST_MOCK);
-        }
     }
 
     @Override

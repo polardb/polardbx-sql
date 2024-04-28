@@ -22,6 +22,7 @@ import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.impl.Utf8Utils;
+import org.roaringbitmap.RoaringBitmap;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -48,12 +49,18 @@ public class VarcharTreeWriter extends StringBaseTreeWriter {
       if (vector.noNulls || !vector.isNull[0]) {
         // 0, length times
         writeTruncated(vec, 0, length);
+      } else {
+        //有null值更新
+        indexStatistics.updateNull();
       }
     } else {
       for(int i=0; i < length; ++i) {
         if (vec.noNulls || !vec.isNull[i + offset]) {
           // offset + i, once per loop
           writeTruncated(vec, i + offset, 1);
+        } else if (i == 0 || i == length - 1) {
+          //只用更新第一行和最后一行为null的情况
+          indexStatistics.updateNull();
         }
       }
     }
@@ -83,5 +90,19 @@ public class VarcharTreeWriter extends StringBaseTreeWriter {
       }
       bloomFilterUtf8.addBytes(vec.vector[row], vec.start[row], itemLength);
     }
+
+    updateBitmapIndexBuildingFlag();
+    if(bitmapIndexBuildingFlag){
+      // build bitmap index
+      bitmapIndexEntryMap.compute(new String(vec.vector[row], vec.start[row], itemLength),
+          (s, roaringBitmap) -> {
+            RoaringBitmap newVal = RoaringBitmap.bitmapOf(savedRowIndex.size());
+            if (roaringBitmap == null) {
+              return newVal;
+            }
+            return RoaringBitmap.or(roaringBitmap, newVal);
+          });
+    }
+
   }
 }

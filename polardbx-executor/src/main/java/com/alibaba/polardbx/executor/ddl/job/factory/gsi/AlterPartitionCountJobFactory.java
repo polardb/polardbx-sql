@@ -16,20 +16,17 @@
 
 package com.alibaba.polardbx.executor.ddl.job.factory.gsi;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.factory.util.FactoryUtils;
-import com.alibaba.polardbx.executor.ddl.job.task.basic.TruncateTablePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcRepartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterPartitionCountCutOverTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterPartitionCountSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.AlterPartitionCountValidateTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.RepartitionCutOverTask;
-import com.alibaba.polardbx.executor.ddl.job.task.gsi.RepartitionSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.ValidateTableVersionTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupsSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.executor.ddl.job.validator.ddl.RepartitionValidator;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlExceptionAction;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -123,7 +120,11 @@ public class AlterPartitionCountJobFactory extends DdlJobFactory {
             alterPartitionCountSyncTask = new AlterPartitionCountSyncTask(schemaName, primaryTableName, tableNameMap);
 
         // cdc
-        DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(schemaName, primaryTableName, SqlKind.ALTER_TABLE);
+        if (executionContext.getDdlContext().isSubJob()) {
+            throw new RuntimeException("unexpected parent ddl job");
+        }
+        DdlTask cdcDdlMarkTask = new CdcRepartitionMarkTask(
+            schemaName, primaryTableName, SqlKind.ALTER_TABLE, CdcDdlMarkVisibility.Protected);
 
         // drop gsi
         List<ExecutableDdlJob> dropGsiJobs = new ArrayList<>();

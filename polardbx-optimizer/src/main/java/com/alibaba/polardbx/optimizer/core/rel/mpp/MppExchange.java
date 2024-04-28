@@ -146,7 +146,8 @@ public class MppExchange extends Exchange {
         long rowSize = TableScanIOEstimator.estimateRowSize(getInput().getRowType());
         RelOptCostFactory costFactory = planner.getCostFactory();
         int parallelism =
-            PlannerContext.getPlannerContext(this).getParamManager().getInt(ConnectionParams.BROADCAST_SHUFFLE_PARALLELISM);
+            PlannerContext.getPlannerContext(this).getParamManager()
+                .getInt(ConnectionParams.BROADCAST_SHUFFLE_PARALLELISM);
         double cpuCost;
         switch (distribution.getType()) {
         case SINGLETON:

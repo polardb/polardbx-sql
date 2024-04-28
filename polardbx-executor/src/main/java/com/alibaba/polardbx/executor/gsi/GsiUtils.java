@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.gsi;
 
-import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -27,11 +24,13 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillObjectRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillRecord;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager.BackfillStatus;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -42,14 +41,16 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.TableType;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionLocation;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.meta.ShardFunctionMeta;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Maps;
 import org.apache.calcite.sql.SqlAddColumn;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
@@ -69,6 +70,7 @@ import org.apache.calcite.sql.SqlInsert;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.parser.SqlParserPos;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 
@@ -84,6 +86,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -141,6 +144,83 @@ public class GsiUtils {
             }
             return phyTables;
         }
+    }
+
+    public static Map<String, List<String>> getPhyTablesDrdsOrderByName(String schemaName, String logicalTableName) {
+        TableRule tableRule =
+            OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
+        if (tableRule != null) {
+            Map<String, Set<String>> topology = tableRule.getActualTopology();
+            Map<String, List<String>> ret = new HashMap<>(topology.size());
+            topology.forEach((groupKey, phyTables) -> {
+                Set<String> tables = new TreeSet<>(String::compareToIgnoreCase);
+                tables.addAll(phyTables);
+                ret.put(groupKey, new ArrayList<>(tables));
+            });
+            return ret;
+        } else {
+            Map<String, List<String>> topology = new HashMap<>(1);
+            List<String> groupTopology = new ArrayList<>(1);
+            groupTopology.add(logicalTableName);
+            topology
+                .put(OptimizerContext.getContext(schemaName).getRuleManager().getDefaultDbIndex(logicalTableName),
+                    groupTopology);
+            return topology;
+        }
+    }
+
+    public static Map<String, String> getPhysicalTableMapping(String schemaName, String primaryTableName,
+                                                              String indexName, PhysicalPlanData physicalPlanData,
+                                                              PartitionInfo idxPartitionInfo) {
+        Map<String, String> phyTableMapping = new HashMap<>();
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(primaryTableName);
+        if (partitionInfo == null) {
+            Map<String, List<String>> sourceTopology = getPhyTablesDrdsOrderByName(schemaName, primaryTableName);
+            Map<String, List<String>> targetTopology;
+            if (indexName == null) {
+                targetTopology = new HashMap<>();
+                Map<String, List<List<String>>> topology = physicalPlanData.getTableTopology();
+                topology.forEach((groupKey, phyTablesList) -> {
+                    Set<String> tables = new TreeSet<>(String::compareToIgnoreCase);
+                    for (List<String> phyTables : phyTablesList) {
+                        tables.addAll(phyTables);
+                    }
+                    targetTopology.put(groupKey, new ArrayList<>(tables));
+                });
+            } else {
+                targetTopology = getPhyTablesDrdsOrderByName(schemaName, indexName);
+            }
+
+            for (Map.Entry<String, List<String>> sourceEntry : sourceTopology.entrySet()) {
+                String groupKey = sourceEntry.getKey();
+                List<String> sourcePhyTables = sourceEntry.getValue();
+                List<String> targetPhyTables = targetTopology.get(groupKey);
+
+                for (int i = 0; i < sourcePhyTables.size(); ++i) {
+                    phyTableMapping.put(sourcePhyTables.get(i), targetPhyTables.get(i));
+                }
+            }
+        } else {
+            PartitionInfo indexPartitionInfo =
+                indexName == null ? idxPartitionInfo :
+                    OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(indexName);
+
+            for (PartitionSpec spec : partitionInfo.getPartitionBy().getPhysicalPartitions()) {
+                PartitionLocation location = spec.getLocation();
+                String phyTbName = location.getPhyTableName();
+                String partitionName = spec.getName();
+
+                for (PartitionSpec indexSpec : indexPartitionInfo.getPartitionBy().getPhysicalPartitions()) {
+                    if (StringUtils.equalsIgnoreCase(partitionName, indexSpec.getName())) {
+                        phyTableMapping.put(phyTbName, indexSpec.getLocation().getPhyTableName());
+                        break;
+                    }
+                }
+            }
+        }
+
+        return phyTableMapping;
     }
 
     /**
@@ -285,7 +365,8 @@ public class GsiUtils {
                 indexComment,
                 seqInIndex,
                 column,
-                indexDef.isClustered()));
+                indexDef.isClustered(),
+                indexDef.isColumnar()));
             seqInIndex++;
         }
 
@@ -361,7 +442,8 @@ public class GsiUtils {
                 indexComment,
                 seqInIndex,
                 column,
-                createIndex.createClusteredIndex()));
+                createIndex.createClusteredIndex(),
+                createIndex.createCci()));
             seqInIndex++;
         }
 
@@ -411,11 +493,11 @@ public class GsiUtils {
                 indexTableName,
                 indexTableName,
                 nullable(columnDefMap, columnName),
-                "NULL",
+                null,
                 1,
                 indexStatus,
                 0,
-                "NULL",
+                "",
                 seqInIndex,
                 columnName));
             seqInIndex++;
@@ -439,11 +521,40 @@ public class GsiUtils {
                 indexTableName,
                 indexTableName,
                 nullable(primaryTableMeta, columnName),
-                "NULL",
+                null,
                 1,
                 indexStatus,
                 0,
-                "NULL",
+                "",
+                seqInIndex,
+                columnName));
+            seqInIndex++;
+        }
+        return indexRecords;
+    }
+
+    public static List<IndexRecord> buildIndexMetaByAddColumns(List<String> columnNames,
+                                                               String schemaName,
+                                                               String tableName,
+                                                               String indexTableName,
+                                                               int seqInIndex,
+                                                               IndexStatus indexStatus,
+                                                               Map<String, String> isNullable) {
+        final List<IndexRecord> indexRecords = new ArrayList<>();
+        final String catalog = DEFAULT_CATALOG;
+
+        for (String columnName : columnNames) {
+            indexRecords.add(indexCoveringRecord(catalog,
+                schemaName,
+                tableName,
+                indexTableName,
+                indexTableName,
+                isNullable.get(columnName).equals("YES") ? "YES" : "",
+                null,
+                1,
+                indexStatus,
+                0,
+                "",
                 seqInIndex,
                 columnName));
             seqInIndex++;
@@ -468,11 +579,11 @@ public class GsiUtils {
                 indexTableName,
                 indexTableName,
                 nullable ? "YES" : "",
-                "NULL",
+                null,
                 1,
                 indexStatus,
                 0,
-                "NULL",
+                "",
                 seqInIndex,
                 columnName));
             seqInIndex++;
@@ -489,7 +600,10 @@ public class GsiUtils {
                                                  String indexComment,
                                                  String indexType,
                                                  IndexStatus indexStatus,
-                                                 boolean clusteredIndex) {
+                                                 boolean clusteredIndex,
+                                                 boolean columnarIndex,
+                                                 Map<String, String> columnMapping,
+                                                 List<String> addNewColumns) {
 
         final String catalog = DEFAULT_CATALOG;
         final String schema = sourceTableMeta.getSchemaName();
@@ -502,13 +616,21 @@ public class GsiUtils {
         int seqInIndex = 1;
         // index columns
         for (String column : columns) {
+            if (addNewColumns != null && addNewColumns.contains(column.toLowerCase())) {
+                // 过滤掉 add column
+                continue;
+            }
+            String oldColumn = column;
+            if (columnMapping != null && !columnMapping.isEmpty() && columnMapping.containsKey(column.toLowerCase())) {
+                oldColumn = columnMapping.get(column.toLowerCase());
+            }
             indexRecords.add(indexColumnRecord(catalog,
                 schema,
                 tableName,
                 nonUnique,
                 indexName,
                 indexTableName,
-                nullable(sourceTableMeta, column),
+                nullable(sourceTableMeta, oldColumn),
                 indexType,
                 indexLocation,
                 indexStatus,
@@ -516,19 +638,29 @@ public class GsiUtils {
                 indexComment,
                 seqInIndex,
                 column,
-                clusteredIndex));
+                clusteredIndex,
+                columnarIndex));
             seqInIndex++;
         }
 
         if (null != covering) {
             // covering columns
             for (String column : covering) {
+                if (addNewColumns != null && addNewColumns.contains(column.toLowerCase())) {
+                    // 过滤掉 add column
+                    continue;
+                }
+                String oldColumn = column;
+                if (columnMapping != null && !columnMapping.isEmpty() && columnMapping.containsKey(
+                    column.toLowerCase())) {
+                    oldColumn = columnMapping.get(column.toLowerCase());
+                }
                 indexRecords.add(indexCoveringRecord(catalog,
                     schema,
                     tableName,
                     indexName,
                     indexTableName,
-                    nullable(sourceTableMeta, column),
+                    nullable(sourceTableMeta, oldColumn),
                     indexType,
                     indexLocation,
                     indexStatus,
@@ -677,12 +809,20 @@ public class GsiUtils {
                                                  String indexName, String indexTableName, String nullable,
                                                  String indexType, int indexLocation, IndexStatus indexStatus,
                                                  long version, String indexComment, int seqInIndex,
-                                                 SqlIndexColumnName column, boolean clusteredIndex) {
+                                                 SqlIndexColumnName column, boolean clusteredIndex,
+                                                 boolean columnarIndex) {
         final String columnName = column.getColumnNameStr();
         final String collation = null == column.isAsc() ? null : (column.isAsc() ? "A" : "D");
         final Long subPart = null == column.getLength() ? null : (RelUtils.longValue(column.getLength()));
         final String packed = null;
         final String comment = "INDEX";
+        long flag = 0L;
+        if (clusteredIndex) {
+            flag |= IndexesRecord.FLAG_CLUSTERED;
+        }
+        if (columnarIndex) {
+            flag |= IndexesRecord.FLAG_COLUMNAR;
+        }
         return new IndexRecord(-1,
             catalog,
             schema,
@@ -705,7 +845,7 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            flag,
             IndexVisibility.VISIBLE.getValue());
     }
 
@@ -713,11 +853,18 @@ public class GsiUtils {
                                                  String indexName, String indexTableName, String nullable,
                                                  String indexType, int indexLocation, IndexStatus indexStatus,
                                                  long version, String indexComment, int seqInIndex,
-                                                 String columnName, boolean clusteredIndex) {
+                                                 String columnName, boolean clusteredIndex, boolean columnarIndex) {
         final String collation = null;
         final Long subPart = null;
         final String packed = null;
         final String comment = "INDEX";
+        long flag = 0L;
+        if (clusteredIndex) {
+            flag |= IndexesRecord.FLAG_CLUSTERED;
+        }
+        if (columnarIndex) {
+            flag |= IndexesRecord.FLAG_COLUMNAR;
+        }
         return new IndexRecord(-1,
             catalog,
             schema,
@@ -740,7 +887,7 @@ public class GsiUtils {
             indexTableName,
             indexStatus.getValue(),
             version,
-            clusteredIndex ? IndexesRecord.FLAG_CLUSTERED : 0L,
+            flag,
             IndexVisibility.VISIBLE.getValue());
     }
 
@@ -1006,5 +1153,25 @@ public class GsiUtils {
             RandomStringUtils.randomAlphanumeric(RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME).toLowerCase();
         String targetTableName = logicalSourceTableName + "_" + randomSuffix;
         return targetTableName;
+    }
+
+    public static List<String> columnAst2nameStr(List<SqlIndexColumnName> columnDefList) {
+        if (CollectionUtils.isEmpty(columnDefList)) {
+            return new ArrayList<>();
+        }
+        return columnDefList.stream()
+            .map(SqlIndexColumnName::getColumnNameStr)
+            .collect(Collectors.toList());
+    }
+
+    public static boolean isAddCci(SqlNode sqlNode, SqlAlterTable sqlAlterTable) {
+        boolean result = false;
+        if (sqlNode instanceof SqlCreateIndex) {
+            result = ((SqlCreateIndex) sqlNode).createCci();
+        } else if (sqlNode instanceof SqlAlterTable || sqlNode instanceof SqlCreateTable) {
+            final SqlAddIndex addIndex = (SqlAddIndex) sqlAlterTable.getAlters().get(0);
+            result = addIndex.isColumnarIndex();
+        }
+        return result;
     }
 }

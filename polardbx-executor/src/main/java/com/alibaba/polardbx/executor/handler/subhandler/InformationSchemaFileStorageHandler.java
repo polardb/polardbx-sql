@@ -49,16 +49,16 @@ public class InformationSchemaFileStorageHandler extends BaseVirtualViewSubClass
                     group.getMaster().getWorkingDirectory(),
                     engine,
                     "MASTER",
-                    FileSystemManager.getReadLockCount(engine),
-                    FileSystemManager.isWriteLocked(engine) ? 1 : 0
+                    0,
+                    0
                 });
                 for (FileSystem slave : group.getSlaves()) {
                     cursor.addRow(new Object[] {
                         slave.getWorkingDirectory(),
                         engine,
                         "SLAVE",
-                        FileSystemManager.getReadLockCount(engine),
-                        FileSystemManager.isWriteLocked(engine) ? 1 : 0
+                        0,
+                        0
                     });
                 }
             }

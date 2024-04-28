@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.Chunk;
+import com.google.common.base.Preconditions;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;

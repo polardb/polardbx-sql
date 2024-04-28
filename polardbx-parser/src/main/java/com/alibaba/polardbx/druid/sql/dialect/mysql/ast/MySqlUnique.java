@@ -72,8 +72,20 @@ public class MySqlUnique extends MySqlKey {
         return indexDefinition.isClustered();
     }
 
+    public boolean isColumnar() {
+        return indexDefinition.isColumnar();
+    }
+
     public void setClustered(boolean clustered) {
         indexDefinition.setClustered(clustered);
+    }
+
+    public void setColumnar(boolean columnar) {
+        indexDefinition.setColumnar(columnar);
+    }
+
+    public void setDictionaryColumns(String dictionaryColumns) {
+        indexDefinition.getOptions().setDictionaryColumns(dictionaryColumns);
     }
 
     public SQLExpr getTablePartitions() {
@@ -98,13 +110,5 @@ public class MySqlUnique extends MySqlKey {
 
     public SQLPartitionBy getPartitioning() {
         return this.indexDefinition.getPartitioning();
-    }
-
-    public SQLName getTableGroup() {
-        return this.indexDefinition.getTableGroup();
-    }
-
-    public void setTableGroup(SQLName tableGroup) {
-        this.indexDefinition.setTableGroup(tableGroup);
     }
 }

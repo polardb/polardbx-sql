@@ -33,10 +33,13 @@ import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineStats;
 import com.alibaba.polardbx.executor.ddl.newengine.cross.CrossEngineValidator;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
-import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
+import com.alibaba.polardbx.executor.ddl.workqueue.PriorityFIFOTask;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.OrderByOption;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
@@ -45,9 +48,12 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
+import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PhyTableOperation;
 import com.alibaba.polardbx.optimizer.core.row.ArrayRow;
 import com.alibaba.polardbx.optimizer.core.row.Row;
@@ -58,6 +64,7 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import com.google.common.util.concurrent.RateLimiter;
 import lombok.Data;
 import org.apache.calcite.rel.RelFieldCollation;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.collections.MapUtils;
 
@@ -89,6 +96,10 @@ public class ChangeSetManager {
     private final String schemaName;
 
     private final ChangeSetMetaManager changeSetMetaManager;
+
+    private List<String> sourceTableColumns;
+    private List<String> targetTableColumns;
+    private List<String> notUsingBinaryStringColumns;
 
     // speed ctl
     private volatile RateLimiter rateLimiter;
@@ -143,6 +154,14 @@ public class ChangeSetManager {
             return;
         }
 
+        originEc = HandlerCommon.setChangeSetApplySqlMode(originEc.copy());
+        final boolean useBinary = originEc.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
+        if (!useBinary) {
+            HandlerCommon.upgradeEncoding(originEc, schemaName, logicalTableName);
+        }
+
+        prepareColumns(originEc, logicalTableName, indexName);
+
         changeSetMetaManager.getChangeSetReporter().loadChangeSetMeta(changeSetId);
 
         if (status == ChangeSetCatchUpStatus.ABSENT) {
@@ -157,20 +176,23 @@ public class ChangeSetManager {
         this.throttle = new com.alibaba.polardbx.executor.backfill.Throttle(speedMin, speedLimit, schemaName);
 
         List<Future> futures = new ArrayList<>(16);
+        // interrupted
+        AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
 
         SQLRecorderLogger.ddlLogger.warn(
             MessageFormat.format("[{0}] ChangeSet Fetch job: {1} start with {2} phyTable(s).",
                 originEc.getTraceId(), changeSetId, sourcePhyTableNames.size()));
 
         AtomicReference<Exception> excep = new AtomicReference<>(null);
+        ExecutionContext finalOriginEc = originEc;
         sourcePhyTableNames.forEach((sourceGroupName, phyTableNames) -> {
             for (String phyTableName : phyTableNames) {
                 FutureTask<Void> task = new FutureTask<>(
                     () -> migrateTableCatchup(
-                        schemaName, logicalTableName,
+                        schemaName, logicalTableName, indexName,
                         sourceGroupName, phyTableName,
                         targetTableLocations,
-                        taskType, status, originEc
+                        taskType, status, finalOriginEc, interrupted
                     ), null);
                 futures.add(task);
                 ChangeSetThreadPool.getInstance()
@@ -192,15 +214,11 @@ public class ChangeSetManager {
             try {
                 future.get();
             } catch (Exception e) {
-                futures.forEach(f -> {
-                    try {
-                        f.cancel(true);
-                    } catch (Throwable ignore) {
-                    }
-                });
                 if (null == excep.get()) {
                     excep.set(e);
                 }
+
+                interrupted.set(true);
             }
         }
 
@@ -342,11 +360,12 @@ public class ChangeSetManager {
      * sourceGroup1[physicalTableP1] --> targetGroup2[physicalTableP2] & targetGroup3[physicalTableP3]
      * eg: WUMU_P00000[tbl_xxxx_00000] --> WUMU_P00001[tbl_xxxx_00001] & WUMU_P00002[tbl_xxxx_00002]
      */
-    public void migrateTableCatchup(String schema, String logicalTableName,
+    public void migrateTableCatchup(String schema, String logicalTableName, String indexName,
                                     String sourceGroup, String sourceTable,
                                     Map<String, String> targetTableLocations,
                                     ComplexTaskMetaManager.ComplexTaskType taskType,
-                                    ChangeSetCatchUpStatus status, ExecutionContext originEc) {
+                                    ChangeSetCatchUpStatus status, ExecutionContext originEc,
+                                    AtomicReference<Boolean> interrupted) {
         LOG.info(String.format("migrate table catch up %s.%s", schema, logicalTableName));
 
         ExecutionContext ec = originEc.copy();
@@ -359,7 +378,7 @@ public class ChangeSetManager {
         final String targetPhysicalDb = GroupInfoUtil.buildPhysicalDbNameFromGroupName(groupAndPhyTable.getKey());
 
         ChangeSetMeta meta = new ChangeSetMeta(
-            schema, logicalTableName, null,
+            schema, logicalTableName, indexName,
             sourceGroup, groupAndPhyTable.getKey(),
             physicalDb, targetPhysicalDb,
             sourceTable, groupAndPhyTable.getValue(),
@@ -375,17 +394,23 @@ public class ChangeSetManager {
         ChangeSetData data = new ChangeSetData(meta);
         ChangeSetTask task = new ChangeSetTask(data, params);
 
+        // 判断是否已经完成
+        if (changeSetMetaManager.getChangeSetReporter().isFinished(sourceGroup, sourceTable)) {
+            LOG.info(String.format("move table task %s is already completed", task));
+            return;
+        }
+
         try {
             changeSetMetaManager.getChangeSetReporter().updateCatchUpStart(sourceGroup, sourceTable);
             if (status.isWriteOnly()) {
                 task.setTaskStatus(ChangeSetTaskStatus.CATCHUP_WO);
-                catchUpOnce(ec, task, status);
+                catchUpOnce(ec, task, status, interrupted);
             } else if (status.isDeleteOnly()) {
                 task.setTaskStatus(ChangeSetTaskStatus.CATCHUP_DO);
-                catchUpOnce(ec, task, status);
+                catchUpOnce(ec, task, status, interrupted);
             } else {
                 task.setTaskStatus(ChangeSetTaskStatus.CATCHUP);
-                catchUpByChangeSet(ec, task, status);
+                catchUpByChangeSet(ec, task, status, interrupted);
             }
             if (status == ChangeSetCatchUpStatus.WRITE_ONLY_FINAL) {
                 task.setTaskStatus(ChangeSetTaskStatus.FINISH);
@@ -398,7 +423,7 @@ public class ChangeSetManager {
             throw e;
         }
 
-        LOG.info(String.format("finish move table task %s", task));
+        LOG.info(String.format("finish catch up task %s", task));
     }
 
     /**
@@ -486,14 +511,15 @@ public class ChangeSetManager {
 
     }
 
-    private void catchUpByChangeSet(ExecutionContext ec, ChangeSetTask task, ChangeSetCatchUpStatus status) {
+    private void catchUpByChangeSet(ExecutionContext ec, ChangeSetTask task, ChangeSetCatchUpStatus status,
+                                    AtomicReference<Boolean> interrupted) {
         LOG.info(String.format("changeset %s start catchup", task));
 
         int count = 0;
         int replayTimes = task.getParams().getReplayTimes();
 
         while (count != replayTimes) {
-            if (!catchUpOnce(ec, task, status)) {
+            if (!catchUpOnce(ec, task, status, interrupted)) {
                 break;
             }
             count++;
@@ -502,7 +528,8 @@ public class ChangeSetManager {
         LOG.info(String.format("changeset %s finish catchup, times : %d", task, count));
     }
 
-    private boolean catchUpOnce(ExecutionContext ec, ChangeSetTask task, ChangeSetCatchUpStatus status) {
+    private boolean catchUpOnce(ExecutionContext ec, ChangeSetTask task, ChangeSetCatchUpStatus status,
+                                AtomicReference<Boolean> interrupted) {
         int count = 0;
         boolean res = true;
         int changeSetTimes = getFetchChangeSetTimes(ec, task);
@@ -519,7 +546,7 @@ public class ChangeSetManager {
             replayChangeSet(ec, task, !status.isAbsent());
 
             // interrupt
-            if (CrossEngineValidator.isJobInterrupted(ec) || Thread.currentThread().isInterrupted()) {
+            if (CrossEngineValidator.isJobInterrupted(ec) || interrupted.get()) {
                 long jobId = ec.getDdlJobId();
                 throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
                     "The job '" + jobId + "' has been cancelled");
@@ -697,6 +724,39 @@ public class ChangeSetManager {
         futures.clear();
     }
 
+    private void prepareColumns(ExecutionContext ec, String tableName, String indexName) {
+        final SchemaManager sm = ec.getSchemaManager();
+        final TableMeta baseTableMeta = sm.getTable(tableName);
+        final TableMeta targetTableMeta = indexName == null ? sm.getTable(tableName) : sm.getTable(indexName);
+
+        Map<String, String> columnMultiWriteMapping =
+            TableColumnUtils.getColumnMultiWriteMapping(targetTableMeta.getTableColumnMeta());
+        boolean isModify = MapUtils.isNotEmpty(columnMultiWriteMapping);
+
+        List<String> targetTableColumns = new ArrayList<>();
+        List<String> sourceTableColumns = new ArrayList<>();
+        List<String> notUsingBinaryStringColumns = new ArrayList<>();
+        for (ColumnMeta columnMeta : baseTableMeta.getWriteColumns()) {
+            String columnName = columnMeta.getName();
+            if (targetTableMeta.containsColumn(columnName)) {
+                if (isModify && columnMultiWriteMapping.get(columnName.toLowerCase()) != null) {
+                    targetTableColumns.add(columnMultiWriteMapping.get(columnName.toLowerCase()));
+                    DataType dataType = columnMeta.getDataType();
+                    if (DataTypeUtil.isStringType(dataType)) {
+                        notUsingBinaryStringColumns.add(columnName);
+                    }
+                } else {
+                    targetTableColumns.add(columnName);
+                }
+                sourceTableColumns.add(columnName);
+            }
+        }
+
+        setSourceTableColumns(sourceTableColumns);
+        setTargetTableColumns(targetTableColumns);
+        setNotUsingBinaryStringColumns(notUsingBinaryStringColumns);
+    }
+
     public PhyTableOperation genPhySelectPlan(ExecutionContext ec, ChangeSetTask task, List<Row> rowPks, boolean lock) {
         final ChangeSetMeta meta = task.getData().getMeta();
 
@@ -705,6 +765,8 @@ public class ChangeSetManager {
             meta.getSourceTableName(),
             meta.getSourceGroup(),
             meta.getSourcePhysicalTable(),
+            sourceTableColumns,
+            notUsingBinaryStringColumns,
             rowPks,
             ec,
             lock
@@ -718,7 +780,7 @@ public class ChangeSetManager {
 
         start = System.currentTimeMillis();
 
-        Parameters parameters = ChangeSetUtils.executePhySelectPlan(selectPlan, ec);
+        Parameters parameters = ChangeSetUtils.executePhySelectPlan(selectPlan, notUsingBinaryStringColumns, ec);
 
         end = System.currentTimeMillis();
 
@@ -772,8 +834,10 @@ public class ChangeSetManager {
         PhyTableOperation replacePlan = ChangeSetUtils.buildReplace(
             meta.getSchemaName(),
             meta.getSourceTableName(),
+            meta.getTargetTableName(),
             targetGroup,
             targetPhyTable,
+            targetTableColumns,
             parameters,
             ec
         );
@@ -1240,12 +1304,26 @@ public class ChangeSetManager {
         @Override
         public String toString() {
             ChangeSetMeta meta = getData().getMeta();
-            return String.format("ChangeSetTask{Table=%s, taskStatus=%s, phyTableName:%s}",
-                meta.getChangeSetName(), taskStatus, meta.getSourcePhysicalTable());
+            return String.format(
+                "ChangeSetTask{Table=%s, targetTable=%s, taskStatus=%s, sourcePhyTableName=%s, taskType=%s}",
+                meta.getChangeSetName(), meta.getTargetTableName(), taskStatus, meta.getSourcePhysicalTable(),
+                meta.getTaskType());
         }
     }
 
     public static Long getChangeSetId() {
         return ID_GENERATOR.nextId();
+    }
+
+    public void setSourceTableColumns(List<String> sourceTableColumns) {
+        this.sourceTableColumns = sourceTableColumns;
+    }
+
+    public void setTargetTableColumns(List<String> targetTableColumns) {
+        this.targetTableColumns = targetTableColumns;
+    }
+
+    public void setNotUsingBinaryStringColumns(List<String> notUsingBinaryStringColumns) {
+        this.notUsingBinaryStringColumns = notUsingBinaryStringColumns;
     }
 }

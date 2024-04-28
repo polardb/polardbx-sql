@@ -27,6 +27,13 @@ import java.util.Optional;
 
 public interface CollationHandler {
 
+    byte WILD_MANY = '%';
+    byte WILD_ONE = '_';
+    byte ESCAPE = '\\';
+
+    /**
+     * Set to true if the strings should be regarded as different if they only difference in end space
+     */
     boolean DIFF_IF_ONLY_END_SPACE_DIFFERENCE = false;
 
     long INIT_HASH_VALUE_1 = 1l;

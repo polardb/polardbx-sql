@@ -46,6 +46,9 @@ public class Schema {
     private final SchemaRepository repository;
     private final SchemaObjectStore store;
 
+    private String characterSet;
+    private String collate;
+
     protected Schema(SchemaRepository repository) {
         this(repository, null);
     }
@@ -102,6 +105,7 @@ public class Schema {
     }
 
     public SchemaObject findTable(String tableName) {
+        tableName = SQLUtils.normalize(tableName);
         long hashCode64 = FnvHash.hashCode64(tableName);
         return findTable(hashCode64);
     }
@@ -392,5 +396,21 @@ public class Schema {
 
     public SchemaObjectStore getStore() {
         return store;
+    }
+
+    public String getCharacterSet() {
+        return characterSet;
+    }
+
+    public void setCharacterSet(String characterSet) {
+        this.characterSet = characterSet;
+    }
+
+    public String getCollate() {
+        return collate;
+    }
+
+    public void setCollate(String collate) {
+        this.collate = collate;
     }
 }

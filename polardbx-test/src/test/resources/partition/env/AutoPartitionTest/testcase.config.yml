@@ -36,3 +36,6 @@ test_drop_index3
 test_no_name_index
 test_index_name
 test_add_global_index
+test_alter_table_drop_modify_col
+test_avg_row_length
+test_bool_column

@@ -18,6 +18,40 @@
 
 package org.apache.orc.impl;
 
+import com.google.protobuf.CodedInputStream;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.util.JavaDataModel;
+import org.apache.hadoop.io.Text;
+import org.apache.orc.ColumnStatistics;
+import org.apache.orc.CompressionCodec;
+import org.apache.orc.CompressionKind;
+import org.apache.orc.DataMaskDescription;
+import org.apache.orc.EncryptionAlgorithm;
+import org.apache.orc.EncryptionKey;
+import org.apache.orc.EncryptionVariant;
+import org.apache.orc.FileFormatException;
+import org.apache.orc.FileMetadata;
+import org.apache.orc.OrcConf;
+import org.apache.orc.OrcFile;
+import org.apache.orc.OrcProto;
+import org.apache.orc.OrcUtils;
+import org.apache.orc.Reader;
+import org.apache.orc.RecordReader;
+import org.apache.orc.StripeInformation;
+import org.apache.orc.StripeStatistics;
+import org.apache.orc.TypeDescription;
+import org.apache.orc.UnknownFormatException;
+import org.apache.orc.UserMetadataUtil;
+import org.apache.orc.customized.ORCMemoryAllocator;
+import org.apache.orc.impl.reader.ReaderEncryption;
+import org.apache.orc.impl.reader.ReaderEncryptionVariant;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.Key;
@@ -25,40 +59,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
-
-import org.apache.orc.EncryptionAlgorithm;
-import org.apache.orc.EncryptionKey;
-import org.apache.orc.CompressionKind;
-import org.apache.orc.DataMaskDescription;
-import org.apache.orc.EncryptionVariant;
-import org.apache.orc.FileMetadata;
-import org.apache.orc.OrcConf;
-import org.apache.orc.OrcFile;
-import org.apache.orc.OrcUtils;
-import org.apache.orc.Reader;
-import org.apache.orc.RecordReader;
-import org.apache.orc.TypeDescription;
-import org.apache.orc.ColumnStatistics;
-import org.apache.orc.CompressionCodec;
-import org.apache.orc.FileFormatException;
-import org.apache.orc.StripeInformation;
-import org.apache.orc.StripeStatistics;
-import org.apache.orc.UnknownFormatException;
-import org.apache.orc.impl.reader.ReaderEncryption;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.hive.ql.util.JavaDataModel;
-import org.apache.hadoop.io.Text;
-import org.apache.orc.OrcProto;
-
-import com.google.protobuf.CodedInputStream;
-import org.apache.orc.impl.reader.ReaderEncryptionVariant;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ReaderImpl implements Reader {
 
@@ -87,10 +89,13 @@ public class ReaderImpl implements Reader {
   private long deserializedSize = -1;
   protected final Configuration conf;
   protected final boolean useUTCTimestamp;
+  protected final boolean useDecimal64;
   private final List<Integer> versionList;
   private final OrcFile.WriterVersion writerVersion;
 
   protected final OrcTail tail;
+
+  protected final Consumer<Integer> rateLimiter;
 
   public static class StripeInformationImpl
       implements StripeInformation {
@@ -224,6 +229,16 @@ public class ReaderImpl implements Reader {
       }
     }
     throw new IllegalArgumentException("Can't find user metadata " + key);
+  }
+
+  public String getMetadataValueStr(String key) {
+    for(OrcProto.UserMetadataItem item: userMetadata) {
+      if (item.hasName() && item.getName().equals(key)) {
+        ByteBuffer byteBuffer = item.getValue().asReadOnlyByteBuffer();
+        return UserMetadataUtil.decodeValue(byteBuffer);
+      }
+    }
+    return null;
   }
 
   public boolean hasMetadataValue(String key) {
@@ -529,6 +544,7 @@ public class ReaderImpl implements Reader {
     this.maxLength = options.getMaxLength();
     this.useUTCTimestamp = options.getUseUTCTimestamp();
     FileMetadata fileMetadata = options.getFileMetadata();
+    this.rateLimiter = options.getRateLimiter();
     if (fileMetadata != null) {
       this.compressionKind = fileMetadata.getCompressionKind();
       this.bufferSize = fileMetadata.getCompressionBufferSize();
@@ -548,7 +564,7 @@ public class ReaderImpl implements Reader {
       this.fileStats = fileMetadata.getFileStats();
       this.stripes = fileMetadata.getStripes();
       this.tail = null;
-      this.userMetadata = null; // not cached and not needed here
+      this.userMetadata = new ArrayList<>(); // not cached and not needed here
       // FileMetadata is obsolete and doesn't support encryption
       this.encryption = new ReaderEncryption();
     } else {
@@ -576,6 +592,8 @@ public class ReaderImpl implements Reader {
       this.encryption = new ReaderEncryption(tail.getFooter(), schema,
           tail.getStripeStatisticsOffset(), tail.getTailBuffer(), stripes, options.getKeyProvider(), conf);
     }
+    this.useDecimal64 = UserMetadataUtil.parseBooleanValue(
+        getMetadataValueStr(UserMetadataUtil.ENABLE_DECIMAL_64), false);
     this.types = OrcUtils.getOrcTypes(schema);
   }
 
@@ -684,7 +702,7 @@ public class ReaderImpl implements Reader {
     while (chunks != null) {
       if (!chunks.hasData()) {
         int len = chunks.getLength();
-        ByteBuffer bb = ByteBuffer.allocate(len);
+        ByteBuffer bb = ORCMemoryAllocator.getInstance().allocateOnHeap(len);
         file.readFully(chunks.getOffset(), bb.array(), bb.arrayOffset(), len);
         chunks.setChunk(bb);
       }
@@ -749,6 +767,9 @@ public class ReaderImpl implements Reader {
     OrcProto.FileTail.Builder fileTailBuilder = OrcProto.FileTail.newBuilder();
     long modificationTime;
     file = fs.open(path);
+    if (rateLimiter != null) {
+      file = new FSDataInputStreamRateLimiter(file, rateLimiter);
+    }
     try {
       // figure out the size of the file using the option or filesystem
       long size;
@@ -1114,5 +1135,13 @@ public class ReaderImpl implements Reader {
     FSDataInputStream result = file;
     file = null;
     return result;
+  }
+
+  public Consumer<Integer> getRateLimiter() {
+    return rateLimiter;
+  }
+
+  public boolean getReadStripeByRowGroup() {
+    return options.getReadStripeByRowGroup();
   }
 }

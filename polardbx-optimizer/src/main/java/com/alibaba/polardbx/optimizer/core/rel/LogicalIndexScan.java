@@ -17,11 +17,9 @@
 package com.alibaba.polardbx.optimizer.core.rel;
 
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelTraitSet;
-import org.apache.calcite.prepare.RelOptTableImpl;
 import org.apache.calcite.rel.RelInput;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.TableScan;
@@ -41,6 +39,7 @@ public class LogicalIndexScan extends LogicalView {
     public LogicalIndexScan(RelNode rel, RelOptTable table, SqlNodeList hints, LockMode lockMode, RexNode flashback) {
         super(rel, table, hints, lockMode, null);
         this.flashback = flashback;
+        this.pushDownOpt.calculateRowType();
     }
 
     public LogicalIndexScan(LogicalView logicalView) {

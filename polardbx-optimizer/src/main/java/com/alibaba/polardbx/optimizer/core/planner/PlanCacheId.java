@@ -20,7 +20,6 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 
 /**
  * @author chenghui.lch
- * @date 2019/7/21 下午6:19
  */
 public class PlanCacheId {
 

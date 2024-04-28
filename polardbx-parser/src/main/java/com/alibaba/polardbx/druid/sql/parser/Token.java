@@ -130,6 +130,7 @@ public enum Token {
     INTERVAL("INTERVAL"),
 
     LOCK("LOCK"),
+    UNLOCK("UNLOCK"),
     SOME("SOME"),
     ANY("ANY"),
     TRUNCATE("TRUNCATE"),

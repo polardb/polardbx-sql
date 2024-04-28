@@ -19,14 +19,17 @@ package com.alibaba.polardbx.qatest.dql.auto.infoschema;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import org.apache.commons.lang.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -549,6 +552,62 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
         }
     }
 
+    @Test
+    public void testGlobalIndexesCaseSensitive() {
+        final String tableName = "test_information_schema_global_indexes_cs";
+        final String dropSql = "DROP TABLE IF EXISTS ";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql + tableName);
+
+        try {
+            String sql = "";
+
+            String createTblSql = "";
+            String createGsiSql = "";
+            if (!usingNewPartDb()) {
+
+                // create a table with a GSI
+                createTblSql = "CREATE TABLE " + tableName + " ( "
+                    + "id int, g1 int, g2 int, c1 int, c2 int, PRIMARY KEY (id), "
+                    + "GLOBAL INDEX g_gGgGgG1(g1) COVERING (c1) DBPARTITION BY HASH(g1) "
+                    + ") DBPARTITION by hash(id)";
+
+                // create another GSI for this table
+                createGsiSql =
+                    "CREATE GLOBAL INDEX g_gGgGgG2 ON " + tableName + " (g2) COVERING (c1, c2) DBPARTITION by HASH(g2)";
+
+            } else {
+                // create a table with a GSI
+                createTblSql = "CREATE TABLE " + tableName + " ( "
+                    + "id int, g1 int, g2 int, c1 int, c2 int, PRIMARY KEY (id), "
+                    + "GLOBAL INDEX g_gGgGgG1(g1) COVERING (c1) PARTITION BY KEY(g1) "
+                    + "PARTITIONS 3"
+                    + ") PARTITION by key(id) PARTITIONS 3";
+
+                // create another GSI for this table
+                createGsiSql = "CREATE GLOBAL INDEX g_gGgGgG2 ON " + tableName
+                    + " (g2) COVERING (c1, c2) PARTITION by KEY(g2) PARTITIONS 3";
+            }
+
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createTblSql);
+            JdbcUtil.executeUpdateSuccess(tddlConnection, createGsiSql);
+
+            // insert some data to make GSI size > 0
+            for (int i = 0; i < 100; i++) {
+                sql = String.format("INSERT INTO %s(id, g1, g2, c1, c2) VALUES (%d, %d, %d, %d, %d)",
+                    tableName, i, i, i, i, i);
+                JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+            }
+
+            checkGlobalIndexes(tableName, "g_gGgGgG1", ImmutableList.of("g1"), ImmutableList.of("id", "c1"));
+            checkGlobalIndexes(tableName, "g_gGgGgG2", ImmutableList.of("g2"), ImmutableList.of("id", "c2"));
+            checkGlobalIndexes(tableName, "g_gggggg1", ImmutableList.of("g1"), ImmutableList.of("id", "c1"));
+            checkGlobalIndexes(tableName, "g_gggggg2", ImmutableList.of("g2"), ImmutableList.of("id", "c2"));
+        } finally {
+            // drop tables
+            JdbcUtil.executeUpdateSuccess(tddlConnection, dropSql + tableName);
+        }
+    }
+
     /**
      * test information schema tables by in expr in different params size
      */
@@ -562,6 +621,110 @@ public class InformationSchemaTest extends AutoReadBaseTestCase {
                 + "where `TABLE_SCHEMA` = 'drds_mode' and CONSTRAINT_TYPE in ('PRIMARY KEY')";
         JdbcUtil.executeSuccess(tddlConnection, sql);
         JdbcUtil.executeSuccess(tddlConnection, sql1);
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地和实验室单独跑都无法复现，且对replica实验室无影响")
+    public void testInformationPartitions() throws SQLException {
+        try (Connection conn = getPolardbxConnection()) {
+            // test INFORMATION_SCHEMA.PARTITIONS
+            String checkSql = "select distinct TABLE_NAME from information_schema.PARTITIONS limit 10";
+            ResultSet rs = conn.createStatement().executeQuery(checkSql);
+
+            Set<String> tableSet = Sets.newHashSet();
+            while (rs.next()) {
+                tableSet.add(rs.getString("TABLE_NAME"));
+            }
+            rs.close();
+            checkSql = "select count(1) as count from INFORMATION_SCHEMA.PARTITIONS where TABLE_NAME in('%s') limit 10";
+            checkSql = String.format(checkSql, String.join("','", tableSet));
+
+            rs = conn.createStatement().executeQuery(checkSql);
+            rs.next();
+            Assert.assertTrue(rs.getInt("count") > 0);
+            rs.close();
+        }
+    }
+
+    @Test
+    @CdcIgnore(ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地无法复现，且对replica实验室无影响")
+    public void testTableDetail() throws SQLException {
+        try (Connection conn = getPolardbxConnection()) {
+            // test table_detail
+            String checkSql = "select distinct table_schema from information_schema.table_detail limit 10";
+            ResultSet rs = conn.createStatement().executeQuery(checkSql);
+
+            Set<String> tableSchemaSet = Sets.newHashSet();
+            while (rs.next()) {
+                tableSchemaSet.add(rs.getString("table_schema"));
+            }
+            rs.close();
+
+            checkSql =
+                "select count(1) as count from information_schema.table_detail where table_schema in('%s') limit 10";
+            checkSql = String.format(checkSql, String.join("','", tableSchemaSet));
+
+            rs = conn.createStatement().executeQuery(checkSql);
+            rs.next();
+            Assert.assertTrue(rs.getInt("count") > 0);
+            rs.close();
+        }
+    }
+
+    @Test
+    public void testStorageStatus() throws SQLException {
+        try (Connection conn = getPolardbxConnection()) {
+            // test storage_status
+            ResultSet rs = conn.createStatement()
+                .executeQuery("select STORAGE_INST_ID from information_schema.storage_status limit 10");
+            Set<String> storageInstIds = Sets.newHashSet();
+            while (rs.next()) {
+                storageInstIds.add(rs.getString("STORAGE_INST_ID"));
+            }
+            rs.close();
+
+            String checkSql =
+                "select count(STORAGE_INST_ID) as count from information_schema.storage_status where STORAGE_INST_ID in ('%s')";
+            checkSql = String.format(checkSql, String.join("','", storageInstIds));
+            System.out.println(checkSql);
+            rs = conn.createStatement().executeQuery(checkSql);
+            rs.next();
+            Assert.assertTrue(rs.getInt("count") > 0);
+            rs.close();
+
+            // test upper case
+            checkSql = "select count(*) as count from information_schema.storage_status where INST_KIND ='META_DB'";
+            rs = conn.createStatement().executeQuery(checkSql);
+            rs.next();
+            Assert.assertTrue(rs.getInt("count") > 0);
+            rs.close();
+        }
+    }
+
+    @Test
+    public void setInformationNotCachePlan() throws SQLException {
+        try (Connection conn = getPolardbxConnection()) {
+            String sql = "select STORAGE_INST_ID from information_schema.storage_status limit 10";
+            conn.createStatement().executeQuery(sql);
+            String explain = getExplainResult(conn, sql);
+            Assert.assertTrue(explain.contains("HitCache:false"));
+
+            conn.createStatement().execute("use " + INFORMATION_TEST_DB);
+            conn.createStatement().executeQuery(sql);
+            explain = getExplainResult(conn, sql);
+            Assert.assertTrue(explain.contains("HitCache:false"));
+
+            conn.createStatement().execute("use information_schema");
+            conn.createStatement().executeQuery(sql);
+            explain = getExplainResult(conn, sql);
+            Assert.assertTrue(explain.contains("HitCache:false"));
+
+            String sqlWithoutSchema = "select STORAGE_INST_ID from storage_status limit 10";
+            conn.createStatement().execute("use information_schema");
+            conn.createStatement().executeQuery(sqlWithoutSchema);
+            explain = getExplainResult(conn, sqlWithoutSchema);
+            Assert.assertTrue(explain.contains("HitCache:false"));
+        }
     }
 
     private void checkGlobalIndexes(String tableName, String gsiName, List<String> indexColumns,

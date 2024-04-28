@@ -41,7 +41,6 @@ import static java.util.Objects.requireNonNull;
 
 public class CacheQuota {
     public static final CacheQuota NO_CACHE_CONSTRAINTS = new CacheQuota("NO_IDENTITY", Optional.empty());
-    public static final CacheQuota DISABLE_CACHE = new CacheQuota("DISABLE_CACHE", Optional.of(new DataSize(0, DataSize.Unit.BYTE)));
 
     private final String identity;
     private final long identifier;

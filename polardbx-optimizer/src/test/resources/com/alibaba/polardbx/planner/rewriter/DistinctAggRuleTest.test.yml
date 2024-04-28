@@ -6,10 +6,8 @@
 - sql: |
     SELECT COUNT(DISTINCT a) FROM test_tb
   plan: |
-
     logicalagg(count(distinct a)="count(a)")
-      logicalagg(group="a")
-        logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
+      logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
 
 - sql: |
     SELECT COUNT(DISTINCT a, b) FROM test_tb
@@ -23,11 +21,8 @@
     SELECT COUNT(DISTINCT a), SUM(DISTINCT a), MAX(DISTINCT a) FROM test_tb
 
   plan: |
-
-    LogicalAgg(COUNT(DISTINCT a)="COUNT(a)", SUM(DISTINCT a)="SUM(a)", MAX(DISTINCT a)="MAX(a)")
-      LogicalAgg(group="a")
-        LogicalView(tables="[0000-0003].test_tb_[00-27]", shardCount=28, sql="SELECT `a` FROM `test_tb` AS `test_tb`")
-
+    logicalagg(count(distinct a)="count(a)", sum(distinct a)="sum(a)", max(distinct a)="max(a)")
+      logicalview(tables="[0000-0003].test_tb_[00-27]", shardcount=28, sql="select `a` from `test_tb` as `test_tb`")
 - sql: |
     SELECT COUNT(DISTINCT a), SUM(b) FROM test_tb
 

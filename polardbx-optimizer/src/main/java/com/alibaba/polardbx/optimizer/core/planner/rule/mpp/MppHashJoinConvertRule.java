@@ -77,8 +77,10 @@ public class MppHashJoinConvertRule extends RelOptRule {
         }
 
         RelTraitSet emptyTraitSet = hashJoin.getCluster().getPlanner().emptyTraitSet();
-        left = convert(hashJoin.getLeft(), emptyTraitSet.replace(leftCollation).replace(MppConvention.INSTANCE));
-        right = convert(hashJoin.getRight(), emptyTraitSet.replace(rightCollation).replace(MppConvention.INSTANCE));
+        left = convert(hashJoin.getLeft(),
+            emptyTraitSet.replace(leftCollation).replace(MppConvention.INSTANCE));
+        right = convert(hashJoin.getRight(),
+            emptyTraitSet.replace(rightCollation).replace(MppConvention.INSTANCE));
 
         List<Pair<RelDistribution, Pair<RelNode, RelNode>>> implementationList = new ArrayList<>();
 
@@ -95,16 +97,17 @@ public class MppHashJoinConvertRule extends RelOptRule {
             }
         }
 
-        for (Pair<List<Integer>, List<Integer>> keyPair : keyPairList) {
+        int leftFieldCount = left.getRowType().getFieldCount();
+        int rightFiledCount = right.getRowType().getFieldCount();
+        Mappings.TargetMapping mapping =
+            Mappings.createShiftMapping(rightFiledCount, leftFieldCount, 0, rightFiledCount);
 
+        for (Pair<List<Integer>, List<Integer>> keyPair : keyPairList) {
             RelDataType keyDataType = CalciteUtils.getJoinKeyDataType(
                 hashJoin.getCluster().getTypeFactory(), hashJoin, keyPair.left, keyPair.right);
             RelNode hashLeft = RuleUtils.ensureKeyDataTypeDistribution(left, keyDataType, keyPair.left);
             RelNode hashRight = RuleUtils.ensureKeyDataTypeDistribution(right, keyDataType, keyPair.right);
-            int leftFieldCount = left.getRowType().getFieldCount();
-            int rightFiledCount = right.getRowType().getFieldCount();
-            Mappings.TargetMapping mapping =
-                Mappings.createShiftMapping(rightFiledCount, leftFieldCount, 0, rightFiledCount);
+
             implementationList.add(Pair.of(hashLeft.getTraitSet().getDistribution(), Pair.of(hashLeft, hashRight)));
             implementationList
                 .add(Pair.of(hashRight.getTraitSet().getDistribution().apply(mapping), Pair.of(hashLeft, hashRight)));

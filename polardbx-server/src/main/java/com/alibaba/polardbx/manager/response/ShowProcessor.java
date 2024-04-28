@@ -101,7 +101,7 @@ public final class ShowProcessor {
         // write rows
         byte packetId = eof.packetId;
         for (NIOProcessor p : CobarServer.getInstance().getProcessors()) {
-            RowDataPacket row = getRow(p, c.getCharset());
+            RowDataPacket row = getRow(p, c.getResultSetCharset());
             row.packetId = ++packetId;
             proxy = row.write(proxy);
         }

@@ -22,9 +22,6 @@ import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -41,6 +38,8 @@ public class DropTableRemoveMetaTask extends BaseGmsTask {
 
     @Override
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        updateSupportedCommands(true, false, metaDbConnection);
+
         TableMetaChanger.removeTableMeta(metaDbConnection, schemaName, logicalTableName, true, executionContext);
 
         FailPoint.injectRandomExceptionFromHint(executionContext);

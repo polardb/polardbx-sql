@@ -34,7 +34,16 @@ import static com.alibaba.polardbx.qatest.constant.TableConstant.C_BLOB_LONG;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_BLOB_MEDIUM;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_BLOB_TINY;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_DECIMAL;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_ENUM;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_GEOMETORY;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_ID;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_JSON;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_LINESTRING;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTILINESTRING;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTIPOINT;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTIPOLYGON;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_POINT;
+import static com.alibaba.polardbx.qatest.constant.TableConstant.C_POLYGON;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_SET;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_TEXT;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_TEXT_LONG;
@@ -43,14 +52,6 @@ import static com.alibaba.polardbx.qatest.constant.TableConstant.C_TEXT_TINY;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_TIME_6;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_VARBINARY;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.FULL_TYPE_TABLE_COLUMNS;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_GEOMETORY;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_ID;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_LINESTRING;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTILINESTRING;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTIPOINT;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_MULTIPOLYGON;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_POINT;
-import static com.alibaba.polardbx.qatest.constant.TableConstant.C_POLYGON;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.floatType;
 import static com.alibaba.polardbx.qatest.constant.TableConstant.timeType;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_NEW_PARTITIONING_DEFINITION;
@@ -236,8 +237,14 @@ public class GsiUpdateTypeTest extends DDLBaseNewDBTestCase {
 
             // Update with DN select value
             update = MessageFormat.format("UPDATE {0} SET {1}={2}", PRIMARY_TABLE_NAME, dataColumn, dataColumn);
-            gsiExecuteUpdate(tddlConnection, mysqlConnection, update, "TRACE " + update, failedList, true, true, false);
-            gsiIntegrityCheck(PRIMARY_TABLE_NAME, INDEX_TABLE_NAME, dataColumn);
+            if (dataColumn.contains(C_ENUM) && value.contains("0")) {
+                // 插入非法 enum 值的时候，在 c_enum=c_enum 时，读出来的是 ""，update 的时候会报 Data truncated
+                JdbcUtil.executeUpdateFailed(tddlConnection, update, "Data truncated for column 'c_enum'");
+            } else {
+                gsiExecuteUpdate(tddlConnection, mysqlConnection, update, "TRACE " + update, failedList, true, true,
+                    false);
+                gsiIntegrityCheck(PRIMARY_TABLE_NAME, INDEX_TABLE_NAME, dataColumn);
+            }
         }
 
         // Upsert
@@ -426,6 +433,13 @@ public class GsiUpdateTypeTest extends DDLBaseNewDBTestCase {
         if (!CN_UNSUPPORTED_FUNC_TYPE.contains(dataColumn)) {
 
             for (String value : values) {
+                // ignore bad convert on enum
+                if (dataColumn.contains(C_ENUM) && value.contains("0")) {
+                    // 在处理 duplicate 的时候，依赖查询，因为 enum 拆入非法值会变成 ""，导致查询的时候查不到，从而使 update 变成了
+                    // insert，同时由于 id 自增，且按 id 拆分，又会以非法值插入一条新数据，导致和 MySQL 行为不一致
+                    continue;
+                }
+
                 clearData();
                 initData(ImmutableList.of(UPSERT_INIT_DATA));
 
@@ -465,6 +479,13 @@ public class GsiUpdateTypeTest extends DDLBaseNewDBTestCase {
 
         // Replace
         for (String value : values) {
+            // ignore bad convert on enum
+            if (dataColumn.contains(C_ENUM) && value.contains("0")) {
+                // 在处理 duplicate 的时候，依赖查询，因为 enum 拆入非法值会变成 ""，导致查询的时候查不到，从而使 update 变成了
+                // insert，同时由于 id 自增，且按 id 拆分，又会以非法值插入一条新数据，导致和 MySQL 行为不一致
+                continue;
+            }
+
             clearData();
             initData(ImmutableList.of(UPSERT_INIT_DATA));
 

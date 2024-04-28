@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
@@ -245,9 +246,8 @@ public class AlterTableGroupAddPartitionPreparedData extends AlterTableGroupBase
         allPartitionNames.addAll(allPartitionGroupNames);
 
         if (subPartByDef != null) {
-            Set<String> partNames =
-                tableGroupConfig.getAllTables().get(0).getPartitionRecList().stream().map(p -> p.getPartName())
-                    .collect(Collectors.toSet());
+            Set<String> partNames = partByDef.getPartitions().stream().map(p -> p.getName())
+                .collect(Collectors.toSet());
             allPartitionNames.addAll(partNames);
         }
 

@@ -16,17 +16,12 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
-import com.alibaba.polardbx.common.charset.CharsetName;
-import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.DynamicConfig;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.config.ConfigDataMode.Mode;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
@@ -69,6 +64,11 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        return handleByGms(logicalPlan, executionContext);
+    }
+
+    public Cursor handleByGms(RelNode logicalPlan, ExecutionContext executionContext) {
+
         final LogicalCreateDatabase createDatabase = (LogicalCreateDatabase) logicalPlan;
         final SqlCreateDatabase sqlCreateDatabase = (SqlCreateDatabase) createDatabase.getNativeSqlNode();
         final LocalityManager lm = LocalityManager.getInstance();
@@ -134,6 +134,12 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
             }
         } else {
             defaultSingle = false;
+            if (!localityDesc.holdEmptyLocality()) {
+                throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                    "database of drds mode doesn't support locality specification!"
+                );
+
+            }
         }
 
         CreateDbInfo createDbInfo = DbTopologyManager.initCreateDbInfo(
@@ -146,7 +152,7 @@ public class LogicalCreateDatabaseHandler extends HandlerCommon {
         DbEventUtil.logFirstAutoDbCreationEvent(createDbInfo);
         CdcManagerHelper.getInstance()
             .notifyDdl(dbName, null, sqlCreateDatabase.getKind().name(), executionContext.getOriginSql(),
-                DdlVisibility.Public, buildExtendParameter(executionContext));
+                null, CdcDdlMarkVisibility.Public, buildExtendParameter(executionContext));
 
         if (!finalLocalityDesc.holdEmptyDnList()) {
             lm.setLocalityOfDb(dbId, finalLocalityDesc.toString());

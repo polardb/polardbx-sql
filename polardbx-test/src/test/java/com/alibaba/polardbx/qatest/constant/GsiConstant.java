@@ -452,12 +452,18 @@ public class GsiConstant {
         builder.put(C_ENUM,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_enum) values(null,'a');\n",
                 "insert into " + primaryTableName + "(id,c_enum) values(null,'b');\n",
+                "insert into " + primaryTableName + "(id,c_enum) values(null,'');\n",
+                "insert into " + primaryTableName + "(id,c_enum) values(null,'00');\n",
+                "insert into " + primaryTableName + "(id,c_enum) values(null,0);\n",
                 "insert into " + primaryTableName + "(id,c_enum) values(null,NULL);\n"));
         builder.put(C_SET,
             ImmutableList.of("insert into " + primaryTableName + "(id,c_set) values(null,'a');\n",
                 "insert into " + primaryTableName + "(id,c_set) values(null,'b,a');\n",
                 "insert into " + primaryTableName + "(id,c_set) values(null,'b,c,a');\n",
                 "insert into " + primaryTableName + "(id,c_set) values(null,'d');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,'');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,'00');\n",
+                "insert into " + primaryTableName + "(id,c_set) values(null,0);\n",
                 "insert into " + primaryTableName + "(id,c_set) values(null,NULL);\n"));
         builder.put(C_JSON,
             ImmutableList.of(
@@ -1026,6 +1032,12 @@ public class GsiConstant {
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_enum) values(null             , 311, 'b');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_enum) values(null             , 311, '');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_enum) values(null             , 311, '00');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_enum) values(null             , 311, 0);\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_enum) values(null             , 312, NULL);\n "))
             .put(C_SET, ImmutableList.of(
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
@@ -1036,6 +1048,12 @@ public class GsiConstant {
                     + ", c_set) values(null              , 316, 'b, c, a');\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_set) values(null              , 317, 'd');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_set) values(null              , 317, '');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_set) values(null              , 317, '00');\n ",
+                "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
+                    + ", c_set) values(null              , 317, 0);\n ",
                 "insert into " + PRIMARY_TABLE_NAME + "(id, " + sk
                     + ", c_set) values(null              , 318, NULL);\n "))
             .put(C_JSON, ImmutableList.of(
@@ -1400,12 +1418,18 @@ public class GsiConstant {
         builder.put(C_ENUM,
             ImmutableList.of("'a'",
                 "'b'",
+                "''",
+                "'00'",
+                "0",
                 "NULL"));
         builder.put(C_SET,
             ImmutableList.of("'a'",
                 "'b,a'",
                 "'b,c,a'",
                 "'d'",
+                "''",
+                "'00'",
+                "0",
                 "NULL"));
         builder.put(C_JSON,
             ImmutableList.of(

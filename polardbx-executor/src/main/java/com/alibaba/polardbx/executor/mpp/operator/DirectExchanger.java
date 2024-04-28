@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
+import com.google.common.collect.ImmutableList;
 
 public class DirectExchanger extends LocalExchanger {
 

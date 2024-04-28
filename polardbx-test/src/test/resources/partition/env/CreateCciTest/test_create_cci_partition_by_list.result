@@ -1,0 +1,102 @@
+DROP TABLE IF EXISTS t_order_0;
+
+CREATE TABLE `t_order_0` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	`order_datetime` datetime DEFAULT NULL,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`rint` double(10, 2),
+	PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8;
+
+
+# create cci cci_0(seller_id) PARTITION BY LIST COLUMNS (`country`, `city`) (
+#		PARTITION p1 VALUES IN (('China', 'Hangzhou'), ('China', 'Beijing')),
+#		PARTITION p2 VALUES IN (('United States', 'NewYork'), ('United States', 'Chicago')),
+#		PARTITION p3 VALUES IN (('Russian', 'Moscow'))
+#	)
+# on auto partition table t_order_0
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE CLUSTERED COLUMNAR INDEX cci_0 ON t_order_0 (`seller_id`) PARTITION BY LIST COLUMNS (`country`, `city`) (
+	PARTITION p1 VALUES IN (('China', 'Hangzhou'), ('China', 'Beijing')), 
+	PARTITION p2 VALUES IN (('United States', 'NewYork'), ('United States', 'Chicago')), 
+	PARTITION p3 VALUES IN (('Russian', 'Moscow'))
+);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/ALTER TABLE `t_order_0`
+	 ALTER INDEX `cci_0` VISIBLE ;
+SHOW FULL CREATE TABLE t_order_0;
+Table,Create Table
+t_order_0,CREATE PARTITION TABLE `t_order_0` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	`order_datetime` datetime DEFAULT NULL,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`rint` double(10, 2) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* cci_0_$ */ `cci_0` (`seller_id`) 
+		PARTITION BY LIST COLUMNS(`country`,`city`)
+		(PARTITION p1 VALUES IN (('China','Beijing'),('China','Hangzhou')) ENGINE = Columnar,
+		 PARTITION p3 VALUES IN (('Russian','Moscow')) ENGINE = Columnar,
+		 PARTITION p2 VALUES IN (('United States','Chicago'),('United States','NewYork')) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+CHECK COLUMNAR INDEX `cci_0` ON `t_order_0` META;
+CCI,error_type,status,primary_key,details
+`cci_0_$` ON `part_mtr`.`t_order_0`,SUMMARY,--,--,OK (metadata of columnar index checked) Finish time: %
+DROP INDEX `cci_0` ON `t_order_0`;
+
+# create cci cci_1(seller_id) PARTITION BY LIST (YEAR(`order_datetime`)) (
+#		PARTITION p1 VALUES IN (1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999),
+#		PARTITION p2 VALUES IN (2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009),
+#		PARTITION p3 VALUES IN (2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+#	) on auto partition table t_order_0
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE CLUSTERED COLUMNAR INDEX cci_1 ON t_order_0 (`seller_id`) PARTITION BY LIST (YEAR(`order_datetime`)) (
+	PARTITION p1 VALUES IN (1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999), 
+	PARTITION p2 VALUES IN (2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009), 
+	PARTITION p3 VALUES IN (2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019)
+);
+/*+TDDL:CMD_EXTRA(ALTER_CCI_STATUS=true, ALTER_CCI_STATUS_BEFORE=CREATING, ALTER_CCI_STATUS_AFTER=PUBLIC)*/ALTER TABLE `t_order_0`
+	 ALTER INDEX `cci_1` VISIBLE ;
+SHOW FULL CREATE TABLE t_order_0;
+Table,Create Table
+t_order_0,CREATE PARTITION TABLE `t_order_0` (
+	`id` bigint(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`buyer_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`order_snapshot` longtext,
+	`order_detail` longtext,
+	`order_datetime` datetime DEFAULT NULL,
+	`country` varchar(64) DEFAULT NULL,
+	`city` varchar(64) DEFAULT NULL,
+	`gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	`rint` double(10, 2) DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	CLUSTERED COLUMNAR INDEX /* cci_1_$ */ `cci_1` (`seller_id`) 
+		PARTITION BY LIST(YEAR(`order_datetime`))
+		(PARTITION p1 VALUES IN (1990,1991,1992,1993,1994,1995,1996,1997,1998,1999) ENGINE = Columnar,
+		 PARTITION p2 VALUES IN (2000,2001,2002,2003,2004,2005,2006,2007,2008,2009) ENGINE = Columnar,
+		 PARTITION p3 VALUES IN (2010,2011,2012,2013,2014,2015,2016,2017,2018,2019) ENGINE = Columnar)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8
+PARTITION BY KEY(`id`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+CHECK COLUMNAR INDEX `cci_1` ON `t_order_0` META;
+CCI,error_type,status,primary_key,details
+`cci_1_$` ON `part_mtr`.`t_order_0`,SUMMARY,--,--,OK (metadata of columnar index checked) Finish time: %
+DROP INDEX `cci_1` ON `t_order_0`;
+
+DROP TABLE IF EXISTS t_order_0;

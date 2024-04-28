@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group3;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.DDLBaseNewDBTestCase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.apache.calcite.util.Pair;
@@ -42,6 +43,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
     private static final String FORCE_PUSHDOWN_RC_REPLACE = "DML_FORCE_PUSHDOWN_RC_REPLACE=TRUE";
     private static final String DML_SKIP_IDENTICAL_ROW_CHECK = "DML_SKIP_IDENTICAL_ROW_CHECK=TRUE";
     private static final String DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK = "DML_SKIP_IDENTICAL_JSON_ROW_CHECK=FALSE";
+    private static final String DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE = "DML_CHECK_JSON_BY_STRING_COMPARE=FALSE";
 
     private static String buildCmdExtra(String... params) {
         if (0 == params.length) {
@@ -1923,6 +1925,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly() {
         final String tableName = "replace_test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -2004,6 +2007,7 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
      * 在 DELETE_ONLY 模式下，该 UK 视为不存在
      */
     @Test
+    @CdcIgnore(ignoreReason = "忽略ugsi强行写入，会导致上下游不一致")
     public void tableWithPkWithUkWithUgsi_deleteOnly_usingGsi() {
         final String tableName = "replace_test_tb_with_pk_with_uk_delete_only_ugsi";
         dropTableIfExists(tableName);
@@ -3151,7 +3155,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
         replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
         hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DML_SKIP_IDENTICAL_ROW_CHECK);
         JdbcUtil.executeUpdateSuccess(tddlConnection, hint + replace);
@@ -3181,7 +3186,8 @@ public class ReplaceTest extends DDLBaseNewDBTestCase {
             String.format("replace into %s values (1,2,'{\"b\": \"b\", \"a\": \"a\", \"c\": \"c\"}')", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
         replace = String.format("replace into %s values (1,2,'{\"a\": \"b\", \"b\": \"a\", \"d\": \"c\"}')", tableName);
-        String hint = buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK);
+        String hint =
+            buildCmdExtra(DISABLE_DML_SKIP_IDENTICAL_JSON_ROW_CHECK, DISABLE_DML_CHECK_JSON_BY_STRING_COMPARE);
         JdbcUtil.executeUpdateFailed(tddlConnection, hint + replace, "");
         JdbcUtil.executeUpdateSuccess(tddlConnection, replace);
 

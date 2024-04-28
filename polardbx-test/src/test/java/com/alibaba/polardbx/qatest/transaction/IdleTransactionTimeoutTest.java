@@ -26,7 +26,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
             Thread.sleep(1000 + 5000);
 
             // Idle 1s, connection should be closed.
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
         {
@@ -39,7 +39,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
             Thread.sleep(1000 + 5000);
 
             // Idle 1s, connection should be closed.
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
         {
@@ -60,7 +60,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
             Thread.sleep(1000 + 5000);
 
             // Idle 1s, connection should be closed.
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
         {
@@ -82,7 +82,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
             Thread.sleep(1000 + 5000);
 
             // Idle 1s, connection should be closed.
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
         {
@@ -101,7 +101,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
 
             Thread.sleep(7000 + 5000);
 
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
         {
@@ -120,7 +120,7 @@ public class IdleTransactionTimeoutTest extends CrudBasedLockTestCase {
 
             Thread.sleep(7000 + 5000);
 
-            JdbcUtil.executeFaied(conn, "select * from " + tbName, "Communications link failure");
+            JdbcUtil.executeFailed(conn, "select * from " + tbName, "Communications link failure");
         }
 
     }

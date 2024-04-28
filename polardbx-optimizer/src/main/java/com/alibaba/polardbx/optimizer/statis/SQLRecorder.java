@@ -16,12 +16,12 @@
 
 package com.alibaba.polardbx.optimizer.statis;
 
-import java.util.Arrays;
-import java.util.concurrent.locks.ReentrantLock;
-
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.google.common.annotations.VisibleForTesting;
+
+import java.util.Arrays;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * SQL统计排序记录器
@@ -44,23 +44,21 @@ public final class SQLRecorder {
     // 记录的SQL总数
     private final ReentrantLock lock;
     private volatile long maxSizeThreshold = 4 * 1024;
-    private volatile long slowSqlTime = 1000;
     // 最早一条慢SQL的开始时间
     private long oldestSqlStartTime = -1;
     private volatile boolean isSorted = false;
 
     public SQLRecorder(int count) {
-        this(count, 16384, 1000);
+        this(count, 16384);
     }
 
-    public SQLRecorder(int count, int maxSizeThreshold, long slowSqlTime) {
+    public SQLRecorder(int count, int maxSizeThreshold) {
         if (count < 1) {
             throw new IllegalArgumentException("Size cannot be less than 1");
         }
         this.count = count;
         this.lastIndex = count - 1;
         this.maxSizeThreshold = maxSizeThreshold;
-        this.slowSqlTime = slowSqlTime;
         this.records = new SQLRecord[count];
         this.lock = new ReentrantLock();
     }
@@ -286,14 +284,6 @@ public final class SQLRecorder {
                 lock.unlock();
             }
         }
-    }
-
-    public long getSlowSqlTime() {
-        return slowSqlTime;
-    }
-
-    public void setSlowSqlTime(long slowSqlTime) {
-        this.slowSqlTime = slowSqlTime;
     }
 
     public boolean isFull() {

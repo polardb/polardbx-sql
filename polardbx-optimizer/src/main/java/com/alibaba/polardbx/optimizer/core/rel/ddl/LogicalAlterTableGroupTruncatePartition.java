@@ -18,6 +18,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupTruncatePartitionPreparedData;
@@ -49,7 +50,7 @@ public class LogicalAlterTableGroupTruncatePartition extends LogicalAlterTableTr
 
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(null).getTableGroupInfoManager().getTableGroupConfigByName(tableGroupName);
-        String firstTableInGroup = tableGroupConfig.getAllTables().get(0).getLogTbRec().tableName;
+        String firstTableInGroup = tableGroupConfig.getAllTables().get(0);
         PartitionInfo partitionInfo =
             executionContext.getSchemaManager().getTable(firstTableInGroup).getPartitionInfo();
 
@@ -71,4 +72,12 @@ public class LogicalAlterTableGroupTruncatePartition extends LogicalAlterTableTr
         return new LogicalAlterTableGroupTruncatePartition(AlterTablePartitionHelper.fixAlterTableGroupDdlIfNeed(ddl));
     }
 
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        final AlterTableGroupTruncatePartition alterTableGroupTruncatePartition =
+            (AlterTableGroupTruncatePartition) relDdl;
+        final String tableGroupName = alterTableGroupTruncatePartition.getTableGroupName();
+
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
+    }
 }

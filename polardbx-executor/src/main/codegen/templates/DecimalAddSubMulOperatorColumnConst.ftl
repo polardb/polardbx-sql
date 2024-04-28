@@ -74,12 +74,12 @@ public class ${className} extends AbstractVectorizedExpression {
         <#if type.inputDataType1 == "Decimal">
 
         <#else>
-        ${type.inputType1}[] array1 = ((${type.inputVectorType1}) leftInputVectorSlot).${type.inputType1}Array();
+            ${type.inputType1}[] array1 = (leftInputVectorSlot.cast(${type.inputVectorType1}.class)).${type.inputType1}Array();
         </#if>
         <#if type.outputDataType == "Decimal">
-        Slice output = ((DecimalBlock) outputVectorSlot).getMemorySegments();
+            Slice output = (outputVectorSlot.cast(DecimalBlock.class)).getMemorySegments();
         <#else>
-        ${type.outputType}[] res = ((${type.outputVectorType}) outputVectorSlot).${type.outputType}Array();
+            ${type.outputType}[] res = (outputVectorSlot.cast(${type.outputVectorType}.class)).${type.outputType}Array();
         </#if>
 
         DecimalStructure leftDec = new DecimalStructure();
@@ -124,7 +124,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType1 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array1[j], leftDec);
                 <#elseif type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
                 <#else>
                 DecimalConverter.longToDecimal(array1[j], leftDec, isLeftUnsigned);
                 </#if>
@@ -133,9 +133,9 @@ public class ${className} extends AbstractVectorizedExpression {
                 FastDecimalUtils.${operator.decimalOp}(leftDec, rightDec, toValue);
             <#else>
                 <#if type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
-                double leftDouble = DecimalConverter.decimalToDouble(leftDec);
-                res[j] = leftDouble ${operator.doubleOp} right;
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
+                    double leftDouble = DecimalConverter.decimalToDouble(leftDec);
+                    res[j] = leftDouble ${operator.doubleOp} right;
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
                 res[j] = array1[j] ${operator.doubleOp} rightDouble;
@@ -162,7 +162,7 @@ public class ${className} extends AbstractVectorizedExpression {
                 <#if type.inputDataType1 == "ULong">
                 DecimalConverter.unsignedlongToDecimal(array1[i], leftDec);
                 <#elseif type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
                 <#else>
                 DecimalConverter.longToDecimal(array1[i], leftDec, isLeftUnsigned);
                 </#if>
@@ -171,9 +171,9 @@ public class ${className} extends AbstractVectorizedExpression {
                 FastDecimalUtils.${operator.decimalOp}(leftDec, rightDec, toValue);
             <#else>
                 <#if type.inputDataType1 == "Decimal">
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
-                double leftDouble = DecimalConverter.decimalToDouble(leftDec);
-                res[i] = leftDouble ${operator.doubleOp} right;
+                    leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
+                    double leftDouble = DecimalConverter.decimalToDouble(leftDec);
+                    res[i] = leftDouble ${operator.doubleOp} right;
                 </#if>
                 <#if type.inputDataType2 == "Decimal">
                 res[i] = array1[i] ${operator.doubleOp} rightDouble;
@@ -181,6 +181,9 @@ public class ${className} extends AbstractVectorizedExpression {
             </#if>
             }
         }
+        <#if type.outputDataType == "Decimal">
+            outputVectorSlot.cast(DecimalBlock.class).setFullState();
+        </#if>
     }
 }
 

@@ -17,32 +17,46 @@
 package com.alibaba.polardbx.executor.Xprotocol;
 
 import com.alibaba.polardbx.common.CrcAccumulator;
-import com.alibaba.polardbx.common.datatype.UInt64;
-import com.alibaba.polardbx.optimizer.core.row.Row;
-import com.google.protobuf.ByteString;
-import com.google.protobuf.CodedInputStream;
-import com.mysql.cj.polarx.protobuf.PolarxResultset;
-import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
-import com.alibaba.polardbx.rpc.result.XResult;
-import com.alibaba.polardbx.rpc.result.XResultUtil;
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.datatype.UInt64Utils;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.BigDecimalUtil;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.common.utils.time.core.TimeStorage;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.common.utils.time.parser.StringTimeParser;
+import com.alibaba.polardbx.common.utils.time.parser.TimeParseStatus;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.IXRowChunk;
+import com.alibaba.polardbx.executor.operator.ResultSetCursorExec;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
+import com.alibaba.polardbx.optimizer.core.datatype.BigBitType;
 import com.alibaba.polardbx.optimizer.core.datatype.Blob;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.datatype.YearType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.row.AbstractRow;
+import com.alibaba.polardbx.rpc.jdbc.CharsetMapping;
+import com.alibaba.polardbx.rpc.result.XResult;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.CodedInputStream;
+import com.mysql.cj.polarx.protobuf.PolarxResultset;
 import io.airlift.slice.Slice;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
+import org.apache.orc.impl.TypeUtils;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -52,6 +66,8 @@ import java.sql.Date;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
+import java.sql.Types;
+import java.text.MessageFormat;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +86,8 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
     private final Pair<Object, byte[]>[] cache;
 
     private final boolean legacy;
+
+    public static final ZoneId DEFAULT_TIME_ZONE = TimeZone.getTimeZone("GMT+08:00").toZoneId();
 
     public XRowSet(XResult result, CursorMeta cursorMeta, List<PolarxResultset.ColumnMetaData> metaData,
                    List<ByteString> row, boolean legacy) throws SQLException {
@@ -95,14 +113,17 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
         return XResultUtil.resultToBytes(metaData.get(index), row.get(index), targetCharset);
     }
 
-    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber, Optional<CrcAccumulator> accumulator)
+    public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
+                                        Optional<CrcAccumulator> accumulator)
         throws Exception {
-        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
+        XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
+            false,
             -1, -1, -1, null, null, null, accumulator);
     }
 
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
-                                        ZoneId timezone, int scale, Optional<CrcAccumulator> accumulator) throws Exception {
+                                        ZoneId timezone, int scale, Optional<CrcAccumulator> accumulator)
+        throws Exception {
         XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
             false, -1, scale, -1, timezone, null, null, accumulator);
     }
@@ -114,14 +135,16 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
     }
 
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
-                                        boolean flipUnsigned, int precision, int scale, Optional<CrcAccumulator> accumulator) throws Exception {
+                                        boolean flipUnsigned, int precision, int scale,
+                                        Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil.resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber,
             flipUnsigned, precision, scale, -1, null, null, null, accumulator);
     }
 
     public void fastParseToColumnVector(int index, String targetCharset, ColumnVector columnVector, int rowNumber,
                                         int length, ColumnVector redundantColumnVector,
-                                        BiFunction<byte[], Integer, byte[]> collationHandler, Optional<CrcAccumulator> accumulator) throws Exception {
+                                        BiFunction<byte[], Integer, byte[]> collationHandler,
+                                        Optional<CrcAccumulator> accumulator) throws Exception {
         XResultUtil
             .resultToColumnVector(metaData.get(index), row.get(index), targetCharset, columnVector, rowNumber, false,
                 -1, -1, length, null, redundantColumnVector, collationHandler, accumulator);
@@ -194,15 +217,6 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
     @Override
     public void setObject(int index, Object value) {
         throw new UnsupportedOperationException();
-    }
-
-    private static long bytesToLong(byte[] bytes) {
-        assert bytes.length <= 8;
-        long val = 0;
-        for (int i = 0; i < bytes.length; i++) {
-            val |= (bytes[i] & 0xFF) << ((bytes.length - i - 1) * 8);
-        }
-        return val;
     }
 
     @Override
@@ -433,7 +447,7 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
                 } else if (clazz == BigInteger.class || clazz == UInt64.class) {
                     final Object val =
                         XResultUtil.resultToObject(meta, byteString, true,
-                            result.getSession().getDefaultTimezone())
+                                result.getSession().getDefaultTimezone())
                             .getKey();
                     if (val instanceof BigInteger) {
                         builder.writeBigInteger((BigInteger) val);
@@ -442,7 +456,7 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
                     } else if (val instanceof Number) {
                         builder.writeBigInteger(BigInteger.valueOf(((Number) val).longValue()));
                     } else if (val instanceof byte[]) {
-                        builder.writeBigInteger(BigInteger.valueOf(bytesToLong((byte[]) val)));
+                        builder.writeBigInteger(BigInteger.valueOf(ResultSetCursorExec.bytesToLong((byte[]) val)));
                     } else if (val instanceof String) {
                         builder.writeBigInteger(new BigInteger((String) val));
                     } else { // null or error type
@@ -549,13 +563,13 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
                 } else if (clazz == byte[].class) {
                     final byte[] val =
                         XResultUtil.resultToObject(meta, byteString, true,
-                            result.getSession().getDefaultTimezone())
+                                result.getSession().getDefaultTimezone())
                             .getValue();
                     builder.writeByteArray(val);
                 } else if (clazz == java.sql.Blob.class) {
                     final byte[] bytes =
                         XResultUtil.resultToObject(meta, byteString, true,
-                            result.getSession().getDefaultTimezone())
+                                result.getSession().getDefaultTimezone())
                             .getValue();
                     builder.writeBlob(new Blob(bytes));
                 } else if (clazz == Enum.class) {
@@ -574,6 +588,377 @@ public class XRowSet extends AbstractRow implements IXRowChunk {
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);
         }
+    }
+
+    public static void appendRawOrcTypeRowForX(XResult xResult, DataType[] dataTypes, BlockBuilder[] blockBuilders,
+                                               ExecutionContext context) throws Exception {
+        final List<ByteString> row = xResult.current().getRow();
+        final List<PolarxResultset.ColumnMetaData> metaData = xResult.getMetaData();
+        for (int i = 0; i < dataTypes.length; i++) {
+            final BlockBuilder builder = blockBuilders[i];
+            final PolarxResultset.ColumnMetaData meta = metaData.get(i);
+            final ByteString data = row.get(i);
+
+            if (0 == data.size()) {
+                builder.appendNull();
+                continue;
+            }
+            final byte[] rawBytes = data.toByteArray();
+            final CodedInputStream stream = data.newCodedInput();
+
+            // Convert data into orc raw type: Long, Double, or byte[]
+            switch (dataTypes[i].fieldType()) {
+            case MYSQL_TYPE_DATETIME:
+            case MYSQL_TYPE_DATETIME2:
+            case MYSQL_TYPE_TIMESTAMP:
+            case MYSQL_TYPE_TIMESTAMP2: {
+                long longTime = parseMysqlDateTime(meta, data, stream, Types.TIMESTAMP, context);
+                builder.writeLong(longTime);
+                break;
+            }
+
+            case MYSQL_TYPE_DATE:
+            case MYSQL_TYPE_NEWDATE: {
+                long longTime = parseMysqlDateTime(meta, data, stream, Types.DATE, context);
+                builder.writeLong(longTime);
+                break;
+            }
+
+            case MYSQL_TYPE_TIME: {
+                long longTime = parseMysqlDateTime(meta, data, stream, Types.TIME, context);
+                builder.writeLong(longTime);
+                break;
+            }
+
+            case MYSQL_TYPE_YEAR:
+            case MYSQL_TYPE_INT24:
+            case MYSQL_TYPE_LONG:
+            case MYSQL_TYPE_SHORT:
+            case MYSQL_TYPE_TINY: {
+                long year = XRowSet.getU64(meta.getType(), stream);
+                builder.writeLong(year);
+                break;
+            }
+
+            case MYSQL_TYPE_DECIMAL:
+            case MYSQL_TYPE_NEWDECIMAL: {
+                byte[] bytes = XResultUtil.resultToBytes(meta, data, "utf8");
+                if (TypeUtils.isDecimal64Precision(dataTypes[i].getPrecision())) {
+                    // Convert to Long for Decimal64
+                    long decimal64 = BigDecimalUtil.decodeAsUnscaledLong(bytes, dataTypes[i].getScale());
+                    builder.writeLong(decimal64);
+                } else {
+                    // Convert to byte[]
+                    DecimalStructure d = new DecimalStructure();
+                    DecimalConverter.parseString(bytes, 0, bytes.length, d, false);
+
+                    final int precision = dataTypes[i].getPrecision();
+                    final int scale = dataTypes[i].getScale();
+
+                    // NOTE: It will be handled as string in latin1 character set for .orc
+                    byte[] result = new byte[DecimalConverter.binarySize(precision, scale)];
+                    DecimalConverter.decimalToBin(d, result, precision, scale);
+                    builder.writeByteArray(result);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_LONGLONG: {
+                if (dataTypes[i].isUnsigned()) {
+                    // for bigint unsigned
+                    // fetch unsigned long value represented by bytes
+                    byte[] bytes = XResultUtil.resultToBytes(meta, data, "utf8");
+                    long[] parseResult = StringNumericParser.parseString(bytes);
+                    // check error occurs
+                    if (parseResult[StringNumericParser.ERROR_INDEX] != 0) {
+                        throw GeneralUtil.nestedException(MessageFormat.format(
+                            "failed to parse unsigned long value %s.", new String(bytes)));
+                    }
+
+                    // use flip mask to ensure the sort-consistency of unsigned value.
+                    long parsedNumber = parseResult[StringNumericParser.NUMERIC_INDEX];
+                    builder.writeLong(parsedNumber ^ UInt64Utils.FLIP_MASK);
+                } else {
+                    long result = XRowSet.getU64(meta.getType(), stream);
+                    builder.writeLong(result);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_BIT: {
+                if (dataTypes[i] instanceof BigBitType) {
+                    byte[] bytes = XResultUtil.resultToBytes(meta, data, "utf8");
+                    builder.writeLong(ResultSetCursorExec.bytesToLong(bytes));
+                } else {
+                    long result = XRowSet.getU64(meta.getType(), stream);
+                    builder.writeLong(result);
+                }
+                break;
+            }
+
+            case MYSQL_TYPE_DOUBLE: {
+                final double val;
+                val = getDoubleVal(meta, rawBytes, stream);
+                builder.writeDouble(val);
+                break;
+            }
+
+            case MYSQL_TYPE_FLOAT: {
+                final float val = getFloatVal(meta, rawBytes, stream);
+                builder.writeDouble(val);
+                break;
+            }
+
+            case MYSQL_TYPE_VAR_STRING:
+            case MYSQL_TYPE_STRING:
+            case MYSQL_TYPE_SET:
+            case MYSQL_TYPE_BLOB:
+            case MYSQL_TYPE_ENUM:
+            case MYSQL_TYPE_JSON: {
+                byte[] bytes = XResultUtil.resultToBytes(meta, data, "utf8");
+                builder.writeByteArray(bytes);
+                break;
+            }
+
+            default:
+                throw new UnsupportedOperationException(dataTypes[i].fieldType().toString());
+            }
+        }
+    }
+
+    private static float getFloatVal(PolarxResultset.ColumnMetaData meta, byte[] rawBytes, CodedInputStream stream)
+        throws Exception {
+        final float val;
+        switch (meta.getType()) {
+        case UINT:
+            val =
+                (new BigInteger(ByteBuffer.allocate(9).put((byte) 0).putLong(stream.readUInt64()).array()))
+                    .floatValue();
+            break;
+
+        case FLOAT:
+            val = stream.readFloat();
+            break;
+
+        case DOUBLE:
+            val = (float) stream.readDouble();
+            break;
+
+        case BYTES:
+            val = Float.parseFloat(new String(rawBytes, 0, rawBytes.length - 1));
+            break;
+
+        default:
+            val = XRowSet.getU64(meta.getType(), stream);
+        }
+        return val;
+    }
+
+    private static double getDoubleVal(PolarxResultset.ColumnMetaData meta, byte[] rawBytes, CodedInputStream stream)
+        throws Exception {
+        final double val;
+        switch (meta.getType()) {
+        case UINT:
+            val = (new BigInteger(ByteBuffer.allocate(9).put((byte) 0)
+                .putLong(stream.readUInt64()).array())).doubleValue();
+            break;
+
+        case FLOAT:
+            val = stream.readFloat();
+            break;
+
+        case DOUBLE:
+            val = stream.readDouble();
+            break;
+
+        case DECIMAL: {
+            byte scale = stream.readRawByte();
+            // we allocate an extra char for the sign
+            CharBuffer unscaledString = CharBuffer.allocate(2 * stream.getBytesUntilLimit());
+            unscaledString.position(1);
+            byte sign = 0;
+            // read until we encounter the sign bit
+            while (true) {
+                int b = 0xFF & stream.readRawByte();
+                if ((b >> 4) > 9) {
+                    sign = (byte) (b >> 4);
+                    break;
+                }
+                unscaledString.append((char) ((b >> 4) + '0'));
+                if ((b & 0x0f) > 9) {
+                    sign = (byte) (b & 0x0f);
+                    break;
+                }
+                unscaledString.append((char) ((b & 0x0f) + '0'));
+            }
+            if (stream.getBytesUntilLimit() > 0) {
+                throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_RESULT,
+                    "Did not read all bytes while decoding decimal. Bytes left: " + stream
+                        .getBytesUntilLimit());
+            }
+            switch (sign) {
+            case 0xa:
+            case 0xc:
+            case 0xe:
+            case 0xf:
+                unscaledString.put(0, '+');
+                break;
+            case 0xb:
+            case 0xd:
+                unscaledString.put(0, '-');
+                break;
+            }
+            // may have filled the CharBuffer or one remaining. need to remove it before toString()
+            int characters = unscaledString.position();
+            unscaledString.clear(); // reset position
+            BigInteger unscaled = new BigInteger(unscaledString.subSequence(0, characters).toString());
+            val = (new BigDecimal(unscaled, scale)).doubleValue();
+        }
+        break;
+
+        case BYTES:
+            val = Double.parseDouble(new String(rawBytes, 0, rawBytes.length - 1));
+            break;
+
+        default:
+            val = XRowSet.getU64(meta.getType(), stream);
+        }
+        return val;
+    }
+
+    private static long parseMysqlDateTime(PolarxResultset.ColumnMetaData meta, ByteString data,
+                                           CodedInputStream stream, int type, ExecutionContext context)
+        throws Exception {
+        final long longTime;
+        if (context.isEnableFastParseOrcRawType()) {
+            switch (meta.getType()) {
+            case BYTES: {
+                byte[] bytes = stream.readRawBytes(data.size() - 1);
+                MysqlDateTime t = StringTimeParser.parseString(bytes, type);
+                longTime = TimeStorage.writeTime(t);
+                break;
+            }
+
+            case TIME: {
+                boolean negative = stream.readRawByte() > 0;
+                int hours = 0;
+                int minutes = 0;
+                int seconds = 0;
+                int nanos = 0;
+
+                if (!stream.isAtEnd()) {
+                    hours = (int) stream.readInt64();
+                    if (!stream.isAtEnd()) {
+                        minutes = (int) stream.readInt64();
+                        if (!stream.isAtEnd()) {
+                            seconds = (int) stream.readInt64();
+                            if (!stream.isAtEnd()) {
+                                nanos = 1000 * (int) stream.readInt64();
+                            }
+                        }
+                    }
+                }
+
+                // get bytes of time value from mysql datetime.
+                longTime = TimeStorage.writeTime(hours, minutes, seconds, nanos, negative);
+                break;
+            }
+
+            case DATETIME: {
+                int year = (int) stream.readUInt64();
+                int month = (int) stream.readUInt64();
+                int day = (int) stream.readUInt64();
+                if (stream.getBytesUntilLimit() > 0) {
+                    int hours = 0;
+                    int minutes = 0;
+                    int seconds = 0;
+
+                    int nanos = 0;
+
+                    if (!stream.isAtEnd()) {
+                        hours = (int) stream.readInt64();
+                        if (!stream.isAtEnd()) {
+                            minutes = (int) stream.readInt64();
+                            if (!stream.isAtEnd()) {
+                                seconds = (int) stream.readInt64();
+                                if (!stream.isAtEnd()) {
+                                    nanos = 1000 * (int) stream.readInt64();
+                                }
+                            }
+                        }
+                    }
+
+                    switch (meta.getOriginalType()) {
+                    case MYSQL_TYPE_DATETIME:
+                    case MYSQL_TYPE_DATETIME2: {
+                        longTime = TimeStorage.writeTimestamp(year, month, day, hours, minutes, seconds, nanos, false);
+                        break;
+                    }
+
+                    case MYSQL_TYPE_TIMESTAMP:
+                    case MYSQL_TYPE_TIMESTAMP2: {
+                        MysqlDateTime mysqlDateTime =
+                            new MysqlDateTime(year, month, day, hours, minutes, seconds, nanos);
+                        TimeParseStatus timeParseStatus = new TimeParseStatus();
+                        MySQLTimeVal timeVal =
+                            MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus,
+                                DEFAULT_TIME_ZONE);
+                        if (timeVal == null) {
+                            // for error time value, set to zero.
+                            timeVal = new MySQLTimeVal();
+                        }
+                        longTime = XResultUtil.timeValToLong(timeVal);
+                        break;
+                    }
+                    default:
+                        throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_RESULT, "Unsupported type: "
+                            + meta.getType().name() + " org_type: " + meta.getOriginalType().name());
+                    }
+                    break;
+                } else {
+                    switch (meta.getOriginalType()) {
+                    case MYSQL_TYPE_DATE:
+                    case MYSQL_TYPE_NEWDATE:
+                        longTime = TimeStorage.writeDate(year, month, day);
+                        break;
+                    case MYSQL_TYPE_DATETIME:
+                    case MYSQL_TYPE_DATETIME2:
+                        longTime = TimeStorage.writeTimestamp(year, month, day, 0, 0, 0, 0, false);
+                        break;
+                    case MYSQL_TYPE_TIMESTAMP:
+                    case MYSQL_TYPE_TIMESTAMP2:
+                        MysqlDateTime mysqlDateTime = new MysqlDateTime(year, month, day, 0, 0, 0, 0);
+                        TimeParseStatus timeParseStatus = new TimeParseStatus();
+                        MySQLTimeVal timeVal =
+                            MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(mysqlDateTime, timeParseStatus,
+                                DEFAULT_TIME_ZONE);
+                        if (timeVal == null) {
+                            // for error time value, set to zero.
+                            timeVal = new MySQLTimeVal();
+                        }
+                        longTime = XResultUtil.timeValToLong(timeVal);
+                        break;
+                    default:
+                        throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_RESULT, "Unsupported type: "
+                            + meta.getType().name() + " org_type: " + meta.getOriginalType().name());
+
+                    }
+                    break;
+                }
+            }
+
+            default:
+                throw new TddlRuntimeException(ErrorCode.ERR_X_PROTOCOL_RESULT,
+                    "Unsupported type: " + meta.getType().name()
+                        + " org_type: " + meta.getOriginalType().name() + " convert to time");
+            }
+        } else {
+            MysqlDateTime t;
+            byte[] bytes = XResultUtil.resultToBytes(meta, data, "utf8");
+            t = StringTimeParser.parseString(bytes, type);
+            longTime = TimeStorage.writeTime(t);
+        }
+        return longTime;
     }
 
     @Override

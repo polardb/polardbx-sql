@@ -78,7 +78,7 @@ public class ModifyPartitionKeyMultiWriteTest extends DDLBaseNewDBTestCase {
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(2));
 
-        //预期：select + delete + insert
+        //预期：select + delete + replace
         sql = String.format("INSERT IGNORE INTO %s VALUES ('678', 6 ,7)", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, dmlHintStr + sql);
         sql = String.format("REPLACE INTO %s VALUES ('678', 7, 8)", tableName);

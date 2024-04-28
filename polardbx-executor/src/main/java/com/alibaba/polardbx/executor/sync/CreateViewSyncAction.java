@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 
 /**
  * @author dylan
@@ -40,6 +41,7 @@ public class CreateViewSyncAction implements ISyncAction {
     public ResultCursor sync() {
         if (viewName != null) {
             OptimizerContext.getContext(schemaName).getViewManager().invalidate(viewName);
+            PlanCache.getInstance().invalidateByTable(schemaName, viewName);
         }
 
         return null;
@@ -53,4 +55,11 @@ public class CreateViewSyncAction implements ISyncAction {
         this.viewName = tableName;
     }
 
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
+    }
 }

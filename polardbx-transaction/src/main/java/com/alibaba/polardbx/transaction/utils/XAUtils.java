@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.druid.util.FnvHash;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.async.XARecoverTask;
 import org.apache.commons.lang3.ArrayUtils;
@@ -228,7 +229,7 @@ public class XAUtils {
         if (formatID == 1) {
             byte[] gtridData = Arrays.copyOfRange(data, 0, gtridLength);
             byte[] bqualData = Arrays.copyOfRange(data, gtridLength, gtridLength + bqualLength);
-            if (checkGtridPrefix(gtridData)) {
+            if (ExecUtils.checkGtridPrefix(gtridData)) {
                 int atSymbolIndex = ArrayUtils.indexOf(gtridData, (byte) '@');
                 String txid = new String(gtridData, 5, atSymbolIndex - 5);
                 String primaryGroupUid = new String(gtridData, atSymbolIndex + 1, gtridData.length - atSymbolIndex - 1);
@@ -258,14 +259,6 @@ public class XAUtils {
             return new XATransInfo(gtrid, bqual);
         }
         return null;
-    }
-
-    /**
-     * Check whether begins with prefix 'drds-'
-     */
-    private static boolean checkGtridPrefix(byte[] data) {
-        return data.length > 5
-            && data[0] == 'd' && data[1] == 'r' && data[2] == 'd' && data[3] == 's' && data[4] == '-';
     }
 
     /**

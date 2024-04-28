@@ -30,6 +30,7 @@ import java.sql.Connection;
 public class TopologySyncThenReleaseXLockTask extends TopologySyncTask {
 
     private String schemaXLockToRelease;
+
     public TopologySyncThenReleaseXLockTask(String schemaName, String schemaXLockToRelease) {
         super(schemaName);
         this.schemaXLockToRelease = schemaXLockToRelease;
@@ -47,7 +48,8 @@ public class TopologySyncThenReleaseXLockTask extends TopologySyncTask {
             }
         } catch (Exception e) {
             LOGGER.error(String.format(
-                "error occurs while TopologySyncThenReleaseXLockTask, schemaName:%s, schemaXLockToRelease:%s", schemaName, schemaXLockToRelease));
+                "error occurs while TopologySyncThenReleaseXLockTask, schemaName:%s, schemaXLockToRelease:%s",
+                schemaName, schemaXLockToRelease));
             throw GeneralUtil.nestedException(e);
         }
     }

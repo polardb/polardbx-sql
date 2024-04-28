@@ -86,7 +86,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, alterTableGroupDropPartitionPreparedData.getTableGroupName(),
                 tablesVersion, true,
-                isBrdTg ? null : alterTableGroupDropPartitionPreparedData.getTargetPhysicalGroups());
+                isBrdTg ? null : alterTableGroupDropPartitionPreparedData.getTargetPhysicalGroups(), false);
 
         Set<Long> outdatedPartitionGroupId = new HashSet<>();
         List<String> outdatedPartitionNames = new ArrayList();
@@ -137,6 +137,7 @@ public class AlterTableGroupDropPartitionJobFactory extends AlterTableGroupBaseJ
 
         // TODO(luoyanxin)
         executableDdlJob.setMaxParallelism(ScaleOutUtils.getTableGroupTaskParallelism(executionContext));
+        attacheCdcFinalMarkTask(executableDdlJob);
         return executableDdlJob;
     }
 

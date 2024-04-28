@@ -49,7 +49,7 @@ uh_t1,CREATE TABLE `uh_t1` (
 	`c1` varchar(32) NOT NULL,
 	`c2` varchar(32) NOT NULL,
 	KEY `auto_shard_key_c1` USING BTREE (`c1`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 /* LOCALITY='hash_range_sequential_placement=on' */
 PARTITION BY UDF_HASH(mymurmurhash64var(`c1`))
 PARTITIONS 6
@@ -104,7 +104,7 @@ uh_t3,CREATE TABLE `uh_t3` (
 	`c1` bigint(20) NOT NULL,
 	`c2` bigint(20) NOT NULL,
 	KEY `auto_shard_key_c1` USING BTREE (`c1`)
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 /* LOCALITY='hash_range_sequential_placement=on' */
 PARTITION BY UDF_HASH(mymurmurhash64bint(`c1`))
 PARTITIONS 6

@@ -586,8 +586,10 @@ public class GeneratedColumnTest extends DDLBaseNewDBTestCase {
             String.format("insert into %s(a,b) values (22222,33333) on duplicate key update a=a+1,b=default(c)",
                 tableName);
         JdbcUtil.executeUpdateSuccess(tddlConn, upsert);
-        JdbcUtil.executeUpdateSuccess(mysqlConn, upsert);
-        selectContentSameAssert("select * from " + tableName, null, mysqlConn, tddlConn);
+        if (!isMySQL80()) {
+            JdbcUtil.executeUpdateSuccess(mysqlConn, upsert);
+            selectContentSameAssert("select * from " + tableName, null, mysqlConn, tddlConn);
+        }
     }
 
     @Test

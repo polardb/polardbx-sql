@@ -31,6 +31,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlEngineAccessorDelegate;
+import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlJobManagerUtils;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -90,6 +91,11 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
     public void rollbackImpl(ExecutionContext executionContext) {
         List<RelNode> rollbackPhysicalPlans = genRollbackPhysicalPlans(executionContext);
         executePhyDdl(rollbackPhysicalPlans, executionContext);
+    }
+
+    @Override
+    protected void duringTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+
     }
 
     @Override
@@ -172,7 +178,7 @@ public abstract class BasePhyDdlTask extends BaseDdlTask {
 
         int inputCount = phyDdlExecutionRecord.getNumPhyObjectsTotal();
 
-        if (isRollBackRunning(ddlContext.getState()) || !executionContext.needToRenamePhyTables()) {
+        if (isRollBackRunning(ddlContext.getState())) {
             inputCount = 0;
         }
 

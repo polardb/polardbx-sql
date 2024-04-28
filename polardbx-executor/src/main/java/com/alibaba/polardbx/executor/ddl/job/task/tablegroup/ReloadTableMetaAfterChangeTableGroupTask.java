@@ -25,6 +25,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableGroupSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -71,7 +72,8 @@ public class ReloadTableMetaAfterChangeTableGroupTask extends BaseGmsTask {
 
         DdlJobManager jobManager = new DdlJobManager();
         List<DdlTask> prevTasks = jobManager.getTasksFromMetaDB(getJobId(),
-            (new AlterTableSetTableGroupChangeMetaOnlyTask(null, null, null, null, false, false, null)).getName());
+            (new AlterTableSetTableGroupChangeMetaOnlyTask(null, null, null, null, false, false, null,
+                false)).getName());
         assert prevTasks.size() == 1;
         AlterTableSetTableGroupChangeMetaOnlyTask setTableGroupChangeMetaOnlyTask =
             (AlterTableSetTableGroupChangeMetaOnlyTask) prevTasks.get(0);
@@ -84,7 +86,7 @@ public class ReloadTableMetaAfterChangeTableGroupTask extends BaseGmsTask {
     private void syncTableGroup() {
         try {
             SyncManagerHelper
-                .sync(new TableGroupSyncAction(schemaName, targetTableGroup));
+                .sync(new TableGroupSyncAction(schemaName, targetTableGroup), SyncScope.ALL);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while sync table group, schemaName:%s, tableGroupName:%s", schemaName, targetTableGroup));

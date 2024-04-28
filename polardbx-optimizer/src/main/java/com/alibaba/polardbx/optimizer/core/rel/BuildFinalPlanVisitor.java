@@ -206,6 +206,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         singleTableOperation.setKind(sqlTemplate.getKind());
         singleTableOperation.setNativeSqlNode(sqlTemplate);
         singleTableOperation.setXTemplate(lv.getXPlan());
+        singleTableOperation.setOriginPlan(lv.getPushedRelNode());
         singleTableOperation.setHintContext(lv.getHintContext());
         final BytesSql bytesSql = singleTableOperation.getBytesSql();
         singleTableOperation.setGalaxyPrepareDigest(lv.getGalaxyPrepareDigest(pc.getExecutionContext(), bytesSql));
@@ -465,12 +466,6 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
             columnList.getList()))) {
             SqlNodeList sqlNodeList = ((SqlInsert) logicalInsert.getSqlTemplate()).getTargetColumnList();
             ((SqlInsert) sqlTemplate).setOperand(3, sqlNodeList);
-        }
-
-        TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
-        Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
-        if (columnMapping != null) {
-            TableColumnUtils.rewriteSqlTemplate((SqlInsert) sqlTemplate, columnMapping);
         }
 
         SingleTableOperation singleTableOperation = new SingleTableOperation(logicalInsert,

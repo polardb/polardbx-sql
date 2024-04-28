@@ -29,10 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
-import com.google.common.collect.ObjectArrays;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListenableFutureTask;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -40,6 +36,10 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.execution.TaskId;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
+import com.google.common.collect.ObjectArrays;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListenableFutureTask;
 import io.airlift.event.client.ServiceUnavailableException;
 
 import javax.annotation.concurrent.ThreadSafe;

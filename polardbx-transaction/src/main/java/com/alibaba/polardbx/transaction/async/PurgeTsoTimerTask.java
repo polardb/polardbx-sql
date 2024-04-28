@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.DbGroupInfoManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -75,7 +76,7 @@ public class PurgeTsoTimerTask implements Runnable {
 
         IGmsSyncAction action = new RequestSnapshotSeqSyncAction();
         List<List<Map<String, Object>>> results = SyncManagerHelper.sync(
-            action, SystemDbHelper.DEFAULT_DB_NAME);
+            action, SystemDbHelper.DEFAULT_DB_NAME, SyncScope.NOT_COLUMNAR_SLAVE);
 
         Long minSnapshotTime = null;
 

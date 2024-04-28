@@ -107,7 +107,14 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
      * 本地配置，优先于推送的动态配置
      */
     private TAtomDsConfDO localConf = new TAtomDsConfDO();
-
+    /**
+     * 用于监听解析新密码时存储配置
+     */
+    private Map<String, String> freshPasswdMap = new ConcurrentHashMap();
+    /**
+     * druid数据源通过init初始化
+     */
+    private volatile DruidDataSource druidDataSource = null;
     /**
      * Xproto数据源
      */
@@ -119,8 +126,8 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
     /**
      * 记录一下共享这个handle的数据源有哪些,最后一个引用关闭时才触发handle的关闭
      */
-    private final Map<String, Integer> dataSourceReferences = Collections.synchronizedMap(new HashMap<String, Integer>());
-    private final TAtomDataSource atomDataSource;
+    private Map<String, Integer> dataSourceReferences = Collections.synchronizedMap(new HashMap<String, Integer>());
+    private TAtomDataSource atomDataSource;
 
     /**
      * <pre>
@@ -179,22 +186,6 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
         String readOnlyPropagatesToServerKey = "readOnlyPropagatesToServer";
         if (!connectionProperties.containsKey(readOnlyPropagatesToServerKey)) {
             connectionProperties.put(readOnlyPropagatesToServerKey, "false");
-        }
-
-        if (ConfigDataMode.isZeroDataTimeToString()) {
-            // 是否开启0值时间处理
-            String zeroDateTimeBehavior = "zeroDateTimeBehavior";
-            if (!connectionProperties.containsKey(zeroDateTimeBehavior)) {
-                connectionProperties.put(zeroDateTimeBehavior, "convertToNull");// 将0000-00-00的时间类型返回null
-            }
-            String yearIsDateType = "yearIsDateType";
-            if (!connectionProperties.containsKey(yearIsDateType)) {
-                connectionProperties.put(yearIsDateType, "false");// 直接返回字符串，不做year转换date处理
-            }
-            String noDatetimeStringSync = "noDatetimeStringSync";
-            if (!connectionProperties.containsKey(noDatetimeStringSync)) {
-                connectionProperties.put(noDatetimeStringSync, "true");// 返回时间类型的字符串,不做时区处理
-            }
         }
     }
 
@@ -428,7 +419,6 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
                 "DBKey",
                 this.dbKey,
                 this.appName,
-                null,
                 this.unitName);
         }
 
@@ -437,10 +427,9 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
                 "AppName",
                 this.dbKey,
                 this.appName,
-                null,
                 this.unitName);
         }
-        // To Be load By MetaDb
+
         TAtomDsConfDO newRunTimeConf = runTimeConf;
 
         lock.lock();
@@ -475,7 +464,6 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
                         "userName",
                         this.dbKey,
                         this.appName,
-                        null,
                         this.unitName);
                 }
             }
@@ -677,6 +665,13 @@ public class TAtomDsConfHandle extends AbstractLifecycle implements Lifecycle {
 
     @Override
     protected void doDestroy() {
+        if (null != this.druidDataSource) {
+            logger.info("[DataSource Stop] Start!");
+            LoggerInit.TDDL_DYNAMIC_CONFIG.info("[DataSource Stop] Start! dbKey is " + this.dbKey);
+            this.druidDataSource.close();
+            logger.info("[DataSource Stop] End!");
+            LoggerInit.TDDL_DYNAMIC_CONFIG.info("[DataSource Stop] End! dbKey is " + this.dbKey);
+        }
         if (this.xDataSource != null) {
             logger.info("[XDataSource Stop] Start!");
             LoggerInit.TDDL_DYNAMIC_CONFIG.info("[XDataSource Stop] Start! dbKey is " + this.dbKey);

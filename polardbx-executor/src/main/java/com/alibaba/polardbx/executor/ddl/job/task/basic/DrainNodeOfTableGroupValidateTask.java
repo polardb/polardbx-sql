@@ -17,14 +17,10 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
@@ -32,11 +28,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import lombok.Getter;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Getter
@@ -46,8 +38,10 @@ public class DrainNodeOfTableGroupValidateTask extends BaseValidateTask {
     private final static Logger LOG = SQLRecorderLogger.ddlLogger;
     private List<TableGroupConfig> tableGroupConfigs;
     private String tableGroupName;
+
     @JSONCreator
-    public DrainNodeOfTableGroupValidateTask(String schemaName, List<TableGroupConfig> tableGroupConfigs, String tableGroupName) {
+    public DrainNodeOfTableGroupValidateTask(String schemaName, List<TableGroupConfig> tableGroupConfigs,
+                                             String tableGroupName) {
         super(schemaName);
         this.tableGroupConfigs = tableGroupConfigs;
         this.tableGroupName = tableGroupName;

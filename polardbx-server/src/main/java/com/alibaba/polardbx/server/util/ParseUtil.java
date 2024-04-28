@@ -51,35 +51,36 @@ public final class ParseUtil {
 
     /**
      * <code>'abc'</code>
-     * 
+     *
      * @param offset stmt.charAt(offset) == first <code>'</code>
      */
     private static String parseString(String stmt, int offset) {
         StringBuilder sb = new StringBuilder();
-        loop: for (++offset; offset < stmt.length(); ++offset) {
+        loop:
+        for (++offset; offset < stmt.length(); ++offset) {
             char c = stmt.charAt(offset);
             if (c == '\\') {
                 switch (c = stmt.charAt(++offset)) {
-                    case '0':
-                        sb.append('\0');
-                        break;
-                    case 'b':
-                        sb.append('\b');
-                        break;
-                    case 'n':
-                        sb.append('\n');
-                        break;
-                    case 'r':
-                        sb.append('\r');
-                        break;
-                    case 't':
-                        sb.append('\t');
-                        break;
-                    case 'Z':
-                        sb.append((char) 26);
-                        break;
-                    default:
-                        sb.append(c);
+                case '0':
+                    sb.append('\0');
+                    break;
+                case 'b':
+                    sb.append('\b');
+                    break;
+                case 'n':
+                    sb.append('\n');
+                    break;
+                case 'r':
+                    sb.append('\r');
+                    break;
+                case 't':
+                    sb.append('\t');
+                    break;
+                case 'Z':
+                    sb.append((char) 26);
+                    break;
+                default:
+                    sb.append(c);
                 }
             } else if (c == '\'') {
                 if (offset + 1 < stmt.length() && stmt.charAt(offset + 1) == '\'') {
@@ -97,35 +98,36 @@ public final class ParseUtil {
 
     /**
      * <code>"abc"</code>
-     * 
+     *
      * @param offset stmt.charAt(offset) == first <code>"</code>
      */
     private static String parseString2(String stmt, int offset) {
         StringBuilder sb = new StringBuilder();
-        loop: for (++offset; offset < stmt.length(); ++offset) {
+        loop:
+        for (++offset; offset < stmt.length(); ++offset) {
             char c = stmt.charAt(offset);
             if (c == '\\') {
                 switch (c = stmt.charAt(++offset)) {
-                    case '0':
-                        sb.append('\0');
-                        break;
-                    case 'b':
-                        sb.append('\b');
-                        break;
-                    case 'n':
-                        sb.append('\n');
-                        break;
-                    case 'r':
-                        sb.append('\r');
-                        break;
-                    case 't':
-                        sb.append('\t');
-                        break;
-                    case 'Z':
-                        sb.append((char) 26);
-                        break;
-                    default:
-                        sb.append(c);
+                case '0':
+                    sb.append('\0');
+                    break;
+                case 'b':
+                    sb.append('\b');
+                    break;
+                case 'n':
+                    sb.append('\n');
+                    break;
+                case 'r':
+                    sb.append('\r');
+                    break;
+                case 't':
+                    sb.append('\t');
+                    break;
+                case 'Z':
+                    sb.append((char) 26);
+                    break;
+                default:
+                    sb.append(c);
                 }
             } else if (c == '"') {
                 if (offset + 1 < stmt.length() && stmt.charAt(offset + 1) == '"') {
@@ -143,12 +145,13 @@ public final class ParseUtil {
 
     /**
      * <code>AS `abc`</code>
-     * 
+     *
      * @param offset stmt.charAt(offset) == first <code>`</code>
      */
     private static String parseIdentifierEscape(String stmt, int offset) {
         StringBuilder sb = new StringBuilder();
-        loop: for (++offset; offset < stmt.length(); ++offset) {
+        loop:
+        for (++offset; offset < stmt.length(); ++offset) {
             char c = stmt.charAt(offset);
             if (c == '`') {
                 if (offset + 1 < stmt.length() && stmt.charAt(offset + 1) == '`') {
@@ -172,17 +175,17 @@ public final class ParseUtil {
             return null;
         }
         switch (stmt.charAt(aliasIndex)) {
-            case '\'':
-                return parseString(stmt, aliasIndex);
-            case '"':
-                return parseString2(stmt, aliasIndex);
-            case '`':
-                return parseIdentifierEscape(stmt, aliasIndex);
-            default:
-                int offset = aliasIndex;
-                for (; offset < stmt.length() && CharTypes.isIdentifierChar(stmt.charAt(offset)); ++offset)
-                    ;
-                return stmt.substring(aliasIndex, offset);
+        case '\'':
+            return parseString(stmt, aliasIndex);
+        case '"':
+            return parseString2(stmt, aliasIndex);
+        case '`':
+            return parseIdentifierEscape(stmt, aliasIndex);
+        default:
+            int offset = aliasIndex;
+            for (; offset < stmt.length() && CharTypes.isIdentifierChar(stmt.charAt(offset)); ++offset)
+                ;
+            return stmt.substring(aliasIndex, offset);
         }
     }
 
@@ -190,29 +193,29 @@ public final class ParseUtil {
         int len = stmt.length();
         int n = offset;
         switch (stmt.charAt(n)) {
-            case '/':
-                if (len > ++n && stmt.charAt(n++) == '*' && len > n + 1 ) {
-                	if(stmt.charAt(n) != '!')
-                	{
-                		 for (int i = n; i < len; ++i) {
-                             if (stmt.charAt(i) == '*') {
-                                 int m = i + 1;
-                                 if (len > m && stmt.charAt(m) == '/') return m;
-                             }
-                         }
-                	}else if(len>n+6)
-                	{
-                		// MySQL use 5 digits to indicate version. 50508
-                        // means MySQL 5.5.8
-                		if(CharTypes.isDigit(stmt.charAt(n+1))
-                				&&CharTypes.isDigit(stmt.charAt(n+2))&&CharTypes.isDigit(stmt.charAt(n+3))&&CharTypes.isDigit(stmt.charAt(n+4))&&CharTypes.isDigit(stmt.charAt(n+5)))
-                		{
-                			 return n+5;
-                		}
-                	}
-                   
+        case '/':
+            if (len > ++n && stmt.charAt(n++) == '*' && len > n + 1) {
+                if (stmt.charAt(n) != '!') {
+                    for (int i = n; i < len; ++i) {
+                        if (stmt.charAt(i) == '*') {
+                            int m = i + 1;
+                            if (len > m && stmt.charAt(m) == '/') {
+                                return m;
+                            }
+                        }
+                    }
+                } else if (len > n + 6) {
+                    // MySQL use 5 digits to indicate version. 50508
+                    // means MySQL 5.5.8
+                    if (CharTypes.isDigit(stmt.charAt(n + 1))
+                        && CharTypes.isDigit(stmt.charAt(n + 2)) && CharTypes.isDigit(stmt.charAt(n + 3))
+                        && CharTypes.isDigit(stmt.charAt(n + 4)) && CharTypes.isDigit(stmt.charAt(n + 5))) {
+                        return n + 5;
+                    }
                 }
-                break;
+
+            }
+            break;
         case '#':
             for (int i = n + 1; i < len; ++i) {
                 if (stmt.charAt(i) == '\n') {
@@ -304,5 +307,14 @@ public final class ParseUtil {
             return true;
         }
         return false;
+    }
+
+    public static String removeQuotation(String s) {
+        if ((s.charAt(0) == '\'' && s.charAt(s.length() - 1) == '\'') ||
+            (s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') ||
+            (s.charAt(0) == '`' && s.charAt(s.length() - 1) == '`')) {
+            return s.substring(1, s.length() - 2);
+        }
+        return s;
     }
 }

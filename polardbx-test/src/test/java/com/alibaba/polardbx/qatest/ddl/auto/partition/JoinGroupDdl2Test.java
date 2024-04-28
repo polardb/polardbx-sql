@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.Assert;
 import org.junit.Test;
@@ -31,6 +32,8 @@ import java.util.Map;
  *
  * @author luoyanxin
  */
+@CdcIgnore(ignoreReason = "join group没有用起来，CDC不再进行测试；"
+    + "alter join group会触发表所属表组的变更，目前也没有透传表组到下游的能力，会导致上下游表组无法对齐")
 public class JoinGroupDdl2Test extends PartitionTestBase {
     final static String CREATE_TABLE_GROUP = "create tablegroup %s";
     final static String CREATE_JOIN_GROUP = "create joingroup %s";
@@ -42,7 +45,6 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
     final static String ALTER_JOING_GROUP_ADD_TABLES = "alter joingroup %s add tables %s";
     final static String ALTER_JOING_GROUP_REMOVE_TABLES = "alter joingroup %s remove tables %s";
     final static String CREATE_GSI = "create global index g%d on t%d(a) partition by hash(a) partitions %d %s";
-
 
     @Test
     public void testCreateDropJoinGroup() {
@@ -78,20 +80,20 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
         Map<String, Long> oldTablesGid = new HashMap<>();
         Map<String, Long> newTablesGid = new HashMap<>();
         for (int i = 0; i < tableCount - 1; i = i + 2) {
-            String tableName = "t" +i;
+            String tableName = "t" + i;
             tables.add(tableName);
             oldTablesGid.put(tableName, getTableGroupId(tableName));
         }
-        sql = String.format(ALTER_JOING_GROUP_ADD_TABLES, joinGroupName, String.join(",",tables));
+        sql = String.format(ALTER_JOING_GROUP_ADD_TABLES, joinGroupName, String.join(",", tables));
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         for (int i = 0; i < tableCount - 1; i = i + 2) {
-            String tableName = "t" +i;
+            String tableName = "t" + i;
             newTablesGid.put(tableName, getTableGroupId(tableName));
         }
-        for (Map.Entry<String, Long> entry:newTablesGid.entrySet()) {
+        for (Map.Entry<String, Long> entry : newTablesGid.entrySet()) {
             Assert.assertFalse(entry.getValue().longValue() == oldTablesGid.get(entry.getKey()).longValue());
         }
-        int k=0;
+        int k = 0;
         sql = String.format(CREATE_GSI, k, k, 3, "");
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
@@ -99,9 +101,9 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
         sql = String.format(CREATE_GSI, k, k, 3, "");
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
-        for(int j=0;j<k;j++) {
-            String tableName = "t" +j;
-            String indexName = "g"+j;
+        for (int j = 0; j < k; j++) {
+            String tableName = "t" + j;
+            String indexName = "g" + j;
             Assert.assertEquals(getTableGroupId(tableName).longValue(), getTableGroupId(indexName, true).longValue());
         }
 
@@ -111,10 +113,10 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
         sql = String.format(DROP_JOIN_GROUP, joinGroupName);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql, "ERR_JOIN_GROUP_NOT_EMPTY");
 
-        sql = String.format(ALTER_JOING_GROUP_REMOVE_TABLES, joinGroupName, String.join(",",tables));
+        sql = String.format(ALTER_JOING_GROUP_REMOVE_TABLES, joinGroupName, String.join(",", tables));
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         for (int i = 0; i < tableCount - 1; i = i + 2) {
-            String tableName = "t" +i;
+            String tableName = "t" + i;
             Assert.assertEquals(newTablesGid.get(tableName).longValue(), getTableGroupId(tableName).longValue());
         }
         sql = String.format(DROP_JOIN_GROUP, joinGroupName);
@@ -123,7 +125,7 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
 
     @Test
     public void testSetJoinGroup() {
-        String tableGroupName="mytg3";
+        String tableGroupName = "mytg3";
         String joinGroupName = "jg3";
         int tableCount = 9;
         String sql = String.format(CREATE_JOIN_GROUP, joinGroupName);
@@ -159,7 +161,8 @@ public class JoinGroupDdl2Test extends PartitionTestBase {
         sql = String.format(CREATE_TABLE, 20, 3, " tablegroup=" + tableGroupName + " joingroup = " + joinGroupName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
         Assert.assertEquals(getTableGroupId("t0").longValue(), getTableGroupId("t20").longValue());
-        sql = "select count(1) from information_schema.join_group where table_schema='" + tddlDatabase1 + "' and TABLE_NAME='t20'";
+        sql = "select count(1) from information_schema.join_group where table_schema='" + tddlDatabase1
+            + "' and TABLE_NAME='t20'";
         ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
         try {
             if (rs.next()) {

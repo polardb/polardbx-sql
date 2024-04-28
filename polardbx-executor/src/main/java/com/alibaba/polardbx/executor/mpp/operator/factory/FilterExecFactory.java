@@ -140,11 +140,7 @@ public class FilterExecFactory extends ExecutorFactory {
         }
 
         exec = new FilterExec(input, expression, bloomFilterExpression, context);
-
-        exec.setId(filter.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(filter, exec, context);
-        }
+        registerRuntimeStat(exec, filter, context);
         return exec;
     }
 
@@ -160,10 +156,7 @@ public class FilterExecFactory extends ExecutorFactory {
             VectorizedExpressionBuilder.buildVectorizedExpression(inputTypes, filterCondition, context, true);
 
         Executor exec = new VectorizedFilterExec(inputExec, result.getKey(), result.getValue(), context);
-        exec.setId(filter.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(filter, exec, context);
-        }
+        registerRuntimeStat(exec, filter, context);
         return exec;
     }
 }

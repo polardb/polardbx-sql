@@ -29,11 +29,12 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.operator.BlockedReason;
 import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import org.joda.time.DateTime;
 
@@ -46,6 +47,7 @@ import static java.util.Objects.requireNonNull;
 
 @Immutable
 public class StageStats {
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     private final DateTime schedulingComplete;
 
     private final int totalTasks;
@@ -61,10 +63,10 @@ public class StageStats {
     private final DataSize totalMemoryReservation;
     private final DataSize peakMemoryReservation;
 
-    private final long totalScheduledTime;
-    private final long totalCpuTime;
-    private final long totalUserTime;
-    private final long totalBlockedTime;
+    private final long totalScheduledTimeNanos;
+    private final long totalCpuTimeNanos;
+    private final long totalUserTimeNanos;
+    private final long totalBlockedTimeNanos;
     private final boolean fullyBlocked;
     private final Set<BlockedReason> blockedReasons;
 
@@ -92,10 +94,10 @@ public class StageStats {
         @JsonProperty("totalMemoryReservation") DataSize totalMemoryReservation,
         @JsonProperty("peakMemoryReservation") DataSize peakMemoryReservation,
 
-        @JsonProperty("totalScheduledTime") long totalScheduledTime,
-        @JsonProperty("totalCpuTime") long totalCpuTime,
-        @JsonProperty("totalUserTime") long totalUserTime,
-        @JsonProperty("totalBlockedTime") long totalBlockedTime,
+        @JsonProperty("totalScheduledTimeNanos") long totalScheduledTimeNanos,
+        @JsonProperty("totalCpuTimeNanos") long totalCpuTimeNanos,
+        @JsonProperty("totalUserTimeNanos") long totalUserTimeNanos,
+        @JsonProperty("totalBlockedTimeNanos") long totalBlockedTimeNanos,
         @JsonProperty("fullyBlocked") boolean fullyBlocked,
         @JsonProperty("blockedReasons") Set<BlockedReason> blockedReasons,
 
@@ -127,10 +129,10 @@ public class StageStats {
         this.totalMemoryReservation = requireNonNull(totalMemoryReservation, "totalMemoryReservation is null");
         this.peakMemoryReservation = requireNonNull(peakMemoryReservation, "peakMemoryReservation is null");
 
-        this.totalScheduledTime = requireNonNull(totalScheduledTime, "totalScheduledTime is null");
-        this.totalCpuTime = requireNonNull(totalCpuTime, "totalCpuTime is null");
-        this.totalUserTime = requireNonNull(totalUserTime, "totalUserTime is null");
-        this.totalBlockedTime = requireNonNull(totalBlockedTime, "totalBlockedTime is null");
+        this.totalScheduledTimeNanos = requireNonNull(totalScheduledTimeNanos, "totalScheduledTime is null");
+        this.totalCpuTimeNanos = requireNonNull(totalCpuTimeNanos, "totalCpuTime is null");
+        this.totalUserTimeNanos = requireNonNull(totalUserTimeNanos, "totalUserTime is null");
+        this.totalBlockedTimeNanos = requireNonNull(totalBlockedTimeNanos, "totalBlockedTime is null");
         this.fullyBlocked = fullyBlocked;
         this.blockedReasons = ImmutableSet.copyOf(requireNonNull(blockedReasons, "blockedReasons is null"));
 
@@ -145,6 +147,7 @@ public class StageStats {
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getSchedulingComplete() {
         return schedulingComplete;
     }
@@ -200,23 +203,23 @@ public class StageStats {
     }
 
     @JsonProperty
-    public long getTotalScheduledTime() {
-        return totalScheduledTime;
+    public long getTotalScheduledTimeNanos() {
+        return totalScheduledTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalCpuTime() {
-        return totalCpuTime;
+    public long getTotalCpuTimeNanos() {
+        return totalCpuTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalUserTime() {
-        return totalUserTime;
+    public long getTotalUserTimeNanos() {
+        return totalUserTimeNanos;
     }
 
     @JsonProperty
-    public long getTotalBlockedTime() {
-        return totalBlockedTime;
+    public long getTotalBlockedTimeNanos() {
+        return totalBlockedTimeNanos;
     }
 
     @JsonProperty

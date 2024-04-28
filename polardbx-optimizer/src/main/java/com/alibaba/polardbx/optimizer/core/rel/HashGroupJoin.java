@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
-import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.memory.MemoryEstimator;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.linq4j.Ord;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -90,22 +90,21 @@ public class HashGroupJoin extends GroupJoin {
 
     public HashGroupJoin(RelInput relInput) {
         super(relInput);
-        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE).replace(relInput.getPartitionWise());
         this.equalCondition = relInput.getExpression("equalCondition");
         this.otherCondition = relInput.getExpression("otherCondition");
         this.parallel = relInput.getBoolean("parallel", false);
         this.parallelBuild = relInput.getBoolean("parallelBuild", false);
     }
 
-    public static HashGroupJoin create(RelNode left, RelNode right, RexNode condition, Set<CorrelationId> variablesSet,
+    public static HashGroupJoin create(RelTraitSet traitSet, RelNode left, RelNode right, RexNode condition,
+                                       Set<CorrelationId> variablesSet,
                                        JoinRelType joinType, boolean semiJoinDone,
                                        ImmutableList<RelDataTypeField> systemFieldList, SqlNodeList hints,
                                        RexNode equalCondition, RexNode otherCondition, ImmutableBitSet groupSet,
                                        List<ImmutableBitSet> groupSets,
                                        List<AggregateCall> aggCalls) {
-        final RelOptCluster cluster = left.getCluster();
-        final RelTraitSet traitSet = cluster.traitSetOf(DrdsConvention.INSTANCE);
-        return new HashGroupJoin(cluster, traitSet, left, right, condition,
+        return new HashGroupJoin(left.getCluster(), traitSet, left, right, condition,
             variablesSet, joinType, semiJoinDone, systemFieldList, hints, equalCondition, otherCondition,
             false, false, false, groupSet, groupSets, aggCalls);
     }
@@ -165,7 +164,9 @@ public class HashGroupJoin extends GroupJoin {
             .item("group", groupSet)
             .itemIf("groups", groupSets, getGroupType() != Aggregate.Group.SIMPLE)
             .itemIf("indicator", indicator, indicator)
-            .itemIf("aggs", aggCalls, pw.nest());
+            .itemIf("aggs", aggCalls, pw.nest())
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
+
         if (!pw.nest()) {
             for (Ord<AggregateCall> ord : Ord.zip(aggCalls)) {
                 pw.item(Util.first(ord.e.name, "agg#" + ord.i), ord.e);
@@ -193,7 +194,8 @@ public class HashGroupJoin extends GroupJoin {
         condition.accept(visitor);
         return pw.item("condition", visitor.toSqlString())
             .item("type", joinType.name().toLowerCase())
-            .itemIf("systemFields", getSystemFieldList(), !getSystemFieldList().isEmpty());
+            .itemIf("systemFields", getSystemFieldList(), !getSystemFieldList().isEmpty())
+            .itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
     }
 
     @Override

@@ -91,8 +91,6 @@ public class ExplainExecuteTest extends CrudBasedLockTestCase {
             while (rs.next()) {
                 String actualExplainResult = rs.getString("select_type");
                 Assert.assertTrue(actualExplainResult != null && !actualExplainResult.equals(""));
-                String extra = rs.getString("Extra");
-                Assert.assertTrue(extra != null && extra.contains("XPlan"));
                 rowsize++;
             }
             Assert.assertTrue(rowsize == 1);

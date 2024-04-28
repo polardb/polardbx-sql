@@ -79,7 +79,7 @@ public class RefreshDbTopologyFactory extends AlterTableGroupBaseJobFactory {
 
         DdlTask validateTask =
             new AlterTableGroupValidateTask(schemaName, refreshTopologyPreparedData.getTableGroupName(), tablesVersion,
-                true, null);
+                true, null, false);
         RefreshTopologyValidateTask refreshTopologyValidateTask =
             new RefreshTopologyValidateTask(schemaName, refreshTopologyPreparedData.getInstGroupDbInfo());
 

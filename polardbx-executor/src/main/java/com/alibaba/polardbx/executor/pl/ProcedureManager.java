@@ -24,13 +24,12 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateProcedureStatement;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.PlConstants;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.ProcedureAccessor;
-import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureMetaRecord;
 import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureDefinitionRecord;
+import com.alibaba.polardbx.gms.metadb.pl.procedure.ProcedureMetaRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import com.alibaba.polardbx.optimizer.memory.MemorySetting;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
-import com.google.common.collect.ImmutableMap;
 
 import java.sql.Connection;
 import java.sql.SQLException;

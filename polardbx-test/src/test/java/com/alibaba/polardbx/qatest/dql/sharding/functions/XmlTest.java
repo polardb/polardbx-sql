@@ -1,16 +1,10 @@
 package com.alibaba.polardbx.qatest.dql.sharding.functions;
 
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
-import com.alibaba.polardbx.qatest.data.ExecuteTableName;
-import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runners.Parameterized;
-
-import java.util.Arrays;
-import java.util.List;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
@@ -61,13 +55,13 @@ public class XmlTest extends ReadBaseTestCase {
         //error
         sql =
             "SELECT UpdateXML('<a><b><c>w</c><b>x</b><d>y</d>z</b></a>', '//b[1]', '<e>fff</e>');";
-        JdbcUtil.executeFaied(tddlConnection, sql, "UpdateXML index visit is not support");
+        JdbcUtil.executeFailed(tddlConnection, sql, "UpdateXML index visit is not support");
 
         sql = "SELECT UpdateXML('<a><b>X</b><b>Y</b></a>', '$@i', '<e>fff</e>');";
-        JdbcUtil.executeFaied(tddlConnection, sql, "UpdateXML variable visit is not support");
+        JdbcUtil.executeFailed(tddlConnection, sql, "UpdateXML variable visit is not support");
 
         sql = "SELECT UpdateXML('', '', '');";
-        JdbcUtil.executeFaied(tddlConnection, sql, "XPATH syntax error:");
+        JdbcUtil.executeFailed(tddlConnection, sql, "XPATH syntax error:");
 
     }
 
@@ -103,13 +97,13 @@ public class XmlTest extends ReadBaseTestCase {
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
 
         sql = String.format("SELECT ExtractValue('<a><b><c>w</c><b>x</b><d>y</d>z</b></a>', '//b[1]');");
-        JdbcUtil.executeFaied(tddlConnection, sql, "ExtractValue index visit is not support");
+        JdbcUtil.executeFailed(tddlConnection, sql, "ExtractValue index visit is not support");
 
         sql = String.format("SELECT ExtractValue('<a><b>X</b><b>Y</b></a>', '$@i');");
-        JdbcUtil.executeFaied(tddlConnection, sql, "ExtractValue variable visit is not support");
+        JdbcUtil.executeFailed(tddlConnection, sql, "ExtractValue variable visit is not support");
 
         sql = String.format("SELECT ExtractValue('', '');");
-        JdbcUtil.executeFaied(tddlConnection, sql, "XPATH syntax error:");
+        JdbcUtil.executeFailed(tddlConnection, sql, "XPATH syntax error:");
     }
 
 }

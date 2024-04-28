@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.field;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.utils.TimestampUtils;
 
 import java.time.ZoneId;
 import java.util.Optional;
@@ -46,7 +47,7 @@ public class SessionProperties {
     /**
      * Determine the check level of field storage.
      */
-     
+
     private FieldCheckLevel checkLevel;
 
     public SessionProperties(ZoneId timezone, CharsetName sessionCharacterSet, long sqlModeFlag) {
@@ -66,17 +67,15 @@ public class SessionProperties {
      */
     public static SessionProperties fromExecutionContext(ExecutionContext context) {
         // get time zone and character set info from session variables or default values.
-        ZoneId zoneId = Optional.ofNullable(context)
-            .map(ExecutionContext::getTimeZone)
-            .map(InternalTimeZone::getZoneId)
-            .orElse(InternalTimeZone.DEFAULT_ZONE_ID);
+        ZoneId zoneId = TimestampUtils.getZoneId(context);
 
         CharsetName charsetName = Optional.ofNullable(context)
             .map(ExecutionContext::getEncoding)
             .map(CharsetName::of)
             .orElseGet(() -> CharsetName.defaultCharset());
 
-        return new SessionProperties(zoneId, charsetName, context.getSqlModeFlags());
+        long sqlModeFlags = Optional.ofNullable(context).map(ExecutionContext::getSqlModeFlags).orElse(0L);
+        return new SessionProperties(zoneId, charsetName, sqlModeFlags);
     }
 
     public static SessionProperties empty() {

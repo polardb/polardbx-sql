@@ -42,6 +42,8 @@ public class DropFunctionDropMetaTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        updateSupportedCommands(true, false, metaDbConnection);
+
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         FunctionAccessor accessor = new FunctionAccessor();

@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
@@ -44,11 +45,16 @@ public class InformationSchemaLocalPartitions extends VirtualView {
         int index = 0;
         columns.add(new RelDataTypeFieldImpl("TABLE_SCHEMA", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_METHOD", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_EXPRESSION", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_DESCRIPTION", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_COMMENT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("LOCAL_PARTITION_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_METHOD", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_EXPRESSION", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_DESCRIPTION", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_COMMENT", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }
@@ -59,11 +65,22 @@ public class InformationSchemaLocalPartitions extends VirtualView {
         return i == getTableSchemaIndex() || i == getTableNameIndex();
     }
 
-    public int getTableSchemaIndex() {
+    private static final List<Integer> INDEXABLE_COLUMNS;
+
+    static {
+        INDEXABLE_COLUMNS = Lists.newArrayList(getTableSchemaIndex(), getTableNameIndex());
+    }
+
+    @Override
+    List<Integer> indexableColumnList() {
+        return INDEXABLE_COLUMNS;
+    }
+
+    static public int getTableSchemaIndex() {
         return 0;
     }
 
-    public int getTableNameIndex() {
+    static public int getTableNameIndex() {
         return 1;
     }
 }

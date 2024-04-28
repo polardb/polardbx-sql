@@ -16,9 +16,13 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.common.utils.XxhashUtils;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.google.common.base.Preconditions;
 import org.openjdk.jol.info.ClassLayout;
 
+import java.util.Arrays;
 import java.util.Map;
 
 import static com.alibaba.polardbx.common.utils.memory.SizeOf.sizeOf;
@@ -33,11 +37,15 @@ public class EnumBlock extends AbstractCommonBlock {
     private static final long INSTANCE_SIZE = ClassLayout.parseClass(EnumBlock.class).instanceSize();
 
     private final int[] offsets;
-    private final char[] data;
     private final Map<String, Integer> enumValues;
+    private char[] data;
 
-    EnumBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets, char[] data,
-              final Map<String, Integer> enumValues) {
+    public EnumBlock(int positionCount, final Map<String, Integer> enumValues) {
+        this(0, positionCount, new boolean[positionCount], new int[positionCount], null, enumValues);
+    }
+
+    public EnumBlock(int arrayOffset, int positionCount, boolean[] valueIsNull, int[] offsets, char[] data,
+                     final Map<String, Integer> enumValues) {
         super(DataTypes.StringType, positionCount, valueIsNull, valueIsNull != null);
         this.offsets = offsets;
         this.data = data;
@@ -52,6 +60,33 @@ public class EnumBlock extends AbstractCommonBlock {
         this.data = data;
         this.enumValues = enumValues;
         updateSizeInfo();
+    }
+
+    public static EnumBlock from(EnumBlock other, int selSize, int[] selection) {
+        int[] newOffsets = new int[selSize];
+
+        if (other.data == null) {
+            return new EnumBlock(0, selSize,
+                BlockUtils.copyNullArray(other.isNull, selection, selSize),
+                newOffsets, null, other.enumValues);
+        }
+        if (selection == null) {
+            return new EnumBlock(0, selSize,
+                BlockUtils.copyNullArray(other.isNull, selection, selSize),
+                newOffsets, Arrays.copyOf(other.data, other.data.length), other.enumValues);
+        } else {
+            EnumBlockBuilder enumBlockBuilder =
+                new EnumBlockBuilder(selSize, other.data.length / (other.positionCount + 1) * selSize,
+                    other.enumValues);
+            for (int i = 0; i < selSize; i++) {
+                if (other.isNull(selection[i])) {
+                    enumBlockBuilder.appendNull();
+                } else {
+                    enumBlockBuilder.writeString(other.getString(selection[i]));
+                }
+            }
+            return (EnumBlock) enumBlockBuilder.build();
+        }
     }
 
     @Override
@@ -102,6 +137,21 @@ public class EnumBlock extends AbstractCommonBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            String val = getString(pos);
+            Integer index = enumValues.get(val);
+            if (index == null) {
+                return NULL_HASH_CODE;
+            } else {
+                return XxhashUtils.finalShuffle(index);
+            }
+        }
+    }
+
+    @Override
     public int checksum(int position) {
         if (isNull(position)) {
             return 0;
@@ -115,7 +165,7 @@ public class EnumBlock extends AbstractCommonBlock {
     @Override
     public boolean equals(int position, Block other, int otherPosition) {
         if (other instanceof EnumBlock) {
-            return equals(position, (EnumBlock) other, otherPosition);
+            return equals(position, other.cast(EnumBlock.class), otherPosition);
         } else if (other instanceof EnumBlockBuilder) {
             return equals(position, (EnumBlockBuilder) other, otherPosition);
         } else {
@@ -167,6 +217,11 @@ public class EnumBlock extends AbstractCommonBlock {
 
     public char[] getData() {
         return data;
+    }
+
+    public void setData(char[] data) {
+        Preconditions.checkArgument(this.data == null);
+        this.data = data;
     }
 
     @Override

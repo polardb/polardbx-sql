@@ -20,7 +20,7 @@ import * as d3 from "d3";
 import {
     formatCount,
     formatDataSize,
-    formatDuration,
+    formatDurationMs,
     getFirstParameter,
     getTaskNumber,
     initializeGraph,
@@ -50,38 +50,53 @@ class OperatorSummary extends React.Component {
                     <tbody>
                     <tr>
                         <td>
-                            Output
+                            OutputRows
                         </td>
                         <td>
-                            {formatCount(operator.outputRowCount) + " rows (" + formatDataSize(operator.outputBytes) + ")"}
+                            {formatCount(operator.outputRowCount)}
+                            {/*{formatCount(operator.outputRowCount) + " rows (" + formatDataSize(operator.outputBytes) + ")"}*/}
                         </td>
                     </tr>
                     <tr>
                         <td>
-                            Startup Time
+                            StartupTime
                         </td>
                         <td>
-                            {formatDuration(operator.startupDuration * 1000)}
+                            {formatDurationMs(operator.startupDuration * 1000)}
                         </td>
                     </tr>
                     <tr>
                         <td>
-                            Run Time
+                            RunTime
                         </td>
                         <td>
-                            {formatDuration(operator.duration * 1000)}
+                            {formatDurationMs(operator.duration * 1000)}
                         </td>
                     </tr>
-                    <tr>
-                        <td>
-                            Memory
-                        </td>
-                        <td>
-                            {formatDataSize(operator.memory)}
-                        </td>
-                    </tr>
+                    {/*<tr>*/}
+                    {/*    <td>*/}
+                    {/*        Memory*/}
+                    {/*    </td>*/}
+                    {/*    <td>*/}
+                    {/*        {formatDataSize(operator.memory)}*/}
+                    {/*    </td>*/}
+                    {/*</tr>*/}
                     </tbody>
                 </table>
+            </div>
+        );
+    }
+}
+
+class LocalBufferOperator extends React.Component {
+    render() {
+        return (
+            <div>
+                <div className="highlight-row">
+                    <div className="header-row">
+                        LocalBuffer
+                    </div>
+                </div>
             </div>
         );
     }
@@ -144,7 +159,7 @@ class OperatorDetail extends React.Component {
                 name: "Total Wall Time",
                 id: "totalWallTime",
                 supplier: getTotalWallTime,
-                renderer: formatDuration
+                renderer: formatDurationMs
             },
             {
                 name: "Input Rows",
@@ -267,7 +282,7 @@ class OperatorDetail extends React.Component {
                                         Wall Time
                                     </td>
                                     <td>
-                                        {formatDuration(totalWallTime)}
+                                        {formatDurationMs(totalWallTime)}
                                     </td>
                                 </tr>
                                 <tr>
@@ -275,7 +290,7 @@ class OperatorDetail extends React.Component {
                                         Blocked
                                     </td>
                                     <td>
-                                        {formatDuration(parseDuration(operator.blockedWall))}
+                                        {formatDurationMs(parseDuration(operator.blockedWall))}
                                     </td>
                                 </tr>
                                 <tr>
@@ -298,7 +313,7 @@ class OperatorDetail extends React.Component {
                             </table>
                         </div>
                     </div>
-                    <div className="row font-white">
+                    <div className="row font-black">
                         <div className="col-xs-2 italic-uppercase">
                             <strong>
                                 Statistic
@@ -367,7 +382,7 @@ class StageOperatorGraph extends React.Component {
             const sourceResult = this.computeOperatorGraphs(mapInfo, mapInfo.get(source), operatorMap);
             sourceResult.forEach((operator, pipelineId) => {
                 if (sourceResults.has(pipelineId)) {
-                    console.error("Multiple sources for ", element['@type'], " had the same pipeline ID");
+                    console.error("Multiple sources for " + element.relOp + " had the same pipeline ID");
                     return sourceResults;
                 }
                 sourceResults.set(pipelineId, operator);
@@ -423,17 +438,18 @@ class StageOperatorGraph extends React.Component {
     computeOperatorMap() {
         const operatorMap = new Map();
         this.props.stage.stageStats.operatorSummaries.forEach(operator => {
-            if (!operatorMap.has(operator.operatorId)) {
-                operatorMap.set(operator.operatorId, [])
-            }
-
-            operatorMap.get(operator.operatorId).push(operator);
+            // if (!operatorMap.has(operator.operatorId)) {
+            //     operatorMap.set(operator.operatorId, [])
+            // }
+            let operators = [];
+            operators.push(operator)
+            operatorMap.set(operator.operatorId, operators);
         });
 
         return operatorMap;
     }
 
-    computeD3StageOperatorGraph(graph, operator, sink, pipelineNode) {
+    computeD3StageOperatorGraph(graph, operator, sink, pipelineNode, pipelineRootNodeMap) {
         const operatorNodeId = "operator-" + operator.pipelineId + "-" + operator.operatorId;
 
         // this is a non-standard use of ReactDOMServer, but it's the cleanest way to unify DagreD3 with React
@@ -442,7 +458,9 @@ class StageOperatorGraph extends React.Component {
         graph.setNode(operatorNodeId, {class: "operator-stats", label: html, labelType: "html"});
 
         if (operator.hasOwnProperty("child")) {
-            this.computeD3StageOperatorGraph(graph, operator.child, operatorNodeId, pipelineNode);
+            this.computeD3StageOperatorGraph(graph, operator.child, operatorNodeId, pipelineNode, pipelineRootNodeMap);
+        } else {
+            pipelineRootNodeMap.set(pipelineNode, operatorNodeId);
         }
 
         if (sink !== null) {
@@ -459,6 +477,7 @@ class StageOperatorGraph extends React.Component {
 
         const stage = this.props.stage;
         const operatorMap = this.computeOperatorMap();
+        const pipelineDepMap : Map<string, number[]> = new Map(Object.entries(stage.tasks[0].taskStats.pipelineDeps))
         const rootId = stage.plan.rootId
 
         const rels = JSON.parse(stage.plan.relNodeJson).rels
@@ -471,15 +490,93 @@ class StageOperatorGraph extends React.Component {
         const operatorGraphs = this.computeOperatorGraphs(mapInfo, mapInfo.get(rootId), operatorMap);
 
         const graph = initializeGraph();
+        const pipelineNodeMap: Map<number, string> = new Map();
+        const pipelineRootNodeMap: Map<string, string> = new Map();
+        const pipelineTopNodeMap: Map<string, string> = new Map();
         operatorGraphs.forEach((operator, pipelineId) => {
             const pipelineNodeId = "pipeline-" + pipelineId;
+            pipelineNodeMap.set(pipelineId, pipelineNodeId);
             graph.setNode(pipelineNodeId, {
                 label: "Pipeline " + pipelineId + " ",
                 clusterLabelPos: 'top',
                 style: 'fill: #2b2b2b',
                 labelStyle: 'fill: #fff'
             });
-            this.computeD3StageOperatorGraph(graph, operator, null, pipelineNodeId)
+            const operatorNodeId = "operator-" + operator.pipelineId + "-" + operator.operatorId;
+            pipelineTopNodeMap.set(pipelineNodeId, operatorNodeId);
+            this.computeD3StageOperatorGraph(graph, operator, null, pipelineNodeId, pipelineRootNodeMap);
+        });
+        pipelineDepMap.forEach((childIds, parentId) => {
+            for (let i = 0; i < childIds.length; i++) {
+                let childNode = pipelineNodeMap.get(childIds[i]);
+                if (childNode === undefined) {
+                    const childNodeId = "pipeline-" + childIds[i];
+                    let childNodeHtml =  {
+                        label: "Pipeline " + childIds[i],
+                        clusterLabelPos: 'top',
+                        style: 'fill: #2b2b2b',
+                        labelStyle: 'fill: #fff'
+                    };
+                    graph.setNode(childNodeId, childNodeHtml);
+                    const localBufferNodeId = "localBuffer-" + parentId;
+                    const html = ReactDOMServer.renderToString(<LocalBufferOperator
+                        key={localBufferNodeId} />);
+                    graph.setNode(localBufferNodeId, {class: "operator-stats", label: html, labelType: "html"});
+                    graph.setParent(localBufferNodeId, childNodeId);
+                    pipelineNodeMap.set(childIds[i], childNodeId);
+                    pipelineRootNodeMap.set(childNodeId, localBufferNodeId);
+                    pipelineTopNodeMap.set(childNodeId, localBufferNodeId);
+                    childNode = childNodeId;
+                }
+                let parentNode = pipelineNodeMap.get(parseInt(parentId));
+                if (parentNode === undefined) {
+                    const parentNodeId = "pipeline-" + parentId;
+                    let parentNodeHtml =  {
+                        label: "Pipeline " + parentId,
+                        clusterLabelPos: 'top',
+                        style: 'fill: #2b2b2b',
+                        labelStyle: 'fill: #fff'
+                    };
+                    graph.setNode(parentNodeId, parentNodeHtml);
+                    const localBufferNodeId = "localBuffer-" + parentId;
+                    const html = ReactDOMServer.renderToString(<LocalBufferOperator
+                        key={localBufferNodeId} />);
+                    graph.setNode(localBufferNodeId, {class: "operator-stats", label: html, labelType: "html"});
+                    graph.setParent(localBufferNodeId, parentNodeId);
+                    pipelineNodeMap.set(parseInt(parentId), parentNodeId);
+                    pipelineRootNodeMap.set(parentNodeId, localBufferNodeId);
+                    pipelineTopNodeMap.set(parentNodeId, localBufferNodeId);
+                    parentNode = parentNodeId;
+                }
+                const vParentInput = "v-" + parentNode + "-input";
+                const vChildOutput = "v-" + childNode + "-output";
+                graph.setNode(vParentInput, {
+                    label: "",
+                    shape: "circle",
+                });
+                graph.setNode(vChildOutput, {
+                    label: "",
+                    shape: "circle",
+                });
+                graph.setParent(vParentInput, parentNode);
+                graph.setParent(vChildOutput, childNode);
+                graph.setEdge(vChildOutput, vParentInput, {
+                    class: "pipeline-edge",
+                    arrowhead: "vee",
+                    arrowheadClass: "pipeline-arrowhead",
+                    style: "stroke-width: 2px",
+                });
+                graph.setEdge(vParentInput, pipelineRootNodeMap.get(parentNode), {
+                    class: "v-pipeline-edge",
+                    arrowhead: "undirected",
+                    style: "stroke-width: 0",
+                });
+                graph.setEdge(pipelineTopNodeMap.get(childNode), vChildOutput, {
+                    class: "v-pipeline-edge",
+                    arrowhead: "undirected",
+                    style: "stroke-width: 0",
+                });
+            }
         });
 
         $("#operator-canvas").html("");

@@ -28,7 +28,8 @@ import com.alibaba.polardbx.server.ServerConnection;
  */
 public class ClearProcedureCache {
     public static boolean response(ServerConnection c, boolean hasMore) {
-        SyncManagerHelper.sync(new ClearProcedureCacheSyncAction(), TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
+        SyncManagerHelper.sync(
+            new ClearProcedureCacheSyncAction(), TddlConstants.INFORMATION_SCHEMA, SyncScope.NOT_COLUMNAR_SLAVE);
         PacketOutputProxyFactory.getInstance().createProxy(c)
             .writeArrayAsPacket(hasMore ? OkPacket.OK_WITH_MORE : OkPacket.OK);
         return true;

@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler.ddl;
 
-import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -45,6 +44,7 @@ import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
 import org.apache.calcite.sql.SqlAlterTablePartitionCount;
 import org.apache.calcite.sql.SqlCreateTable;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.lang3.StringUtils;
@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHandler {
@@ -91,12 +92,15 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
             logicalAlterTablePartitionCount.getCreateGlobalIndexesPreparedData();
 
         Map<CreateGlobalIndexPreparedData, PhysicalPlanData> globalIndexPrepareData = new HashMap<>();
+        Map<String, CreateGlobalIndexPreparedData> indexTablePreparedDataMap =
+            new TreeMap<>(String::compareToIgnoreCase);
         for (CreateGlobalIndexPreparedData createGsiPreparedData : globalIndexesPreparedData) {
             DdlPhyPlanBuilder builder = CreateGlobalIndexBuilder.create(
                 logicalAlterTablePartitionCount.relDdl,
                 createGsiPreparedData,
+                indexTablePreparedDataMap,
                 executionContext).build();
-
+            indexTablePreparedDataMap.put(createGsiPreparedData.getIndexTableName(), createGsiPreparedData);
             globalIndexPrepareData.put(createGsiPreparedData, builder.genPhysicalPlanData());
         }
 
@@ -118,6 +122,8 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
         String schemaName = ast.getSchemaName();
         String primaryTableName = ast.getPrimaryTableName();
         int partitionCnt = ast.getPartitionCount();
+
+        boolean withImplicitTg = StringUtils.isNotEmpty(ast.getTargetImplicitTableGroupName());
 
         // logical table name --> new logical table name
         List<AlterTablePartitionsPrepareData> createGsiPrepareDataList = new ArrayList<>();
@@ -182,7 +188,9 @@ public class LogicalAlterTablePartitionCountHandler extends LogicalCommonDdlHand
             partitionCnt,
             createGsiPrepareDataList,
             primaryTableInfo.getValue(),
-            primaryTableInfo.getKey()
+            primaryTableInfo.getKey(),
+            withImplicitTg ? new SqlIdentifier(ast.getTargetImplicitTableGroupName(), SqlParserPos.ZERO) : null,
+            withImplicitTg
         );
 
         List<SqlAddIndex> sqlAddIndexList = repartitionGsi.stream().map(e ->

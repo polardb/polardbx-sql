@@ -17,7 +17,9 @@ package com.alibaba.polardbx.druid.sql.ast.statement;
 
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLHint;
+import com.alibaba.polardbx.druid.sql.ast.SQLLimit;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLOrderBy;
 import com.alibaba.polardbx.druid.sql.ast.SQLReplaceable;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLListExpr;
@@ -33,6 +35,8 @@ public class SQLValuesTableSource extends SQLTableSourceImpl implements SQLSelec
     private boolean bracket;
     private List<SQLListExpr> values = new ArrayList<SQLListExpr>();
     private List<SQLName> columns = new ArrayList<SQLName>();
+    private SQLOrderBy orderBy;
+    private SQLLimit limit;
 
     public SQLValuesTableSource() {
 
@@ -114,6 +118,16 @@ public class SQLValuesTableSource extends SQLTableSourceImpl implements SQLSelec
             }
         }
 
+        if (this.orderBy != null) {
+            x.setOrderBy(this.orderBy.clone());
+        }
+
+        if (this.limit != null) {
+            x.setLimit(this.limit.clone());
+        }
+
+        x.setBracket(this.bracket);
+
         return x;
     }
 
@@ -136,5 +150,21 @@ public class SQLValuesTableSource extends SQLTableSourceImpl implements SQLSelec
         }
 
         return false;
+    }
+
+    public void setOrderBy(SQLOrderBy orderBy) {
+        this.orderBy = orderBy;
+    }
+
+    public void setLimit(SQLLimit limit) {
+        this.limit = limit;
+    }
+
+    public SQLOrderBy getOrderBy() {
+        return orderBy;
+    }
+
+    public SQLLimit getLimit() {
+        return limit;
     }
 }

@@ -1,0 +1,85 @@
+## DISABLE_FAST_SQL_PARSER
+CREATE TABLE `rh_t2_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,`user_id`, 4)
+PARTITIONS 16;
+show create table rh_t2_f_f;
+Table,Create Table
+rh_t2_f_f,CREATE TABLE `rh_t2_f_f` (
+	`id` bigint(20) NOT NULL AUTO_INCREMENT,
+	`sid` varchar(32) DEFAULT NULL,
+	`user_id` varchar(32) DEFAULT NULL,
+	`order_id` varchar(32) DEFAULT NULL,
+	`order_time` datetime DEFAULT NULL,
+	PRIMARY KEY (`id`),
+	KEY `auto_shard_key_order_id` USING BTREE (`order_id`),
+	KEY `auto_shard_key_user_id` USING BTREE (`user_id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(RIGHT(`order_id`,4),RIGHT(`user_id`,4))
+PARTITIONS 16
+## error_msg: $# must be an partition column #$
+CREATE TABLE `rh_t3_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,SUBSTR(`user_id`, -4), 4)
+PARTITIONS 16;
+must be an partition column
+## error_msg: $# must be 3 #$
+CREATE TABLE `rh_t3_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,`user_id`, `sid`, 4)
+PARTITIONS 16;
+must be 3
+## error_msg: $# must be an integer #$
+CREATE TABLE `rh_t3_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,`user_id`, 4.4)
+PARTITIONS 16;
+must be an integer
+## error_msg: $# operands of range_hash must be 3 #$
+CREATE TABLE `rh_t3_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,`user_id`, sid, -4)
+PARTITIONS 16;
+operands of range_hash must be 3
+## error_msg: $# must be an positive integer #$
+CREATE TABLE `rh_t3_f_f` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY RANGE_HASH(`order_id`,`user_id`, 0)
+PARTITIONS 16;
+must be an positive integer

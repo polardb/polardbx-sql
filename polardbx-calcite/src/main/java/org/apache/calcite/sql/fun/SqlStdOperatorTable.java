@@ -1109,11 +1109,20 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
   public static final SqlRankFunction RANK =
       new SqlRankFunction(SqlKind.RANK, ReturnTypes.RANK, true);
 
+  public static final SqlHyperloglogFunction HYPERLOGLOG =
+      new SqlHyperloglogFunction();
+
   public static final SqlCheckSumFunction CHECK_SUM =
       new SqlCheckSumFunction();
 
+  public static final SqlCheckSumV2Function CHECK_SUM_V2 =
+      new SqlCheckSumV2Function();
+
   public static final SqlCheckSumMergeFunction CHECK_SUM_MERGE_FUNCTION =
       new SqlCheckSumMergeFunction();
+
+  public static final SqlCheckSumV2MergeFunction CHECK_SUM_MERGE_V2_FUNCTION =
+          new SqlCheckSumV2MergeFunction();
 
   /**
    * <code>ROW_NUMBER</code> window function.

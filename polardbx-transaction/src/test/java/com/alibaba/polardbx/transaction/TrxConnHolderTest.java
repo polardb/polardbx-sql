@@ -27,18 +27,17 @@ import com.alibaba.polardbx.optimizer.biv.MockFastDataSource;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
 import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
+import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
+import com.alibaba.polardbx.transaction.trx.AbstractTransaction;
+import com.alibaba.polardbx.transaction.trx.XATransaction;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.mockito.stubbing.Answer;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.api.support.membermodification.MemberModifier;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.reflect.Whitebox;
 
 import java.lang.reflect.Field;
 import java.sql.SQLException;
@@ -61,8 +60,7 @@ import static org.mockito.ArgumentMatchers.anyString;
  * 在非 share read view 的场景下
  * 测试 TransactionConnectionHolder 复用连接的正确性
  */
-@RunWith(PowerMockRunner.class)
-@PrepareForTest({XATransaction.class, TGroupDirectConnection.class})
+@RunWith(MockitoJUnitRunner.class)
 public class TrxConnHolderTest {
 
     private static final String schema = "test_schema";
@@ -111,34 +109,33 @@ public class TrxConnHolderTest {
         trxFiled.setAccessible(true);
 
         this.groupHeldReadConns = (Map<String, List<TransactionConnectionHolder.HeldConnection>>)
-            groupHeldReadConnsField.get(trx.connectionHolder);
+            groupHeldReadConnsField.get(trx.getConnectionHolder());
 
 //        this.heldWriteConn =
 //            (Map<String, TransactionConnectionHolder.HeldConnection>) heldWriteConnField.get(trx.connectionHolder);
 
         this.groupWriteHeldConnCtxMap =
             (Map<String, TransactionConnectionHolder.WriteHeldConnectionContext>) heldWriteConnField.get(
-                trx.connectionHolder);
+                trx.getConnectionHolder());
 
         this.errorMsgs = Collections.synchronizedList(new ArrayList<>());
     }
 
     private TGroupDataSource getMockTGroupDatasource() throws Exception {
-        TGroupDataSource tGroupDataSource = PowerMockito.mock(TGroupDataSource.class);
+        TGroupDataSource tGroupDataSource = Mockito.mock(TGroupDataSource.class);
         MockFastDataSource mockFastDataSource = new MockFastDataSource();
 
-        PowerMockito.when(tGroupDataSource.getConnection(any())).thenAnswer(
+        Mockito.when(tGroupDataSource.getConnection(any())).thenAnswer(
             (Answer<TGroupDirectConnection>) invocation -> {
-                TGroupDirectConnection tGroupDirectConnection = PowerMockito.mock(TGroupDirectConnection.class);
+                TGroupDirectConnection tGroupDirectConnection = Mockito.mock(TGroupDirectConnection.class);
                 MockConnection connection = new MockConnection(mockFastDataSource);
-                PowerMockito.when(tGroupDirectConnection.isClosed()).thenAnswer(new Answer<Boolean>() {
+                Mockito.when(tGroupDirectConnection.isClosed()).thenAnswer(new Answer<Boolean>() {
                     @Override
                     public Boolean answer(InvocationOnMock invocation) throws Throwable {
                         return connection.isClosed();
                     }
                 });
-                PowerMockito.doReturn(connection).when(tGroupDirectConnection).getConn();
-                PowerMockito.doAnswer(invocation1 -> {
+                Mockito.doAnswer(invocation1 -> {
                     connection.close();
                     return null;
                 }).when(tGroupDirectConnection).close();
@@ -153,24 +150,20 @@ public class TrxConnHolderTest {
         executionContext.setGroupParallelism(groupParallelism);
         executionContext.setShareReadView(shareReadView);
         // 注入TransactionManager
-        TransactionManager trxManager = PowerMockito.mock(TransactionManager.class);
-        PowerMockito.doCallRealMethod().when(trxManager).getTransactionExecutor();
-        TransactionExecutor transactionExecutor = PowerMockito.mock(TransactionExecutor.class);
-        PowerMockito.doCallRealMethod().when(transactionExecutor).getAsyncQueue();
+        TransactionManager trxManager = Mockito.mock(TransactionManager.class);
+        TransactionExecutor transactionExecutor = Mockito.mock(TransactionExecutor.class);
 
-        MemberModifier.field(TransactionExecutor.class, "asyncQueue").set(transactionExecutor,
-            PowerMockito.spy(new AsyncTaskQueue(schema, ExecutorUtil.create("ServerExecutor", 10))));
-        MemberModifier.field(TransactionManager.class, "executor").set(trxManager, transactionExecutor);
+        setInternalState(transactionExecutor, "asyncQueue",
+            Mockito.spy(new AsyncTaskQueue(schema, ExecutorUtil.create("ServerExecutor", 10))));
+        setInternalState(trxManager, "executor", transactionExecutor);
 
-        XATransaction trx = PowerMockito.spy(new XATransaction(executionContext, trxManager));
-        PowerMockito.doNothing().when(trx).begin(anyString(), anyString(), any());
-        PowerMockito.doNothing().when(trx, "recordRwTransaction");
-        PowerMockito.doNothing().when(trx, "recordTransaction");
-        PowerMockito.doNothing().when(trx).cleanupAllConnections();
+        XATransaction trx = Mockito.spy(new XATransaction(executionContext, trxManager));
+        Mockito.doNothing().when(trx).begin(anyString(), anyString(), any());
+        Mockito.doNothing().when(trx).cleanupAllConnections();
 
         // TransactionConnectionHolder 初始化引用了 this
         // 需要 hook 成 Mock的trx对象
-        Whitebox.setInternalState(trx.connectionHolder, "trx", trx);
+        setInternalState(trx.getConnectionHolder(), "trx", trx);
         return trx;
     }
 
@@ -554,6 +547,16 @@ public class TrxConnHolderTest {
             } catch (TddlRuntimeException e) {
                 Assert.assertTrue(e.getMessage().contains("read connection is in use before write"));
             }
+        }
+    }
+
+    public static void setInternalState(Object target, String fieldName, Object value) {
+        try {
+            Field field = target.getClass().getDeclaredField(fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            throw new RuntimeException(e);
         }
     }
 }

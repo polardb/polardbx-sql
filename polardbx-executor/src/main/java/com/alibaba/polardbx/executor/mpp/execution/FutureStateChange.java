@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
+import com.alibaba.polardbx.executor.mpp.util.MoreExecutors;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
-import com.alibaba.polardbx.executor.mpp.util.MoreExecutors;
 
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;

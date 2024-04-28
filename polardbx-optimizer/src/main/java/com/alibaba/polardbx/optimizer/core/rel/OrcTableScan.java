@@ -22,6 +22,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Maps;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
@@ -47,9 +48,9 @@ import org.apache.calcite.sql.validate.SqlValidatorUtil;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.OSS_PAGE_SIZE;
 import static com.alibaba.polardbx.optimizer.config.meta.CostModelWeight.TUPLE_HEADER_SIZE;
 
 /**
@@ -151,9 +152,9 @@ public class OrcTableScan extends TableScan {
         long remainPage = getGroupNumber(estimateRowCount, totalRowCount, (int) CostModelWeight.OSS_PAGE_SIZE);
 
         remainPage = Math.max(1, remainPage);
-        double rowCount = remainPage * OSS_PAGE_SIZE;
+        double rowCount = remainPage * CostModelWeight.OSS_PAGE_SIZE;
         double io = Math.ceil(TUPLE_HEADER_SIZE + TableScanIOEstimator.estimateRowSize(getInputProjectRowType())
-            * remainPage * OSS_PAGE_SIZE);
+            * remainPage * CostModelWeight.OSS_PAGE_SIZE);
         return planner.getCostFactory().makeCost(rowCount, 0, 0, io, rowCount);
     }
 
@@ -174,6 +175,14 @@ public class OrcTableScan extends TableScan {
 
     public ImmutableList<RexNode> getFilters() {
         return filters;
+    }
+
+    public List<RexNode> getOriFilters() {
+        Map<Integer, Integer> shiftMap = Maps.newHashMap();
+        for (int i = 0; i < inProjects.size(); i++) {
+            shiftMap.put(i, inProjects.get(i));
+        }
+        return RexUtil.shift(filters, shiftMap);
     }
 
     public ImmutableList<Integer> getInProjects() {

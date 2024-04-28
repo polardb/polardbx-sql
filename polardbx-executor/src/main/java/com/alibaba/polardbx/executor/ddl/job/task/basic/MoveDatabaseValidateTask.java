@@ -49,7 +49,7 @@ public class MoveDatabaseValidateTask extends BaseValidateTask {
      */
     Map<String, Long> primaryTableVersions;
 
-    public MoveDatabaseValidateTask(String schemaName, String targetSchema, Map<String, Long> primaryTableVersions ) {
+    public MoveDatabaseValidateTask(String schemaName, String targetSchema, Map<String, Long> primaryTableVersions) {
         super(schemaName);
         this.primaryTableVersions = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         this.primaryTableVersions.putAll(primaryTableVersions);

@@ -36,6 +36,10 @@ public final class ServerParseClear {
     public static final int PROCEDURE_CACHE = 5;
     public static final int FUNCTION_CACHE = 6;
 
+    public static final int ALLCACHE = 7;
+    public static final int EXTERNAL_DISK_CACHE = 8;
+    public static final int NFS_CACHE = 9;
+
     public static final Set<Integer> PREPARE_UNSUPPORTED_CLEAR_TYPE;
 
     static {
@@ -47,6 +51,9 @@ public final class ServerParseClear {
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(HEATMAP_CACHE);
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(PROCEDURE_CACHE);
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(FUNCTION_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(ALLCACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(EXTERNAL_DISK_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(NFS_CACHE);
     }
 
     public static int parse(ByteString stmt, int offset) {
@@ -68,6 +75,15 @@ public final class ServerParseClear {
             case 'O':
             case 'o':
                 return ossCacheCheck(stmt, i);
+            case 'A':
+            case 'a':
+                return allCacheCheck(stmt, i);
+            case 'N':
+            case 'n':
+                return nfsCacheCheck(stmt, i);
+            case 'E':
+            case 'e':
+                return externalDiskCacheCheck(stmt, i);
             case 'H':
             case 'h':
                 return partitionsHeatmapCacheCheck(stmt, i);
@@ -126,12 +142,44 @@ public final class ServerParseClear {
         return OTHER;
     }
 
-    // CLEAR PLANCACHE
+    // CLEAR OssCache
     private static int ossCacheCheck(ByteString stmt, int offset) {
         final String expect = "OSS CACHE";
         if (stmt.length() >= offset + expect.length()) {
             if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
                 return OSSCACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    // CLEAR NfsCache
+    private static int nfsCacheCheck(ByteString stmt, int offset) {
+        final String expect = "NFS CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return NFS_CACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    // CLEAR ExternalDiskCache
+    private static int externalDiskCacheCheck(ByteString stmt, int offset) {
+        final String expect = "EXTERNAL_DISK CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return EXTERNAL_DISK_CACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    private static int allCacheCheck(ByteString stmt, int offset) {
+        final String expect = "ALL CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return ALLCACHE;
             }
         }
         return OTHER;

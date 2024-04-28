@@ -17,21 +17,12 @@
 package com.alibaba.polardbx.executor.pl;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLPropertyExpr;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateFunctionStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectItem;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectQuery;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectQueryBlock;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLSelectStatement;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnionQuery;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesQuery;
-import com.alibaba.polardbx.druid.sql.ast.statement.SQLValuesTableSource;
 import com.alibaba.polardbx.druid.sql.parser.SQLParserUtils;
 import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
 import com.alibaba.polardbx.druid.util.JdbcConstants;

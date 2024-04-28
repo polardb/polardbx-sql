@@ -19,12 +19,12 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.executor.scaleout.ScaleOutUtils;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasePreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.MoveDatabasesPreparedData;
 import org.apache.calcite.rel.core.DDL;
-import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.Map;
@@ -63,11 +63,13 @@ public class MoveDatabasesJobFactory extends DdlJobFactory {
         executableDdlJob.labelAsHead(emptyTask);
         EmptyTask tailTask = new EmptyTask(defaultSchemaName);
         executableDdlJob.labelAsTail(tailTask);
-
+        boolean usePhysicalBackfill =
+            PhysicalBackfillUtils.isSupportForPhysicalBackfill(defaultSchemaName, executionContext);
         for (Map.Entry<String, Map<String, List<String>>> entry : preparedData.getLogicalDbStorageGroups()
             .entrySet()) {
             MoveDatabasePreparedData moveDatabasePreparedData =
                 new MoveDatabasePreparedData(entry.getKey(), entry.getValue(), preparedData.getSourceSql());
+            moveDatabasePreparedData.setUsePhysicalBackfill(usePhysicalBackfill);
             ExecutableDdlJob dbExecDdlJob =
                 MoveDatabaseJobFactory.create(ddl, moveDatabasePreparedData, executionContext);
             executableDdlJob.combineTasks(dbExecDdlJob);

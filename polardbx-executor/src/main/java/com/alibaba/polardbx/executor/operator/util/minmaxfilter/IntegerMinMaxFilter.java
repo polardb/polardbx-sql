@@ -18,15 +18,14 @@ package com.alibaba.polardbx.executor.operator.util.minmaxfilter;
 
 import com.alibaba.polardbx.common.utils.bloomfilter.MinMaxFilterInfo;
 import com.alibaba.polardbx.executor.chunk.Block;
-import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.In;
 
 /**
  * @author chenzilin
- * @date 2021/12/8 14:49
  */
 public class IntegerMinMaxFilter extends MinMaxFilter {
     Integer min;
     Integer max;
+
     public IntegerMinMaxFilter() {
 
     }
@@ -68,9 +67,9 @@ public class IntegerMinMaxFilter extends MinMaxFilter {
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
         return new MinMaxFilterInfo(
-                MinMaxFilterInfo.TYPE.INTEGER,
-                min == null ? null : min.longValue(),
-                max == null ? null : max.longValue(), null, null, null, null, null, null);
+            MinMaxFilterInfo.TYPE.INTEGER,
+            min == null ? null : min.longValue(),
+            max == null ? null : max.longValue(), null, null, null, null, null, null);
     }
 
     @Override

@@ -16,11 +16,12 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
+import com.alibaba.polardbx.executor.operator.ParallelHashJoinExec;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.google.common.base.Preconditions;
 import org.apache.calcite.rel.RelNode;
 
 import java.util.ArrayList;
@@ -30,6 +31,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 public class PipelineFragment {
+
+    protected FragmentRFManager fragmentRFManager;
 
     protected int parallelism;
     protected List<LogicalView> logicalViews = new ArrayList<>();
@@ -56,6 +59,14 @@ public class PipelineFragment {
         this.parallelism = parallelism;
         this.properties.setDependency(dependency);
         this.properties.setRoot(root);
+    }
+
+    public FragmentRFManager getFragmentRFManager() {
+        return fragmentRFManager;
+    }
+
+    public void setFragmentRFManager(FragmentRFManager fragmentRFManager) {
+        this.fragmentRFManager = fragmentRFManager;
     }
 
     public void addChild(PipelineFragment child) {

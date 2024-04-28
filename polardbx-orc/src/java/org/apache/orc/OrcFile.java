@@ -18,14 +18,6 @@
 
 package org.apache.orc;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
@@ -41,6 +33,15 @@ import org.apache.orc.impl.WriterInternal;
 import org.apache.orc.impl.writer.WriterImplV2;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.function.Consumer;
 
 /**
  * Contains factory methods to read or write ORC files.
@@ -288,6 +289,15 @@ public class OrcFile {
     private boolean useUTCTimestamp;
     private boolean useProlepticGregorian;
 
+    /**
+     * 读限速器，封装成函数
+     */
+    private Consumer<Integer> rateLimiter;
+
+    /**
+     * 加载stripe时，一个一个rowGroup进行加载
+     */
+    private boolean readStripeByRowGroup;
     public ReaderOptions(Configuration conf) {
       this.conf = conf;
       this.useProlepticGregorian = OrcConf.PROLEPTIC_GREGORIAN.getBoolean(conf);
@@ -321,6 +331,7 @@ public class OrcFile {
     /**
      * Should the reader convert dates and times to the proleptic Gregorian
      * calendar?
+     *
      * @param newValue should it use the proleptic Gregorian calendar?
      * @return this
      */
@@ -329,6 +340,10 @@ public class OrcFile {
       return this;
     }
 
+    public ReaderOptions setRateLimiter(Consumer<Integer> rateLimiter) {
+      this.rateLimiter = rateLimiter;
+      return this;
+    }
 
     public Configuration getConfiguration() {
       return conf;
@@ -374,6 +389,20 @@ public class OrcFile {
     public boolean getConvertToProlepticGregorian() {
       return useProlepticGregorian;
     }
+
+    public Consumer<Integer> getRateLimiter() {
+      return rateLimiter;
+    }
+
+    public ReaderOptions setReadStripeByRowGroup(boolean readStripeByRowGroup) {
+      this.readStripeByRowGroup = readStripeByRowGroup;
+      return this;
+    }
+
+    public boolean getReadStripeByRowGroup() {
+      return readStripeByRowGroup;
+    }
+
   }
 
   public static ReaderOptions readerOptions(Configuration conf) {
@@ -442,11 +471,13 @@ public class OrcFile {
     private CompressionStrategy compressionStrategy;
     private double paddingTolerance;
     private String bloomFilterColumns;
+    private String dictionaryColumns;
     private double bloomFilterFpp;
     private BloomFilterVersion bloomFilterVersion;
     private PhysicalWriter physicalWriter;
     private WriterVersion writerVersion = CURRENT_WRITER;
     private boolean useUTCTimestamp;
+    private boolean useDecimal64;
     private boolean overwrite;
     private boolean writeVariableLengthBlocks;
     private HadoopShims shims;
@@ -456,6 +487,12 @@ public class OrcFile {
     private KeyProvider provider;
     private boolean useProlepticGregorian;
     private Map<String, HadoopShims.KeyMetadata> keyOverrides = new HashMap<>();
+
+    private boolean[] recordFirstAndLatest;
+    /**
+     * 限速器
+     */
+    private Consumer<Integer> rateLimiter;
 
     protected WriterOptions(Properties tableProperties, Configuration conf) {
       configuration = conf;
@@ -487,6 +524,9 @@ public class OrcFile {
       paddingTolerance =
           OrcConf.BLOCK_PADDING_TOLERANCE.getDouble(tableProperties, conf);
 
+      dictionaryColumns = OrcConf.DICTIONARY_COLUMNS.getString(tableProperties,
+          conf);
+
       bloomFilterColumns = OrcConf.BLOOM_FILTER_COLUMNS.getString(tableProperties,
           conf);
       bloomFilterFpp = OrcConf.BLOOM_FILTER_FPP.getDouble(tableProperties,
@@ -501,6 +541,8 @@ public class OrcFile {
       directEncodingColumns = OrcConf.DIRECT_ENCODING_COLUMNS.getString(
           tableProperties, conf);
       useProlepticGregorian = OrcConf.PROLEPTIC_GREGORIAN.getBoolean(conf);
+      useDecimal64 =  OrcConf.ENABLE_DECIMAL_64.getBoolean(tableProperties, conf);
+      recordFirstAndLatest = null;
     }
 
     /**
@@ -742,8 +784,32 @@ public class OrcFile {
       return this;
     }
 
+    public WriterOptions useDecimal64(boolean value) {
+      useDecimal64 = value;
+      return this;
+    }
+
+    public WriterOptions recordFirstAndLatest(boolean[] value) {
+      recordFirstAndLatest = value;
+      return this;
+    }
+
+    public boolean[] getRecordFirstAndLatest() {
+      return recordFirstAndLatest;
+    }
+
+    public WriterOptions rateLimiter(Consumer<Integer> rateLimiter) {
+      this.rateLimiter = rateLimiter;
+      return this;
+    }
+
+    public Consumer<Integer> getRateLimiter() {
+      return rateLimiter;
+    }
+
     /**
      * Set the comma-separated list of columns that should be direct encoded.
+     *
      * @param value the value to set
      * @return this
      */
@@ -845,6 +911,10 @@ public class OrcFile {
       return blockSizeValue;
     }
 
+    public String getDictionaryColumns() {
+      return dictionaryColumns;
+    }
+
     public String getBloomFilterColumns() {
       return bloomFilterColumns;
     }
@@ -935,6 +1005,14 @@ public class OrcFile {
 
     public boolean getUseUTCTimestamp() {
       return useUTCTimestamp;
+    }
+
+    public boolean getUseDecimal64() {
+      return useDecimal64;
+    }
+
+    public void setUseDecimal64(boolean useDecimal64) {
+      this.useDecimal64 = useDecimal64;
     }
 
     public String getDirectEncodingColumns() {

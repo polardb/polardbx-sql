@@ -28,6 +28,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
+import java.nio.charset.StandardCharsets;
 
 public class OrcAcidUtils {
   public static final String ACID_STATS = "hive.acid.stats";
@@ -68,7 +69,7 @@ public class OrcAcidUtils {
     }
   }
 
-  private static final Charset utf8 = Charset.forName("UTF-8");
+  private static final Charset utf8 = StandardCharsets.UTF_8;
   private static final CharsetDecoder utf8Decoder = utf8.newDecoder();
 
   public static AcidStats parseAcidStats(Reader reader) {

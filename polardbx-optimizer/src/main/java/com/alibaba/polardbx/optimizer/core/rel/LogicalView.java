@@ -80,6 +80,7 @@ import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.utils.RexLiteralTypeUtils;
 import com.alibaba.polardbx.optimizer.utils.RexUtils;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.model.TargetDB;
 import com.alibaba.polardbx.rule.utils.CalcParamsAttribute;
@@ -247,7 +248,6 @@ public class LogicalView extends TableScan {
     private BytesSql bytesSql;
 
     private RelOptCost selfCost;
-    private RelMetadataQuery mqCache;
     private List<String> columnOrigins = Lists.newArrayList();
 
     /**
@@ -283,7 +283,6 @@ public class LogicalView extends TableScan {
             throw new RuntimeException("PLAN EXTERNALIZE TEST error:" + e.getMessage());
         }
         buildApply();
-        mqCache = RelMetadataQuery.instance();
         rebuildOriginColumnNames();
     }
 
@@ -297,7 +296,6 @@ public class LogicalView extends TableScan {
         this.newPartDbTbl = checkIfNewPartDbTbl(this.tableNames);
         this.pushDownOpt = new PushDownOpt(this, dbType, PlannerContext.getPlannerContext(scan).getExecutionContext());
         this.lockMode = lockMode;
-        mqCache = RelMetadataQuery.instance();
     }
 
     public LogicalView(LogicalView newLogicalView) {
@@ -332,7 +330,6 @@ public class LogicalView extends TableScan {
         } else {
             this.traitSet = traitSet;
         }
-        this.mqCache = RelMetadataQuery.instance();
         this.fromMergeIndex = newLogicalView.fromMergeIndex;
         this.columnOrigins = newLogicalView.columnOrigins;
     }
@@ -356,7 +353,6 @@ public class LogicalView extends TableScan {
         this.pushDownOpt =
             new PushDownOpt(this, rel, this.dbType, PlannerContext.getPlannerContext(rel).getExecutionContext());
         this.lockMode = lockMode;
-        this.mqCache = RelMetadataQuery.instance();
     }
 
     public static LogicalView create(RelNode rel, RelOptTable table) {
@@ -660,7 +656,8 @@ public class LogicalView extends TableScan {
             for (int i = 0; i < resultList.size(); i++) {
                 PartitionInfo partInfo = resultList.get(i).getPartInfo();
                 if (partInfo.getTableType() == PartitionTableType.PARTITION_TABLE
-                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE) {
+                    || partInfo.getTableType() == PartitionTableType.GSI_TABLE
+                    || partInfo.getTableType() == PartitionTableType.COLUMNAR_TABLE) {
                     SqlNodeList partNamesAst = (SqlNodeList) this.partitions;
                     Set<Integer> selectedPartPostSet = new HashSet<>();
                     for (SqlNode partNameAst : partNamesAst.getList()) {
@@ -885,6 +882,10 @@ public class LogicalView extends TableScan {
         return TddlRelToSqlConverter.createInstance(dbType);
     }
 
+    public XPlanTemplate getXPlanDirect() {
+        return XPlan;
+    }
+
     public XPlanTemplate getXPlan() {
         // Always generate the XPlan in case of switching connection pool.
         if (lockMode != LockMode.UNDEF) {
@@ -1045,7 +1046,7 @@ public class LogicalView extends TableScan {
         }
         Set<RelOptTable> tables = RelOptUtil.findTables(e.getRel());
         tables.addAll(RelOptUtil.findTables(getPushedRelNode()));
-        return RelUtils.isAllSingleTableInSameSchema(tables);
+        return TableTopologyUtil.isAllSingleTableInSamePhysicalDB(tables);
     }
 
     private RelNode rebuildProject(Map<RexNode, RexNode> replacements, Project project) {
@@ -1226,6 +1227,8 @@ public class LogicalView extends TableScan {
         if (shardCount > 1 || shardCount == 0) {
             pw.item("shardCount", shardCount);
         }
+
+        pw.itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
 
         if (isMGetEnabled && join != null) {
             List<LookupEquiJoinKey> joinKeys =
@@ -1474,8 +1477,8 @@ public class LogicalView extends TableScan {
         return pushDownOpt.getPlainRefIndex();
     }
 
-    public int getRefByColumnName(String tableName, String columnName, boolean last) {
-        return pushDownOpt.getRefByColumnName(tableName, columnName, last);
+    public int getRefByColumnName(String tableName, String columnName, boolean last, boolean ignoreDerive) {
+        return pushDownOpt.getRefByColumnName(tableName, columnName, last, ignoreDerive);
     }
 
     /**
@@ -1520,7 +1523,6 @@ public class LogicalView extends TableScan {
             return 1;
         }
 
-        int totalShardCount = 0;
         boolean calActualShardCount =
             PlannerContext.getPlannerContext(this).getParamManager()
                 .getBoolean(ConnectionParams.CALCULATE_ACTUAL_SHARD_COUNT_FOR_COST);
@@ -1563,7 +1565,7 @@ public class LogicalView extends TableScan {
                 // params might be clear, pass
             }
         }
-        totalShardCount += getTotalShardCount();
+        int totalShardCount = getTotalShardCount();
 
         return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(executionContext), totalShardCount);
     }
@@ -2403,20 +2405,20 @@ public class LogicalView extends TableScan {
     }
 
     public synchronized Double getRowCount(RelMetadataQuery mq) {
-        return mqCache.getRowCount(getOptimizedPushedRelNodeForMetaQuery());
+        return mq.getRowCount(getOptimizedPushedRelNodeForMetaQuery());
     }
 
     public synchronized Set<RelColumnOrigin> getColumnOrigins(RelMetadataQuery mq, int iOutputColumn) {
-        return mqCache.getColumnOrigins(getPushedRelNode(), iOutputColumn);
+        return mq.getColumnOrigins(getPushedRelNode(), iOutputColumn);
     }
 
     public synchronized Double getDistinctRowCount(RelMetadataQuery mq,
                                                    ImmutableBitSet groupKey, RexNode predicate) {
-        return mqCache.getDistinctRowCount(getOptimizedPushedRelNodeForMetaQuery(), groupKey, predicate);
+        return mq.getDistinctRowCount(getOptimizedPushedRelNodeForMetaQuery(), groupKey, predicate);
     }
 
     public synchronized Double getSelectivity(RelMetadataQuery mq, RexNode predicate) {
-        return mqCache.getSelectivity(getOptimizedPushedRelNodeForMetaQuery(), predicate);
+        return mq.getSelectivity(getOptimizedPushedRelNodeForMetaQuery(), predicate);
     }
 
     public synchronized Set<RexTableInputRef.RelTableRef> getTableReferences(RelMetadataQuery mq,
@@ -2424,30 +2426,30 @@ public class LogicalView extends TableScan {
         if (logicalViewLevel) {
             return Sets.newHashSet(RexTableInputRef.RelTableRef.of(getTable(), 0));
         } else {
-            return mqCache.getTableReferences(getPushedRelNode());
+            return mq.getTableReferences(getPushedRelNode());
         }
     }
 
     public synchronized Boolean areColumnsUnique(RelMetadataQuery mq, ImmutableBitSet columns, boolean ignoreNulls) {
-        return mqCache.areColumnsUnique(getPushedRelNode(), columns, ignoreNulls);
+        return mq.areColumnsUnique(getPushedRelNode(), columns, ignoreNulls);
     }
 
     public synchronized List<Set<RelColumnOrigin>> isCoveringIndex(RelMetadataQuery mq, RelOptTable table,
                                                                    String index) {
-        return mqCache.isCoveringIndex(getPushedRelNode(), table, index);
+        return mq.isCoveringIndex(getPushedRelNode(), table, index);
     }
 
     public synchronized RelOptPredicateList getPredicates(RelMetadataQuery mq) {
-        return mqCache.getPulledUpPredicates(getOptimizedPushedRelNodeForMetaQuery());
+        return mq.getPulledUpPredicates(getOptimizedPushedRelNodeForMetaQuery());
     }
 
     public synchronized Double getPopulationSize(RelMetadataQuery mq, ImmutableBitSet groupKey) {
-        return mqCache.getPopulationSize(getOptimizedPushedRelNodeForMetaQuery(), groupKey);
+        return mq.getPopulationSize(getOptimizedPushedRelNodeForMetaQuery(), groupKey);
     }
 
     public Map<ImmutableBitSet, ImmutableBitSet> getFunctionalDependency(RelMetadataQuery mq,
                                                                          ImmutableBitSet iOutputColumns) {
-        return mqCache.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
+        return mq.getFunctionalDependency(getPushedRelNode(), iOutputColumns);
     }
 
     public boolean useSelectPartitions() {

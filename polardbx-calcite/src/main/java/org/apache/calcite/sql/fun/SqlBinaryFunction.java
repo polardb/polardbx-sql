@@ -1,0 +1,37 @@
+package org.apache.calcite.sql.fun;
+
+import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlFunction;
+import org.apache.calcite.sql.SqlFunctionCategory;
+import org.apache.calcite.sql.SqlKind;
+import org.apache.calcite.sql.SqlWriter;
+import org.apache.calcite.sql.type.OperandTypes;
+import org.apache.calcite.sql.type.ReturnTypes;
+
+/**
+ * @author wumu
+ */
+public class SqlBinaryFunction extends SqlFunction {
+    public SqlBinaryFunction() {
+        super(
+            "BINARY",
+            SqlKind.OTHER_FUNCTION,
+            ReturnTypes.VARCHAR_BINARY,
+            null,
+            OperandTypes.ANY_ANY_OR_ANY_ANY_ANY,
+            SqlFunctionCategory.STRING);
+    }
+
+    //~ Methods ----------------------------------------------------------------
+
+    @Override
+    public void unparse(
+        SqlWriter writer,
+        SqlCall call,
+        int leftPrec,
+        int rightPrec) {
+        final SqlWriter.Frame frame = writer.startFunCall(getName());
+        call.operand(0).unparse(writer, leftPrec, rightPrec);
+        writer.endFunCall(frame);
+    }
+}

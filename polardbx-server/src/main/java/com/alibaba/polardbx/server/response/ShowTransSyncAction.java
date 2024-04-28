@@ -25,8 +25,9 @@ import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
-import com.alibaba.polardbx.transaction.BaseTransaction;
+import com.alibaba.polardbx.transaction.ColumnarTransaction;
 import com.alibaba.polardbx.transaction.TransactionManager;
+import com.alibaba.polardbx.transaction.trx.BaseTransaction;
 
 import java.util.Collection;
 
@@ -34,12 +35,18 @@ public class ShowTransSyncAction implements ISyncAction {
     private final static Logger logger = LoggerFactory.getLogger(ShowTransSyncAction.class);
 
     private String db;
+    private boolean columnar;
 
     public ShowTransSyncAction() {
     }
 
-    public ShowTransSyncAction(String db) {
+    public ShowTransSyncAction(boolean columnar) {
+        this.columnar = columnar;
+    }
+
+    public ShowTransSyncAction(String db, boolean columnar) {
         this.db = db;
+        this.columnar = columnar;
     }
 
     public String getDb() {
@@ -48,6 +55,14 @@ public class ShowTransSyncAction implements ISyncAction {
 
     public void setDb(String db) {
         this.db = db;
+    }
+
+    public boolean isColumnar() {
+        return columnar;
+    }
+
+    public void setColumnar(boolean columnar) {
+        this.columnar = columnar;
     }
 
     @Override
@@ -63,9 +78,15 @@ public class ShowTransSyncAction implements ISyncAction {
         result.addColumn("DURATION_MS", DataTypes.LongType);
         result.addColumn("STATE", DataTypes.StringType);
         result.addColumn("PROCESS_ID", DataTypes.LongType);
+        if (isColumnar()) {
+            result.addColumn("TSO", DataTypes.LongType);
+        }
 
         long currentTimeMs = System.currentTimeMillis();
         for (ITransaction transaction : transactions) {
+            if (isColumnar() && !(transaction instanceof ColumnarTransaction)) {
+                continue;
+            }
             if (transaction.isBegun() && !transaction.isClosed()) {
                 final BaseTransaction tx = (BaseTransaction) transaction;
                 final String transId = Long.toHexString(tx.getId());
@@ -80,7 +101,12 @@ public class ShowTransSyncAction implements ISyncAction {
                     processId = transaction.getExecutionContext().getConnection().getId();
                 }
 
-                result.addRow(new Object[] {transId, type, duration, state, processId});
+                if (isColumnar()) {
+                    final long tso = ((ColumnarTransaction) tx).getSnapshotSeq();
+                    result.addRow(new Object[] {transId, type, duration, state, processId, tso});
+                } else {
+                    result.addRow(new Object[] {transId, type, duration, state, processId});
+                }
             }
         }
 

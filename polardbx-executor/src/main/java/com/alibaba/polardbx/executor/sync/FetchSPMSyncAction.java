@@ -17,29 +17,18 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.PlannerContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
-import com.alibaba.polardbx.optimizer.core.planner.PlaceHolderExecutionPlan;
-import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
-import com.alibaba.polardbx.optimizer.planmanager.parametric.BaseParametricQueryAdvisor;
 import com.alibaba.polardbx.optimizer.planmanager.parametric.Point;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.sql.SqlExplainFormat;
 import org.apache.calcite.sql.SqlExplainLevel;
-import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.text.NumberFormat;
 import java.util.Map;
@@ -88,7 +77,9 @@ public class FetchSPMSyncAction implements ISyncAction {
         PlanManager planManager = PlanManager.getInstance();
         Map<String, BaselineInfo> baselineMap = planManager.getBaselineMap(schemaName);
 
-        ArrayResultCursor result = new ArrayResultCursor("PLAN_CACHE");
+        ArrayResultCursor result = new ArrayResultCursor("SPM");
+        result.addColumn("HOST", DataTypes.StringType);
+        result.addColumn("INST_ID", DataTypes.StringType);
         result.addColumn("BASELINE_ID", DataTypes.StringType);
         result.addColumn("SCHEMA_NAME", DataTypes.StringType);
         result.addColumn("PLAN_ID", DataTypes.LongType);
@@ -111,13 +102,16 @@ public class FetchSPMSyncAction implements ISyncAction {
         if (baselineMap == null) {
             return result;
         }
-
+        String instId = ServerInstIdManager.getInstance().getInstId();
+        String host = TddlNode.getHost();
         for (Map.Entry<String, BaselineInfo> entry : baselineMap.entrySet()) {
             String paramSql = entry.getKey();
             BaselineInfo baselineInfo = entry.getValue();
             Set<Point> points = baselineInfo.getPointSet();
             if (baselineInfo.isRebuildAtLoad()) {
                 result.addRow(new Object[] {
+                    host,
+                    instId,
                     baselineInfo.getId(),
                     schemaName,
                     0, // plan id
@@ -150,6 +144,8 @@ public class FetchSPMSyncAction implements ISyncAction {
                 Point point = findPoint(points, planInfo.getId());
                 NumberFormat numberFormat = NumberFormat.getPercentInstance();
                 result.addRow(new Object[] {
+                    host,
+                    instId,
                     baselineInfo.getId(),
                     schemaName,
                     planInfo.getId(),

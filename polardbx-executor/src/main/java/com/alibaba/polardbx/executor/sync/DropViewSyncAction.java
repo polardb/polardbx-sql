@@ -58,4 +58,11 @@ public class DropViewSyncAction implements ISyncAction {
         this.viewNames = viewNames;
     }
 
+    public String getSchemaName() {
+        return schemaName;
+    }
+
+    public void setSchemaName(String schemaName) {
+        this.schemaName = schemaName;
+    }
 }

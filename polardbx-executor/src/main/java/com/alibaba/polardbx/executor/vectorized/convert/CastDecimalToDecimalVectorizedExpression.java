@@ -27,13 +27,13 @@ import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import io.airlift.slice.Slice;
 
 import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
 @SuppressWarnings("unused")
-@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Decimal"}, argumentKinds = {Variable})
+@ExpressionSignatures(names = {"CastToDecimal", "ConvertToDecimal"}, argumentTypes = {"Decimal"},
+    argumentKinds = {Variable})
 public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorizedExpression {
 
     public CastDecimalToDecimalVectorizedExpression(DataType<?> outputDataType, int outputIndex,
@@ -67,8 +67,10 @@ public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorized
                 int fromIndex = j * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(j));
-                DecimalStructure toValue = new DecimalStructure(((DecimalBlock) outputVectorSlot).getRegion(j));
+                DecimalStructure fromValue =
+                    new DecimalStructure((inputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
+                DecimalStructure toValue =
+                    new DecimalStructure((outputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
 
                 // do rescale operation
                 DecimalConverter.rescale(fromValue, toValue, precision, scale, false);
@@ -78,12 +80,15 @@ public class CastDecimalToDecimalVectorizedExpression extends AbstractVectorized
                 int fromIndex = i * DECIMAL_MEMORY_SIZE;
 
                 // The convert result will directly wrote to decimal memory segment
-                DecimalStructure fromValue = new DecimalStructure(((DecimalBlock) inputVectorSlot).getRegion(i));
-                DecimalStructure toValue = new DecimalStructure(((DecimalBlock) outputVectorSlot).getRegion(i));
+                DecimalStructure fromValue =
+                    new DecimalStructure((inputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
+                DecimalStructure toValue =
+                    new DecimalStructure((outputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
 
                 // do rescale operation
                 DecimalConverter.rescale(fromValue, toValue, precision, scale, false);
             }
         }
+        outputVectorSlot.cast(DecimalBlock.class).setFullState();
     }
 }

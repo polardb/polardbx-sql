@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseSyncTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableGroupSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
@@ -43,7 +44,7 @@ public class TableGroupSyncTask extends BaseSyncTask {
 
     private void syncTableGroup() {
         try {
-            SyncManagerHelper.sync(new TableGroupSyncAction(schemaName, tableGroupName), true);
+            SyncManagerHelper.sync(new TableGroupSyncAction(schemaName, tableGroupName), SyncScope.ALL, true);
         } catch (Throwable t) {
             LOGGER.error(String.format(
                 "error occurs while sync table group, schemaName:%s, tableGroupName:%s", schemaName, tableGroupName));

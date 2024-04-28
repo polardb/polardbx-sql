@@ -39,25 +39,25 @@ public class AlterTableGroupExtractor extends Extractor {
                                        long speedMin,
                                        long speedLimit,
                                        long parallelism,
+                                       boolean useBinary,
                                        PhyTableOperation planSelectWithMax,
                                        PhyTableOperation planSelectWithMin,
                                        PhyTableOperation planSelectWithMinAndMax,
                                        PhyTableOperation planSelectMaxPk,
                                        PhyTableOperation planSelectSample,
-                                       PhyTableOperation planSelectMinAndMaxSample,
                                        List<Integer> primaryKeysId,
                                        Map<String, Set<String>> sourcePhyTables) {
-        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
-            planSelectSample, planSelectMinAndMaxSample, primaryKeysId);
+        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, useBinary,
+            null, planSelectWithMax, planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk,
+            planSelectSample, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
     }
 
     public static Extractor create(String schemaName, String sourceTableName, String targetTableName, long batchSize,
-                                   long speedMin, long speedLimit, long parallelism,
+                                   long speedMin, long speedLimit, long parallelism, boolean useBinary,
                                    Map<String, Set<String>> sourcePhyTables,
                                    ExecutionContext ec) {
-        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, ec);
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder(schemaName, useBinary, ec);
 
         ExtractorInfo info = Extractor.buildExtractorInfo(ec, schemaName, sourceTableName, targetTableName, true);
 
@@ -70,6 +70,7 @@ public class AlterTableGroupExtractor extends Extractor {
             speedMin,
             speedLimit,
             parallelism,
+            useBinary,
             builder.buildSelectForBackfill(info.getSourceTableMeta(), info.getTargetTableColumns(),
                 info.getPrimaryKeys(),
                 false, true, lockMode),
@@ -82,10 +83,7 @@ public class AlterTableGroupExtractor extends Extractor {
                 true, true,
                 lockMode),
             builder.buildSelectMaxPkForBackfill(info.getSourceTableMeta(), info.getPrimaryKeys()),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                false, false),
-            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys(), info.getPrimaryKeys(),
-                true, true),
+            builder.buildSqlSelectForSample(info.getSourceTableMeta(), info.getPrimaryKeys()),
             info.getPrimaryKeysId(),
             sourcePhyTables);
     }

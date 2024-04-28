@@ -37,6 +37,7 @@ public class LogicalDropTable extends BaseDdlOperation {
     private SqlDropTable sqlDropTable;
     private DropTablePreparedData dropTablePreparedData;
     private DropTableWithGsiPreparedData dropTableWithGsiPreparedData;
+    protected boolean importTable = false;
 
     private LogicalDropTable(DropTable dropTable) {
         super(dropTable);
@@ -66,6 +67,8 @@ public class LogicalDropTable extends BaseDdlOperation {
     public void prepareData() {
         // A normal logical table or a primary table with GSIs.
         dropTablePreparedData = preparePrimaryData();
+
+        dropTablePreparedData.setImportTable(this.isImportTable());
 
         final GsiMetaBean gsiMetaBean =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getGsi(tableName, IndexStatus.ALL);
@@ -111,6 +114,14 @@ public class LogicalDropTable extends BaseDdlOperation {
         return new DropGlobalIndexPreparedData(schemaName, primaryTableName, indexTableName, false);
     }
 
+    public boolean isImportTable() {
+        return importTable;
+    }
+
+    public void setImportTable(boolean importTable) {
+        this.importTable = importTable;
+    }
+
     @Override
     public boolean isSupportedByFileStorage() {
         return true;
@@ -119,5 +130,14 @@ public class LogicalDropTable extends BaseDdlOperation {
     @Override
     public boolean isSupportedByBindFileStorage() {
         return true;
+    }
+
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getDropTablePreparedData()) {
+            getDropTablePreparedData().setDdlVersionId(ddlVersionId);
+        }
+        if (null != getDropTableWithGsiPreparedData()) {
+            getDropTableWithGsiPreparedData().setDdlVersionId(ddlVersionId);
+        }
     }
 }

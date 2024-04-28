@@ -67,7 +67,7 @@ FROM tbl
 WHERE a = '1989-01-01'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p0]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p0]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="1989-01-01")
 EXPLAIN SELECT *
 FROM tbl
 WHERE (a < '2019-01-02'

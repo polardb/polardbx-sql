@@ -87,7 +87,7 @@ public class LocalityPartDbTest extends LocalityTestBase {
         final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
         final String dbName = "test_locality_partdb";
         final String dropDbSql = String.format("drop database if exists %s", dbName);
-        final String createDbSql = String.format("create database %s %s", dbName, localitySql);
+        final String createDbSql = String.format("create database %s mode = auto %s", dbName, localitySql);
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropDbSql);
 
@@ -101,6 +101,21 @@ public class LocalityPartDbTest extends LocalityTestBase {
         );
 
         JdbcUtil.executeUpdateSuccess(tddlConnection, dropDbSql);
+    }
+
+    @Test
+    public void testDrdsDatabaseLocality() {
+
+        final String dn = chooseDatanode(true);
+        final String localitySql = " LOCALITY=" + TStringUtil.quoteString("dn=" + dn);
+        final String dbName = "test_locality_drdsdb";
+        final String dropDbSql = String.format("drop database if exists %s", dbName);
+        final String createDbSql = String.format("create database %s mode = drds %s", dbName, localitySql);
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, dropDbSql);
+
+        String errMsg = "database of drds mode doesn't support locality specification!";
+        JdbcUtil.executeUpdateFailed(tddlConnection, createDbSql, errMsg);
     }
 
     /**
@@ -152,7 +167,6 @@ public class LocalityPartDbTest extends LocalityTestBase {
 //            tableName, "broadcast", localitySql);
 //        JdbcUtil.executeUpdateFailed(tddlConnection, createBroadcastTableSql, "not support");
 //    }
-
     @Test
     public void testSingleTableLocality() {
 

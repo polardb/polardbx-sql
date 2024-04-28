@@ -35,11 +35,14 @@ import java.sql.Connection;
 public class RenameTableUpdateMetaTask extends BaseGmsTask {
 
     protected String newLogicalTableName;
+    protected boolean needRenamePhyTables;
 
     @JSONCreator
-    public RenameTableUpdateMetaTask(String schemaName, String logicalTableName, String newLogicalTableName) {
+    public RenameTableUpdateMetaTask(String schemaName, String logicalTableName, String newLogicalTableName,
+                                     boolean needRenamePhyTables) {
         super(schemaName, logicalTableName);
         this.newLogicalTableName = newLogicalTableName;
+        this.needRenamePhyTables = needRenamePhyTables;
     }
 
     @Override
@@ -50,10 +53,11 @@ public class RenameTableUpdateMetaTask extends BaseGmsTask {
         if (isNewPartitionDb) {
             TableMetaChanger
                 .renamePartitionTableMeta(metaDbConnection, schemaName, logicalTableName, newLogicalTableName,
-                    executionContext);
+                    needRenamePhyTables, executionContext);
         } else {
             TableMetaChanger
-                .renameTableMeta(metaDbConnection, schemaName, logicalTableName, newLogicalTableName, executionContext);
+                .renameTableMeta(metaDbConnection, schemaName, logicalTableName, newLogicalTableName,
+                    needRenamePhyTables, executionContext);
         }
         CommonMetaChanger.renameFinalOperationsOnSuccess(schemaName, logicalTableName, newLogicalTableName);
     }

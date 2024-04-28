@@ -117,8 +117,8 @@ public class TrxLookupSet {
      * @return Triple(waiting trx, blocking trx, in which group we found these transactions)
      */
     public Triple<Transaction, Transaction, String> getWaitingAndBlockingTrx(Collection<String> groupNameList,
-                                                                              long waiting,
-                                                                              long blocking) {
+                                                                             long waiting,
+                                                                             long blocking) {
         for (final String group : groupNameList) {
             final Long waitingTrxId = groupConn2Tran.get(new GroupConnPair(group, waiting));
             final Long blockingTrxId = groupConn2Tran.get(new GroupConnPair(group, blocking));

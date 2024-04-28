@@ -21,7 +21,7 @@ import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 /**
  * Random accessible column vector, extended by Block class.
  */
-public interface RandomAccessBlock {
+public interface RandomAccessBlock extends CastableBlock {
 
     /**
      * Set the nullness array to the vector

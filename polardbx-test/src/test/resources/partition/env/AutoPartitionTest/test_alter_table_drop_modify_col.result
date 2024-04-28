@@ -1,0 +1,25 @@
+DROP TABLE IF EXISTS tb1;
+CREATE TABLE tb1 (
+	id int,
+	a int,
+	b int,
+	INDEX(b)
+);
+SHOW CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`id` int(11) DEFAULT NULL,
+	`a` int(11) DEFAULT NULL,
+	`b` int(11) DEFAULT NULL,
+	INDEX `b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+ALTER TABLE tb1
+	DROP COLUMN id,
+	MODIFY COLUMN a int DEFAULT 1;
+SHOW CREATE TABLE tb1;
+Table,Create Table
+tb1,CREATE TABLE `tb1` (
+	`a` int(11) DEFAULT '1',
+	`b` int(11) DEFAULT NULL,
+	INDEX `b` (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4

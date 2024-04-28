@@ -1,0 +1,107 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $# Wrong number #$
+create table t1_rc(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 3
+(
+PARTITION p1 VALUES LESS THAN ( 1,1 )
+);
+Wrong number
+## error_msg: $# Wrong number #$
+create table t1_lc(a int, b int)
+PARTITION BY LIST COLUMNS ( `a`,`b` ) PARTITIONS 3
+(
+PARTITION p1 VALUES IN ( (1,1) )
+);
+Wrong number
+## error_msg: $# Wrong number #$
+create table t1_k(a int, b int)
+PARTITION BY  KEY ( `a`,`b` ) PARTITIONS 3
+(
+  PARTITION p1 VALUES LESS THAN ( maxvalue,maxvalue )
+);
+Wrong number
+## error_msg: $# Wrong number #$
+create table t1_rc_rc_tp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 3
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` ) SUBPARTITIONS 2
+(
+SUBPARTITION sp1 VALUES LESS THAN ( 1,1 ),
+SUBPARTITION sp2 VALUES LESS THAN ( 2,1 )
+)
+(
+  PARTITION p1 VALUES LESS THAN ( 1,1 )
+);
+Wrong number
+## error_msg: $# Wrong number #$
+create table t2_rc_rc_tp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 2
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` ) SUBPARTITIONS 3
+(
+SUBPARTITION sp1 VALUES LESS THAN ( 1,1 ),
+SUBPARTITION sp2 VALUES LESS THAN ( 1,2 )
+)
+(
+PARTITION p1 VALUES LESS THAN ( 1,1 ),
+PARTITION p2 VALUES LESS THAN ( 2,1 )
+);
+Wrong number
+## exec ok
+create table t1_rc_rc_ntp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 1
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` )
+(
+PARTITION p1 VALUES LESS THAN ( 1,1 ) SUBPARTITIONS 2
+(
+  SUBPARTITION p1sp1 VALUES LESS THAN ( 1,1 ),
+  SUBPARTITION p1sp2 VALUES LESS THAN ( 2,1 )
+)
+);
+## error_msg: $# Wrong number #$
+alter table t1_rc_rc_ntp
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 2
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` )
+(
+PARTITION p1 VALUES LESS THAN ( 1,1 )
+(
+SUBPARTITION p1sp1 VALUES LESS THAN ( 1,1 ),
+SUBPARTITION p1sp2 VALUES LESS THAN ( 2,1 )
+)
+);
+Wrong number
+drop table t1_rc_rc_ntp;
+## error_msg: $#  each partition must be defined #$
+create table rng_t1(a int, b int)
+partition by range(a);
+each partition must be defined
+## error_msg: $#  each partition must be defined #$
+create table t1_rc_rc_tp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` )
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` );
+each partition must be defined
+## error_msg: $#  each partition must be defined #$
+create table t1_rc_rc_tp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 1
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` )
+(
+PARTITION p1 VALUES LESS THAN ( 1,1 )
+);
+each partition must be defined
+## error_msg: $#  each partition must be defined #$
+create table t1_rc_rc_tp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 1
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` ) SUBPARTITIONS 1
+(
+SUBPARTITION sp1 VALUES LESS THAN ( 1,1 )
+);
+each partition must be defined
+## error_msg: $#  each partition must be defined #$
+create table t1_rc_rc_ntp(a int, b int)
+PARTITION BY RANGE COLUMNS ( `a`,`b` ) PARTITIONS 2
+SUBPARTITION BY RANGE COLUMNS ( `b`,`a` )
+(
+  PARTITION p1 VALUES LESS THAN ( 1,1 ) (
+    SUBPARTITION p1sp1 VALUES LESS THAN (maxvalue,maxvalue)
+  ),
+  PARTITION p2 VALUES LESS THAN ( 2,1 )
+);
+each partition must be defined

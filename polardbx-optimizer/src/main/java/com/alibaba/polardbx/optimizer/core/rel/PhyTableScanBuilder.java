@@ -28,6 +28,8 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.CursorMeta;
 import com.alibaba.polardbx.optimizer.core.Xplan.XPlanTemplate;
@@ -42,6 +44,7 @@ import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPrunerUtils;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.utils.CalciteUtils;
+import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
@@ -86,6 +89,8 @@ import static org.apache.calcite.sql.SqlKind.PLUS;
  */
 public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
+    private static final Logger logger = LoggerFactory.getLogger(PhyTableScanBuilder.class);
+
     /**
      * <p>
      * If unionSize <= 0, union all sql to one; else union unionSize sql to one. Use
@@ -119,18 +124,21 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     protected final List<String> logicalTableNames;
     protected UnionOptHelper unionOptHelper;
     protected ExecutionContext executionContext;
-    protected boolean buildForPushDownOneShardOnly = false;
+    protected boolean pushDowned = false;
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
                                ExecutionContext executionContext, RelNode parent, DbType dbType,
-                               RelDataType rowType, String schemaName, List<String> logicalTableNames,
-                               boolean useCache) {
+                               RelDataType rowType, String schemaName,
+                               List<String> logicalTableNames,
+                               boolean useCache, boolean pushDowned) {
         this.executionContext = executionContext;
         this.targetTables = targetTables;
-        this.params = executionContext.getParams() == null ? null : executionContext.getParams().getCurrentParameter();
+        this.params = executionContext.getParams() == null ? null :
+            executionContext.getParams().getCurrentParameter();
         this.parent = parent;
         this.dbType = dbType;
         this.rowType = rowType;
+        this.pushDowned = pushDowned;
 
         boolean usingPhySqlCache = executionContext.enablePhySqlCache() & useCache;
         if (usingPhySqlCache &&
@@ -157,17 +165,21 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
     }
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
-                               ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
+                               ExecutionContext executionContext, RelNode parent, DbType dbType,
+                               String schemaName,
                                List<String> logicalTableName) {
-        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
-            logicalTableName, true);
+        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(),
+            schemaName,
+            logicalTableName, true, false);
     }
 
     public PhyTableScanBuilder(SqlSelect sqlTemplate, Map<String, List<List<String>>> targetTables,
-                               ExecutionContext executionContext, RelNode parent, DbType dbType, String schemaName,
+                               ExecutionContext executionContext, RelNode parent, DbType dbType,
+                               String schemaName,
                                List<String> logicalTableName, boolean useCache) {
-        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(), schemaName,
-            logicalTableName, useCache);
+        this(sqlTemplate, targetTables, executionContext, parent, dbType, parent.getRowType(),
+            schemaName,
+            logicalTableName, useCache, false);
     }
 
     private static class FetchPreprocessor extends SqlShuttle {
@@ -267,7 +279,13 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
 
         final XPlanTemplate XPlan;
         final BytesSql bytesSql;
-        if (parent instanceof LogicalView && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
+
+        if (pushDowned && parent instanceof LogicalView) {
+            //the sqlTemplate shouldn't happen change for push-down plan.
+            bytesSql = RelUtils.toNativeBytesSql(sqlTemplate, dbType);
+            XPlan = ((LogicalView) parent).getXPlan();
+        } else if (parent instanceof LogicalView
+            && ((LogicalView) parent).getSqlTemplate(executionContext) == sqlTemplate) {
             bytesSql = ((LogicalView) parent).getBytesSql(sqlTemplate);
             XPlan = ((LogicalView) parent).getXPlan();
         } else {
@@ -403,11 +421,17 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     galaxyPrepareDigest, tmpTargetTables, totalCount, shardPlanMemoryContext);
             allPhyTableScans.addAll(phyTableScans);
         }
+        if (pushDowned) {
+            if (allPhyTableScans.size() > 1) {
+                throw new IllegalArgumentException(
+                    "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
+                        + pushDowned);
+            } else if (allPhyTableScans.get(0) instanceof BaseQueryOperation) {
+                if (ExplainResult.isExplainExecute(executionContext.getExplain())) {
+                    executionContext.setUnOptimizedPlan(parent);
+                }
+            }
 
-        if (buildForPushDownOneShardOnly && allPhyTableScans.size() > 1) {
-            throw new IllegalArgumentException(
-                "Invalid build params of PhyTableOperation: buildForPushDownOneShardOnly="
-                    + buildForPushDownOneShardOnly);
         }
         return allPhyTableScans;
     }
@@ -445,6 +469,9 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                     supportGalaxyPrepare,
                     galaxyPrepareDigest,
                     maOfPlanBuildingPool);
+                if (XPlan != null && parent instanceof LogicalView) {
+                    phyTableOp.setOriginPlan(((LogicalView) parent).getPushedRelNode());
+                }
 
 //                phyTableOp.setLogicalTableNames(logicalTableNames);
 //                phyTableOp.setXTemplate(XPlan);
@@ -472,6 +499,9 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
                         supportGalaxyPrepare,
                         galaxyPrepareDigest,
                         maOfPlanBuildingPool);
+                    if (XPlan != null && parent instanceof LogicalView) {
+                        phyTableOp.setOriginPlan(parent);
+                    }
 //                    phyTableOp.setLogicalTableNames(logicalTableNames);
 //                    phyTableOp.setXTemplate(XPlan);
 //                    phyTableOp.setSqlDigest(sqlTemplateDigest);
@@ -491,7 +521,8 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             if (entry.getValue() != null && entry.getValue().getValue() instanceof PruneRawString) {
                 PruneRawString pruneRawString = (PruneRawString) entry.getValue().getValue();
                 PruneRawString pruneRawString1 =
-                    (PruneRawString) parameterContexts1.getCurrentParameter().get(entry.getKey()).getValue();
+                    (PruneRawString) parameterContexts1.getCurrentParameter().get(entry.getKey())
+                        .getValue();
                 pruneRawString.merge(pruneRawString1);
             }
         }
@@ -645,7 +676,7 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
         buildParams.setPhyTables(tableNames);
         buildParams.setSqlKind(SqlKind.SELECT);
         buildParams.setLockMode(sqlTemplate.getLockMode());
-        buildParams.setOnlyOnePartitionAfterPruning(buildForPushDownOneShardOnly);
+        buildParams.setOnlyOnePartitionAfterPruning(pushDowned);
 
         buildParams.setLogicalPlan(parent);
         buildParams.setCluster(parent.getCluster());
@@ -747,9 +778,5 @@ public class PhyTableScanBuilder extends PhyOperationBuilderCommon {
             return needPrune;
         }
         return false;
-    }
-
-    public void setBuildForPushDownOneShardOnly(boolean buildForPushDownOneShardOnly) {
-        this.buildForPushDownOneShardOnly = buildForPushDownOneShardOnly;
     }
 }

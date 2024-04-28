@@ -26,6 +26,7 @@ import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
@@ -64,47 +65,44 @@ public class NFSInstanceInitializer {
         return this;
     }
 
-    public FileSystem initialize() {
-        FileSystem fileSystem;
-        CacheManager cacheManager;
+    public FileSystem initialize() throws IOException {
+        CacheManager cacheManager = null;
+        FileSystem nfsFileSystem = null;
         try {
-            Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
-                ConnectionParams.OSS_FS_CACHE_TTL,
-                ConnectionParams.OSS_FS_MAX_CACHED_ENTRIES
+            cacheManager = FileMergeCacheManager.createMergeCacheManager(Engine.NFS);
+            URI nfsFileUri = URI.create(this.uri);
+            nfsFileSystem = createNFSFileSystem(
+                nfsFileUri,
+                cachePolicy == CachePolicy.META_CACHE || cachePolicy == CachePolicy.META_AND_DATA_CACHE
             );
-            cacheManager = FileMergeCacheManager.createMergeCacheManager(globalVariables, Engine.NFS);
-        } catch (IOException e) {
-            throw GeneralUtil.nestedException("Failed to create cache manager!");
-        }
+            Configuration factoryConfig = new Configuration();
+            final boolean validationEnabled = FileConfig.getInstance().getCacheConfig().isValidationEnabled();
 
-        URI nfsFileUri = URI.create(this.uri);
-        FileSystem nfsFileSystem;
-        try {
-            nfsFileSystem = createNFSFileSystem(nfsFileUri,
-                cachePolicy == CachePolicy.META_CACHE || cachePolicy == CachePolicy.META_AND_DATA_CACHE);
-        } catch (IOException e) {
-            throw GeneralUtil.nestedException("Fail to create file system!");
-        }
-
-        Configuration factoryConfig = new Configuration();
-        final CacheType cacheType = CacheType.FILE_MERGE;
-        final boolean validationEnabled = false;
-
-        switch (cacheType) {
-        case FILE_MERGE:
-            fileSystem = new FileMergeCachingFileSystem(
+            return new FileMergeCachingFileSystem(
                 nfsFileSystem.getUri(),
                 factoryConfig,
                 cacheManager,
                 nfsFileSystem,
                 validationEnabled,
-                cachePolicy == CachePolicy.META_AND_DATA_CACHE || cachePolicy == CachePolicy.DATA_CACHE);
-            break;
-        default:
-            throw new IllegalArgumentException("Invalid CacheType: " + cacheType.name());
+                true
+            );
+        } catch (Throwable t) {
+            if (cacheManager != null) {
+                try {
+                    cacheManager.close();
+                } catch (Throwable t1) {
+                    // ignore
+                }
+            }
+            if (nfsFileSystem != null) {
+                try {
+                    nfsFileSystem.close();
+                } catch (Throwable t1) {
+                    // ignore
+                }
+            }
+            throw GeneralUtil.nestedException("Fail to create NFS file system!", t);
         }
-
-        return fileSystem;
     }
 
     private synchronized NFSFileSystem createNFSFileSystem(URI nfsUri, boolean enableCache) throws IOException {

@@ -120,11 +120,28 @@ public class SubStrPartitionFunction extends PartitionIntFunction {
             return "";
         }
 
+        if (partitionField.isNull()) {
+            return null;
+        }
+
         Slice slice = partitionField.stringValue();
         if (slice == null) {
             return null;
         }
         String str = slice.toStringUtf8();
+
+        /**
+         * <pre>
+         *   For substring, if the position is out of string, then return empty string
+         *   e.g
+         *      select substr("123", -6) = ""
+         *      select substr("123", 6) = ""
+         * </pre>
+         *
+         */
+        if (Math.abs(positionFldVal) > str.length()) {
+            return "";
+        }
 
         int pos = positionFldVal;
         if (positionFldVal < 0) {
@@ -144,13 +161,17 @@ public class SubStrPartitionFunction extends PartitionIntFunction {
     }
 
     @Override
-    public String[] getFunctionNames() {
-        return new String[] {"SubStrPartition"};
+    public DataType getReturnType() {
+        if (this.resultField != null) {
+            return resultField.getDataType();
+        } else {
+            return DataTypes.VarcharType;
+        }
     }
 
     @Override
-    public DataType getReturnType() {
-        return DataTypes.VarcharType;
+    public String[] getFunctionNames() {
+        return new String[] {"SubStrPartition"};
     }
 
     @Override

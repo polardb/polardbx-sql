@@ -40,7 +40,7 @@ public class BinlogCommandAccessor extends AbstractAccessor {
             BINLOG_POLARX_COMMAND_TABLE);
 
     private final static String QUERY_COMMAND_BY_TYPE_AND_STATUS =
-        String.format("select * from `%s` where cmd_type = ? and cmd_status=?",
+        String.format("select * from `%s` where cmd_type = ? and cmd_status= ? order by id",
             BINLOG_POLARX_COMMAND_TABLE);
 
     private final static String QUERY_COMMAND_BY_TYPE_AND_CMD_ID =

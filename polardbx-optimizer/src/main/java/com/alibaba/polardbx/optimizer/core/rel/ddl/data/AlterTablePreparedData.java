@@ -116,6 +116,13 @@ public class AlterTablePreparedData extends DdlPreparedData {
 
     private TableMeta newTableMeta;
 
+    private boolean pushDownMultipleStatement = false;
+
+    /**
+     * Columnar DDL
+     */
+    private boolean isColumnar;
+
     public boolean hasColumnModify() {
         return GeneralUtil.isNotEmpty(droppedColumns) ||
             GeneralUtil.isNotEmpty(addedColumns) ||

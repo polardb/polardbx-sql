@@ -16,14 +16,13 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer.model;
 
+import lombok.Data;
+
 import java.io.Serializable;
 import java.util.List;
 
-import lombok.Data;
-
 /**
  * @author ximing.yd
- * @date 2021/12/20 上午11:15
  */
 @Data
 public class LabelPartition implements Serializable {

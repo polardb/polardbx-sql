@@ -22,6 +22,7 @@ import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.sync.TableMetaChangeSyncAction;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 import org.apache.commons.collections.CollectionUtils;
@@ -66,7 +67,7 @@ public class AlterTableInsertColumnsMetaTask extends BaseGmsTask {
             null, addedColumns);
 
         //sync have to be successful to continue
-        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName));
+        SyncManagerHelper.sync(new TableMetaChangeSyncAction(schemaName, logicalTableName), SyncScope.ALL);
         executionContext.refreshTableMeta();
 
         LOGGER.info(String.format("Rollback Insert GSI columns meta. schema:%s, table:%s, index:%s",

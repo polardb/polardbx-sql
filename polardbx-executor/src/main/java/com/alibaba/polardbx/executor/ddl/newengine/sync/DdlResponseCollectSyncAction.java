@@ -42,15 +42,16 @@ public class DdlResponseCollectSyncAction implements IGmsSyncAction {
     public Object sync() {
         //fetch DDL response, filter by schemaName and jobId
         List<DdlResponse.Response> responseList = DdlEngineRequester.getResponse().stream().filter(
-            e-> StringUtils.equalsIgnoreCase(e.getSchemaName(), schemaName)
+            e -> StringUtils.equalsIgnoreCase(e.getSchemaName(), schemaName)
         ).collect(Collectors.toList());
-        if(CollectionUtils.isNotEmpty(jobIds)){
-            responseList = responseList.stream().filter(e->jobIds.contains(e.getJobId())).collect(Collectors.toList());
+        if (CollectionUtils.isNotEmpty(jobIds)) {
+            responseList =
+                responseList.stream().filter(e -> jobIds.contains(e.getJobId())).collect(Collectors.toList());
         }
 
         //return
-        ArrayResultCursor  resultCursor = buildResultCursor();
-        responseList.stream().forEach(e-> resultCursor.addRow(buildRow(e)));
+        ArrayResultCursor resultCursor = buildResultCursor();
+        responseList.stream().forEach(e -> resultCursor.addRow(buildRow(e)));
         return resultCursor;
     }
 
@@ -76,7 +77,5 @@ public class DdlResponseCollectSyncAction implements IGmsSyncAction {
             response.getResponseContent(),
         };
     }
-
-
 
 }

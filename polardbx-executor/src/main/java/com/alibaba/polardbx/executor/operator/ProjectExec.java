@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
@@ -28,6 +25,9 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.expression.calc.InputRefExpression;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import java.util.List;
 
@@ -89,7 +89,10 @@ public class ProjectExec extends AbstractExecutor {
             }
         }
 
-        return this.buildChunk(inputChunk);
+        Chunk result = this.buildChunk(inputChunk);
+        result.setPartIndex(inputChunk.getPartIndex());
+        result.setPartCount(inputChunk.getPartCount());
+        return result;
     }
 
     public Chunk buildChunk(Chunk inputChunk) {

@@ -19,11 +19,18 @@ package com.alibaba.polardbx.executor.utils;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLDataTypeImpl;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
+import com.alibaba.polardbx.druid.sql.ast.SQLIndexDefinition;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartition;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
+import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByCoHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByHash;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionValue;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartition;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionBy;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByCoHash;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByHash;
+import com.alibaba.polardbx.druid.sql.ast.SQLSubPartitionByRange;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIntegerExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLMethodInvokeExpr;
@@ -36,6 +43,7 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlPrimaryKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.MySqlUnique;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlPartitionByKey;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlSubPartitionByKey;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlTableIndex;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
@@ -45,7 +53,6 @@ import com.alibaba.polardbx.optimizer.sharding.utils.DrdsDefaultPartitionNumUtil
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -53,9 +60,11 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.TddlConstants.AUTO_SHARD_KEY_PREFIX;
 import static com.alibaba.polardbx.gms.metadb.limit.Limits.MAX_LENGTH_OF_IDENTIFIER_NAME;
+import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 /**
@@ -133,7 +142,6 @@ public class DrdsToAutoTableCreationSqlUtil {
 
         MySqlCreateTableStatement autoModeCreateTableStatement = drdsCreateTableStatement.clone();
 
-        eliminateDbPartitionAndTbPartition(autoModeCreateTableStatement);
         /**
          * eliminate some local index:
          * 1. implicit primary column and index
@@ -141,6 +149,8 @@ public class DrdsToAutoTableCreationSqlUtil {
          * */
         eliminateImplicitKeyAndAutoShardKey(autoModeCreateTableStatement);
         eliminateImplicitKeyAndAutoShardKey(drdsCreateTableStatement);
+
+        eliminateDbPartitionAndTbPartition(autoModeCreateTableStatement);
         //single table
         if (drdsCreateTableStatement.isSingle()
             || !drdsCreateTableStatement.isBroadCast() && drdsCreateTableStatement.getDbPartitionBy() == null
@@ -163,84 +173,115 @@ public class DrdsToAutoTableCreationSqlUtil {
             final int tbPartitionNum =
                 (drdsTbPartitions == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
                     drdsTbPartitions.getNumber().intValue();
-            final int drdsPartitionNum = Math.min(dbPartitionNum * tbPartitionNum, maxPartitionsNum);
+            final int drdsDbPartitionNum = dbPartitionNum;
+            final int drdsTbPartitionNum = min(tbPartitionNum, maxPartitionsNum / dbPartitionNum);
 
             List<String> primaryKey = drdsCreateTableStatement.getPrimaryKeyNames();
 
-            //only dbpartition or only tbpartition
+            //only dbpartition
             if (drdsDbPartitionBy != null && drdsTbPartitionBy == null
                 || drdsDbPartitionBy == null && drdsTbPartitionBy != null) {
                 //handle gsi
-                handleAutoModeGsi(autoModeCreateTableStatement, drdsPartitionNum, maxPartitionColumnNum,
+                handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
                     columnsLengthsInBytes);
 
                 SQLMethodInvokeExpr drdsPartitionBy =
                     (drdsDbPartitionBy == null) ? drdsTbPartitionBy : drdsDbPartitionBy;
+                int drdsPartitionNum = (drdsDbPartitionBy == null) ? drdsTbPartitionNum : drdsDbPartitionNum;
                 SQLPartitionBy autoPartitionBy =
-                    convertDrdsPartitionByToAutoSQLPartitionBy(drdsPartitionBy, drdsPartitionNum, primaryKey,
+                    convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsPartitionBy, drdsPartitionNum, primaryKey,
                         maxPartitionColumnNum, columnsLengthsInBytes);
-                if (drdsPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
-                    MySqlTableIndex cgsiOnCol2 =
-                        generateCgsiForRangeHash2ndCol(drdsPartitionBy, drdsPartitionNum, primaryKey,
-                            maxPartitionColumnNum, columnsLengthsInBytes);
-                    autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
-                }
+
+                /**
+                 * dbpartition by range_hash(c1,c2,n) ==> partition by co_hash(substr(c1,-n), substr(c2,-n)),
+                 * so ignore creating gis for c2
+                 */
+//                if (drdsPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
+//                    MySqlTableIndex cgsiOnCol2 =
+//                        generateCgsiForRangeHash2ndCol(drdsPartitionBy, drdsPartitionNum, primaryKey,
+//                            maxPartitionColumnNum, columnsLengthsInBytes);
+//                    autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
+//                }
 
                 autoModeCreateTableStatement.setPartitioning(autoPartitionBy);
             } else if (drdsDbPartitionBy != null && drdsTbPartitionBy != null) {
+                //contain dbpartition and tbpartition
+                /**
+                 * 这里不区db和tb的分拆分函数，只要db的sharding key 和 tb的 sharding key 一致(且不考虑拆分函数里面的数字)
+                 * 转换为auto模式时，就只看dbPartition
+                 * */
                 Set<String> dbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
+                Set<String> tbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
                 drdsDbPartitionBy.getArguments().forEach(
                     arg -> {
                         if (arg instanceof SQLIdentifierExpr) {
-                            dbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName());
+                            dbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                        } else if (arg instanceof SQLIntegerExpr) {
+                            //dbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
                         }
                     }
                 );
-                boolean hasSameShardingKey = false;
-                for (SQLExpr arg : drdsTbPartitionBy.getArguments()) {
-                    if (arg instanceof SQLIdentifierExpr) {
-                        String shardingKey = ((SQLIdentifierExpr) arg).normalizedName();
-                        if (dbShardingKey.contains(shardingKey)) {
-                            hasSameShardingKey = true;
-                            break;
+                drdsTbPartitionBy.getArguments().forEach(
+                    arg -> {
+                        if (arg instanceof SQLIdentifierExpr) {
+                            tbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                        } else if (arg instanceof SQLIntegerExpr) {
+                            //tbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
                         }
                     }
-                }
+                );
 
+                boolean hasSameShardingKey = dbShardingKey.equals(tbShardingKey);
                 if (hasSameShardingKey) {
                     //handle gsi
-                    handleAutoModeGsi(autoModeCreateTableStatement, drdsPartitionNum, maxPartitionColumnNum,
+                    handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
                         columnsLengthsInBytes);
 
                     SQLPartitionBy autoPartitionBy =
-                        convertDrdsPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
+                        convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy,
+                            min(drdsDbPartitionNum * drdsTbPartitionNum, maxPartitionsNum),
+                            primaryKey,
                             maxPartitionColumnNum, columnsLengthsInBytes);
 
-                    if (drdsDbPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
-                        MySqlTableIndex cgsiOnCol2 =
-                            generateCgsiForRangeHash2ndCol(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
-                                maxPartitionColumnNum, columnsLengthsInBytes);
-                        autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
-                    }
+                    /**
+                     * dbpartition by range_hash(c1,c2,n) ==> partition by co_hash(substr(c1,-n), substr(c2,-n)),
+                     * so ignore creating gsi for c2
+                     */
+//                    if (drdsDbPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
+//                        MySqlTableIndex cgsiOnCol2 =
+//                            generateCgsiForRangeHash2ndCol(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
+//                                maxPartitionColumnNum, columnsLengthsInBytes);
+//                        autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
+//                    }
                     autoModeCreateTableStatement.setPartitioning(autoPartitionBy);
                 } else {
                     //convert origin gsi
-                    handleAutoModeGsi(autoModeCreateTableStatement, drdsPartitionNum, maxPartitionColumnNum,
+                    handleAutoModeGsi(autoModeCreateTableStatement, maxPartitionsNum, maxPartitionColumnNum,
                         columnsLengthsInBytes);
 
                     //handle dbPartitionBy
                     SQLPartitionBy autoPartitionBy =
-                        convertDrdsPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
+                        convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsDbPartitionNum, primaryKey,
                             maxPartitionColumnNum, columnsLengthsInBytes);
                     autoModeCreateTableStatement.setPartitioning(autoPartitionBy);
 
-                    //add cgsi for dbpartitionBy range hash 2nd col
-                    if (drdsDbPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
-                        MySqlTableIndex cgsiOnCol2 =
-                            generateCgsiForRangeHash2ndCol(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
-                                maxPartitionColumnNum, columnsLengthsInBytes);
-                        autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
-                    }
+                    //handle tbPartitionBy
+                    SQLSubPartitionBy autoSubPartitionBy =
+                        convertDrdsTbPartitionByToAutoSQLPartitionBy(drdsTbPartitionBy, drdsTbPartitionNum, primaryKey,
+                            maxPartitionColumnNum, columnsLengthsInBytes);
+                    autoModeCreateTableStatement.getPartitioning().setSubPartitionBy(autoSubPartitionBy);
+
+                    /**
+                     * dbpartition by range_hash(c1,c2,n) ==> partition by co_hash(substr(c1,-n), substr(c2,-n)),
+                     * so ignore creating gis for c2
+                     */
+//                    //add cgsi for dbpartitionBy range hash 2nd col
+//                    if (drdsDbPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
+//                        MySqlTableIndex cgsiOnCol2 =
+//                            generateCgsiForRangeHash2ndCol(drdsDbPartitionBy, drdsPartitionNum, primaryKey,
+//                                maxPartitionColumnNum, columnsLengthsInBytes);
+//                        autoModeCreateTableStatement.getTableElementList().add(cgsiOnCol2);
+//                    }
 
                     //handle tbPartitionBy
                     /**
@@ -258,7 +299,11 @@ public class DrdsToAutoTableCreationSqlUtil {
 //                        convertDrdsPartitionByToAutoSQLPartitionBy(drdsTbPartitionBy, drdsPartitionNum, primaryKey, maxPartitionColumnNum);
 //                    gsiOnTbShardingKey.setPartitioning(autoPartitionByOnGsi);
 //                    autoModeCreateTableStatement.getTableElementList().add(gsiOnTbShardingKey);
-//
+
+                    /**
+                     * dbpartition by range_hash(c1,c2,n) ==> partition by co_hash(substr(c1,-n), substr(c2,-n)),
+                     * so ignore creating gis for c2
+                     */
 //                    //add cgsi for tbpartitionBy range hash 2nd col
 //                    if (drdsTbPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
 //                        MySqlTableIndex cgsiOnCol2 =
@@ -317,6 +362,24 @@ public class DrdsToAutoTableCreationSqlUtil {
     private static void eliminateImplicitKeyAndAutoShardKey(MySqlCreateTableStatement drdsCreateTableStatement) {
         List<SQLTableElement> tableElementList = drdsCreateTableStatement.getTableElementList();
         Iterator<SQLTableElement> iterator = tableElementList.iterator();
+        List<String> dbPartitionCols = new ArrayList<>(), tbPartitionCols = new ArrayList<>();
+        SQLMethodInvokeExpr dbPartitionBy = (SQLMethodInvokeExpr) drdsCreateTableStatement.getDbPartitionBy();
+        SQLMethodInvokeExpr tbPartitionBy = (SQLMethodInvokeExpr) drdsCreateTableStatement.getTablePartitionBy();
+
+        if (dbPartitionBy != null) {
+            for (SQLExpr expr : dbPartitionBy.getArguments()) {
+                if (expr instanceof SQLIdentifierExpr) {
+                    dbPartitionCols.add(((SQLIdentifierExpr) expr).getSimpleName());
+                }
+            }
+        }
+        if (tbPartitionBy != null) {
+            for (SQLExpr expr : tbPartitionBy.getArguments()) {
+                if (expr instanceof SQLIdentifierExpr) {
+                    tbPartitionCols.add(((SQLIdentifierExpr) expr).getSimpleName());
+                }
+            }
+        }
         while (iterator.hasNext()) {
             SQLTableElement element = iterator.next();
             if (element instanceof SQLColumnDefinition) {
@@ -342,7 +405,19 @@ public class DrdsToAutoTableCreationSqlUtil {
                 }
                 SQLIdentifierExpr keyName = (SQLIdentifierExpr) mySqlUnique.getIndexDefinition().getName();
                 if (keyName.getSimpleName().toLowerCase().contains(AUTO_SHARD_KEY_PREFIX.toLowerCase())) {
-                    iterator.remove();
+                    //检查：如果该auto_shard_key和分区类型不一致，则说明其承担普通索引的作用，不应该被remove
+                    List<String> autoShardKeyCols = new ArrayList<>();
+                    SQLIndexDefinition sqlIndexDefinition = mySqlUnique.getIndexDefinition();
+                    for (SQLSelectOrderByItem item : sqlIndexDefinition.getColumns()) {
+                        if (item.getExpr() instanceof SQLIdentifierExpr) {
+                            autoShardKeyCols.add(((SQLIdentifierExpr) item.getExpr()).getSimpleName());
+                        }
+                    }
+
+                    if (columnsIsSame(dbPartitionCols, autoShardKeyCols) || columnsIsSame(tbPartitionCols,
+                        autoShardKeyCols)) {
+                        iterator.remove();
+                    }
                 }
 
             } else if (element instanceof MySqlKey) {
@@ -350,16 +425,40 @@ public class DrdsToAutoTableCreationSqlUtil {
                 MySqlKey mySqlKey = (MySqlKey) element;
                 SQLIdentifierExpr keyName = (SQLIdentifierExpr) mySqlKey.getIndexDefinition().getName();
                 if (keyName.getSimpleName().toLowerCase().contains(AUTO_SHARD_KEY_PREFIX.toLowerCase())) {
-                    iterator.remove();
+                    //检查：如果该auto_shard_key和分区类型不一致，则说明其承担普通索引的作用，不应该被remove
+                    List<String> autoShardKeyCols = new ArrayList<>();
+                    SQLIndexDefinition sqlIndexDefinition = mySqlKey.getIndexDefinition();
+                    for (SQLSelectOrderByItem item : sqlIndexDefinition.getColumns()) {
+                        if (item.getExpr() instanceof SQLIdentifierExpr) {
+                            autoShardKeyCols.add(((SQLIdentifierExpr) item.getExpr()).getSimpleName());
+                        }
+                    }
+
+                    if (columnsIsSame(dbPartitionCols, autoShardKeyCols) || columnsIsSame(tbPartitionCols,
+                        autoShardKeyCols)) {
+                        iterator.remove();
+                    }
                 }
             }
         }
     }
 
-    public static SQLPartitionBy convertDrdsPartitionByToAutoSQLPartitionBy(SQLMethodInvokeExpr drdsPartitionBy,
-                                                                            int partitionNum, List<String> primaryKey,
-                                                                            int maxPartitionColumnNum,
-                                                                            Map<String, Integer> columnsLengthsInBytes) {
+    private static boolean columnsIsSame(final List<String> a, final List<String> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            if (a.get(i) == null || !a.get(i).equalsIgnoreCase(b.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static SQLPartitionBy convertDrdsDbPartitionByToAutoSQLPartitionBy(SQLMethodInvokeExpr drdsPartitionBy,
+                                                                              int partitionNum, List<String> primaryKey,
+                                                                              int maxPartitionColumnNum,
+                                                                              Map<String, Integer> columnsLengthsInBytes) {
         SQLPartitionBy autoSqlPartitionBy = null;
         /**
          * 对于映射成key分区的各种partition by，在partition by key的拆分键中附加主键，如果将来需要热点分裂，可以使用
@@ -465,10 +564,7 @@ public class DrdsToAutoTableCreationSqlUtil {
             autoSqlPartitionBy = partitionByKey;
             autoSqlPartitionBy.setPartitionsCount(partitionNum);
         } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
-            final SQLPartitionBy partitionByKey = new MySqlPartitionByKey();
-            Set<String> hashKey = new TreeSet<>(String::compareToIgnoreCase);
-
-            //build hash(substr(`col1`))
+            final SQLPartitionBy partitionByCoHash = new SQLPartitionByCoHash();
             List<SQLExpr> strHashArguements = drdsPartitionBy.getArguments();
             if (strHashArguements.size() != 3) {
                 return null;
@@ -477,26 +573,24 @@ public class DrdsToAutoTableCreationSqlUtil {
             SQLIdentifierExpr col2 = (SQLIdentifierExpr) strHashArguements.get(1);
             SQLIntegerExpr suffixLen = (SQLIntegerExpr) strHashArguements.get(2);
 
-            SQLExpr newArg = col1.clone();
-            partitionByKey.addColumn(newArg);
-            hashKey.add(SQLUtils.normalize(((SQLIdentifierExpr) newArg).getSimpleName()));
+            SQLMethodInvokeExpr rightExpr1 = new SQLMethodInvokeExpr("RIGHT");
+            SQLExpr newArgCol1 = col1.clone();
+            SQLExpr substrPosiExpr1 = suffixLen.clone();
+            rightExpr1.addArgument(newArgCol1);
+            rightExpr1.addArgument(substrPosiExpr1);
 
-            primaryKey.forEach(
-                pk -> {
-                    String autoShardKeyName =
-                        AUTO_SHARD_KEY_PREFIX + hashKey.stream().collect(Collectors.joining("_")) + "_" + pk;
-                    if (!hashKey.contains(SQLUtils.normalize(pk))
-                        && hashKey.size() + 1 <= maxPartitionColumnNum
-                        && autoShardKeyName.length() <= MAX_LENGTH_OF_IDENTIFIER_NAME
-                        && validateAutoShardKeyLength(columnsLengthsInBytes, hashKey, pk)) {
-                        SQLExpr pkCol = new SQLIdentifierExpr(SQLUtils.encloseWithUnquote(pk));
-                        partitionByKey.addColumn(pkCol);
-                        hashKey.add(SQLUtils.normalize(pk));
-                    }
-                }
-            );
-            autoSqlPartitionBy = partitionByKey;
-            autoSqlPartitionBy.setPartitionsCount(partitionNum);
+            SQLMethodInvokeExpr rightExpr2 = new SQLMethodInvokeExpr("RIGHT");
+            SQLExpr newArgCol2 = col2.clone();
+            SQLExpr substrPosiExpr2 = suffixLen.clone();
+            rightExpr2.addArgument(newArgCol2);
+            rightExpr2.addArgument(substrPosiExpr2);
+
+            partitionByCoHash.addColumn(rightExpr1);
+            partitionByCoHash.addColumn(rightExpr2);
+            partitionByCoHash.setPartitionsCount(partitionNum);
+
+            autoSqlPartitionBy = partitionByCoHash;
+
         } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("YYYYMM") || drdsPartitionBy.getMethodName()
             .equalsIgnoreCase("YYYYMM_OPT")) {
             //convert to hash(to_months(`col`))
@@ -563,7 +657,210 @@ public class DrdsToAutoTableCreationSqlUtil {
         return autoSqlPartitionBy;
     }
 
-    static private void handleAutoModeGsi(MySqlCreateTableStatement autoCreateTableStatement, int gsiPartitionNum,
+    public static SQLSubPartitionBy convertDrdsTbPartitionByToAutoSQLPartitionBy(SQLMethodInvokeExpr drdsPartitionBy,
+                                                                                 int partitionNum,
+                                                                                 List<String> primaryKey,
+                                                                                 int maxPartitionColumnNum,
+                                                                                 Map<String, Integer> columnsLengthsInBytes) {
+        SQLSubPartitionBy autoSqlSubPartitionBy = null;
+        /**
+         * 对于映射成key分区的各种partition by，在partition by key的拆分键中附加主键，如果将来需要热点分裂，可以使用
+         * 但由于auto模式的partition columns个数存在上限:
+         *    a) 因此如果在partition by key的拆分键中附加主键导致超出partition columns个数的上限，
+         *       则只会附加部分主键列
+         *    b) 如果在partition by key的拆分键中附加主键导致自动生成的auto_shard_key_name名字超出mysql最长限制(64)，则也只会附加部分主键列
+         *    c) 如果在partiition by key的拆分键中附加主键，导致auto_sharding_key这个联合索引长度超过mysql限制，则也只会附加部分主键列
+         *       (使用columnsLengthsInBytes来获取列的长度，并计算是否超出限制)
+         * */
+        if (drdsPartitionBy.getMethodName().equalsIgnoreCase("hash")) {
+            final SQLSubPartitionBy subPartitionByKey = new MySqlSubPartitionByKey();
+            Set<String> hashKey = new TreeSet<>(String::compareToIgnoreCase);
+            SQLExpr newArg = drdsPartitionBy.getArguments().get(0).clone();
+            subPartitionByKey.addColumn(newArg);
+            hashKey.add(SQLUtils.normalize(((SQLIdentifierExpr) newArg).getSimpleName()));
+            primaryKey.forEach(
+                pk -> {
+                    String autoShardKeyName =
+                        AUTO_SHARD_KEY_PREFIX + hashKey.stream().collect(Collectors.joining("_")) + "_" + pk;
+                    if (!hashKey.contains(SQLUtils.normalize(pk))
+                        && hashKey.size() + 1 <= maxPartitionColumnNum
+                        && autoShardKeyName.length() <= MAX_LENGTH_OF_IDENTIFIER_NAME
+                        && validateAutoShardKeyLength(columnsLengthsInBytes, hashKey, pk)) {
+                        SQLExpr pkCol = new SQLIdentifierExpr(SQLUtils.encloseWithUnquote(pk));
+                        subPartitionByKey.addColumn(pkCol);
+                        hashKey.add(SQLUtils.normalize(pk));
+                    }
+                }
+            );
+            autoSqlSubPartitionBy = subPartitionByKey;
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("str_hash")) {
+            final SQLSubPartitionBy subPartitionByKey = new MySqlSubPartitionByKey();
+            Set<String> hashKey = new TreeSet<>(String::compareToIgnoreCase);
+            List<SQLExpr> strHashArguements = drdsPartitionBy.getArguments();
+            if (strHashArguements.isEmpty() || !(strHashArguements.size() == 1 || strHashArguements.size() == 3
+                || strHashArguements.size() == 4 || strHashArguements.size() == 5)) {
+                return null;
+            }
+            SQLExpr newArg = strHashArguements.get(0).clone();
+            subPartitionByKey.addColumn(newArg);
+            hashKey.add(SQLUtils.normalize(((SQLIdentifierExpr) newArg).getSimpleName()));
+            primaryKey.forEach(
+                pk -> {
+                    String autoShardKeyName =
+                        AUTO_SHARD_KEY_PREFIX + hashKey.stream().collect(Collectors.joining("_")) + "_" + pk;
+                    if (!hashKey.contains(SQLUtils.normalize(pk))
+                        && hashKey.size() + 1 <= maxPartitionColumnNum
+                        && autoShardKeyName.length() <= MAX_LENGTH_OF_IDENTIFIER_NAME
+                        && validateAutoShardKeyLength(columnsLengthsInBytes, hashKey, pk)) {
+                        SQLExpr pkCol = new SQLIdentifierExpr(SQLUtils.encloseWithUnquote(pk));
+                        subPartitionByKey.addColumn(pkCol);
+                        hashKey.add(SQLUtils.normalize(pk));
+                    }
+                }
+            );
+            autoSqlSubPartitionBy = subPartitionByKey;
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("uni_hash")) {
+            final SQLSubPartitionBy subPartitionByKey = new MySqlSubPartitionByKey();
+            Set<String> hashKey = new TreeSet<>(String::compareToIgnoreCase);
+            SQLExpr newArg = drdsPartitionBy.getArguments().get(0).clone();
+            subPartitionByKey.addColumn(newArg);
+            hashKey.add(SQLUtils.normalize(((SQLIdentifierExpr) newArg).getSimpleName()));
+            primaryKey.forEach(
+                pk -> {
+                    String autoShardKeyName =
+                        AUTO_SHARD_KEY_PREFIX + hashKey.stream().collect(Collectors.joining("_")) + "_" + pk;
+                    if (!hashKey.contains(SQLUtils.normalize(pk))
+                        && hashKey.size() + 1 <= maxPartitionColumnNum
+                        && autoShardKeyName.length() <= MAX_LENGTH_OF_IDENTIFIER_NAME
+                        && validateAutoShardKeyLength(columnsLengthsInBytes, hashKey, pk)) {
+                        SQLExpr pkCol = new SQLIdentifierExpr(SQLUtils.encloseWithUnquote(pk));
+                        subPartitionByKey.addColumn(pkCol);
+                        hashKey.add(SQLUtils.normalize(pk));
+                    }
+                }
+            );
+            autoSqlSubPartitionBy = subPartitionByKey;
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("right_shift")) {
+            final SQLSubPartitionBy subPartitionByKey = new MySqlSubPartitionByKey();
+            Set<String> hashKey = new TreeSet<>(String::compareToIgnoreCase);
+            SQLExpr newArg = drdsPartitionBy.getArguments().get(0).clone();
+            subPartitionByKey.addColumn(newArg);
+            hashKey.add(SQLUtils.normalize(((SQLIdentifierExpr) newArg).getSimpleName()));
+
+            primaryKey.forEach(
+                pk -> {
+                    String autoShardKeyName =
+                        AUTO_SHARD_KEY_PREFIX + hashKey.stream().collect(Collectors.joining("_")) + "_" + pk;
+                    if (!hashKey.contains(SQLUtils.normalize(pk))
+                        && hashKey.size() + 1 <= maxPartitionColumnNum
+                        && autoShardKeyName.length() <= MAX_LENGTH_OF_IDENTIFIER_NAME
+                        && validateAutoShardKeyLength(columnsLengthsInBytes, hashKey, pk)) {
+                        SQLExpr pkCol = new SQLIdentifierExpr(SQLUtils.encloseWithUnquote(pk));
+                        subPartitionByKey.addColumn(pkCol);
+                        hashKey.add(SQLUtils.normalize(pk));
+                    }
+                }
+            );
+            autoSqlSubPartitionBy = subPartitionByKey;
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("range_hash")) {
+            final SQLSubPartitionBy subPartitionByCoHash = new SQLSubPartitionByCoHash();
+            List<SQLExpr> strHashArguements = drdsPartitionBy.getArguments();
+            if (strHashArguements.size() != 3) {
+                return null;
+            }
+            SQLIdentifierExpr col1 = (SQLIdentifierExpr) strHashArguements.get(0);
+            SQLIdentifierExpr col2 = (SQLIdentifierExpr) strHashArguements.get(1);
+            SQLIntegerExpr suffixLen = (SQLIntegerExpr) strHashArguements.get(2);
+
+            SQLMethodInvokeExpr rightExpr1 = new SQLMethodInvokeExpr("RIGHT");
+            SQLExpr newArgCol1 = col1.clone();
+            SQLExpr substrPosiExpr1 = suffixLen.clone();
+            rightExpr1.addArgument(newArgCol1);
+            rightExpr1.addArgument(substrPosiExpr1);
+
+            SQLMethodInvokeExpr rightExpr2 = new SQLMethodInvokeExpr("RIGHT");
+            SQLExpr newArgCol2 = col2.clone();
+            SQLExpr substrPosiExpr2 = suffixLen.clone();
+            rightExpr2.addArgument(newArgCol2);
+            rightExpr2.addArgument(substrPosiExpr2);
+
+            subPartitionByCoHash.addColumn(rightExpr1);
+            subPartitionByCoHash.addColumn(rightExpr2);
+            subPartitionByCoHash.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+
+            autoSqlSubPartitionBy = subPartitionByCoHash;
+
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("YYYYMM") || drdsPartitionBy.getMethodName()
+            .equalsIgnoreCase("YYYYMM_OPT")) {
+            //convert to hash(to_months(`col`))
+            autoSqlSubPartitionBy = new SQLSubPartitionByHash();
+            SQLMethodInvokeExpr toMonths = new SQLMethodInvokeExpr("TO_MONTHS");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            toMonths.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(toMonths);
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("YYYYWEEK") || drdsPartitionBy.getMethodName()
+            .equalsIgnoreCase("YYYYWEEK_OPT")) {
+            autoSqlSubPartitionBy = new SQLSubPartitionByHash();
+            SQLMethodInvokeExpr toWeeks = new SQLMethodInvokeExpr("TO_WEEKS");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            toWeeks.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(toWeeks);
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("YYYYDD") || drdsPartitionBy.getMethodName()
+            .equalsIgnoreCase("YYYYDD_OPT")) {
+            autoSqlSubPartitionBy = new SQLSubPartitionByHash();
+            SQLMethodInvokeExpr toDays = new SQLMethodInvokeExpr("TO_DAYS");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            toDays.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(toDays);
+            autoSqlSubPartitionBy.setSubPartitionsCount(new SQLIntegerExpr(partitionNum));
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("MM")) {
+            //build month(col)
+            autoSqlSubPartitionBy = new SQLSubPartitionByRange();
+            SQLMethodInvokeExpr month = new SQLMethodInvokeExpr("MONTH");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            month.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(month);
+            //build subpartition definition
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 12, 12);
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("DD")) {
+            //build dayofmonth(`col`)
+            autoSqlSubPartitionBy = new SQLSubPartitionByRange();
+            SQLMethodInvokeExpr dayOfMonth = new SQLMethodInvokeExpr("DAYOFMONTH");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            dayOfMonth.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(dayOfMonth);
+
+            //build subpartition definition
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 31, 31);
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("WEEK")) {
+            //build dayofweek(`col`)
+            autoSqlSubPartitionBy = new SQLSubPartitionByRange();
+            SQLMethodInvokeExpr dayOfWeek = new SQLMethodInvokeExpr("DAYOFWEEK");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            dayOfWeek.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(dayOfWeek);
+            //build subpartition definition
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 7, 7);
+        } else if (drdsPartitionBy.getMethodName().equalsIgnoreCase("MMDD")) {
+            //build dayofyear(`col`)
+            autoSqlSubPartitionBy = new SQLSubPartitionByRange();
+            SQLMethodInvokeExpr dayOfYear = new SQLMethodInvokeExpr("DAYOFYEAR");
+            SQLExpr col = drdsPartitionBy.getArguments().get(0).clone();
+            dayOfYear.addArgument(col);
+            autoSqlSubPartitionBy.addColumn(dayOfYear);
+            //build subpartition definition
+            generateRangeSubPartitionDefInAutoMode((SQLSubPartitionByRange) autoSqlSubPartitionBy, 366, 366);
+        }
+        return autoSqlSubPartitionBy;
+    }
+
+    static private void handleAutoModeGsi(MySqlCreateTableStatement autoCreateTableStatement, int maxPartitionsNum,
                                           int maxPartitionColumnNum, Map<String, Integer> columnsLengthsInBytes) {
         List<SQLTableElement> autoTableElementList = autoCreateTableStatement.getTableElementList();
         for (int i = 0; i < autoTableElementList.size(); i++) {
@@ -572,7 +869,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 MySqlTableIndex gsi = (MySqlTableIndex) element;
                 if (gsi.isGlobal() || gsi.isClustered()) {
                     SQLTableElement newGsi =
-                        convertDrdsGsiToAutoGsi((MySqlTableIndex) element, gsiPartitionNum, maxPartitionColumnNum,
+                        convertDrdsGsiToAutoGsi((MySqlTableIndex) element, maxPartitionsNum, maxPartitionColumnNum,
                             columnsLengthsInBytes);
                     autoTableElementList.set(i, newGsi);
                 }
@@ -580,7 +877,7 @@ public class DrdsToAutoTableCreationSqlUtil {
                 MySqlUnique uniqueIndex = (MySqlUnique) element;
                 if (uniqueIndex.isGlobal() || uniqueIndex.isClustered()) {
                     SQLTableElement newGsi =
-                        convertDrdsUgsiToAutoGsi((MySqlUnique) element, gsiPartitionNum, maxPartitionColumnNum,
+                        convertDrdsUgsiToAutoGsi((MySqlUnique) element, maxPartitionsNum, maxPartitionColumnNum,
                             columnsLengthsInBytes);
                     autoTableElementList.set(i, newGsi);
                 }
@@ -648,51 +945,174 @@ public class DrdsToAutoTableCreationSqlUtil {
         SQLMethodInvokeExpr drdsPartitionByCopy = drdsPartitionBy.clone();
         Collections.swap(drdsPartitionByCopy.getArguments(), 0, 1);
         SQLPartitionBy partitionByWithSubStrForCol2 =
-            convertDrdsPartitionByToAutoSQLPartitionBy(drdsPartitionByCopy, partitionNum, primaryKey,
+            convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsPartitionByCopy, partitionNum, primaryKey,
                 maxPartitionColumnNum, columnsLengthsInBytes);
 
         SQLIdentifierExpr newCol = (SQLIdentifierExpr) drdsPartitionByCopy.getArguments().get(0).clone();
         return generateCgsi(newCol, partitionByWithSubStrForCol2);
     }
 
-    static private MySqlTableIndex convertDrdsGsiToAutoGsi(MySqlTableIndex drdsGsi, int gsiPartitionNum,
+    static private MySqlTableIndex convertDrdsGsiToAutoGsi(MySqlTableIndex drdsGsi, int maxPartitionsNum,
                                                            int maxPartitionColumnNum,
                                                            Map<String, Integer> columnsLengthsInBytes) {
         MySqlTableIndex autoGsi = drdsGsi.clone();
         autoGsi.setDbPartitionBy(null);
         autoGsi.setTablePartitionBy(null);
         autoGsi.setTablePartitions(null);
-        SQLMethodInvokeExpr drdsPartitionBy =
-            ((drdsGsi.getDbPartitionBy() != null) ?
-                (SQLMethodInvokeExpr) drdsGsi.getDbPartitionBy()
-                : (SQLMethodInvokeExpr) drdsGsi.getTablePartitionBy());
-        if (drdsPartitionBy != null) {
-            autoGsi.setPartitioning(
-                convertDrdsPartitionByToAutoSQLPartitionBy(drdsPartitionBy, gsiPartitionNum, new ArrayList<>(),
-                    maxPartitionColumnNum, columnsLengthsInBytes));
+
+        SQLMethodInvokeExpr drdsDbPartitionBy = (SQLMethodInvokeExpr) drdsGsi.getDbPartitionBy();
+        //SQLIntegerExpr drdsDbPartiions = (SQLIntegerExpr) drdsGsi.getDbPartitions();
+        SQLMethodInvokeExpr drdsTbPartitionBy =
+            (SQLMethodInvokeExpr) drdsGsi.getTablePartitionBy();
+        final int tbPartitionNum =
+            (drdsGsi.getTablePartitions() == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
+                ((SQLIntegerExpr) drdsGsi.getTablePartitions()).getNumber().intValue();
+        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum();
+        final int drdsTbPartitionNum = min(tbPartitionNum, maxPartitionsNum / drdsDbPartitionNum);
+
+        //only dbPartition by
+        if (drdsDbPartitionBy != null && drdsTbPartitionBy == null) {
+            SQLPartitionBy autoPartitionBy =
+                convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsDbPartitionNum, new ArrayList<>(),
+                    maxPartitionColumnNum, columnsLengthsInBytes);
+            autoGsi.setPartitioning(autoPartitionBy);
             return autoGsi;
+        } else if (drdsDbPartitionBy != null && drdsTbPartitionBy != null) {
+            //contain dbpartition and tbpartition
+            /**
+             * 这里不区db和tb的分拆分函数，只要db的sharding key 和 tb的 sharding key 一致(且不考虑拆分函数里面的数字)
+             * 转换为auto模式时，就只看dbPartition
+             * */
+            Set<String> dbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
+            Set<String> tbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
+            drdsDbPartitionBy.getArguments().forEach(
+                arg -> {
+                    if (arg instanceof SQLIdentifierExpr) {
+                        dbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                    } else if (arg instanceof SQLIntegerExpr) {
+                        //dbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
+                    }
+                }
+            );
+            drdsTbPartitionBy.getArguments().forEach(
+                arg -> {
+                    if (arg instanceof SQLIdentifierExpr) {
+                        tbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                    } else if (arg instanceof SQLIntegerExpr) {
+                        //tbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
+                    }
+                }
+            );
+
+            boolean hasSameShardingKey = dbShardingKey.equals(tbShardingKey);
+            if (hasSameShardingKey) {
+                //only use dbPartition key
+                SQLPartitionBy autoPartitionBy =
+                    convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy,
+                        min(drdsDbPartitionNum * drdsTbPartitionNum, maxPartitionsNum),
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+                autoGsi.setPartitioning(autoPartitionBy);
+                return autoGsi;
+            } else {
+                //dbPartition by and tbPartition
+                SQLPartitionBy autoPartitionBy =
+                    convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsDbPartitionNum,
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+                SQLSubPartitionBy autoSubPartitionBy =
+                    convertDrdsTbPartitionByToAutoSQLPartitionBy(drdsTbPartitionBy, drdsTbPartitionNum,
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+
+                autoPartitionBy.setSubPartitionBy(autoSubPartitionBy);
+                autoGsi.setPartitioning(autoPartitionBy);
+                return autoGsi;
+            }
         } else {
+            //only tbPartition, impossible
             return null;
         }
     }
 
-    static private MySqlUnique convertDrdsUgsiToAutoGsi(MySqlUnique drdsGsi, int gsiPartitionNum,
+    static private MySqlUnique convertDrdsUgsiToAutoGsi(MySqlUnique drdsGsi, int maxPartitionsNum,
                                                         int maxPartitionColumnNum,
                                                         Map<String, Integer> columnsLengthsInBytes) {
         MySqlUnique autoGsi = drdsGsi.clone();
         autoGsi.setDbPartitionBy(null);
         autoGsi.setTablePartitionBy(null);
         autoGsi.setTablePartitions(null);
-        SQLMethodInvokeExpr drdsPartitionBy =
-            ((drdsGsi.getDbPartitionBy() != null) ?
-                (SQLMethodInvokeExpr) drdsGsi.getDbPartitionBy()
-                : (SQLMethodInvokeExpr) drdsGsi.getTablePartitionBy());
-        if (drdsPartitionBy != null) {
-            autoGsi.setPartitioning(
-                convertDrdsPartitionByToAutoSQLPartitionBy(drdsPartitionBy, gsiPartitionNum, new ArrayList<>(),
-                    maxPartitionColumnNum, columnsLengthsInBytes));
+
+        SQLMethodInvokeExpr drdsDbPartitionBy = (SQLMethodInvokeExpr) drdsGsi.getDbPartitionBy();
+        SQLMethodInvokeExpr drdsTbPartitionBy =
+            (SQLMethodInvokeExpr) drdsGsi.getTablePartitionBy();
+        final int tbPartitionNum =
+            (drdsGsi.getTablePartitions() == null) ? DrdsDefaultPartitionNumUtil.getDrdsDefaultTbPartitionNum() :
+                ((SQLIntegerExpr) drdsGsi.getTablePartitions()).getNumber().intValue();
+        final int drdsDbPartitionNum = DrdsDefaultPartitionNumUtil.getDrdsDefaultDbPartitionNum();
+        final int drdsTbPartitionNum = min(tbPartitionNum, maxPartitionsNum / drdsDbPartitionNum);
+
+        //only dbPartition by
+        if (drdsDbPartitionBy != null && drdsTbPartitionBy == null) {
+            SQLPartitionBy autoPartitionBy =
+                convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsDbPartitionNum, new ArrayList<>(),
+                    maxPartitionColumnNum, columnsLengthsInBytes);
+            autoGsi.setPartitioning(autoPartitionBy);
             return autoGsi;
+        } else if (drdsDbPartitionBy != null && drdsTbPartitionBy != null) {
+            //contain dbpartition and tbpartition
+            /**
+             * 这里不区db和tb的分拆分函数，只要db的sharding key 和 tb的 sharding key 一致(且不考虑拆分函数里面的数字)
+             * 转换为auto模式时，就只看dbPartition
+             * */
+            Set<String> dbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
+            Set<String> tbShardingKey = new TreeSet<>(String::compareToIgnoreCase);
+            drdsDbPartitionBy.getArguments().forEach(
+                arg -> {
+                    if (arg instanceof SQLIdentifierExpr) {
+                        dbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                    } else if (arg instanceof SQLIntegerExpr) {
+                        //dbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
+                    }
+                }
+            );
+            drdsTbPartitionBy.getArguments().forEach(
+                arg -> {
+                    if (arg instanceof SQLIdentifierExpr) {
+                        tbShardingKey.add(((SQLIdentifierExpr) arg).normalizedName().toLowerCase());
+                    } else if (arg instanceof SQLIntegerExpr) {
+                        //tbShardingKey.add(((SQLIntegerExpr) arg).getNumber().toString().toLowerCase());
+                    }
+                }
+            );
+
+            boolean hasSameShardingKey = dbShardingKey.equals(tbShardingKey);
+            if (hasSameShardingKey) {
+                //only use dbPartition key
+                SQLPartitionBy autoPartitionBy =
+                    convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy,
+                        min(drdsDbPartitionNum * drdsTbPartitionNum, maxPartitionsNum),
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+                autoGsi.setPartitioning(autoPartitionBy);
+                return autoGsi;
+            } else {
+                //dbPartition by and tbPartition
+                SQLPartitionBy autoPartitionBy =
+                    convertDrdsDbPartitionByToAutoSQLPartitionBy(drdsDbPartitionBy, drdsDbPartitionNum,
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+                SQLSubPartitionBy autoSubPartitionBy =
+                    convertDrdsTbPartitionByToAutoSQLPartitionBy(drdsTbPartitionBy, drdsTbPartitionNum,
+                        new ArrayList<>(),
+                        maxPartitionColumnNum, columnsLengthsInBytes);
+
+                autoPartitionBy.setSubPartitionBy(autoSubPartitionBy);
+                autoGsi.setPartitioning(autoPartitionBy);
+                return autoGsi;
+            }
         } else {
+            //only tbPartition, impossible
             return null;
         }
     }
@@ -734,6 +1154,45 @@ public class DrdsToAutoTableCreationSqlUtil {
         sqlPartitionValue.addItem(item);
         defaultPartition.setValues(sqlPartitionValue);
         sqlPartitionByRange.addPartition(defaultPartition);
+    }
+
+    /**
+     * generate uniform range partition interval
+     */
+    static private void generateRangeSubPartitionDefInAutoMode(SQLSubPartitionByRange sqlSubPartitionByRange,
+                                                               int needPartitionNum,
+                                                               int maxPartitionBound) {
+        /**
+         * needPartitionNum should not exceed maxPartitionBound.
+         * e.g.
+         * in partition by range(month(`col`)), maxPartitionBound = 12
+         * */
+        needPartitionNum = min(needPartitionNum, maxPartitionBound);
+        int partitionBoundStep = maxPartitionBound / needPartitionNum;
+        int partitionBeginBound = (partitionBoundStep == 1 ? partitionBoundStep + 1 : partitionBoundStep);
+        while (partitionBeginBound < maxPartitionBound) {
+            SQLSubPartition subPartition = new SQLSubPartition();
+            SQLIdentifierExpr pName = new SQLIdentifierExpr("sp" + String.valueOf(partitionBeginBound));
+            subPartition.setName(pName);
+
+            SQLPartitionValue sqlPartitionValue = new SQLPartitionValue(SQLPartitionValue.Operator.LessThan);
+            SQLIntegerExpr item = new SQLIntegerExpr(partitionBeginBound);
+            sqlPartitionValue.addItem(item);
+            subPartition.setValues(sqlPartitionValue);
+
+            sqlSubPartitionByRange.getSubPartitionTemplate().add(subPartition);
+            partitionBeginBound += partitionBoundStep;
+        }
+
+        //build default(maxvalue) partition
+        SQLSubPartition defaultSubPartition = new SQLSubPartition();
+        SQLIdentifierExpr pName = new SQLIdentifierExpr("spd");
+        defaultSubPartition.setName(pName);
+        SQLPartitionValue sqlSubPartitionValue = new SQLPartitionValue(SQLPartitionValue.Operator.LessThan);
+        SQLIdentifierExpr item = new SQLIdentifierExpr("MAXVALUE");
+        sqlSubPartitionValue.addItem(item);
+        defaultSubPartition.setValues(sqlSubPartitionValue);
+        sqlSubPartitionByRange.getSubPartitionTemplate().add(defaultSubPartition);
     }
 
     /**

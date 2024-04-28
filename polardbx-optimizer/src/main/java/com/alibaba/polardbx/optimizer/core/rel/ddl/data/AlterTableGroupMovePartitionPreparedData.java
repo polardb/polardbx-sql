@@ -62,6 +62,14 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
         this.targetPartitionsLocation = targetPartitionsLocation;
     }
 
+    public boolean isUsePhysicalBackfill() {
+        return usePhysicalBackfill;
+    }
+
+    public void setUsePhysicalBackfill(boolean usePhysicalBackfill) {
+        this.usePhysicalBackfill = usePhysicalBackfill;
+    }
+
     @Override
     public void prepareInvisiblePartitionGroup() {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()

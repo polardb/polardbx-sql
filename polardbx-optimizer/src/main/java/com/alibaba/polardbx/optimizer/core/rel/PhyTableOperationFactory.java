@@ -46,6 +46,15 @@ public class PhyTableOperationFactory extends PhyOperationBuilderCommon {
     }
 
     /**
+     * Build a PhyTableOperation of select without any tables
+     * with full properties that can be executed directly
+     * by using build params
+     */
+    public PhyTableOperation buildPhyTblOpByParamsForSelectWithoutTable(PhyTableOpBuildParams buildParams) {
+        return buildPhyTblOpByParamsInner(buildParams, false);
+    }
+
+    /**
      * Build a PhyTableOperation with full properties that can be executed directly
      * by using another phyTableOp template and new build params
      */

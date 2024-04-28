@@ -108,7 +108,6 @@ public class ORCReaderTask {
         this.ossReadOption = ossReadOption;
         this.tableFileName = tableFileName;
         this.closed = new AtomicBoolean(false);
-        this.stamp = FileSystemManager.readLockWithTimeOut(ossReadOption.getEngine());
         this.fileSystem = FileSystemManager.getFileSystemGroup(ossReadOption.getEngine()).getMaster();
         String orcPath = FileSystemUtils.buildUri(this.fileSystem, tableFileName);
         this.ossFileUri = URI.create(orcPath);
@@ -355,8 +354,6 @@ public class ORCReaderTask {
             this.chunkIterator = null;
         } catch (IOException e) {
             throw GeneralUtil.nestedException(e);
-        } finally {
-            FileSystemManager.unlockRead(ossReadOption.getEngine(), stamp);
         }
     }
 

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.CreateProcedureSyncAction;
@@ -40,15 +41,20 @@ public class CreateProcedureSyncTask extends BaseDdlTask {
         super(schemaName);
         this.procedureSchema = procedureSchema;
         this.procedureName = procedureName;
-        onExceptionTryRecoveryThenPause();
+        onExceptionTryRecoveryThenRollback();
     }
 
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        updateTaskStateInNewTxn(DdlTaskState.DIRTY);
+
+        FailPoint.injectExceptionFromHint("FP_CREATE_PROCEDURE_ERROR", executionContext);
+
         SyncManagerHelper.sync(new CreateProcedureSyncAction(procedureSchema, procedureName),
-            TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
+            TddlConstants.INFORMATION_SCHEMA, SyncScope.NOT_COLUMNAR_SLAVE);
     }
 
     @Override
@@ -56,7 +62,7 @@ public class CreateProcedureSyncTask extends BaseDdlTask {
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
         SyncManagerHelper.sync(new DropProcedureSyncAction(procedureSchema, procedureName),
-            TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
+            TddlConstants.INFORMATION_SCHEMA, SyncScope.NOT_COLUMNAR_SLAVE);
     }
 }
 

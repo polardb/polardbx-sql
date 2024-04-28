@@ -28,7 +28,7 @@ import com.alibaba.polardbx.planner.common.PlanTestCommon;
  */
 public class JoinPlanTest extends PlanTestCommon {
 
-    public JoinPlanTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum){
+    public JoinPlanTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
         super(caseName, sqlIndex, sql, expectedPlan, lineNum);
         // TODO Auto-generated constructor stub
     }

@@ -26,13 +26,9 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.accessor.AbstractAccessor;
 import com.alibaba.polardbx.gms.metadb.record.NextIdRecord;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbLogUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.google.common.collect.Maps;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.ArrayUtils;
-import org.apache.commons.lang3.ObjectUtils;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -42,10 +38,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * @author chenghui.lch
@@ -57,11 +50,21 @@ public class ServerInfoAccessor extends AbstractAccessor {
     private static final String SELECT_SERVER_INFO_BY_INST_ID =
         "select * from `" + SERVER_INFO_TABLE + "` where inst_id=? and status!=2 order by id asc";
 
+    private static final String SELECT_ALL_SERVER_INFO =
+        "select * from `" + SERVER_INFO_TABLE + "` where status!=2 order by id asc";
+
+    private static final String SELECT_1_SERVER_TYPE_BY_INST_ID =
+        "select inst_type from `" + SERVER_INFO_TABLE + "` where inst_id=? and status!=2 order by id asc limit 1";
+
     private static final String SELECT_REMOVED_SERVER_INFO_BY_INST_ID =
         "select * from `" + SERVER_INFO_TABLE + "` where inst_id=? and status=2 order by id asc";
 
-    private static final String SELECT_ALL_REMOVED_SERVER_INST_ID_SET =
-        "select distinct inst_id from `" + SERVER_INFO_TABLE + "` where status=2 and inst_type!=0";
+    private static final String GET_ALL_REMOVED_COLUMNAR_INST_ID_FOR_SERVER =
+        "select t1.inst_id removed_inst_id from \n"
+            + "(select inst_id, count(*) cn_cnt from server_info where inst_type=4 group by inst_id ) t1 \n"
+            + " inner join\n"
+            + "(select inst_id, count(*) rm_cn_cnt from server_info where inst_type=4 and status=2 group by inst_id ) t2 \n"
+            + "on t1.inst_id=t2.inst_id and t1.cn_cnt=t2.rm_cn_cnt and t1.cn_cnt>0";
 
     private static final String SELECT_SERVER_INFO_FOR_MASTER =
         "select * from `" + SERVER_INFO_TABLE + "` where status!=2 and inst_type = "
@@ -130,6 +133,34 @@ public class ServerInfoAccessor extends AbstractAccessor {
         }
     }
 
+    public List<ServerInfoRecord> getAllServerInfo() {
+        try {
+            return MetaDbUtil.query(SELECT_ALL_SERVER_INFO, ServerInfoRecord.class, connection);
+        } catch (Exception e) {
+            logger.error("Failed to query the system table '" + SERVER_INFO_TABLE + "'", e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "query",
+                SERVER_INFO_TABLE,
+                e.getMessage());
+        }
+    }
+
+    public int getServerTypeByInstId(String instId) {
+        int instType = ServerInfoRecord.INST_TYPE_MASTER;
+        try (PreparedStatement ps = connection.prepareStatement(SELECT_1_SERVER_TYPE_BY_INST_ID)) {
+            ps.setString(1, instId);
+            try (ResultSet rs = ps.executeQuery()) {
+                boolean hasNext = rs.next();
+                if (hasNext) {
+                    instType = rs.getInt(1);
+                }
+            }
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+        return instType;
+    }
+
     public List<ServerInfoRecord> getRemovedServerInfoByInstId(String instId) {
         try {
             Map<Integer, ParameterContext> params = new HashMap<>();
@@ -160,10 +191,10 @@ public class ServerInfoAccessor extends AbstractAccessor {
         return allHtapInstIdList;
     }
 
-    public List<String> getAllRemovedReadOnlyInstIdList() {
+    public List<String> getAllRemovedColumnarReadOnlyInstIdList() {
         String instId = null;
         List<String> allRemovedRoInstIdList = new ArrayList<>();
-        try (PreparedStatement ps = connection.prepareStatement(SELECT_ALL_REMOVED_SERVER_INST_ID_SET)) {
+        try (PreparedStatement ps = connection.prepareStatement(GET_ALL_REMOVED_COLUMNAR_INST_ID_FOR_SERVER)) {
             try (ResultSet rs = ps.executeQuery()) {
                 boolean hasNext = rs.next();
                 if (hasNext) {

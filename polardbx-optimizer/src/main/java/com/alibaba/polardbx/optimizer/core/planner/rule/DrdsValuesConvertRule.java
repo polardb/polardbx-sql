@@ -17,26 +17,32 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.logical.LogicalValues;
 
 public class DrdsValuesConvertRule extends ConverterRule {
-    public static final DrdsValuesConvertRule INSTANCE = new DrdsValuesConvertRule();
+    public static final DrdsValuesConvertRule SMP_INSTANCE = new DrdsValuesConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsValuesConvertRule() {
+    public static final DrdsValuesConvertRule COL_INSTANCE = new DrdsValuesConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsValuesConvertRule(Convention outConvention) {
         super(LogicalValues.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsValuesConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final LogicalValues values = (LogicalValues) rel;
-        return values.copy(values.getTraitSet().simplify().replace(DrdsConvention.INSTANCE), values.getInputs());
+        return values.copy(values.getTraitSet().simplify().replace(outConvention), values.getInputs());
     }
 }

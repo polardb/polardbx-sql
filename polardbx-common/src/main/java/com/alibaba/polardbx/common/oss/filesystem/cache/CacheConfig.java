@@ -30,21 +30,24 @@
 
 package com.alibaba.polardbx.common.oss.filesystem.cache;
 
-import io.airlift.slice.DataSize;
+import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 
 import javax.annotation.Nullable;
 import java.net.URI;
-import java.util.Optional;
 
 import static com.alibaba.polardbx.common.oss.filesystem.cache.CacheQuotaScope.GLOBAL;
 
 public class CacheConfig {
+    @Deprecated
     private boolean cachingEnabled;
+    @Deprecated
     private CacheType cacheType;
+    @Deprecated
+    private CacheQuotaScope cacheQuotaScope = GLOBAL;
+
     private URI baseDirectory;
     private boolean validationEnabled;
-    private CacheQuotaScope cacheQuotaScope = GLOBAL;
-    private Optional<DataSize> defaultCacheQuota = Optional.empty();
+    private int flushCacheThreadNum = ThreadCpuStatUtil.NUM_CORES;
 
     @Nullable
     public URI getBaseDirectory() {
@@ -92,14 +95,11 @@ public class CacheConfig {
         return this;
     }
 
-    public Optional<DataSize> getDefaultCacheQuota() {
-        return defaultCacheQuota;
+    public int getFlushCacheThreadNum() {
+        return flushCacheThreadNum;
     }
 
-    public CacheConfig setDefaultCacheQuota(DataSize defaultCacheQuota) {
-        if (defaultCacheQuota != null) {
-            this.defaultCacheQuota = Optional.of(defaultCacheQuota);
-        }
-        return this;
+    public void setFlushCacheThreadNum(int flushCacheThreadNum) {
+        this.flushCacheThreadNum = flushCacheThreadNum;
     }
 }

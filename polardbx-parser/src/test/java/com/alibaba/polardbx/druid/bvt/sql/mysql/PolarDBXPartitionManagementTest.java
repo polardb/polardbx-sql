@@ -262,7 +262,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     }
 
     public void testMoveTableGroup() {
-        String sql = "ALTER TABLEGROUP grp1 move PARTITIONS p0, p1, p2 to xx ";
+        String sql = "ALTER TABLEGROUP grp1 move PARTITIONS (p0, p1, p2) to xx ";
         SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
         List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -273,7 +273,7 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
     @Ignore
     public void testTruncateTableGroup() {
         if (0 == 1) {
-            String sql = "ALTER TABLEGROUP grp1 truncate PARTITIONS p0, p1, p2";
+            String sql = "ALTER TABLEGROUP grp1 truncate PARTITIONS (p0, p1, p2)";
             SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
             List<SQLStatement> stmtList = parser.parseStatementList();
 
@@ -347,5 +347,11 @@ public class PolarDBXPartitionManagementTest extends MysqlTest {
 
         SQLStatement result = stmtList.get(0);
         Assert.assertEquals(sql.toUpperCase().trim(), result.toString().toUpperCase().trim());
+    }
+
+    public void testAlterTableImportTablespaceIfNotExists() {
+        String sql = "alter table t1 import tablespace if not exists;";
+        SQLStatementParser parser = new MySqlStatementParser(ByteString.from(sql), SQLParserFeature.DrdsMisc);
+        List<SQLStatement> stmtList = parser.parseStatementList();
     }
 }

@@ -28,8 +28,8 @@ import com.alibaba.polardbx.net.FrontendConnection;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITransaction;
+import com.alibaba.polardbx.transaction.trx.AbstractTransaction;
 import com.alibaba.polardbx.server.ServerConnection;
-import com.alibaba.polardbx.transaction.AbstractTransaction;
 import com.alibaba.polardbx.transaction.TransactionManager;
 
 import java.text.MessageFormat;

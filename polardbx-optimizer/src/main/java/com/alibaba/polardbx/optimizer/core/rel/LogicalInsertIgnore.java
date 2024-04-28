@@ -135,7 +135,8 @@ public class LogicalInsertIgnore extends LogicalInsert {
             insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(),
             insert.isPushablePrimaryKeyCheck(),
-            insert.isPushableForeignConstraintCheck()
+            insert.isPushableForeignConstraintCheck(),
+            insert.isModifyForeignKey()
         );
     }
 
@@ -153,12 +154,12 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                List<RexNode> genColRexNodes, List<Integer> inputToEvalFieldsMapping,
                                List<ColumnMeta> defaultExprColMetas, List<RexNode> defaultExprColRexNodes,
                                List<Integer> defaultExprEvalFieldsMapping, boolean pushablePrimaryKeyCheck,
-                               boolean pushableForeignConstraintCheck) {
+                               boolean pushableForeignConstraintCheck, boolean modifyForeignKey) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList,
             evalRowColMetas, genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
-            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck);
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck, modifyForeignKey);
         ExecutionContext ec = PlannerContext.getPlannerContext(cluster).getExecutionContext();
 
         // Ignore DELETE_ONLY UK
@@ -206,12 +207,13 @@ public class LogicalInsertIgnore extends LogicalInsert {
                                List<ColumnMeta> evalRowColMetas, List<RexNode> genColRexNodes,
                                List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
                                List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
-                               boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck) {
+                               boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck,
+                               boolean modifyForeignKey) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, logicalDynamicValues, unOpitimizedDuplicateKeyUpdateList,
             evalRowColMetas, genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
-            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck);
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck, modifyForeignKey);
 
         this.ukColumnNamesList = ukColumnNamesList;
         this.beforeUkMapping = beforeUkMapping;
@@ -293,7 +295,8 @@ public class LogicalInsertIgnore extends LogicalInsert {
             getDefaultExprColRexNodes(),
             getDefaultExprEvalFieldsMapping(),
             isPushablePrimaryKeyCheck(),
-            isPushableForeignConstraintCheck()
+            isPushableForeignConstraintCheck(),
+            isModifyForeignKey()
         );
         return newInsertIgnore;
     }
@@ -443,7 +446,7 @@ public class LogicalInsertIgnore extends LogicalInsert {
             insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
             insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
-            insert.isPushableForeignConstraintCheck());
+            insert.isPushableForeignConstraintCheck(), insert.isModifyForeignKey());
 
         final InsertWriter insertIgnoreWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return insertIgnoreWriter.getInput(executionContext);

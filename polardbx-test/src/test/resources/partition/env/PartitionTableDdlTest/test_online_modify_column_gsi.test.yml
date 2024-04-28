@@ -1,0 +1,22 @@
+drop table if exists tb1;
+
+create table if not exists tb1 (
+a int not null,
+b int not null,
+c varchar(10) not null,
+primary key (`a`))
+partition by key(a);
+
+alter table tb1 add global index omc_g1(a,b) covering(c) partition by key(a);
+
+alter table tb1 add clustered index omc_c1(a) partition by key(a);
+
+show full create table tb1;
+
+alter table tb1 change column b bb bigint, drop column c, add column f int, ALGORITHM=OMC;
+
+show full create table tb1;
+
+show create table omc_g1;
+
+show create table omc_c1;

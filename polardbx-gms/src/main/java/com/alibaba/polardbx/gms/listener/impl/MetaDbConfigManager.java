@@ -25,12 +25,13 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
-import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.scheduler.MetaDbCleanManager;
+import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.ConfigListenerAccessor;
 import com.alibaba.polardbx.gms.topology.ConfigListenerRecord;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
@@ -43,7 +44,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -104,7 +104,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
 
         protected volatile ConfigListener dataIdListener = null;
         protected volatile Future listenerTaskFuture = null;
-        protected volatile boolean isRemoved = false;
+        protected volatile boolean isUnbound = false;
         protected ReentrantLock handlingLock = new ReentrantLock();
 
         public DataIdContext(String dataId, long opVer, ConfigListener configListener) {
@@ -251,7 +251,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                     BlockingQueue<DataIdContext> queue = manager.completeListenTaskQueue;
                     while (!queue.isEmpty()) {
                         DataIdContext dataIdInfo = queue.take();
-                        if (!dataIdInfo.isRemoved && !dataIdInfo.changeEventQueue.isEmpty()) {
+                        if (!dataIdInfo.isUnbound && !dataIdInfo.changeEventQueue.isEmpty()) {
                             Future taskFuture =
                                 manager.listenerTaskExecutor
                                     .submit(new ListenerTask(dataIdInfo, manager.completeListenTaskQueue));
@@ -382,7 +382,7 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
     @Override
     public void unbindListener(String dataId) {
         // disable the listener and ignored the change of the dataId
-        disableListenerByDataId(dataId);
+        disableListenerByDataId(dataId, MetaDbConfigManager.getInstance());
     }
 
     @Override
@@ -434,6 +434,12 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
     @Override
     public void sync(String dataId) {
         doConfigListenerBySync(dataId, SystemDbHelper.DEFAULT_DB_NAME);
+        return;
+    }
+
+    @Override
+    public void syncUnbind(String dataId) {
+        doConfigListenerBySyncUnbind(dataId, SystemDbHelper.DEFAULT_DB_NAME);
         return;
     }
 
@@ -544,8 +550,24 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
         }
     }
 
-    protected void disableListenerByDataId(String dataId) {
-        dataIdContextMap.remove(dataId);
+    protected static void disableListenerByDataId(String dataId, MetaDbConfigManager mgr) {
+        Map<String, DataIdContext> dataIdContextMap = mgr.dataIdContextMap;
+        DataIdContext dataIdContext = dataIdContextMap.remove(dataId);
+        if (dataIdContext != null) {
+            try {
+                dataIdContext.handlingLock.lock();
+                /**
+                 * the dataId has been unbound, should NOT be exec any listener callback from both sync/local sync
+                 */
+                dataIdContext.isUnbound = true;
+                long currOpVersion = dataIdContext.currOpVersion;
+                logUnbindOnDynamicConfig(dataId, currOpVersion, false, true, 0, dataIdContext);
+            } finally {
+                dataIdContext.handlingLock.unlock();
+            }
+        } else {
+            logUnbindOnDynamicConfig(dataId, -1, true, true, 0, null);
+        }
     }
 
     public static class MetaDbConfigSyncAction implements IGmsSyncAction {
@@ -584,10 +606,51 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
         }
     }
 
+    public static class MetaDbConfigSyncUnbindAction implements IGmsSyncAction {
+        private String dataId;
+
+        public MetaDbConfigSyncUnbindAction() {
+        }
+
+        public MetaDbConfigSyncUnbindAction(String dataId) {
+            this.dataId = dataId;
+        }
+
+        @Override
+        public Object sync() {
+            try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+                ConfigListenerAccessor configListenerAccessor = new ConfigListenerAccessor();
+                configListenerAccessor.setConnection(metaDbConn);
+                ConfigListenerRecord record = configListenerAccessor.getDataId(dataId, false);
+                if (record != null) {
+                    disableListenerByDataId(dataId, MetaDbConfigManager.getInstance());
+                }
+            } catch (Throwable ex) {
+                throw GeneralUtil.nestedException(ex);
+            }
+            return null;
+        }
+
+        public String getDataId() {
+            return dataId;
+        }
+
+        public void setDataId(String dataId) {
+            this.dataId = dataId;
+        }
+    }
+
     protected void doConfigListenerBySync(String dataId, String schemaName) {
         DataIdContext dataIdContext = dataIdContextMap.get(dataId);
         if (dataIdContext != null) {
-            GmsSyncManagerHelper.sync(new MetaDbConfigSyncAction(dataId), schemaName);
+            GmsSyncManagerHelper.sync(new MetaDbConfigSyncAction(dataId), schemaName, SyncScope.ALL);
+        }
+    }
+
+    protected void doConfigListenerBySyncUnbind(String dataId, String schemaName) {
+        DataIdContext dataIdContext = dataIdContextMap.get(dataId);
+        if (dataIdContext != null) {
+            GmsSyncManagerHelper.sync(new MetaDbConfigSyncUnbindAction(dataId), schemaName, SyncScope.ALL);
         }
     }
 
@@ -622,6 +685,15 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                 logDynamicConfig(dataId, null, currOpVersion, opVersionToBeRefresh, isSync, true, true, true, 0);
                 return true;
             }
+
+            if (dataIdContext.isUnbound) {
+                /**
+                 * The dataId has been unbound, should NOT be exec any listener callback from both sync/local sync
+                 */
+                logDynamicConfig(dataId, listener, currOpVersion, opVersionToBeRefresh, isSync, true, false, true, 0);
+                return true;
+            }
+
             st = System.nanoTime();
             listener.onHandleConfig(dataIdContext.dataId, opVersionToBeRefresh);
 
@@ -652,6 +724,21 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
                 isSucc,
                 callListenerCostTime * 1.0 / 1000000.0);
         MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(logMsg);
+    }
+
+    private static void logUnbindOnDynamicConfig(String dataId,
+                                                 long currVer,
+                                                 boolean isIgnored,
+                                                 boolean isSucc, long callListenerCostTime,
+                                                 DataIdContext dataIdContext) {
+        String logMsgTemplate =
+            "[MetaDB Unbind Listener] DataId[%s]-Version[curr:%d]-[isIgnored:%s, isSucc:%s, handleTime: %.3f ms, hashcode: %d]";
+        String logMsg =
+            String.format(logMsgTemplate, dataId, currVer, isIgnored,
+                isSucc,
+                callListenerCostTime * 1.0 / 1000000.0, dataIdContext != null ? dataIdContext.hashCode() : -1);
+        MetaDbLogUtil.META_DB_DYNAMIC_CONFIG.info(logMsg);
+
     }
 
     private static void logLocalSyncConfig(String dataId, ConfigListener listener, long oldVer, long newVer,
@@ -686,6 +773,14 @@ public class MetaDbConfigManager extends AbstractLifecycle implements ConfigMana
             }
 
             if (newOpVersion > currOpVersion) {
+                logLocalSyncConfig(dataId, listener, currOpVersion, newOpVersion, false, 0);
+                return false;
+            }
+
+            if (dataIdContext.isUnbound) {
+                /**
+                 * the dataId has been unbound, should NOT be exec any listener callback from both sync/local sync
+                 */
                 logLocalSyncConfig(dataId, listener, currOpVersion, newOpVersion, false, 0);
                 return false;
             }

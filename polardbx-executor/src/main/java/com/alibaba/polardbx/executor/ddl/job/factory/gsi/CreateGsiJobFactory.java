@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesExtMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableAddTablesMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.CreateTableShowTableMetaTask;
+import com.alibaba.polardbx.executor.ddl.job.task.basic.SubJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.factory.GsiTaskFactory;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiPhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.gsi.CreateGsiValidateTask;
@@ -33,15 +34,16 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.newengine.job.wrapper.ExecutableDdlJob4CreateGsi;
+import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.CreateGlobalIndexPreparedData;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlIndexColumnName;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.ArrayList;
@@ -51,6 +53,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.executor.gsi.GsiUtils.columnAst2nameStr;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.DELETE_ONLY;
 import static com.alibaba.polardbx.gms.metadb.table.IndexStatus.WRITE_ONLY;
 
@@ -79,6 +82,9 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected final Map<String, Long> specialDefaultValueFlags;
     protected ExecutionContext executionContext;
     public boolean needOnlineSchemaChange = true;
+    public boolean onlineModifyColumn = false;
+    public boolean useChangeSet = false;
+    public boolean mirrorCopy = false;
     public boolean stayAtBackFill = false;
     public boolean buildBroadCast = false;
 
@@ -88,8 +94,26 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected List<String> referencedTables;
     protected List<ForeignKeyData> addedForeignKeys;
 
-    // for alter table modify sharding key (repartition check)
+    /**
+     * for alter table modify sharding key (repartition check)
+     */
     public Map<String, String> virtualColumnMap = null;
+
+    /**
+     * for online modify column (change column name), column map, oldName ----> newName
+     */
+    public Map<String, String> backfillColumnMap = null;
+
+    public List<String> modifyStringColumns = null;
+
+    public List<String> addNewColumns = null;
+
+    /**
+     * for online modify column, oldIndexName ----> newIndexName
+     */
+    public String oldIndexName;
+
+    public SubJobTask rerunTask;
 
     private boolean visible;
 
@@ -182,10 +206,32 @@ public class CreateGsiJobFactory extends DdlJobFactory {
         final boolean stayAtDeleteOnly = StringUtils.equalsIgnoreCase(DELETE_ONLY.name(), finalStatus);
         final boolean stayAtWriteOnly = StringUtils.equalsIgnoreCase(WRITE_ONLY.name(), finalStatus);
 
+        Map<String, String> columnMapping = backfillColumnMap == null ? null :
+            backfillColumnMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey));
+
         List<String> columns = columnAst2nameStr(this.columns);
         List<String> coverings = columnAst2nameStr(this.coverings);
         List<DdlTask> bringUpGsi = null;
-        if (needOnlineSchemaChange) {
+        if (useChangeSet) {
+            // online modify column
+            bringUpGsi = GsiTaskFactory.addGlobalIndexTasksChangeSet(
+                schemaName,
+                primaryTableName,
+                oldIndexName,
+                indexTableName,
+                stayAtDeleteOnly,
+                stayAtWriteOnly,
+                stayAtBackFill,
+                virtualColumnMap,
+                backfillColumnMap,
+                modifyStringColumns,
+                onlineModifyColumn,
+                mirrorCopy,
+                physicalPlanData,
+                null
+            );
+        } else if (needOnlineSchemaChange) {
+            // add index, use schema change
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
             bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
                 schemaName,
@@ -195,12 +241,17 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                 stayAtWriteOnly,
                 stayAtBackFill,
                 null,
+                null,
+                modifyStringColumns,
                 physicalPlanData,
                 tableMeta,
                 repartition,
+                onlineModifyColumn,
+                mirrorCopy,
                 executionContext.getOriginSql()
             );
         } else {
+            // create table with gsi, not use schema change
             bringUpGsi = GsiTaskFactory.createGlobalIndexTasks(
                 schemaName,
                 primaryTableName,
@@ -229,7 +280,9 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                 addedForeignKeys,
                 hasTimestampColumnDefault,
                 specialDefaultValues,
-                specialDefaultValueFlags);
+                specialDefaultValueFlags,
+                columnMapping,
+                addNewColumns);
         CreateTableShowTableMetaTask showTableMetaTask = new CreateTableShowTableMetaTask(schemaName, indexTableName);
         GsiInsertIndexMetaTask addIndexMetaTask =
             new GsiInsertIndexMetaTask(
@@ -244,7 +297,9 @@ public class CreateGsiJobFactory extends DdlJobFactory {
                 IndexStatus.CREATING,
                 clusteredIndex,
                 visible ? IndexVisibility.VISIBLE : IndexVisibility.INVISIBLE,
-                needOnlineSchemaChange
+                needOnlineSchemaChange,
+                columnMapping,
+                addNewColumns
             );
 
         List<DdlTask> taskList = new ArrayList<>();
@@ -299,15 +354,6 @@ public class CreateGsiJobFactory extends DdlJobFactory {
     protected void sharedResources(Set<String> resources) {
     }
 
-    protected List<String> columnAst2nameStr(List<SqlIndexColumnName> columnDefList) {
-        if (CollectionUtils.isEmpty(columnDefList)) {
-            return new ArrayList<>();
-        }
-        return columnDefList.stream()
-            .map(e -> e.getColumnNameStr())
-            .collect(Collectors.toList());
-    }
-
     /**
      * for create table with gsi
      * needOnlineSchemaChange = false, will skip Online Schema Change and BackFill
@@ -336,5 +382,33 @@ public class CreateGsiJobFactory extends DdlJobFactory {
 
     public void setVirtualColumnMap(Map<String, String> virtualColumnMap) {
         this.virtualColumnMap = virtualColumnMap;
+    }
+
+    public void setBackfillColumnMap(Map<String, String> backfillColumnMap) {
+        this.backfillColumnMap = backfillColumnMap;
+    }
+
+    public void setOldIndexName(String oldIndexName) {
+        this.oldIndexName = oldIndexName;
+    }
+
+    public void setOnlineModifyColumn(boolean onlineModifyColumn) {
+        this.onlineModifyColumn = onlineModifyColumn;
+    }
+
+    public void setUseChangeSet(boolean useChangeSet) {
+        this.useChangeSet = useChangeSet;
+    }
+
+    public void setMirrorCopy(boolean mirrorCopy) {
+        this.mirrorCopy = mirrorCopy;
+    }
+
+    public void setModifyStringColumns(List<String> modifyStringColumns) {
+        this.modifyStringColumns = modifyStringColumns;
+    }
+
+    public void setAddNewColumns(List<String> addNewColumns) {
+        this.addNewColumns = addNewColumns;
     }
 }

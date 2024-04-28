@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import io.airlift.compress.lz4.Lz4Compressor;
 import io.airlift.compress.lz4.Lz4Decompressor;
@@ -36,6 +37,14 @@ public class PagesSerdeFactory {
             return new PagesSerde(Optional.of(new Lz4Compressor()), Optional.of(new Lz4Decompressor()), types);
         } else {
             return new PagesSerde(Optional.empty(), Optional.empty(), types);
+        }
+    }
+
+    public PagesSerde createPagesSerde(List<DataType> types, ExecutionContext context) {
+        if (compressionEnabled) {
+            return new PagesSerde(Optional.of(new Lz4Compressor()), Optional.of(new Lz4Decompressor()), types, context);
+        } else {
+            return new PagesSerde(Optional.empty(), Optional.empty(), types, context);
         }
     }
 }

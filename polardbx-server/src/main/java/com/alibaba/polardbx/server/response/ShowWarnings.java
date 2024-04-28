@@ -18,7 +18,9 @@ package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -27,15 +29,13 @@ import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.LongUtil;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 import com.google.common.collect.Lists;
-import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.matrix.jdbc.TConnection;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext.ErrorMessage;
 
 import java.util.List;
 import java.util.Map;
@@ -47,6 +47,9 @@ import java.util.Map;
  * @since 5.1.19
  */
 public final class ShowWarnings {
+
+    public static final String LEVEL_WARNING = "Warning";
+    public static final String LEVEL_ERROR = "Error";
 
     private static final int FIELD_COUNT = 3;
     private static final ResultSetHeaderPacket header = PacketUtil.getHeader(FIELD_COUNT);
@@ -93,17 +96,13 @@ public final class ShowWarnings {
             return c.execute(cmd, hasMore);
         }
 
-        List<ErrorMessage> messagesFailed =
-            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.FAILED_MESSAGE, Lists.newLinkedList());
-        List<ErrorMessage> messagesLastFailed =
-            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.LAST_FAILED_MESSAGE, Lists.newLinkedList());
         List<ErrorMessage> messagesWarning =
             (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.WARNING_MESSAGE, Lists.newLinkedList());
+        List<ErrorMessage> messagesLastFailed =
+            (List<ErrorMessage>) extraDatas.getOrDefault(ExecutionContext.LAST_FAILED_MESSAGE, Lists.newLinkedList());
+        // Failed messages are displayed in `show errors`
 
-        messagesFailed.addAll(messagesLastFailed);
-        messagesFailed.addAll(messagesWarning);
-
-        if (messagesFailed.size() == 0) {
+        if (messagesWarning.isEmpty() && messagesLastFailed.isEmpty()) {
             return c.execute(cmd, hasMore);
         }
 
@@ -128,8 +127,13 @@ public final class ShowWarnings {
         }
 
         // write rows
-        for (ErrorMessage msg : messagesFailed) {
-            RowDataPacket row = getRow(msg, c.getCharset());
+        for (ErrorMessage msg : messagesWarning) {
+            RowDataPacket row = getRow(LEVEL_WARNING, msg, c.getResultSetCharset());
+            row.packetId = ++tmpPacketId;
+            proxy = row.write(proxy);
+        }
+        for (ErrorMessage msg : messagesLastFailed) {
+            RowDataPacket row = getRow(LEVEL_ERROR, msg, c.getResultSetCharset());
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }
@@ -144,12 +148,15 @@ public final class ShowWarnings {
 
         // write buffer
         proxy.packetEnd();
+
+        // clear warnings, but keep last failed message
+        conn.getExecutionContext().clearMessage(ExecutionContext.WARNING_MESSAGE);
         return true;
     }
 
-    private static RowDataPacket getRow(ErrorMessage msg, String charset) {
+    private static RowDataPacket getRow(String level, ErrorMessage msg, String charset) {
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        row.add(StringUtil.encode("Error", charset));
+        row.add(StringUtil.encode(level, charset));
         row.add(LongUtil.toBytes(msg.getCode()));
         String messageText;
         if (TStringUtil.isEmpty(msg.getGroupName())) {

@@ -16,8 +16,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.UUID;
 
-import static com.alibaba.polardbx.cdc.SysTableUtil.CDC_DDL_RECORD_TABLE;
+import static com.alibaba.polardbx.cdc.CdcTableUtil.CDC_DDL_RECORD_TABLE;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
@@ -102,14 +103,15 @@ public class ModifyPartitionKeyOrderTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, insert, null, false);
 
         for (int i = 0; i < params.length; i++) {
-            String alterSql = String.format(params[i], tableName);
+            String tokenHints = "/*+TDDL:CMD_EXTRA(CDC_RANDOM_DDL_TOKEN=\"" + UUID.randomUUID().toString() + "\")*/";
+            String alterSql = tokenHints + String.format(params[i], tableName);
             execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql);
             selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
             //cdc check
             repository.console(alterSql);
-            checkCdcDdlMark(alterSql);
+            checkCdcDdlMark(tokenHints, alterSql);
         }
 
         insert = String.format("insert into %s values (2,3,4,5,6)", tableName);
@@ -148,17 +150,17 @@ public class ModifyPartitionKeyOrderTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    private void checkCdcDdlMark(String sql) throws SQLException {
-        int visibility = getDdlExtInfo(sql);
-        Assert.assertEquals(1, visibility);
+    private void checkCdcDdlMark(String tokenHints, String sql) throws SQLException {
+        int visibility = getDdlExtInfo(tokenHints);
+        Assert.assertEquals("ddl visibility is not valid for sql " + sql, 1, visibility);
     }
 
-    private int getDdlExtInfo(String sql) throws SQLException {
+    private int getDdlExtInfo(String tokenHints) throws SQLException {
         int ret = 0;
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
-                "select visibility from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql = '" + sql
-                    + "' order by id desc limit 1")) {
+                "select visibility from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql like '%" + tokenHints
+                    + "%' order by id desc limit 1")) {
                 while (resultSet.next()) {
                     ret = resultSet.getInt(1);
                 }

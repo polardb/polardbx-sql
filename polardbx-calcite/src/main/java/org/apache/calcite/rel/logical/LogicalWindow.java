@@ -93,7 +93,6 @@ public final class LogicalWindow extends Window {
       List<RelNode> inputs) {
     LogicalWindow logicalWindow =  new LogicalWindow(getCluster(), traitSet, sole(inputs), constants,
       rowType, groups);
-    logicalWindow.setFixedCost(getFixedCost());
     return logicalWindow;
   }
 
@@ -113,9 +112,6 @@ public final class LogicalWindow extends Window {
   }
 
   @Override public RelOptCost computeSelfCost(RelOptPlanner planner, RelMetadataQuery mq) {
-    if (getFixedCost() != null) {
-      return getFixedCost();
-    }
     // Cost is proportional to the number of rows and the number of
     // components (groups and aggregate functions). There is
     // no I/O cost.

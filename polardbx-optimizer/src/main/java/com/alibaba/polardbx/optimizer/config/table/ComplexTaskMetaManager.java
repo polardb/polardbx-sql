@@ -189,6 +189,9 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
         public static final EnumSet<ComplexTaskStatus> WRITABLE =
             EnumSet.of(WRITE_ONLY, WRITE_REORG, READY_TO_PUBLIC);
 
+        public static final EnumSet<ComplexTaskStatus> BACKFILL_IN_PROGRESS =
+            EnumSet.of(CREATING, DELETE_ONLY, WRITE_ONLY);
+
         public static final EnumSet<ComplexTaskStatus> NEED_SWITCH_DATASOURCE =
             EnumSet.of(SOURCE_WRITE_ONLY, SOURCE_DELETE_ONLY, SOURCE_ABSENT);
 
@@ -222,6 +225,10 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
 
         public boolean isPublic() {
             return PUBLIC == this;
+        }
+
+        public boolean isBackfillInProgress() {
+            return BACKFILL_IN_PROGRESS.contains(this);
         }
     }
 
@@ -259,6 +266,22 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
             List<ComplexTaskOutlineRecord> complexTaskOutlineRecords =
                 complexTaskOutlineAccessor
                     .getAllScaleOutComplexTaskBySch(ComplexTaskType.MOVE_DATABASE.getValue(), schemaName);
+
+            return complexTaskOutlineRecords;
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION,
+                e,
+                "cannot get table info from system table");
+        }
+    }
+
+    public static List<ComplexTaskOutlineRecord> getMovePartitionTasksBySchJob(String schemaName, Long jobId) {
+        try (Connection conn = MetaDbUtil.getConnection()) {
+            ComplexTaskOutlineAccessor complexTaskOutlineAccessor = new ComplexTaskOutlineAccessor();
+            complexTaskOutlineAccessor.setConnection(conn);
+            List<ComplexTaskOutlineRecord> complexTaskOutlineRecords =
+                complexTaskOutlineAccessor
+                    .getAllScaleOutComplexTaskBySchJob(ComplexTaskType.MOVE_PARTITION.getValue(), schemaName, jobId);
 
             return complexTaskOutlineRecords;
         } catch (SQLException e) {
@@ -364,7 +387,9 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
         REFRESH_TOPOLOGY(9),
         MOVE_DATABASE(10),
         SPLIT_HOT_VALUE(11),
-        REORGANIZE_PARTITION(12);
+        REORGANIZE_PARTITION(12),
+        TWO_PHASE_ALTER_TABLE(13),
+        ONLINE_MODIFY_COLUMN(14);
 
         private final int value;
 
@@ -394,6 +419,10 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 return SPLIT_HOT_VALUE;
             case 12:
                 return REORGANIZE_PARTITION;
+            case 13:
+                return TWO_PHASE_ALTER_TABLE;
+            case 14:
+                return ONLINE_MODIFY_COLUMN;
             default:
                 return null;
             }
@@ -524,6 +553,19 @@ public class ComplexTaskMetaManager extends AbstractLifecycle {
                 return partitionTableMetaMap.get(partitionName).isWritable() || partitionTableMetaMap.get(partitionName)
                     .isDeleteOnly();
             }
+        }
+
+        public boolean isBackfillInProgress() {
+            if (GeneralUtil.isEmpty(partitionTableMetaMap)) {
+                return false;
+            } else {
+                for (Map.Entry<String, ComplexTaskStatus> entry : partitionTableMetaMap.entrySet()) {
+                    if (entry.getValue().isBackfillInProgress()) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         public boolean isDeleteOnly(String partitionName) {

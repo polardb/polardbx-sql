@@ -29,13 +29,13 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.Session;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.collect.Multimap;
 
 import java.util.concurrent.ExecutorService;
 

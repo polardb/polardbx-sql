@@ -1,0 +1,26 @@
+storageList: [ $dn1, $dn2 ]
+dbName: "test_locality_ctw_cci"
+testCases:
+  - prepareDDls:
+      - "use polardbx"
+      - "drop database if exists test_locality_ctw_cci"
+      - "create database test_locality_ctw_cci mode = auto"
+      - "use test_locality_ctw_cci"
+      - " /*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS=\"WaitColumnarTableCreationTask\")*/ create table s0(x int primary key, y int, clustered columnar index cci_y(y)) single locality='balance_single_table=on'"
+    cleanupDDls:
+      - "use polardbx;"
+      - "use polardbx;"
+    checkActions:
+      localityValueCheck:
+        - s0 table "balance_single_table=on"
+      tableGroupMatchCheck:
+        - s0 $tg1 "balance_single_table=on"
+      # second pass;
+      # auto generate create table, tablegroup.
+      partitionLocalityCheck:
+      topologyCheck:
+        - s0 table "$dn1,$dn2"
+      #  auto generate by locality value check.
+      #  auto generate by partition locality check. with each table.
+cleanupDDls:
+  - "drop database if exists test_locality_ctw_cci;"

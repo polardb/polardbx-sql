@@ -30,15 +30,16 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.base.Throwables;
-import com.google.inject.Inject;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.Session;
+import com.alibaba.polardbx.executor.mpp.execution.scheduler.ColumnarNodeSelector;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.NodeScheduler;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.NodeSelector;
 import com.alibaba.polardbx.executor.mpp.execution.scheduler.SqlQueryScheduler;
@@ -48,15 +49,30 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragmenter;
 import com.alibaba.polardbx.executor.mpp.planner.StageExecutionPlan;
 import com.alibaba.polardbx.executor.mpp.planner.SubPlan;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
+import com.alibaba.polardbx.optimizer.core.rel.OSSTableScan;
+import com.alibaba.polardbx.optimizer.utils.TableTopologyUtil;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.base.Throwables;
+import com.google.inject.Inject;
 import io.airlift.units.Duration;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelShuttleImpl;
+import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.logical.LogicalFilter;
+import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.calcite.rex.RexNode;
+import org.apache.calcite.rex.RexSubQuery;
+import org.apache.calcite.rex.RexUtil;
 
 import javax.annotation.concurrent.ThreadSafe;
 import java.net.URI;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -133,9 +149,18 @@ public class SqlQueryExecution extends QueryExecution {
             Pair<SubPlan, Integer> subPlan = PlanFragmenter.buildRootFragment(physicalPlan, session);
             int polarXParallelism = ExecUtils.getPolarDBXCores(
                 session.getClientContext().getParamManager(), !existMppOnlyInstanceNode());
-            int limitNode = subPlan.getValue() % polarXParallelism > 0 ? subPlan.getValue() / polarXParallelism + 1 :
-                subPlan.getValue() / polarXParallelism;
-            NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, limitNode);
+            int limitNode = session.getClientContext().getParamManager().getInt(ConnectionParams.MPP_NODE_SIZE);
+            if (limitNode <= 0) {
+                limitNode = subPlan.getValue() % polarXParallelism > 0 ? subPlan.getValue() / polarXParallelism + 1 :
+                    subPlan.getValue() / polarXParallelism;
+            }
+            boolean randomNode =
+                session.getClientContext().getParamManager().getBoolean(ConnectionParams.MPP_NODE_RANDOM);
+
+            NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, limitNode, randomNode);
+            if (nodeSelector instanceof ColumnarNodeSelector) {
+                optimizeScheduleUnderColumnar(nodeSelector);
+            }
             planDistribution(subPlan.getKey(), nodeSelector);
             stateMachine.recordDistributedPlanningTime(distributedPlanningStart);
             // transition to starting
@@ -157,13 +182,73 @@ public class SqlQueryExecution extends QueryExecution {
         }
     }
 
+    private void optimizeScheduleUnderColumnar(NodeSelector nodeSelector) {
+        if (ExecUtils.needPutIfAbsent(session.getClientContext(), ConnectionProperties.SCHEDULE_BY_PARTITION)) {
+            PartScheduleChecker checker = new PartScheduleChecker(nodeSelector.getOrderedNode().size());
+            physicalPlan.accept(checker);
+            session.getClientContext()
+                .putIntoHintCmds(ConnectionProperties.SCHEDULE_BY_PARTITION, checker.canScheduleByPart());
+            logger.info(MessageFormat.format("Trace id is: {0}, schedule by partition is {1}",
+                session.getClientContext().getTraceId(), checker.canScheduleByPart()));
+        }
+    }
+
+    public static class PartScheduleChecker extends RelShuttleImpl {
+        private final int nodeSize;
+
+        private boolean schedulerByPart = true;
+
+        public PartScheduleChecker(int nodeSize) {
+            this.nodeSize = nodeSize;
+        }
+
+        public boolean canScheduleByPart() {
+            return schedulerByPart;
+        }
+
+        @Override
+        public RelNode visit(LogicalFilter filter) {
+            RexUtil.RexSubqueryListFinder finder = new RexUtil.RexSubqueryListFinder();
+            filter.getCondition().accept(finder);
+            for (RexSubQuery subQuery : finder.getSubQueries()) {
+                subQuery.rel.accept(this);
+            }
+            return visitChild(filter, 0, filter.getInput());
+        }
+
+        @Override
+        public RelNode visit(LogicalProject project) {
+            RexUtil.RexSubqueryListFinder finder = new RexUtil.RexSubqueryListFinder();
+            for (RexNode node : project.getProjects()) {
+                node.accept(finder);
+            }
+            for (RexSubQuery subQuery : finder.getSubQueries()) {
+                subQuery.rel.accept(this);
+            }
+            return visitChild(project, 0, project.getInput());
+        }
+
+        @Override
+        public RelNode visit(TableScan scan) {
+            if (scan instanceof OSSTableScan) {
+                TableMeta tm = CBOUtil.getTableMeta(scan.getTable());
+                int shard = TableTopologyUtil.isShard(tm) ?
+                    tm.getPartitionInfo().getPartitionBy().getPartitions().size()
+                    : -1;
+                // or shard num is 1 or shard num is an integer multiple of node size.
+                schedulerByPart &= (shard == 1) || ((shard > 0) && (shard % nodeSize == 0));
+            }
+            return scan;
+        }
+    }
+
     public StageExecutionPlan getStagePlan(SubPlan plan, List<PlanFragment> planFragmentList) {
         List<StageExecutionPlan> subStages = new ArrayList<>();
         planFragmentList.add(plan.getFragment());
         for (SubPlan subPlan : plan.getChildren()) {
             subStages.add(getStagePlan(subPlan, planFragmentList));
         }
-        return new StageExecutionPlan(plan.getFragment(), plan.getLogicalViewInfo(), plan.getExpandSplitInfos(),
+        return new StageExecutionPlan(plan.getFragment(), plan.getLogicalViewInfos(), plan.getExpandSplitInfos(),
             subStages);
     }
 
@@ -225,6 +310,17 @@ public class SqlQueryExecution extends QueryExecution {
         Optional<StageInfo> stageInfo = Optional.empty();
         if (scheduler != null) {
             stageInfo = Optional.ofNullable(scheduler.getStageInfo());
+        }
+
+        ExecutionContext executionContext = session.getClientContext();
+        if (executionContext.getDriverStatistics() != null
+            && stageInfo.isPresent() && stageInfo.get().isCompleteInfo()) {
+            // Check if this tree-structure StageInfo is completed and collect driver statistics.
+            Map<String, List<Object[]>> driverStatistics = executionContext.getDriverStatistics();
+
+            StageInfo rootStage = stageInfo.get();
+
+            StageInfo.collectStats(rootStage, driverStatistics);
         }
 
         QueryInfo queryInfo = stateMachine.updateQueryInfo(stageInfo, querySelf);

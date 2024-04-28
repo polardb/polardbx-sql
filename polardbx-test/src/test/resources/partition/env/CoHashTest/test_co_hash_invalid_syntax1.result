@@ -1,0 +1,108 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_int_test` (
+`a` bigint(20) NOT NULL,
+`b` int(20) NOT NULL,
+`c` bigint(20) NOT NULL,
+`d` bigint(20) NOT NULL,
+`e` bigint(20) NOT NULL,
+PRIMARY KEY (`a`, `b`, `c`),
+KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY CO_HASH(`a`,`b`)
+PARTITIONS 8;
+must be the same
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_varchar_substr_coll` (
+`c1` varchar(32) collate utf8mb4_general_ci,
+`c2` varchar(32) collate utf8_general_ci,
+`c3` varchar(32) collate utf8_bin,
+`c4` varchar(32) collate gbk_chinese_ci,
+`c5` varchar(32) collate gb18030_chinese_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-5),substr(c2,-5),substr(c3,-5),substr(c4,-5),substr(c5,-5))
+partitions 16;
+must be the same
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_varchar_coll` (
+`c1` varchar(32) collate utf8mb4_general_ci,
+`c2` varchar(32) collate utf8_general_ci,
+`c3` varchar(32) collate utf8_bin,
+`c4` varchar(32) collate gbk_chinese_ci,
+`c5` varchar(32) collate gb18030_chinese_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(c1,c2)
+partitions 16;
+must be the same
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_varchar_coll` (
+`c1` varchar(32) collate utf8mb4_general_ci,
+`c2` varchar(16) collate utf8_general_ci,
+`c3` varchar(32) collate utf8_bin,
+`c4` varchar(32) collate gbk_chinese_ci,
+`c5` varchar(32) collate gb18030_chinese_ci
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(c1,c2)
+partitions 16;
+must be the same
+## error_msg: $# not allowed #$
+CREATE TABLE `ch_time_test` (
+`c1` datetime,
+`c2` datetime
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(c1,c2)
+partitions 16;
+not allowed
+## error_msg: $# not allowed #$
+CREATE TABLE `ch_binary_test` (
+`c1` binary,
+`c2` binary
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(c1,c2)
+partitions 16;
+not allowed
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_deci_test` (
+`c1` decimal(24,0),
+`c2` decimal(23,0)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-4),substr(c2,-4))
+partitions 16;
+must be the same
+## error_msg: $# not allowed #$
+CREATE TABLE `ch_deci_test` (
+`c1` decimal(24,1),
+`c2` decimal(24,1)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-4),substr(c2,-4))
+partitions 16;
+not allowed
+## error_msg: $# must be the same #$
+CREATE TABLE `ch_bigint_test` (
+`c1` bigint,
+`c2` bigint unsigned
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(c1,-4),substr(c2,-4))
+partitions 16;
+must be the same
+## error_msg: $# nesting partition function #$
+CREATE TABLE `ch_datetime_test` (
+`c1` datetime,
+`c2` datetime
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+partition by co_hash(substr(year(c1), -4))
+partitions 16;
+nesting partition function
+##1_input col datatype:
+## tinyint/smallint/mediumint/int/bigint/bigint unsigned/decimal
+## varchar/char
+  ## length & charset & collation
+##2_func: col-only, substr, udf
+## one-level-func
+## one-col-input only
+##3_udf_input_col_type:
+## tinyint/smallint/mediumint/int/bigint/bigint unsigned/decimal
+## varchar/char
+  ## length & charset & collation
+##4_udf_output_col_type:
+## long;

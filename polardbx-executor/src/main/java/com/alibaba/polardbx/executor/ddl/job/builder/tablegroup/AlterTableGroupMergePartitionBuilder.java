@@ -27,8 +27,6 @@ import com.alibaba.polardbx.gms.util.PartitionNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupMergePartitionPreparedData;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
@@ -51,7 +49,7 @@ public class AlterTableGroupMergePartitionBuilder extends AlterTableGroupBaseBui
                 OptimizerContext.getContext(mergeData.getSchemaName()).getTableGroupInfoManager();
             TableGroupConfig tableGroupConfig =
                 tableGroupInfoManager.getTableGroupConfigByName(mergeData.getTableGroupName());
-            String firstTableName = tableGroupConfig.getTables().get(0).getTableName();
+            String firstTableName = tableGroupConfig.getTables().get(0);
             PartitionInfo firstPartitionInfo =
                 OptimizerContext.getContext(preparedData.getSchemaName()).getPartitionInfoManager()
                     .getPartitionInfo(firstTableName);

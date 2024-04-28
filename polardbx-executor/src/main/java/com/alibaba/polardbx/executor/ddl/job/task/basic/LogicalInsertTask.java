@@ -103,7 +103,8 @@ public class LogicalInsertTask extends BaseDdlTask {
             if (currentParameter != null) {
                 //不为空意味着是执行PreparedStatement，newInsert已经参数化，需要附带数值运行
                 parameters.setParams(currentParameter);
-                params = currentParameter.values().stream().map(ParameterContext::getValue).collect(Collectors.toList());
+                params =
+                    currentParameter.values().stream().map(ParameterContext::getValue).collect(Collectors.toList());
             }
             executionContext.setParams(parameters);
         }

@@ -16,18 +16,18 @@
 
 package com.alibaba.polardbx;
 
-import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.handler.Privileges;
-import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.model.DbPriv;
 import com.alibaba.polardbx.common.model.TbPriv;
-import com.taobao.tddl.common.privilege.EncrptPassword;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.handler.Privileges;
+import com.alibaba.polardbx.server.ServerConnection;
+import com.taobao.tddl.common.privilege.EncrptPassword;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.commons.lang.StringUtils;
 
@@ -63,8 +63,11 @@ public class PolarPrivileges extends CobarPrivileges implements Privileges {
 
     @Override
     public EncrptPassword getPassword(String user, String host) {
-        String password = getMatchUser(user, host).getPassword();
-        return new EncrptPassword(password, true);
+        PolarAccountInfo matchUser = getMatchUser(user, host);
+        if (matchUser == null) {
+            throw GeneralUtil.nestedException(String.format("user '%s'@'%s' does not exist", user, host));
+        }
+        return new EncrptPassword(matchUser.getPassword(), matchUser.getAuthPlugin(), true);
     }
 
     @Override

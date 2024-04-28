@@ -21,7 +21,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.FetchSPMSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -52,12 +52,14 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
         Set<String> schemaNames = OptimizerContext.getActiveSchemaNames();
         for (String schemaName : schemaNames) {
             List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new FetchSPMSyncAction(schemaName),
-                schemaName);
+                schemaName, SyncScope.CURRENT_ONLY);
             for (List<Map<String, Object>> nodeRows : results) {
                 if (nodeRows == null) {
                     continue;
                 }
                 for (Map<String, Object> row : nodeRows) {
+                    final String host = DataTypes.StringType.convertFrom(row.get("HOST"));
+                    final String instId = DataTypes.StringType.convertFrom(row.get("INST_ID"));
                     final String baselineId = DataTypes.StringType.convertFrom(row.get("BASELINE_ID"));
                     final String planId = DataTypes.StringType.convertFrom(row.get("PLAN_ID"));
                     final Integer fixed = DataTypes.BooleanType.convertFrom(row.get("FIXED"));
@@ -77,6 +79,8 @@ public class InformationSchemaSPMHandler extends BaseVirtualViewSubClassHandler 
                     final String usePostPlanner = DataTypes.StringType.convertFrom(row.get("USE_POST_PLANNER"));
 
                     cursor.addRow(new Object[] {
+                        host,
+                        instId,
                         baselineId,
                         schemaName,
                         planId,

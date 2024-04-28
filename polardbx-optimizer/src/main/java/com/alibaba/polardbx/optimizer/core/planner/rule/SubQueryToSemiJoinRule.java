@@ -1664,7 +1664,7 @@ class FieldAccessPairFinder extends RexVisitorImpl<Void> {
         Integer newOne = 1000000;
         for (Map<Integer, Integer> pairMap : anchor.values()) {
             for (Integer p : pairMap.values()) {
-                if (p.equals(newOne)) {
+                if (p != null && newOne >= p) {
                     newOne = p - 1;
                 }
             }

@@ -65,4 +65,6 @@ public interface Node {
     int getPort();
 
     int getRpcPort();
+
+    String getHostPort();
 }

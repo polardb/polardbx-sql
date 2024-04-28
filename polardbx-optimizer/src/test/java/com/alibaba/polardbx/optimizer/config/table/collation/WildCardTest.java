@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.config.table.collation;
 
 import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
+import com.alibaba.polardbx.optimizer.config.table.charset.CollationHandlers;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 import org.junit.Assert;
@@ -27,6 +28,7 @@ public class WildCardTest {
         CharsetFactory.DEFAULT_CHARSET_HANDLER.getCollationHandler();
     private static final Slice CHECK_STR =
         Slices.utf8Slice(
+
             "CAAAACCACTATGAGATATCATCTCACACCAGTTAGAATGGCAATCATTAAAAAGTCAGGAAACAACAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC");
     private static final String[] MATCHED = {
         "%CAAAACCACTATGAGATATCATCTCACACCAGTTA%",
@@ -100,7 +102,11 @@ public class WildCardTest {
         "%CAACAGGTGCTGGAGAGGATGCGGAGAAATAGGAA%",
         "%AACAGGTGCTGGAGAGGATGCGGAGAAATAGGAAC%",
         "%ACAGGTGCTGGAGAGGATGCGGAGAAATAGGAACA%",
-        "%CAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC%"
+        "%CAGGTGCTGGAGAGGATGCGGAGAAATAGGAACAC%",
+        "%",
+        "_%_",
+        "%_%",
+        "%CAGGTG%GAACA_%",
     };
 
     private static final String[] UNMATCHED = {
@@ -174,15 +180,49 @@ public class WildCardTest {
     };
 
     @Test
-    public void test() {
+    public void testUtf8GeneralCi() {
+        CollationHandler collationHandler = CharsetFactory.DEFAULT_CHARSET_HANDLER.getCollationHandler();
+        Assert.assertEquals(collationHandler, CollationHandlers.COLLATION_HANDLER_UTF8_GENERAL_CI);
         for (String matched : MATCHED) {
             Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
-                COLLATION_HANDLER.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
         }
 
         for (String unmatched : UNMATCHED) {
             Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
-                COLLATION_HANDLER.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
+        }
+    }
+
+    @Test
+    public void testLatin1Bin() {
+        CollationHandler collationHandler = CollationHandlers.COLLATION_HANDLER_LATIN1_BIN;
+        for (String matched : MATCHED) {
+            Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
+        }
+
+        for (String unmatched : UNMATCHED) {
+            Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
+        }
+    }
+
+    /**
+     * Gbk bin 没有实现wildcompare
+     * 预期输出全为false
+     */
+    @Test
+    public void testGbkBin() {
+        CollationHandler collationHandler = CollationHandlers.COLLATION_HANDLER_GBK_BIN;
+        for (String matched : MATCHED) {
+            Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
+        }
+
+        for (String unmatched : UNMATCHED) {
+            Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
         }
     }
 }

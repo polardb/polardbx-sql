@@ -101,6 +101,15 @@ public interface IConnection extends Connection {
         throw new UnsupportedOperationException("Connection does not support share read view.");
     }
 
+    /**
+     * force releases any database locks currently held, even though
+     * the auto-commit mode has been disabled
+     *
+     * @throws SQLException if a database access error occurs, the connection
+     * must be discard.
+     */
+    void forceRollback() throws SQLException;
+
     void discard(Throwable t);
 
     void kill() throws SQLException;

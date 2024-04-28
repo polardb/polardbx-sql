@@ -29,10 +29,10 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.executor.mpp.execution.RemoteTask;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.collect.Multimap;
 
 import java.util.List;
 
@@ -56,4 +56,9 @@ public interface NodeSelector {
      * 用户计算source节点执行nodes
      */
     Multimap<Node, Split> computeAssignments(List<Split> splits, List<RemoteTask> existingTasks);
+
+    /**
+     * get ordered node for remote shuffle under partition wise join
+     */
+    List<Node> getOrderedNode();
 }

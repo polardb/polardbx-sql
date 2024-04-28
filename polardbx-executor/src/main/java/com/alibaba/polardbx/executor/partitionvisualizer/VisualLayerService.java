@@ -16,6 +16,18 @@
 
 package com.alibaba.polardbx.executor.partitionvisualizer;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxisModel;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayerConfig;
+import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
+import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.StringUtils;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -25,24 +37,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import com.alibaba.fastjson.JSON;
-import com.alibaba.polardbx.common.utils.logger.Logger;
-import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxis;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualAxisModel;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualTypeConstants;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayer;
-import com.alibaba.polardbx.executor.partitionvisualizer.model.VisualLayerConfig;
-
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
-import org.apache.commons.lang.StringUtils;
-
 /**
  * 多层环状数据结构的操作
  *
  * @author ximing.yd
- * @date 2021/12/20 下午3:39
  */
 public class VisualLayerService {
 
@@ -115,13 +113,15 @@ public class VisualLayerService {
                 int start = 0;
                 if (models.size() > layer.getLength()) {
                     //当数据个数大于该层的总大小，属于异常数据，小概率会出现，这里做一个容错处理
-                    logger.warn(String.format("fillVisualLayer models.size:%s bigger layer.length:%s", models.size(), layer.getLength()));
+                    logger.warn(String.format("fillVisualLayer models.size:%s bigger layer.length:%s", models.size(),
+                        layer.getLength()));
                     start = models.size() - layer.getLength();
                 }
                 for (int i = start; i < models.size(); i++) {
                     VisualAxisModel model = models.get(i);
                     VisualLayer targetLayer = visualLayers.get(model.getLayerNum());
-                    addElementToRing(targetLayer.getRingAxis(), layer.getTail(), axisJsonConvertToVisualAxis(model.getAxisJson()));
+                    addElementToRing(targetLayer.getRingAxis(), layer.getTail(),
+                        axisJsonConvertToVisualAxis(model.getAxisJson()));
                     addElementToRing(targetLayer.getRingTimestamp(), layer.getTail(), model.getTimestamp());
                     targetLayer.setEmpty(false);
                     if (i == start) {

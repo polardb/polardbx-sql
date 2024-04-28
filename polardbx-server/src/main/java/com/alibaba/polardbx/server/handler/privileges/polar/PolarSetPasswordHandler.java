@@ -38,6 +38,7 @@ import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.audit.AuditPrivilege;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import org.apache.calcite.sql.SqlKind;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.SQLSyntaxErrorException;
@@ -137,6 +138,9 @@ public class PolarSetPasswordHandler extends AbstractPrivilegeCommandHandler {
         return password.startsWith(quoter) && password.endsWith(quoter);
     }
 
+    /**
+     * 新密码一律采用 AuthPlugin#POLARDBX_NATIVE_PASSWORD 的方式
+     */
     @Override
     protected void doHandle() {
         ByteString sql = getSql();
@@ -152,5 +156,10 @@ public class PolarSetPasswordHandler extends AbstractPrivilegeCommandHandler {
                 .map(PolarAccountInfo::getIdentifier)
                 .collect(Collectors.joining()),
             AuditAction.SET_PASSWORD);
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.SET_PASSWORD;
     }
 }

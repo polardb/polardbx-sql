@@ -21,7 +21,6 @@ import com.alibaba.polardbx.executor.chunk.Block;
 
 /**
  * @author chenzilin
- * @date 2021/12/8 14:40
  */
 public class LongMinMaxFilter extends MinMaxFilter {
     private Long min;
@@ -68,9 +67,9 @@ public class LongMinMaxFilter extends MinMaxFilter {
     @Override
     public MinMaxFilterInfo toMinMaxFilterInfo() {
         return new MinMaxFilterInfo(
-                MinMaxFilterInfo.TYPE.LONG,
-                min == null ? null : min.longValue(),
-                max == null ? null : max.longValue(), null, null, null, null, null, null);
+            MinMaxFilterInfo.TYPE.LONG,
+            min == null ? null : min.longValue(),
+            max == null ? null : max.longValue(), null, null, null, null, null, null);
     }
 
     @Override

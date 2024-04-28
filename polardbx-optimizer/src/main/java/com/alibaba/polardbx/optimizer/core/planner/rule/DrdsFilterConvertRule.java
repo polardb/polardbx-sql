@@ -16,9 +16,10 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.PhysicalFilter;
+import com.google.common.collect.ImmutableSet;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.rel.RelNode;
@@ -27,17 +28,22 @@ import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.logical.LogicalFilter;
 
 public class DrdsFilterConvertRule extends ConverterRule {
-    public static final DrdsFilterConvertRule INSTANCE = new DrdsFilterConvertRule();
+    public static final DrdsFilterConvertRule SMP_INSTANCE = new DrdsFilterConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsFilterConvertRule() {
+    public static final DrdsFilterConvertRule COL_INSTANCE = new DrdsFilterConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsFilterConvertRule(Convention outConvention) {
         super(LogicalFilter.class, RelOptUtil.FILTER_PREDICATE, Convention.NONE,
-            DrdsConvention.INSTANCE, RelFactories.LOGICAL_BUILDER,
+            outConvention, RelFactories.LOGICAL_BUILDER,
             "DrdsFilterConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
@@ -45,10 +51,10 @@ public class DrdsFilterConvertRule extends ConverterRule {
         final LogicalFilter filter = (LogicalFilter) rel;
         return new PhysicalFilter(
             filter.getCluster(),
-            filter.getTraitSet().simplify().replace(DrdsConvention.INSTANCE),
+            filter.getTraitSet().simplify().replace(outConvention),
             convert(filter.getInput(),
                 filter.getInput().getTraitSet().simplify()
-                    .replace(DrdsConvention.INSTANCE)),
+                    .replace(outConvention)),
             filter.getCondition(),
             ImmutableSet.copyOf(filter.getVariablesSet())
         );

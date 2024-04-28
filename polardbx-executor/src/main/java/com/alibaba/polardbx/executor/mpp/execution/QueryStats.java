@@ -29,13 +29,14 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableSet;
 import com.alibaba.polardbx.executor.mpp.operator.BlockedReason;
 import com.alibaba.polardbx.executor.mpp.operator.OperatorStats;
 import com.alibaba.polardbx.util.MoreObjects;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import org.joda.time.DateTime;
@@ -176,21 +177,25 @@ public class QueryStats {
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getCreateTime() {
         return createTime;
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getExecutionStartTime() {
         return executionStartTime;
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getLastHeartbeat() {
         return lastHeartbeat;
     }
 
     @JsonProperty
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss.SSS", timezone = "GMT+8")
     public DateTime getEndTime() {
         return endTime;
     }

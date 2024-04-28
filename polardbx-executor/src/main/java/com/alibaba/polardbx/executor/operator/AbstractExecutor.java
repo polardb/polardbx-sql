@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.operator;
 
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -34,6 +35,8 @@ import com.alibaba.polardbx.optimizer.memory.MemoryPool;
 import com.alibaba.polardbx.optimizer.statis.OperatorStatistics;
 import com.alibaba.polardbx.statistics.RuntimeStatHelper;
 import com.alibaba.polardbx.statistics.RuntimeStatistics.OperatorStatisticsGroup;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -130,7 +133,7 @@ public abstract class AbstractExecutor implements Executor {
         return ret;
     }
 
-    final void createBlockBuilders() {
+    protected void createBlockBuilders() {
         // Create all block builders by default
         final List<DataType> columns = getDataTypes();
         blockBuilders = new BlockBuilder[columns.size()];
@@ -139,13 +142,13 @@ public abstract class AbstractExecutor implements Executor {
         }
     }
 
-    final void reset() {
+    protected void reset() {
         for (int i = 0; i < blockBuilders.length; i++) {
             blockBuilders[i] = blockBuilders[i].newBlockBuilder();
         }
     }
 
-    final Chunk buildChunkAndReset() {
+    protected Chunk buildChunkAndReset() {
         Block[] blocks = new Block[blockBuilders.length];
         for (int i = 0; i < blockBuilders.length; i++) {
             blocks[i] = blockBuilders[i].build();
@@ -197,7 +200,7 @@ public abstract class AbstractExecutor implements Executor {
     }
 
     /**
-     * An operator should records its memory usage (bytes) if it buffers any data
+     * An operator should record its memory usage (bytes) if it buffers any data
      */
     void collectMemoryUsage(MemoryPool pool) {
         if (statistics != null && !pool.isDestoryed()) {

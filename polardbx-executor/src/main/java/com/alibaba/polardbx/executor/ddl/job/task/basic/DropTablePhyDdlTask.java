@@ -34,16 +34,7 @@ public class DropTablePhyDdlTask extends BasePhyDdlTask {
     @Override
     public void executeImpl(ExecutionContext executionContext) {
         updateSupportedCommands(true, false, null);
-        try {
-            super.executeImpl(executionContext);
-        } catch (PhysicalDdlException e) {
-            int successCount = e.getSuccessCount();
-            if (successCount == 0) {
-                updateSupportedCommands(true, true, null);
-                enableRollback(this);
-            }
-            throw new PhysicalDdlException(e.getTotalCount(), e.getSuccessCount(), e.getFailCount(),
-                e.getErrMsg(), e.getSimpleErrMsg());
-        }
+        // 元数据已经清理，肯定不支持回滚的
+        super.executeImpl(executionContext);
     }
 }

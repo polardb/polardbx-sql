@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor.mpp.server.remotetask;
 
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
@@ -42,7 +43,6 @@ import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.server.StatementResource;
 import com.alibaba.polardbx.executor.mpp.server.TaskUpdateRequest;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;

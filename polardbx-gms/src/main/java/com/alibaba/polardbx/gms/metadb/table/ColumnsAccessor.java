@@ -63,8 +63,8 @@ public class ColumnsAccessor extends AbstractAccessor {
             + "`is_nullable`, `data_type`, `character_maximum_length`, `character_octet_length`, "
             + "`numeric_precision`, `numeric_scale`, `datetime_precision`, `character_set_name`, "
             + "`collation_name`, `column_type`, `column_key`, `extra`, `privileges`, `column_comment`, "
-            + "`generation_expression`, `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag`) "
-            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "`generation_expression`, `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag`, `column_mapping_name`) "
+            + "values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String WHERE_SCHEMA = " where `table_schema` = ?";
 
@@ -90,7 +90,7 @@ public class ColumnsAccessor extends AbstractAccessor {
             + "`generation_expression`";
 
     private static final String SELECT_CLAUSE_EXT =
-        ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag`";
+        ", `jdbc_type`, `jdbc_type_name`, `field_length`, `version`, `status`, `flag`, `column_mapping_name`";
 
     private static final String SELECT_INFO_SCHEMA =
         SELECT_CLAUSE + " from " + COLUMNS_INFO_SCHEMA + WHERE_SCHEMA_TABLE + ORDER_BY_ORDINAL_POSITION;
@@ -117,6 +117,9 @@ public class ColumnsAccessor extends AbstractAccessor {
 
     private static final String UPDATE_COLUMNS = "update " + COLUMNS_TABLE + " set ";
 
+    /*
+    Any update on this column list should be propogated to copyFromOldToNewColumnRecord
+     */
     private static final String UPDATE_COLUMNS_ALL = UPDATE_COLUMNS
         + "`column_name` = ?, `column_default` = ?, `is_nullable` = ?, `data_type` = ?, "
         + "`character_maximum_length` = ?, `character_octet_length` = ?, `numeric_precision` = ?, `numeric_scale` = ?, "
@@ -124,6 +127,48 @@ public class ColumnsAccessor extends AbstractAccessor {
         + "`column_key` = ?, `extra` = ?, `privileges` = ?, `column_comment` = ?, `generation_expression` = ?, "
         + "`jdbc_type` = ?, `jdbc_type_name` = ?, `field_length` = ?"
         + WHERE_SCHEMA_TABLE_ONE_COLUMN;
+
+
+    /*
+        id                       | []
+        table_catalog            | []
+        table_schema             | []
+        table_name               | []
+        column_name              | *
+        ordinal_position         | []
+        column_default           | *
+        is_nullable              | *
+        data_type                | *
+        character_maximum_length | *
+        character_octet_length   | *
+        numeric_precision        | *
+        numeric_scale            | *
+        datetime_precision       | *
+        character_set_name       | *
+        collation_name           | *
+        column_type              | *
+        column_key               | *
+        extra                    | *
+        privileges               | *
+        column_comment           | *
+        generation_expression    | *
+        jdbc_type                | *
+        jdbc_type_name           | *
+        field_length             | *
+        version                  | []
+        status                   | []
+        flag                     | []
+        column_mapping_name      | []
+     */
+
+    public static final void copyFromOldToNewColumnRecord(ColumnsRecord oldColumnsRecord,
+                                                          ColumnsRecord newColumnsRecord) {
+        newColumnsRecord.ordinalPosition = oldColumnsRecord.ordinalPosition;
+        newColumnsRecord.version = oldColumnsRecord.version;
+        newColumnsRecord.status = oldColumnsRecord.status;
+        newColumnsRecord.flag = oldColumnsRecord.flag;
+        newColumnsRecord.columnMappingName = oldColumnsRecord.columnMappingName;
+    }
 
     private static final String UPDATE_COLUMNS_VERSION = UPDATE_COLUMNS + "`version` = ?" + WHERE_SCHEMA_TABLE;
 
@@ -160,6 +205,9 @@ public class ColumnsAccessor extends AbstractAccessor {
 
     private static final String UPDATE_COLUMN_DEFAULT =
         UPDATE_COLUMNS + "column_default = ?" + WHERE_SCHEMA_TABLE_ONE_COLUMN;
+
+    private static final String UPDATE_COLUMN_MAPPING_NAME =
+        UPDATE_COLUMNS + "column_mapping_name = ?" + WHERE_SCHEMA_TABLE_ONE_COLUMN;
 
     public int[] insert(List<ColumnsRecord> records, String tableSchema, String tableName) {
         List<Map<Integer, ParameterContext>> paramsBatch = new ArrayList<>(records.size());
@@ -451,16 +499,46 @@ public class ColumnsAccessor extends AbstractAccessor {
         return update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, paramsBatch);
     }
 
-    public int[] change(List<ColumnsRecord> records, Map<String, String> columnNameMap) {
-        int[] affectedRows = new int[records.size()];
-        for (int i = 0; i < records.size(); i++) {
-            ColumnsRecord record = records.get(i);
-            Map<Integer, ParameterContext> params = record.buildUpdateParams();
-            int index = params.size();
-            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableSchema);
-            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableName);
-            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnNameMap.get(record.columnName));
-            affectedRows[i] = update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, params);
+//    public int[] change(List<ColumnsRecord> records, Map<String, String> columnNameMap) {
+//        int[] affectedRows = new int[records.size()];
+//        for (int i = 0; i < records.size(); i++) {
+//            ColumnsRecord record = records.get(i);
+//            Map<Integer, ParameterContext> params = record.buildUpdateParams();
+//            int index = params.size();
+//            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableSchema);
+//            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, record.tableName);
+//            MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnNameMap.get(record.columnName));
+//            affectedRows[i] = update(UPDATE_COLUMNS_ALL, COLUMNS_TABLE, params);
+//        }
+//        return affectedRows;
+//    }
+
+    public int[] change(String tableSchema, String tableName, List<ColumnsRecord> records,
+                        Map<String, String> columnNameMap) {
+        int[] affectedRows = new int[0];
+        if (records == null || records.isEmpty()) {
+            return affectedRows;
+        }
+
+        // delete old column and then insert new column.
+        List<String> oldColumnNames = new ArrayList<>(columnNameMap.values());
+        Map<Integer, ParameterContext> paramsForDelete = buildParams(tableSchema, tableName, oldColumnNames);
+
+        List<Map<Integer, ParameterContext>> paramsForInsert = new ArrayList<>(records.size());
+        for (ColumnsRecord record : records) {
+            paramsForInsert.add(record.buildInsertParams());
+        }
+        try {
+            DdlMetaLogUtil.logSql(DELETE_COLUMNS_SPECIFIED, paramsForDelete);
+            delete(String.format(DELETE_COLUMNS_SPECIFIED, concatParams(oldColumnNames)), COLUMNS_TABLE,
+                paramsForDelete);
+            DdlMetaLogUtil.logSql(INSERT_COLUMNS, paramsForInsert);
+            affectedRows = MetaDbUtil.insert(INSERT_COLUMNS, paramsForInsert, connection);
+        } catch (SQLException e) {
+            LOGGER.error("Failed to insert a batch of new records into " + COLUMNS_TABLE, e);
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_ACCESS_TO_SYSTEM_TABLE, e, "batch insert into",
+                COLUMNS_TABLE,
+                e.getMessage());
         }
         return affectedRows;
     }
@@ -542,4 +620,13 @@ public class ColumnsAccessor extends AbstractAccessor {
         update(UPDATE_COLUMN_DEFAULT, COLUMNS_TABLE, params);
     }
 
+    public void updateColumnMappingName(String tableSchema, String tableName, String columnName, String columnMapping) {
+        int index = 0;
+        final Map<Integer, ParameterContext> params = new HashMap<>(4);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnMapping);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableSchema);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, tableName);
+        MetaDbUtil.setParameter(++index, params, ParameterMethod.setString, columnName);
+        update(UPDATE_COLUMN_MAPPING_NAME, COLUMNS_TABLE, params);
+    }
 }

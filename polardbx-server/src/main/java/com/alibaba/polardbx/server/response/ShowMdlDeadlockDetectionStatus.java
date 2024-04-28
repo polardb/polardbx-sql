@@ -95,8 +95,8 @@ public class ShowMdlDeadlockDetectionStatus {
             }
 
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(name, c.getCharset()));
-            row.add(StringUtil.encode(enabled ? "enable" : "disable", c.getCharset()));
+            row.add(StringUtil.encode(name, c.getResultSetCharset()));
+            row.add(StringUtil.encode(enabled ? "enable" : "disable", c.getResultSetCharset()));
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }

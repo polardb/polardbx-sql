@@ -16,27 +16,37 @@
 
 package com.alibaba.polardbx.gms.config.impl;
 
+import com.alibaba.polardbx.common.cdc.CdcConstants;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.config.VariableConfigManager;
-import com.alibaba.polardbx.gms.config.VariableConfigReceiver;
 import com.alibaba.polardbx.gms.listener.ConfigListener;
+import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.metadb.cdc.CdcConfigAccessor;
+import com.alibaba.polardbx.gms.metadb.cdc.CdcConfigRecord;
 import com.alibaba.polardbx.gms.topology.VariableConfigAccessor;
 import com.alibaba.polardbx.gms.topology.VariableConfigRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import lombok.extern.slf4j.Slf4j;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 
 /**
  * @author youtianyu
  */
+@Slf4j
 public class MetaDbVariableConfigManager extends AbstractLifecycle implements VariableConfigManager {
     protected volatile Map<String, Object> dnVariableConfigMap = new HashMap<>();
+    protected volatile Map<String, String> cdcVariableConfigMap = new HashMap<>();
+
     protected static final MetaDbVariableConfigManager instance = new MetaDbVariableConfigManager();
+
+    private boolean hasCdcConfigTable = false;
 
     public static MetaDbVariableConfigManager getInstance() {
         if (!instance.isInited()) {
@@ -87,8 +97,33 @@ public class MetaDbVariableConfigManager extends AbstractLifecycle implements Va
                 }
             }
             this.dnVariableConfigMap = tempVariableConfig;
+
+            reloadCdcSystemConfig(metaDbConnection);
         } catch (Throwable t) {
             throw GeneralUtil.nestedException(t);
+        }
+    }
+
+    private void reloadCdcSystemConfig(Connection metaDbConn) {
+        try {
+            if (!hasCdcConfigTable) {
+                hasCdcConfigTable = MetaDbUtil.hasTable(GmsSystemTables.BINLOG_SYSTEM_CONFIG_TABLE);
+                if (!hasCdcConfigTable) {
+                    log.warn("binlog_system_config table ");
+                    return;
+                }
+            }
+
+            Map<String, String> tempCdcVariableConfig = new HashMap<>();
+            CdcConfigAccessor cdcConfigAccessor = new CdcConfigAccessor();
+            cdcConfigAccessor.setConnection(metaDbConn);
+            List<CdcConfigRecord> cdcConfigRecords = cdcConfigAccessor.queryAll();
+            for (CdcConfigRecord record : cdcConfigRecords) {
+                tempCdcVariableConfig.put(CdcConstants.CONFIG_KEY_PREFIX + record.configKey, record.configValue);
+            }
+            this.cdcVariableConfigMap = tempCdcVariableConfig;
+        } catch (SQLException e) {
+            log.warn("reload cdc system config error", e);
         }
     }
 
@@ -96,10 +131,22 @@ public class MetaDbVariableConfigManager extends AbstractLifecycle implements Va
         return dnVariableConfigMap;
     }
 
+    public Map<String, String> getCdcVariableConfigMap() {
+        return cdcVariableConfigMap;
+    }
+
     public static class MetaDbVariableConfigListener implements ConfigListener {
         @Override
         public void onHandleConfig(String dataId, long newOpVersion) {
             getInstance().reloadVariableConfig();
+        }
+    }
+
+    public static class CdcSystemConfigListener implements ConfigListener {
+
+        @Override
+        public void onHandleConfig(String dataId, long newOpVersion) {
+            getInstance().reloadCdcSystemConfig(MetaDbDataSource.getInstance().getConnection());
         }
     }
 }

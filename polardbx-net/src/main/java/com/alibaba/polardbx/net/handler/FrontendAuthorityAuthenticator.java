@@ -70,7 +70,7 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
         }
 
         // 用户匹配，且为免登机器, 此时允许直接登录；
-        boolean isTrustedIp = isTrustedIp(source.getHost(), auth.user);
+        boolean isTrustedIp = isTrustedIp(source.getHost(), auth.user) || source.isLoopAddress();
         if (!isTrustedIp) { // 非免登机器需要走接下来的校验逻辑。
             final String host = source.getHost();
             final String user = auth.user;
@@ -177,17 +177,9 @@ public class FrontendAuthorityAuthenticator extends FrontendAuthenticator implem
         }
 
         // encrypt
-        byte[] mysqlUserPassword = null;
+        byte[] mysqlUserPassword;
         try {
-            if (pass.isEnc()) {
-                // 密码已经是经过sha-1混淆保存的
-                mysqlUserPassword = SecurityUtil.sha1Pass(SecurityUtil.hexStr2Bytes(pass.getPassword()));
-                SecurityUtil.verify(password, mysqlUserPassword, source.getSeed());
-            } else {
-                if (pass.getPassword() != null) {
-                    mysqlUserPassword = SecurityUtil.calcMysqlUserPassword(pass.getPassword().getBytes());
-                }
-            }
+            mysqlUserPassword = pass.getMysqlPassword();
         } catch (Throwable e) {
             logger.warn(e);
             return false;

@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DdlPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
+import org.jetbrains.annotations.NotNull;
 
 public class RenameGlobalIndexPreparedData extends DdlPreparedData {
 
@@ -54,4 +55,13 @@ public class RenameGlobalIndexPreparedData extends DdlPreparedData {
         return getTableName();
     }
 
+    public void setDdlVersionId(@NotNull Long versionId) {
+        super.setDdlVersionId(versionId);
+        if (null != renameLocalIndexPreparedData) {
+            renameLocalIndexPreparedData.setDdlVersionId(versionId);
+        }
+        if (null != indexTablePreparedData) {
+            indexTablePreparedData.setDdlVersionId(versionId);
+        }
+    }
 }

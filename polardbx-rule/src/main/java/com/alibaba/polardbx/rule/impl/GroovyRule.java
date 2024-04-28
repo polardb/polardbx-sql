@@ -20,14 +20,13 @@ import com.alibaba.polardbx.common.utils.convertor.Convertor;
 import com.alibaba.polardbx.common.utils.convertor.ConvertorHelper;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.rule.impl.groovy.ShardingFunction;
-import com.alibaba.polardbx.rule.utils.SimpleRuleProcessor;
 import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.VirtualTableSupport;
+import com.alibaba.polardbx.rule.impl.groovy.ShardingFunction;
 import com.alibaba.polardbx.rule.model.AdvancedParameter;
 import com.alibaba.polardbx.rule.model.AdvancedParameter.AtomIncreaseType;
 import com.alibaba.polardbx.rule.utils.RuleUtils;
+import com.alibaba.polardbx.rule.utils.SimpleRuleProcessor;
 import groovy.lang.GroovyClassLoader;
 import org.codehaus.groovy.control.CompilationFailedException;
 
@@ -246,7 +245,7 @@ public class GroovyRule<T> extends EnumerativeRule<T> {
      */
     @Override
     protected String replace(RuleColumn ruleColumn) {
-        if (ConfigDataMode.isSupportRuleParameterNullValue() || true) {
+        if (true) {
 
             // 针对null值,使用0值替代
             // return new

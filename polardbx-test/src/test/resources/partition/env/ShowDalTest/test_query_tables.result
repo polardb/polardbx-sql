@@ -1,0 +1,4 @@
+## DISABLE_FAST_SQL_PARSER
+use polardbx;
+trace select table_name from information_schema.tables where TABLE_NAME='' limit 1;
+table_name

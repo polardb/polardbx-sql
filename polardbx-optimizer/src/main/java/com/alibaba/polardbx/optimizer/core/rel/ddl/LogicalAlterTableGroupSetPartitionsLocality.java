@@ -125,7 +125,7 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
         AlterTableGroupSetPartitionsLocality alterTableGroupSetPartitionLocality =
             (AlterTableGroupSetPartitionsLocality) relDdl;
         String tableGroupName = alterTableGroupSetPartitionLocality.getTableGroupName();
-        return TableGroupNameUtil.isOssTg(tableGroupName);
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 
     @Override

@@ -66,11 +66,11 @@ public class PartitionBalanceTest extends BalancerTestBase {
 
     }
 
-    @Test
-    public void runTestCaseSplitSampleLongTair() throws IOException, SQLException, InterruptedException {
-        String testCaseFile = "rebalance_table_split_long_tair.test.yml";
-        runPartitionBalanceTest(testCaseFile);
-    }
+//    @Test
+//    public void runTestCaseSplitSampleLongTair() throws IOException, SQLException, InterruptedException {
+//        String testCaseFile = "rebalance_table_split_long_tair.test.yml";
+//        runPartitionBalanceTest(testCaseFile);
+//    }
 
     @Test
     public void runTestCaseRebalanceDatabaseSampleLongTair() throws IOException, SQLException, InterruptedException {

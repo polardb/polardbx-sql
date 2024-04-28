@@ -24,16 +24,6 @@ import java.util.Map;
 public interface IGmsSyncManager extends Lifecycle {
 
     /**
-     * Sync to all server nodes in current instance.
-     *
-     * @param action A specific sync action.
-     * @param schemaName A specific schema.
-     * @param throwExceptions Throw exceptions to caller or not
-     * @return sync result
-     */
-    List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, boolean throwExceptions);
-
-    /**
      * Add sync scope support only.
      *
      * @param action A specific sync action.
@@ -44,16 +34,6 @@ public interface IGmsSyncManager extends Lifecycle {
      */
     List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schemaName, SyncScope scope,
                                          boolean throwExceptions);
-
-    /**
-     * Add sync result handler support only.
-     *
-     * @param action A specific sync action.
-     * @param schemaName A specific schema.
-     * @param handler sync result handler
-     * @param throwExceptions Throw exceptions to caller or not
-     */
-    void sync(IGmsSyncAction action, String schemaName, ISyncResultHandler handler, boolean throwExceptions);
 
     /**
      * Support both sync scope and result handler.

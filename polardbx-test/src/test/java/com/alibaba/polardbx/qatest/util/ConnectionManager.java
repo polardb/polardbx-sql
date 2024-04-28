@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.util;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.alibaba.polardbx.cdc.CdcTableUtil;
 import com.alibaba.polardbx.gms.util.JdbcUtil;
 import com.alibaba.polardbx.gms.util.PasswdUtil;
 import com.alibaba.polardbx.qatest.constant.ConfigConstant;
@@ -196,6 +197,15 @@ public class ConnectionManager {
 
             try (Connection polardbxCon = polardbxDataSource.getConnection()) {
                 this.polardbxMode = getSqlMode(polardbxCon);
+            }
+
+            try (Connection polardbxCon = polardbxDataSource.getConnection()) {
+                com.alibaba.polardbx.qatest.util.JdbcUtil.useDb(polardbxCon, CdcTableUtil.CDC_TABLE_SCHEMA);
+                polardbxCon.createStatement().execute(String
+                    .format("alter table %s add index idx_job_id(`JOB_ID`)",
+                        CdcTableUtil.CDC_DDL_RECORD_TABLE));
+            } catch (Throwable t) {
+                //ignore
             }
 
         } catch (Throwable t) {

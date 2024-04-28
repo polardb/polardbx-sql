@@ -64,10 +64,7 @@ public class SortExecutorFactory extends ExecutorFactory {
                 List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
 
                 SortExec sortExec = new SortExec(dataTypeList, orderBys, context, this.spillerFactory);
-                sortExec.setId(sort.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(sort, sortExec, context);
-                }
+                registerRuntimeStat(sortExec, sort, context);
                 executors.add(sortExec);
             }
         }

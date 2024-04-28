@@ -41,6 +41,8 @@ import java.util.List;
 
 public abstract class AbstractStorageField implements StorageField {
     protected static final int UNSET_PACKET_LEN = -1;
+
+    protected static final long NULL_HASH_CODE = 0L;
     /**
      * The field type of partition key.
      */

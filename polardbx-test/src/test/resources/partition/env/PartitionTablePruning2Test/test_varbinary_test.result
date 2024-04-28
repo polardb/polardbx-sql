@@ -11,7 +11,7 @@ insert into test_var_bin (id, val ) values ( 0x123456, 123456 );
 insert into test_var_bin (id, val ) values ( 0x12345678, 12345678 );
 explain SELECT val FROM test_var_bin WHERE id = 0x1234;
 Logical ExecutionPlan
-LogicalView(tables="test_var_bin[p1]", sql="SELECT `val` FROM `test_var_bin` AS `test_var_bin` WHERE (`id` = ?)")
+PhyTableOperation(tables="test_var_bin[p1]", sql="SELECT `test_var_bin`.`val` AS `val` FROM ? AS `test_var_bin` WHERE (`test_var_bin`.`id` = CAST(? AS BINARY))", params="0x1234")
 select part_route('','test_var_bin', 0x1234);
 part_route('', 'test_var_bin', 0x1234)
 p1
@@ -20,7 +20,7 @@ val
 1234
 explain SELECT val FROM test_var_bin WHERE id = 0x123456;
 Logical ExecutionPlan
-LogicalView(tables="test_var_bin[p2]", sql="SELECT `val` FROM `test_var_bin` AS `test_var_bin` WHERE (`id` = ?)")
+PhyTableOperation(tables="test_var_bin[p2]", sql="SELECT `test_var_bin`.`val` AS `val` FROM ? AS `test_var_bin` WHERE (`test_var_bin`.`id` = CAST(? AS BINARY))", params="0x123456")
 select part_route('','test_var_bin', 0x123456);
 part_route('', 'test_var_bin', 0x123456)
 p2
@@ -29,7 +29,7 @@ val
 1234
 explain SELECT val FROM test_var_bin WHERE id = 0x12345678;
 Logical ExecutionPlan
-LogicalView(tables="test_var_bin[p7]", sql="SELECT `val` FROM `test_var_bin` AS `test_var_bin` WHERE (`id` = ?)")
+PhyTableOperation(tables="test_var_bin[p7]", sql="SELECT `test_var_bin`.`val` AS `val` FROM ? AS `test_var_bin` WHERE (`test_var_bin`.`id` = CAST(? AS BINARY))", params="0x12345678")
 select part_route('','test_var_bin', 0x12345678);
 part_route('', 'test_var_bin', 0x12345678)
 p7

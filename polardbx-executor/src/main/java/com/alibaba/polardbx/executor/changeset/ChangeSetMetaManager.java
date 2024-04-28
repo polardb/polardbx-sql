@@ -26,7 +26,6 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.thread.ExecutorUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.executor.ddl.engine.AsyncDDLCache;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
 import com.alibaba.polardbx.gms.metadb.GmsSystemTables;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
@@ -52,7 +51,6 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -139,11 +137,7 @@ public class ChangeSetMetaManager {
     public ChangeSetMetaManager(String schema) {
         this.schema = schema;
         this.changeSetReporter = new ChangeSetReporter(this);
-        if (ConfigDataMode.isPolarDbX()) {
-            this.dataSource = MetaDbDataSource.getInstance().getDataSource();
-        } else {
-            this.dataSource = AsyncDDLCache.getDataSource(schema);
-        }
+        this.dataSource = MetaDbDataSource.getInstance().getDataSource();
     }
 
     public ChangeSetReporter getChangeSetReporter() {

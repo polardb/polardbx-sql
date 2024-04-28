@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.ccl.service;
 
-import com.alibaba.polardbx.config.ConfigDataHandler;
 import com.alibaba.polardbx.gms.metadb.ccl.CclRuleRecord;
 import com.alibaba.polardbx.gms.metadb.ccl.CclTriggerRecord;
 import com.alibaba.polardbx.optimizer.ccl.common.CclRuleInfo;
@@ -51,10 +50,6 @@ public interface ICclConfigService {
     void reloadConfig();
 
     List<CclTriggerInfo> getCclTriggerInfos();
-
-    void setConfigDataHandler(ConfigDataHandler configDataHandler);
-
-    ConfigDataHandler getConfigDataHandler();
 
     void setDataId(String dataId);
 

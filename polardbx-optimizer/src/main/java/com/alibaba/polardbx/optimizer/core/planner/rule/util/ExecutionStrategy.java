@@ -32,6 +32,7 @@ import com.alibaba.polardbx.optimizer.core.rel.BuildFinalPlanVisitor;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
+import com.alibaba.polardbx.optimizer.utils.CheckModifyLimitation;
 import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
@@ -173,10 +174,14 @@ public enum ExecutionStrategy {
 
             canPush = (pushDuplicateCheck || canPushDuplicateCheck) && !modifyPartitionKey && !updateGsi
                 && !containUnpushableFunction;
+            canPush = canPush && (!foreignKeyChecks || !CheckModifyLimitation.checkModifyFkReferenced(insert,
+                context.getExecutionContext()));
         } else if (insert.isReplace()) {
             // For REPLACE, do DELETE when DELETE_ONLY, do REPLACE when WRITE_ONLY
             multiWriteForReplication = replicateCanWrite;
             canPush = pushDuplicateCheck || canPushDuplicateCheck;
+            canPush = canPush && (!foreignKeyChecks || !CheckModifyLimitation.checkModifyFkReferenced(insert,
+                context.getExecutionContext()));
         } else if (insert.isInsertIgnore()) {
             // For INSERT IGNORE, DO NOT push down it even for DELETE_ONLY, because the table meta could change when reload
             multiWriteForReplication = replicateCanWrite;

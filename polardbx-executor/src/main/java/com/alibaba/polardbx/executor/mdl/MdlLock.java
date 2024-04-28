@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.mdl;
 
 import com.alibaba.polardbx.common.utils.Assert;
-
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 import java.util.concurrent.locks.StampedLock;

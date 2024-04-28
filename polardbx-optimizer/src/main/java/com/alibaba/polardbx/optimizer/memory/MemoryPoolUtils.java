@@ -62,7 +62,7 @@ public class MemoryPoolUtils {
         } else {
             synchronized (executionContext) {
                 if (executionContext.getMemoryPool() == null) {
-                    WorkloadType workloadType = WorkloadUtil.getWorkloadType(executionContext, plan);
+                    WorkloadType workloadType = WorkloadUtil.getAndSetWorkloadType(executionContext, plan);
                     executionContext.setMemoryPool(MemoryManager.getInstance().createQueryMemoryPool(
                         WorkloadUtil.isApWorkload(workloadType),
                         executionContext.getTraceId(), executionContext.getExtraCmds()));

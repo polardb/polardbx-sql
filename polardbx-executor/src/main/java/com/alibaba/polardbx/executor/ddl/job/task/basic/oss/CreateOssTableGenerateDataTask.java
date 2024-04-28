@@ -50,12 +50,16 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
 import lombok.Getter;
+import org.apache.calcite.sql.SqlIndexColumnName;
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,16 +81,19 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
 
     protected final ArchiveMode archiveMode;
 
+    protected final List<String> dictColumns;
+
     @JSONCreator
     public CreateOssTableGenerateDataTask(String schemaName, String logicalTableName, PhysicalPlanData physicalPlanData,
                                           String loadTableSchema, String loadTableName, Engine tableEngine,
-                                          ArchiveMode archiveMode) {
+                                          ArchiveMode archiveMode, List<String> dictColumns) {
         super(schemaName, logicalTableName);
         this.physicalPlanData = physicalPlanData;
         this.loadTableSchema = loadTableSchema;
         this.loadTableName = loadTableName;
         this.tableEngine = tableEngine;
         this.archiveMode = archiveMode;
+        this.dictColumns = dictColumns;
         onExceptionTryRollback();
     }
 
@@ -119,7 +126,7 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
     protected void rollbackImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         List<FilesRecord> files = TableMetaChanger.lockOssFileMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (FilesRecord record : files) {
-            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.getFileName(), this.tableEngine, false);
             File tmpFile = new File(record.getLocalPath());
             if (tmpFile.exists()) {
                 if (!tmpFile.delete()) {
@@ -138,7 +145,7 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
         List<ColumnMetasRecord> columnMetas =
             TableMetaChanger.lockOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
         for (ColumnMetasRecord record : columnMetas) {
-            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.tableEngine);
+            FileSystemUtils.deleteIfExistsFile(record.tableFileName, this.tableEngine, false);
         }
         TableMetaChanger.deleteOssColumnMeta(metaDbConnection, getTaskId(), schemaName, logicalTableName);
 
@@ -184,7 +191,8 @@ public class CreateOssTableGenerateDataTask extends BaseGmsTask {
 
             // build orc schema
             PolarDBXOrcSchema orcSchema =
-                OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta, Optional.of(columnToFieldIdMap), false);
+                OrcMetaUtils.buildPolarDBXOrcSchema(sourceTableMeta, Optional.of(columnToFieldIdMap), false,
+                    dictColumns);
 
             // data config
             Configuration conf = OrcMetaUtils.getConfiguration(executionContext, orcSchema);

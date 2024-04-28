@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dml.sharding.gsi;
 
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -44,8 +45,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
  * @author minggong
  */
 
-
-
+@BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
 public class UpdateGsiTest extends GsiDMLTest {
 
     private static Map<String, String> tddlTables = new HashMap<>();
@@ -430,7 +430,8 @@ public class UpdateGsiTest extends GsiDMLTest {
 
         String tHint = " /*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
         String sql =
-            String.format(hint + tHint + "update %s tb1, %s tb2 set tb1.float_test=tb2.float_test * 2 where tb1.pk=tb2.pk",
+            String.format(
+                hint + tHint + "update %s tb1, %s tb2 set tb1.float_test=tb2.float_test * 2 where tb1.pk=tb2.pk",
                 baseOneTableName,
                 baseTwoTableName);
 

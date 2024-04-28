@@ -19,16 +19,14 @@ package com.alibaba.polardbx.config.loader;
 import com.alibaba.polardbx.common.exception.TddlException;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.model.lifecycle.Lifecycle;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.config.ConfigDataHandler;
 import com.alibaba.polardbx.config.QuarantineConfig;
 import com.alibaba.polardbx.config.SchemaConfig;
 import com.alibaba.polardbx.config.UserConfig;
 import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.util.TimeUtil;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Maps;
 
 import java.util.ArrayList;
@@ -130,28 +128,37 @@ public abstract class BaseAppLoader extends AbstractLifecycle implements Lifecyc
     /**
      * 装载app
      */
-    public abstract void loadApp(final String app);
+    public void loadApp(final String app) {
+        try {
+            logger.info("start loading app:" + app);
+            this.loadSchema(app, app);
+            this.loadMdlManager(app);
+
+            // 该APP的所有配置加载成功
+            this.loadedApps.add(app);
+            logger.info("finish loading app:" + app);
+        } catch (Throwable e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
 
     /**
      * 卸载app
      */
-    protected abstract void unLoadApp(final String app);
-
-    // =======================================================
-
-    protected abstract void loadUser(final String app) throws ExecutionException, TddlException;
-
-    protected abstract void unLoadUser(final String app);
+    protected void unLoadApp(final String app) {
+        try {
+            logger.info("start unLoading app:" + app);
+            this.unLoadSchema(app, app);
+            this.loadMdlManager(app);
+            logger.info("finish unLoading app:" + app);
+        } catch (Throwable e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
 
     protected abstract void loadSchema(final String dbName, final String appName);
 
     protected abstract void unLoadSchema(final String dbName, final String appName);
-
-    protected abstract void loadQuarantine(final String dbName, final String appName) throws ExecutionException,
-        TddlException;
-
-    protected abstract void unLoadQuarantine(final String userName, final String appName) throws ExecutionException,
-        TddlException;
 
     protected abstract void loadMdlManager(final String dbName);
 

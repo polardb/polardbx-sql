@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.common.utils.convertor;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
+import com.alibaba.polardbx.common.datatype.RowValue;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTime;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;
@@ -51,6 +52,10 @@ public class ConvertorHelper {
     private static final Convertor collectionToCollection =
         new CollectionAndCollectionConvertor.CollectionToCollection();
 
+    //rowvalue处理
+    public static final Convertor rowValueToCommon = new RowValueAndCommonConvertor.RowValueToCommon();
+    public static final Convertor commonToRowValue = new CommonAndRowValueConvertor.CommonToRowValue();
+    // 枚举处理
     public static final Convertor stringToEnum = new StringAndEnumConvertor.StringToEnum();
     public static final Convertor enumToString = new StringAndEnumConvertor.EnumToString();
     public static final Convertor sqlToDate = new SqlDateAndDateConvertor.SqlDateToDateConvertor();
@@ -109,6 +114,12 @@ public class ConvertorHelper {
             }
         }
 
+        if (convertor == null && dest == RowValue.class) {
+            convertor = commonToRowValue;
+        }
+
+        // 处理下Array|Collection的映射
+        // 如果src|dest是array类型，取一下Array.class的映射，因为默认数组处理的注册直接注册了Array.class
         boolean isSrcArray = src.isArray();
         boolean isDestArray = dest.isArray();
         if (convertor == null && src.isArray() && dest.isArray()) {
@@ -135,6 +146,12 @@ public class ConvertorHelper {
             }
         }
 
+        // 如果是其中一个是RowValue类
+        if (convertor == null && src == RowValue.class) {
+            convertor = rowValueToCommon;
+        }
+
+        // 如果src/dest都是Common类型，进行特殊处理
         if (convertor == null && commonTypes.containsKey(src) && commonTypes.containsKey(dest)) {
             convertor = commonToCommon;
         }

@@ -16,13 +16,13 @@
 
 package com.alibaba.polardbx.executor.planmanagement;
 
-import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.BaselineUpdateSyncAction;
 import com.alibaba.polardbx.executor.sync.DeleteBaselineSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
-import com.alibaba.polardbx.gms.topology.SystemDbHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.planmanager.BaselineInfo;
 import com.alibaba.polardbx.optimizer.planmanager.IBaselineSyncController;
 import com.alibaba.polardbx.optimizer.planmanager.PlanInfo;
@@ -40,7 +40,7 @@ public class BaselineSyncController implements IBaselineSyncController {
         List<String> baselineJson = Lists.newArrayList();
         baselineJson.add(BaselineInfo.serializeToJson(baselineInfo, false));
         baselineMap.put(schemaName, baselineJson);
-        SyncManagerHelper.syncWithDefaultDB(new BaselineUpdateSyncAction(baselineMap));
+        SyncManagerHelper.syncWithDefaultDB(new BaselineUpdateSyncAction(baselineMap), SyncScope.CURRENT_ONLY);
     }
 
     @Override
@@ -49,7 +49,7 @@ public class BaselineSyncController implements IBaselineSyncController {
             new DeleteBaselineSyncAction(
                 schemaName,
                 baselineInfo.getParameterSql()),
-            schemaName);
+            schemaName, SyncScope.CURRENT_ONLY);
     }
 
     @Override
@@ -59,7 +59,7 @@ public class BaselineSyncController implements IBaselineSyncController {
                 schemaName,
                 baselineInfo.getParameterSql(),
                 planInfo.getId()),
-            schemaName);
+            schemaName, SyncScope.CURRENT_ONLY);
     }
 
     @Override

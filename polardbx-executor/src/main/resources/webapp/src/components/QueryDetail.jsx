@@ -21,9 +21,9 @@ import {
     formatCount,
     formatDataSize,
     formatDataSizeBytes,
-    formatDuration,
+    formatDurationMs, formatDurationNs,
     formatShortDateTime,
-    getFirstParameter,
+    getFirstParameter, getFullSplitIdSuffix,
     getHostAndPort,
     getHostname,
     getStageNumber,
@@ -90,14 +90,14 @@ class TaskList extends React.Component {
         }
 
         const renderedTasks = tasks.map(task => {
-            if (typeof(task.stats) === "undefined") {
+            if (typeof(task.detailedStats) === "undefined") {
                 return (
                     <Tr key={task.taskStatus.taskId}>
                         <Td column="id" value={task.taskStatus.taskId}>
                             {getTaskIdSuffix(task.taskStatus.taskId)}
                         </Td>
                         <Td column="host" value={getHostname(task.taskStatus.self)}>
-                            <a href={"worker.html?" + task.taskStatus.nodeId} className="font-light" target="_blank">
+                            <a href={"worker.html?" + task.taskStatus.nodeId} target="_blank">
                                 {getHostAndPort(task.taskStatus.self)}
                             </a>
                         </Td>
@@ -108,9 +108,6 @@ class TaskList extends React.Component {
                             {0}
                         </Td>
                         <Td column="inputRows">
-                            {0}
-                        </Td>
-                        <Td column="inputRowsSec">
                             {0}
                         </Td>
                         <Td column="inputBytes">
@@ -129,22 +126,16 @@ class TaskList extends React.Component {
                             {task.completedPipelineExecs}
                         </Td>
                         <Td column="elapsedTime">
-                            {task.elapsedTime}
+                            {formatDurationMs(task.elapsedTimeMillis)}
                         </Td>
                         <Td column="deliveryTime">
-                            {task.deliveryTime}
+                            {formatDurationMs(task.deliveryTimeMillis)}
                         </Td>
                         <Td column="processTime">
-                            {formatDuration(task.processTime)}
-                        </Td>
-                        <Td column="processWall">
-                            {formatDuration(task.processWall)}
+                            {formatDurationMs(task.processTimeMillis)}
                         </Td>
                         <Td column="dataFinishTime">
-                            {formatDuration(task.pullDataTime)}
-                        </Td>
-                        <Td column="bufferedBytes" value={task.outputBuffers.totalBufferedBytes}>
-                            {formatDataSizeBytes(task.outputBuffers.totalBufferedBytes)}
+                            {formatDurationMs(task.pullDataTimeMillis)}
                         </Td>
                     </Tr>
                 );
@@ -155,7 +146,7 @@ class TaskList extends React.Component {
                             {getTaskIdSuffix(task.taskStatus.taskId)}
                         </Td>
                         <Td column="host" value={getHostname(task.taskStatus.self)}>
-                            <a href={"worker.html?" + task.taskStatus.nodeId} className="font-light" target="_blank">
+                            <a href={"worker.html?" + task.taskStatus.nodeId} target="_blank">
                                 {getHostAndPort(task.taskStatus.self)}
                             </a>
                         </Td>
@@ -163,46 +154,34 @@ class TaskList extends React.Component {
                             {task.taskStatus.state}
                         </Td>
                         <Td column="outputRows">
-                            {formatCount(task.stats.outputPositions)}
+                            {formatCount(task.detailedStats.outputPositions)}
                         </Td>
                         <Td column="inputRows">
-                            {formatCount(task.stats.processedInputPositions)}
+                            {formatCount(task.detailedStats.processedInputPositions)}
                         </Td>
-                        <Td column="inputRowsSec">
-                            {formatCount(computeRate(task.stats.processedInputPositions, task.elapsedTime))}
-                        </Td>
-                        <Td column="inputBytes">
-                            {formatDataSizeBytes(task.stats.processedInputDataSize)}
-                        </Td>
-                        <Td column="inputBytesSec">
-                            {formatDataSizeBytes(computeRate(task.stats.processedInputDataSize, task.elapsedTime))}
-                        </Td>
+                        {/*<Td column="inputBytes">*/}
+                        {/*    {formatDataSizeBytes(task.stats.processedInputDataSize)}*/}
+                        {/*</Td>*/}
                         <Td column="splitsPending">
-                            {task.stats.queuedPipelineExecs}
+                            {task.detailedStats.queuedPipelineExecs}
                         </Td>
                         <Td column="splitsRunning">
-                            {task.stats.runningPipelineExecs}
+                            {task.detailedStats.runningPipelineExecs}
                         </Td>
                         <Td column="splitsDone">
                             {task.completedPipelineExecs}
                         </Td>
                         <Td column="elapsedTime">
-                            {task.elapsedTime}
+                            {formatDurationMs(task.elapsedTimeMillis)}
                         </Td>
                         <Td column="deliveryTime">
-                            {formatDuration(task.deliveryTime)}
+                            {formatDurationMs(task.deliveryTimeMillis)}
                         </Td>
                         <Td column="processTime">
-                            {formatDuration(task.processTime)}
-                        </Td>
-                        <Td column="processWall">
-                            {formatDuration(task.processWall)}
+                            {formatDurationMs(task.processTimeMillis)}
                         </Td>
                         <Td column="dataFinishTime">
-                            {formatDuration(task.pullDataTime)}
-                        </Td>
-                        <Td column="bufferedBytes" value={task.outputBuffers.totalBufferedBytes}>
-                            {formatDataSizeBytes(task.outputBuffers.totalBufferedBytes)}
+                            {formatDurationMs(task.pullDataTimeMillis)}
                         </Td>
                     </Tr>
                 );
@@ -223,17 +202,11 @@ class TaskList extends React.Component {
                     'splitsDone',
                     'outputRows',
                     'inputRows',
-                    'inputRowsSec',
-                    'inputBytes',
-                    'inputBytesSec',
+                    // 'inputBytes',
                     'elapsedTime',
                     'deliveryTime',
                     'processTime',
-                    'processWall',
                     'dataFinishTime',
-                    'tsds',
-                    'tstc',
-                    'bufferedBytes'
                 ]}
                    defaultSort={{column: 'id', direction: 'asc'}}>
                 <Thead>
@@ -249,19 +222,121 @@ class TaskList extends React.Component {
                 <Th column="splitsDone"><span className="glyphicon glyphicon-ok" style={GLYPHICON_HIGHLIGHT}
                                               data-toggle="tooltip" data-placement="top"
                                               title="Completed splits"></span></Th>
-                <Th column="outputRows">outputRows</Th>
-                <Th column="inputRows">inputRows</Th>
-                <Th column="inputRowsSec">inputRows/s</Th>
-                <Th column="inputBytes">inputBytes</Th>
-                <Th column="inputBytesSec">inputBytes/s</Th>
+                <Th column="outputRows">OutputRows</Th>
+                <Th column="inputRows">InputRows</Th>
+                {/*<Th column="inputBytes">inputBytes</Th>*/}
                 <Th column="elapsedTime">Elapsed</Th>
                 <Th column="deliveryTime">Delivery</Th>
                 <Th column="processTime">Process</Th>
-                <Th column="processWall">ProcessWall</Th>
-                <Th column="dataFinishTime">DT</Th>
-                <Th column="bufferedBytes">Buffered</Th>
+                <Th column="dataFinishTime">DataFinish</Th>
                 </Thead>
                 {renderedTasks}
+            </Table>
+        );
+    }
+}
+
+class SplitList extends React.Component {
+    static removeQueryId(id) {
+        const pos = id.indexOf('.');
+        if (pos !== -1) {
+            return id.substring(pos + 1);
+        }
+        return id;
+    }
+
+    static compareTaskId(taskA, taskB) {
+        const taskIdArrA = TaskList.removeQueryId(taskA).split(".");
+        const taskIdArrB = TaskList.removeQueryId(taskB).split(".");
+
+        if (taskIdArrA.length > taskIdArrB.length) {
+            return 1;
+        }
+        for (let i = 0; i < taskIdArrA.length; i++) {
+            const anum = Number.parseInt(taskIdArrA[i]);
+            const bnum = Number.parseInt(taskIdArrB[i]);
+            if (anum !== bnum) {
+                return anum > bnum ? 1 : -1;
+            }
+        }
+
+        return 0;
+    }
+
+    static formatState(state, fullyBlocked) {
+        if (fullyBlocked && state === "RUNNING") {
+            return "BLOCKED";
+        }
+        else {
+            return state;
+        }
+    }
+
+    render() {
+        const splits = this.props.splits;
+
+        if (splits === undefined || splits.length === 0) {
+            return (
+                <div className="row error-message">
+                    <div className="col-xs-12"><h4>No splits in the selected group</h4></div>
+                </div>);
+        }
+
+        const renderedSplits = splits.map(split => {
+            return (
+                <Tr key={split.driverId}>
+                    <Td column="id" value={split.driverId}>
+                        {getFullSplitIdSuffix(split.driverId)}
+                    </Td>
+                    {/*<Td column="state">*/}
+                    {/*    {split.state}*/}
+                    {/*</Td>*/}
+                    <Td column="outputRows">
+                        {formatCount(split.outputPositions)}
+                    </Td>
+                    <Td column="inputRows">
+                        {formatCount(split.inputPositions)}
+                    </Td>
+                    <Td column="elapsedTime">
+                        {formatDurationMs(split.endMillis - split.startMillis)}
+                    </Td>
+                    <Td column="blockTime">
+                        {formatDurationNs(split.blockedNanos)}
+                    </Td>
+                    <Td column="processTime">
+                        {formatDurationNs(split.processNanos)}
+                    </Td>
+                </Tr>
+            );
+        });
+
+        return (
+            <Table id="splits" className="table table-striped sortable" sortable=
+                {[
+                    {
+                        column: 'id',
+                        sortFunction: TaskList.compareTaskId
+                    },
+                    'host',
+                    'state',
+                    'outputRows',
+                    'inputRows',
+                    'elapsedTime',
+                    'blockTime',
+                    'processTime',
+                ]}
+                   defaultSort={{column: 'id', direction: 'asc'}}>
+                <Thead>
+                    <Th column="id">ID</Th>
+                    {/*<Th column="state">State</Th>*/}
+                    <Th column="outputRows">OutputRows</Th>
+                    <Th column="inputRows">InputRows</Th>
+                    {/*<Th column="inputBytes">inputBytes</Th>*/}
+                    <Th column="elapsedTime">Elapsed</Th>
+                    <Th column="blockTime">Blocked</Th>
+                    <Th column="processTime">Process</Th>
+                </Thead>
+                {renderedSplits}
             </Table>
         );
     }
@@ -355,19 +430,19 @@ class StageSummary extends React.Component {
 
     componentDidUpdate() {
         const stage = this.props.stage;
-        const numTasks = stage.tasks.length;
+        const numTasks = stage.taskStats.length;
 
         // sort the x-axis
-        stage.tasks.sort((taskA, taskB) => getTaskNumber(taskA.taskStatus.taskId) - getTaskNumber(taskB.taskStatus.taskId));
+        stage.taskStats.sort((taskA, taskB) => getTaskNumber(taskA.taskStatus.taskId) - getTaskNumber(taskB.taskStatus.taskId));
 
-        const scheduledTimes = stage.tasks.map(task => {
+        const scheduledTimes = stage.taskStats.map(task => {
             if (typeof(task.stats) === "undefined") {
                 parseDuration(0);
             } else {
                 parseDuration(task.stats.totalScheduledTime);
             }
         });
-        const cpuTimes = stage.tasks.map(task => {
+        const cpuTimes = stage.taskStats.map(task => {
                 if (typeof(task.stats) === "undefined") {
                     parseDuration(0);
                 } else {
@@ -381,8 +456,8 @@ class StageSummary extends React.Component {
             const renderTimestamp = Date.now();
             const stageId = getStageNumber(stage.stageId);
 
-            StageSummary.renderHistogram('#scheduled-time-histogram-' + stageId, scheduledTimes, formatDuration);
-            StageSummary.renderHistogram('#cpu-time-histogram-' + stageId, cpuTimes, formatDuration);
+            StageSummary.renderHistogram('#scheduled-time-histogram-' + stageId, scheduledTimes, formatDurationMs);
+            StageSummary.renderHistogram('#cpu-time-histogram-' + stageId, cpuTimes, formatDurationMs);
 
             if (this.state.expanded) {
                 // this needs to be a string otherwise it will also be passed to numberFormatter
@@ -396,8 +471,8 @@ class StageSummary extends React.Component {
                     tooltipValueLookups: tooltipValueLookups
                 });
 
-                $('#scheduled-time-bar-chart-' + stageId).sparkline(scheduledTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
-                $('#cpu-time-bar-chart-' + stageId).sparkline(cpuTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDuration}));
+                $('#scheduled-time-bar-chart-' + stageId).sparkline(scheduledTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDurationMs}));
+                $('#cpu-time-bar-chart-' + stageId).sparkline(cpuTimes, $.extend({}, stageBarChartProperties, {numberFormatter: formatDurationMs}));
             }
 
             this.setState({
@@ -408,16 +483,16 @@ class StageSummary extends React.Component {
 
     render() {
         const stage = this.props.stage;
-        if (stage === undefined || !stage.hasOwnProperty('plan')) {
+        if (stage === undefined) {
             return (
                 <tr>
                     <td>Information about this stage is unavailable.</td>
                 </tr>);
         }
-
-        const totalBufferedBytes = stage.tasks
-            .map(task => task.outputBuffers.totalBufferedBytes)
-            .reduce((a, b) => a + b, 0);
+        //
+        // const totalBufferedBytes = stage.taskStats
+        //     .map(task => task.outputBuffers.totalBufferedBytes)
+        //     .reduce((a, b) => a + b, 0);
 
         const stageId = getStageNumber(stage.stageId);
 
@@ -447,7 +522,7 @@ class StageSummary extends React.Component {
                                             Scheduled
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.stageStats.totalScheduledTime}
+                                            {formatDurationNs(stage.stageStats.totalScheduledTimeNanos)}
                                         </td>
                                     </tr>
                                     <tr>
@@ -455,7 +530,7 @@ class StageSummary extends React.Component {
                                             Blocked
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.stageStats.totalBlockedTime}
+                                            {formatDurationNs(stage.stageStats.totalBlockedTimeNanos)}
                                         </td>
                                     </tr>
                                     <tr>
@@ -463,7 +538,7 @@ class StageSummary extends React.Component {
                                             Wall
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.stageStats.totalUserTime}
+                                            {formatDurationNs(stage.stageStats.totalUserTimeNanos)}
                                         </td>
                                     </tr>
                                     <tr>
@@ -471,7 +546,7 @@ class StageSummary extends React.Component {
                                             CPU
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.stageStats.totalCpuTime}
+                                            {formatDurationNs(stage.stageStats.totalCpuTimeNanos)}
                                         </td>
                                     </tr>
                                     </tbody>
@@ -504,14 +579,14 @@ class StageSummary extends React.Component {
                                             {stage.stageStats.totalMemoryReservation}
                                         </td>
                                     </tr>
-                                    <tr>
-                                        <td className="stage-table-stat-title">
-                                            Buffers
-                                        </td>
-                                        <td className="stage-table-stat-text">
-                                            {formatDataSize(totalBufferedBytes)}
-                                        </td>
-                                    </tr>
+                                    {/*<tr>*/}
+                                    {/*    <td className="stage-table-stat-title">*/}
+                                    {/*        Buffers*/}
+                                    {/*    </td>*/}
+                                    {/*    <td className="stage-table-stat-text">*/}
+                                    {/*        {formatDataSize(totalBufferedBytes)}*/}
+                                    {/*    </td>*/}
+                                    {/*</tr>*/}
                                     <tr>
                                         <td className="stage-table-stat-title">
                                             Peak
@@ -539,7 +614,7 @@ class StageSummary extends React.Component {
                                             Pending
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.tasks.filter(task => task.taskStatus.state === "PLANNED").length}
+                                            {stage.taskStats.filter(task => task.taskStatus.state === "PLANNED").length}
                                         </td>
                                     </tr>
                                     <tr>
@@ -547,7 +622,7 @@ class StageSummary extends React.Component {
                                             Running
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.tasks.filter(task => task.taskStatus.state === "RUNNING").length}
+                                            {stage.taskStats.filter(task => task.taskStatus.state === "RUNNING").length}
                                         </td>
                                     </tr>
                                     <tr>
@@ -555,7 +630,7 @@ class StageSummary extends React.Component {
                                             Finished
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.tasks.filter(function (task) {
+                                            {stage.taskStats.filter(function (task) {
                                                 return task.taskStatus.state == "FINISHED" ||
                                                     task.taskStatus.state == "CANCELED" ||
                                                     task.taskStatus.state == "ABORTED" ||
@@ -568,7 +643,7 @@ class StageSummary extends React.Component {
                                             Total
                                         </td>
                                         <td className="stage-table-stat-text">
-                                            {stage.tasks.length}
+                                            {stage.taskStats.length}
                                         </td>
                                     </tr>
                                     </tbody>
@@ -776,8 +851,10 @@ export class QueryDetail extends React.Component {
 
             stageRefresh: true,
             taskRefresh: true,
+            splitRefresh: true,
 
             taskFilter: TASK_FILTER.NONE,
+            splitFilter: TASK_FILTER.NONE,
         };
 
         this.refreshLoop = this.refreshLoop.bind(this);
@@ -850,7 +927,7 @@ export class QueryDetail extends React.Component {
     refreshLoop() {
         clearTimeout(this.timeoutId); // to stop multiple series of refreshLoop from going on simultaneously
         const queryId = getFirstParameter(window.location.search);
-        $.get('/v1/query/' + queryId, function (query) {
+        $.get('/v1/query/stats/' + queryId, function (query) {
             let lastSnapshotStages = this.state.lastSnapshotStage;
             if (this.state.stageRefresh) {
                 lastSnapshotStages = query.outputStage;
@@ -932,6 +1009,20 @@ export class QueryDetail extends React.Component {
         }
     }
 
+    handleSplitRefreshClick() {
+        if (this.state.splitRefresh) {
+            this.setState({
+                splitRefresh: false,
+                // lastSnapshotTasks: this.state.query.outputStage,
+            });
+        }
+        else {
+            this.setState({
+                splitRefresh: true,
+            });
+        }
+    }
+
     renderTaskRefreshButton() {
         if (this.state.taskRefresh) {
             return <button className="btn btn-info live-button"
@@ -940,6 +1031,17 @@ export class QueryDetail extends React.Component {
         else {
             return <button className="btn btn-info live-button"
                            onClick={this.handleTaskRefreshClick.bind(this)}>Auto-Refresh: Off</button>
+        }
+    }
+
+    renderSplitRefreshButton() {
+        if (this.state.splitRefresh) {
+            return <button className="btn btn-info live-button"
+                           onClick={this.handleSplitRefreshClick.bind(this)}>Auto-Refresh: On</button>
+        }
+        else {
+            return <button className="btn btn-info live-button"
+                           onClick={this.handleSplitRefreshClick.bind(this)}>Auto-Refresh: Off</button>
         }
     }
 
@@ -982,12 +1084,37 @@ export class QueryDetail extends React.Component {
         event.preventDefault();
     }
 
+    renderSplitFilterListItem(splitFilter) {
+        return (
+            <li><a href="#" className={this.state.splitFilter === splitFilter ? "selected" : ""}
+                   onClick={this.handleSplitFilterClick.bind(this, splitFilter)}>{splitFilter.text}</a></li>
+        );
+    }
+
+    handleSplitFilterClick(filter, event) {
+        this.setState({
+            splitFilter: filter
+        });
+        event.preventDefault();
+    }
+
     getTasksFromStage(stage) {
-        if (stage === undefined || !stage.hasOwnProperty('subStages') || !stage.hasOwnProperty('tasks')) {
+        if (stage === undefined || !stage.hasOwnProperty('subStages') || !stage.hasOwnProperty('taskStats')) {
             return []
         }
 
-        return [].concat.apply(stage.tasks, stage.subStages.map(this.getTasksFromStage, this));
+        return [].concat.apply(stage.taskStats, stage.subStages.map(this.getTasksFromStage, this));
+    }
+
+    getSplitsFromStage(stage) {
+        console.log("getting splits from stage");
+        let tasks = this.getTasksFromStage(stage);
+        let splits = []
+        for (let i = 0; i < tasks.length; i++) {
+            splits = splits.concat(tasks[i].detailedStats.driverStats)
+        }
+
+        return splits;
     }
 
     componentDidMount() {
@@ -1025,6 +1152,57 @@ export class QueryDetail extends React.Component {
         new Clipboard('.copy-button');
     }
 
+    renderSplits() {
+        if (this.state.lastSnapshotTasks === null) {
+            return;
+        }
+
+        let splits = [];
+        if (this.state.splitFilter !== TASK_FILTER.NONE) {
+            // TODO split state
+            splits = this.getSplitsFromStage(this.state.lastSnapshotTasks).filter(split => this.state.splitFilter.predicate(""), this);
+        }
+
+        return (
+            <div className="info-container-next">
+                <div className="row">
+                    <div className="col-xs-6">
+                        <h3 class="container-title">Splits</h3>
+                    </div>
+                    <div className="col-xs-6">
+                        <table className="header-inline-links">
+                            <tbody>
+                            <tr>
+                                <td>
+                                    <div className="input-group-btn text-right">
+                                        <button type="button"
+                                                className="btn btn-default dropdown-toggle pull-right text-right"
+                                                data-toggle="dropdown" aria-haspopup="true"
+                                                aria-expanded="false">
+                                            Show: {this.state.splitFilter.text} <span className="caret"/>
+                                        </button>
+                                        <ul className="dropdown-menu">
+                                            {this.renderSplitFilterListItem(TASK_FILTER.NONE)}
+                                            {this.renderSplitFilterListItem(TASK_FILTER.ALL)}
+                                            {this.renderSplitFilterListItem(TASK_FILTER.FINISHED)}
+                                        </ul>
+                                    </div>
+                                </td>
+                                <td>&nbsp;&nbsp;{this.renderSplitRefreshButton()}</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div className="row">
+                    <div className="col-xs-12">
+                        <SplitList key={this.state.query.queryId} splits={splits}/>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     renderTasks() {
         if (this.state.lastSnapshotTasks === null) {
             return;
@@ -1036,10 +1214,10 @@ export class QueryDetail extends React.Component {
         }
 
         return (
-            <div>
+            <div className="info-container-next">
                 <div className="row">
                     <div className="col-xs-6">
-                        <h3>Tasks</h3>
+                        <h3 class="container-title">Tasks</h3>
                     </div>
                     <div className="col-xs-6">
                         <table className="header-inline-links">
@@ -1084,10 +1262,10 @@ export class QueryDetail extends React.Component {
         }
 
         return (
-            <div>
+            <div className="info-container-next">
                 <div className="row">
                     <div className="col-xs-9">
-                        <h3>Stages</h3>
+                        <h3 class="container-title">Stages</h3>
                     </div>
                     <div className="col-xs-3">
                         <table className="header-inline-links">
@@ -1114,7 +1292,7 @@ export class QueryDetail extends React.Component {
         const query = this.state.query;
         if (query.warnings != null && query.warnings.length > 0) {
             return (
-                <div className="row">
+                <div className="row info-container-next">
                     <div className="col-xs-12">
                         <h3>Warnings</h3>
                         <hr className="h3-hr"/>
@@ -1173,7 +1351,7 @@ export class QueryDetail extends React.Component {
         const query = this.state.query;
         if (query.failureInfo) {
             return (
-                <div className="row">
+                <div className="row info-container-next">
                     <div className="col-xs-12">
                         <h3>Error Information</h3>
                         <hr className="h3-hr"/>
@@ -1239,9 +1417,9 @@ export class QueryDetail extends React.Component {
         return (
             <div>
                 <QueryHeader query={query}/>
-                <div className="row">
+                <div className="row info-container-next">
                     <div className="col-xs-6">
-                        <h3>Session</h3>
+                        <h3 class="container-title">Session</h3>
                         <hr className="h3-hr"/>
                         <table className="table">
                             <tbody>
@@ -1297,7 +1475,7 @@ export class QueryDetail extends React.Component {
                         </table>
                     </div>
                     <div className="col-xs-6">
-                        <h3>Execution</h3>
+                        <h3 class="container-title">Execution</h3>
                         <hr className="h3-hr"/>
                         <table className="table">
                             <tbody>
@@ -1345,11 +1523,11 @@ export class QueryDetail extends React.Component {
                         </table>
                     </div>
                 </div>
-                <div className="row">
+                <div className="row info-container-next">
                     <div className="col-xs-12">
                         <div className="row">
                             <div className="col-xs-6">
-                                <h3>Resource Utilization Summary</h3>
+                                <h3 class="container-title">Resource Utilization Summary</h3>
                                 <hr className="h3-hr"/>
                                 <table className="table">
                                     <tbody>
@@ -1412,102 +1590,102 @@ export class QueryDetail extends React.Component {
                                     </tbody>
                                 </table>
                             </div>
-                            <div className="col-xs-6">
-                                <h3>Timeline</h3>
-                                <hr className="h3-hr"/>
-                                <table className="table">
-                                    <tbody>
-                                    <tr>
-                                        <td className="info-title">
-                                            Parallelism
-                                        </td>
-                                        <td rowSpan="2">
-                                            <div className="query-stats-sparkline-container">
-                                                <span className="sparkline" id="cpu-time-rate-sparkline"><div
-                                                    className="loader">Loading ...</div></span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr className="tr-noborder">
-                                        <td className="info-sparkline-text">
-                                            {formatCount(this.state.cpuTimeRate[this.state.cpuTimeRate.length - 1])}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td className="info-title">
-                                            Scheduled Time/s
-                                        </td>
-                                        <td rowSpan="2">
-                                            <div className="query-stats-sparkline-container">
-                                                <span className="sparkline" id="scheduled-time-rate-sparkline"><div
-                                                    className="loader">Loading ...</div></span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr className="tr-noborder">
-                                        <td className="info-sparkline-text">
-                                            {formatCount(this.state.scheduledTimeRate[this.state.scheduledTimeRate.length - 1])}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td className="info-title">
-                                            Input Rows/s
-                                        </td>
-                                        <td rowSpan="2">
-                                            <div className="query-stats-sparkline-container">
-                                                <span className="sparkline" id="row-input-rate-sparkline"><div
-                                                    className="loader">Loading ...</div></span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr className="tr-noborder">
-                                        <td className="info-sparkline-text">
-                                            {formatCount(this.state.rowInputRate[this.state.rowInputRate.length - 1])}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td className="info-title">
-                                            Input Bytes/s
-                                        </td>
-                                        <td rowSpan="2">
-                                            <div className="query-stats-sparkline-container">
-                                                <span className="sparkline" id="byte-input-rate-sparkline"><div
-                                                    className="loader">Loading ...</div></span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr className="tr-noborder">
-                                        <td className="info-sparkline-text">
-                                            {formatDataSize(this.state.byteInputRate[this.state.byteInputRate.length - 1])}
-                                        </td>
-                                    </tr>
-                                    <tr>
-                                        <td className="info-title">
-                                            Memory Utilization
-                                        </td>
-                                        <td rowSpan="2">
-                                            <div className="query-stats-sparkline-container">
-                                                <span className="sparkline" id="reserved-memory-sparkline"><div
-                                                    className="loader">Loading ...</div></span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    <tr className="tr-noborder">
-                                        <td className="info-sparkline-text">
-                                            {formatDataSize(this.state.reservedMemory[this.state.reservedMemory.length - 1])}
-                                        </td>
-                                    </tr>
-                                    </tbody>
-                                </table>
-                            </div>
+                            {/*<div className="col-xs-6">*/}
+                            {/*    <h3>Timeline</h3>*/}
+                            {/*    <hr className="h3-hr"/>*/}
+                            {/*    <table className="table">*/}
+                            {/*        <tbody>*/}
+                            {/*        <tr>*/}
+                            {/*            <td className="info-title">*/}
+                            {/*                Parallelism*/}
+                            {/*            </td>*/}
+                            {/*            <td rowSpan="2">*/}
+                            {/*                <div className="query-stats-sparkline-container">*/}
+                            {/*                    <span className="sparkline" id="cpu-time-rate-sparkline"><div*/}
+                            {/*                        className="loader">Loading ...</div></span>*/}
+                            {/*                </div>*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr className="tr-noborder">*/}
+                            {/*            <td className="info-sparkline-text">*/}
+                            {/*                {formatCount(this.state.cpuTimeRate[this.state.cpuTimeRate.length - 1])}*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr>*/}
+                            {/*            <td className="info-title">*/}
+                            {/*                Scheduled Time/s*/}
+                            {/*            </td>*/}
+                            {/*            <td rowSpan="2">*/}
+                            {/*                <div className="query-stats-sparkline-container">*/}
+                            {/*                    <span className="sparkline" id="scheduled-time-rate-sparkline"><div*/}
+                            {/*                        className="loader">Loading ...</div></span>*/}
+                            {/*                </div>*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr className="tr-noborder">*/}
+                            {/*            <td className="info-sparkline-text">*/}
+                            {/*                {formatCount(this.state.scheduledTimeRate[this.state.scheduledTimeRate.length - 1])}*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr>*/}
+                            {/*            <td className="info-title">*/}
+                            {/*                Input Rows/s*/}
+                            {/*            </td>*/}
+                            {/*            <td rowSpan="2">*/}
+                            {/*                <div className="query-stats-sparkline-container">*/}
+                            {/*                    <span className="sparkline" id="row-input-rate-sparkline"><div*/}
+                            {/*                        className="loader">Loading ...</div></span>*/}
+                            {/*                </div>*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr className="tr-noborder">*/}
+                            {/*            <td className="info-sparkline-text">*/}
+                            {/*                {formatCount(this.state.rowInputRate[this.state.rowInputRate.length - 1])}*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr>*/}
+                            {/*            <td className="info-title">*/}
+                            {/*                Input Bytes/s*/}
+                            {/*            </td>*/}
+                            {/*            <td rowSpan="2">*/}
+                            {/*                <div className="query-stats-sparkline-container">*/}
+                            {/*                    <span className="sparkline" id="byte-input-rate-sparkline"><div*/}
+                            {/*                        className="loader">Loading ...</div></span>*/}
+                            {/*                </div>*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr className="tr-noborder">*/}
+                            {/*            <td className="info-sparkline-text">*/}
+                            {/*                {formatDataSize(this.state.byteInputRate[this.state.byteInputRate.length - 1])}*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr>*/}
+                            {/*            <td className="info-title">*/}
+                            {/*                Memory Utilization*/}
+                            {/*            </td>*/}
+                            {/*            <td rowSpan="2">*/}
+                            {/*                <div className="query-stats-sparkline-container">*/}
+                            {/*                    <span className="sparkline" id="reserved-memory-sparkline"><div*/}
+                            {/*                        className="loader">Loading ...</div></span>*/}
+                            {/*                </div>*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        <tr className="tr-noborder">*/}
+                            {/*            <td className="info-sparkline-text">*/}
+                            {/*                {formatDataSize(this.state.reservedMemory[this.state.reservedMemory.length - 1])}*/}
+                            {/*            </td>*/}
+                            {/*        </tr>*/}
+                            {/*        </tbody>*/}
+                            {/*    </table>*/}
+                            {/*</div>*/}
                         </div>
                     </div>
                 </div>
                 {/*{this.renderWarningInfo()}*/}
                 {this.renderFailureInfo()}
-                <div className="row">
+                <div className="row info-container-next">
                     <div className="col-xs-12">
-                        <h3>
+                        <h3 class="container-title">
                             Query
                             <a className="btn copy-button" data-clipboard-target="#query-text" data-toggle="tooltip"
                                data-placement="right" title="Copy to clipboard">
@@ -1523,6 +1701,7 @@ export class QueryDetail extends React.Component {
                 </div>
                 {this.renderStages()}
                 {this.renderTasks()}
+                {this.renderSplits()}
             </div>
         );
     }

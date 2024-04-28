@@ -1,0 +1,83 @@
+SQL:
+  - sql: |
+      select k1 from test_index2 where d1 = '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/select k1 from test_index2 where d1 = '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        indexscan(tables="idx_k2_k1[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k2_k1` as `idx_k2_k1` where (`d1` = '1') limit 1")
+  - sql: |
+      select k1 from test_index2 where value= '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        indexscan(tables="idx_k2_k1[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k2_k1` as `idx_k2_k1` where (`value` = '1') limit 1")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/select k1 from test_index2 where value= '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        indexscan(tables="idx_k2_k1[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k2_k1` as `idx_k2_k1` where (`value` = '1') limit 1")
+  - sql: |
+      select k1 from test_index2 where k2 = 1;
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="idx_k1_k2_d2[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k1_k2_d2` as `idx_k1_k2_d2` where (`k2` = 1)")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/ select k1 from test_index2 where k2 = 1;
+    plan: |
+      gather(concurrent=true)
+        indexscan(tables="idx_k1_k2_d2[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k1_k2_d2` as `idx_k1_k2_d2` where (`k2` = 1)")
+  - sql: |
+      select d3 from test_index2 where d1 = '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+  - sql: |
+      /*+TDDL:cmd_extra(ENABLE_INDEX_SELECTION_PRUNE=false)*/select d3 from test_index2 where d1 = '1' limit 1;
+    plan: |
+      mergesort(sort="", offset=0, fetch=1)
+        logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `d3` from `test_index2` as `test_index2` where (`d1` = '1') limit 1")
+  - sql: |
+      select * from (select k1 from test_index2 where d1 = '1' limit 1) A join test_index2 B on A.k1 = B.k2;
+    plan: |
+      project(k1="k1", id="id", k10="k10", k2="k2", value="value", d1="d1", d2="d2", d3="d3")
+        bkajoin(condition="id = id", type="inner")
+          hashjoin(condition="k1 = k2", type="inner")
+            mergesort(sort="", offset=0, fetch=1)
+              indexscan(tables="idx_k2_k1[p1,p2,p3,p4]", shardcount=4, sql="select `k1` from `idx_k2_k1` as `idx_k2_k1` where (`d1` = '1') limit 1")
+            gather(concurrent=true)
+              indexscan(tables="idx_k1_k2_d2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `k1`, `k2`, `d2` from `idx_k1_k2_d2` as `idx_k1_k2_d2`")
+          gather(concurrent=true)
+            logicalview(tables="test_index2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `value`, `d1`, `d3` from `test_index2` as `test_index2` where (`id` in (...))")
+DDL:
+  test_index2:
+    CREATE TABLE `test_index2` (
+    `id` int(11) NOT NULL,
+    `k1` int(11) NOT NULL,
+    `k2` int(11) NOT NULL,
+    `value` char(40) DEFAULT NULL,
+    `d1` varchar(100) DEFAULT NULL,
+    `d2` varchar(10000) DEFAULT NULL,
+    `d3` varchar(10000) DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    INDEX `idx_d1`(`d1`),
+    GLOBAL INDEX `idx_k2_k1`(`k2`,  `k1`) COVERING (`id`,`d1`,`value`) PARTITION BY key(`k2`) partitions 4,
+    GLOBAL INDEX `idx_k1_k2_d2`(`k1`, `k2`, `d2`) COVERING (`id`) PARTITION BY key(`k1`) partitions 4
+    ) ENGINE = InnoDB DEFAULT CHARSET = latin1  partition by key(`id`) partitions 4
+
+STATISTICS:
+  test_index2:
+    100000000
+  test_index2.d1.cardinality:
+    2
+  test_index2.value.cardinality:
+    20000000
+  test_index2.d2.cardinality:
+    2
+  test_index2.k2.cardinality:
+    2
+CONFIG:
+  defaltxxAPPName.isNew:
+    true

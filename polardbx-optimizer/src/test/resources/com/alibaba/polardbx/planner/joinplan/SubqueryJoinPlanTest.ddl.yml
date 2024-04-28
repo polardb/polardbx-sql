@@ -29,3 +29,39 @@ test_hash_tb3:
     KEY `auto_shard_key_ID_0` (`id`)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
   
+
+test_tb4:
+  CREATE TABLE `test_tb4` (
+  `id` int(11) NOT NULL,
+  `name` varchar(30) DEFAULT NULL,
+  `name1` varchar(30) DEFAULT NULL,
+  `name2` varchar(30) DEFAULT NULL,
+  `create_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `auto_shard_key_ID` (`id`),
+  KEY `auto_shard_key_ID_0` (`id`)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8 dbpartition by hash(`ID`);
+
+single_tbl:
+  CREATE TABLE single_tbl(
+    id bigint not null auto_increment,
+    bid int,
+    name varchar(30),
+    primary key(id)
+  ) SINGLE;
+
+single_tbl1:
+  CREATE TABLE single_tbl1(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  primary key(id)
+  ) SINGLE;
+
+single_tbl2:
+  CREATE TABLE single_tbl2(
+  id bigint not null auto_increment,
+  bid int,
+  name varchar(30),
+  primary key(id)
+  ) SINGLE;

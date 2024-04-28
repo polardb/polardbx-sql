@@ -162,7 +162,7 @@ EXPLAIN SELECT *
 FROM tbl_rng_col2
 WHERE (b, c, a) = (2001, 1999, 10000);
 Logical ExecutionPlan
-LogicalView(tables="tbl_rng_col2[p3]", sql="SELECT `a`, `b`, `c`, `d`, `e` FROM `tbl_rng_col2` AS `tbl_rng_col2` WHERE ((`b`, `c`, `a`) =(?, ?, ?))")
+PhyTableOperation(tables="tbl_rng_col2[p3]", sql="SELECT `tbl_rng_col2`.`a`, `tbl_rng_col2`.`b`, `tbl_rng_col2`.`c`, `tbl_rng_col2`.`d`, `tbl_rng_col2`.`e` FROM ? AS `tbl_rng_col2` WHERE ((`tbl_rng_col2`.`b`, `tbl_rng_col2`.`c`, `tbl_rng_col2`.`a`) =(?, ?, ?))", params="1999,2001,10000")
 EXPLAIN SELECT *
 FROM tbl_rng_col2
 WHERE (b, c, a) != (2001, 1999, 10000);

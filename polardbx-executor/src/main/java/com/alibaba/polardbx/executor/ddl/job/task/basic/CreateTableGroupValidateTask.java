@@ -23,27 +23,31 @@ import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
+import java.util.List;
+
 @Getter
 @TaskName(name = "CreateTableGroupValidateTask")
 public class CreateTableGroupValidateTask extends BaseValidateTask {
 
-    private String tableGroupName;
+    private List<String> tableGroupNames;
 
     @JSONCreator
     public CreateTableGroupValidateTask(String schemaName,
-                                        String tableGroupName) {
+                                        List<String> tableGroupNames) {
         super(schemaName);
-        this.tableGroupName = tableGroupName;
+        this.tableGroupNames = tableGroupNames;
     }
 
     @Override
     public void executeImpl(ExecutionContext executionContext) {
-        TableValidator.validateTableGroupNoExists(schemaName, tableGroupName);
+        for (String tableGroupName : tableGroupNames) {
+            TableValidator.validateTableGroupNoExists(schemaName, tableGroupName);
+        }
     }
 
     @Override
     protected String remark() {
-        return "|tableGroupName: " + tableGroupName;
+        return "|tableGroupNames: " + tableGroupNames;
     }
 
 }

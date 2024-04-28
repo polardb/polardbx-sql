@@ -282,9 +282,7 @@ public class DataDistInfo {
         List<String> tableNames = new ArrayList<>();
         if (!partitionGroupStats.isEmpty() || !partitionGroupStats.get(0).partitions.isEmpty()) {
             List<String> collectTableNames =
-                partitionGroupStats.get(0).getFirstPartition().getTableGroupConfig().getTables().stream()
-                    .map(o -> o.getTableName()).collect(
-                        Collectors.toList());
+                partitionGroupStats.get(0).getFirstPartition().getTableGroupConfig().getTables();
             tableNames.addAll(collectTableNames);
         }
         return new TgDataDistInfo(tgName, pgDataDistInfo, tableNames);
@@ -339,9 +337,7 @@ public class DataDistInfo {
             }
         }
         List<String> tableNames =
-            partitionGroupStats.get(0).getFirstPartition().getTableGroupConfig().getTables().stream()
-                .map(o -> o.getTableName()).collect(
-                    Collectors.toList());
+            partitionGroupStats.get(0).getFirstPartition().getTableGroupConfig().getTables();
         return new TgDataDistInfo(tgName, pgDataDistInfo, tableNames);
     }
 

@@ -26,5 +26,9 @@ public enum OptimizerAlertType {
 
     PLAN_CACHE_FULL,
 
-    STATISTIC_MISS
+    STATISTIC_MISS,
+
+    STATISTIC_JOB_INTERRUPT,
+
+    STATISTIC_INCONSISTENT,
 }

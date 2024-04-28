@@ -1,4 +1,74 @@
 - sql: |
+    select c from test_tc group by b
+  plan: |
+    project(c="c")
+      logicalagg(group="b", c="__first_value(c)")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b`, (`c`) as `c` from `test_tc` as `test_tc` group by `b`")
+- sql: |
+    select 1 from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select 1 as `1` from `test_tc` as `test_tc`")
+
+- sql: |
+    select c from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `c` from `test_tc` as `test_tc`")
+
+- sql: |
+    select 1 from test_tc group by a,b,c
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select 1 as `1` from `test_tc` as `test_tc`")
+
+- sql: |
+    select count(*) from test_tc group by a,b
+  plan: |
+    logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select count(*) as `count(*)` from `test_tc` as `test_tc` group by `a`, `b`")
+- sql: |
+    select 1 from test_tc group by c
+  plan: |
+    project(1="1")
+      logicalagg(group="c")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `c` from `test_tc` as `test_tc` group by `c`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,x.b,x.c
+  plan: |
+    project(1="1")
+      logicaljoin(condition="b = a and b = a", type="inner")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+        logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,x.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b,c")
+        logicaljoin(condition="b = a and b = a", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.a group by x.a,y.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b0,c")
+        logicaljoin(condition="b = a and b = a", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc`")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.b group by x.a,y.b,y.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b0,c")
+        logicaljoin(condition="b = a and b = b", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b` from `test_tc` as `test_tc` where (`a` = `b`)")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b`, `c` from `test_tc` as `test_tc`")
+- sql: |
+    select 1 from test_tc x, test_tc y where x.a = y.b and x.b = y.b group by x.a,x.b,x.c
+  plan: |
+    project(1="1")
+      logicalagg(group="a,b,c")
+        logicaljoin(condition="b = a and b = b", type="inner")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `a`, `b`, `c` from `test_tc` as `test_tc` where (`a` = `b`)")
+          logicalview(tables="[0000-0003].test_tc_[00-27]", shardcount=28, sql="select `b` from `test_tc` as `test_tc`")
+- sql: |
     select count(userid) from user_log group by name, actionDate
 
   plan: |

@@ -18,7 +18,6 @@ package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.gms.engine.FileStoreStatistics;
-import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -95,7 +94,7 @@ public class ShowFileStorage {
         }
 
         // write rows
-        List<byte[][]> resultList = FileStoreStatistics.generateFileStoragePacket();
+        List<byte[][]> resultList = FileStoreStatistics.generateFileStoragePacket(c.getConnectionVariables());
         if (resultList != null) {
             for (byte[][] results : resultList) {
                 RowDataPacket row = new RowDataPacket(FIELD_COUNT);

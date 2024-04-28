@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.builder;
 
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
@@ -29,6 +30,7 @@ import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoBuilder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionTableType;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlCreateTable;
@@ -66,6 +68,14 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         return partitionInfo;
     }
 
+    protected void rectifyPartitionInfoForImportTable(PartitionInfo partitionInfo) {
+        partitionInfo.setRandomTableNamePatternEnabled(false);
+        partitionInfo.setTableNamePattern(null);
+        String tableName = partitionInfo.getTableName();
+        PartitionSpec spec = partitionInfo.getPartitionBy().getNthPartition(1);
+        spec.getLocation().setPhyTableName(tableName);
+    }
+
     protected PartitionInfo buildPartitionInfo() {
         String tbName = null;
         TableMeta tableMeta = null;
@@ -96,7 +106,8 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
         }
         partitionInfo =
             PartitionInfoBuilder.buildPartitionInfoByPartDefAst(preparedData.getSchemaName(), tbName, tableGroupName,
-                joinGroupName, (SqlPartitionBy) preparedData.getPartitioning(), preparedData.getPartBoundExprInfo(),
+                preparedData.isWithImplicitTableGroup(), joinGroupName, (SqlPartitionBy) preparedData.getPartitioning(),
+                preparedData.getPartBoundExprInfo(),
                 pkColMetas, allColMetas, partitionTableType, executionContext, localityDesc);
         partitionInfo.setTableType(partitionTableType);
 
@@ -110,6 +121,15 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
             int autoFlag = ((SqlCreateTable) relDdl.sqlNode).isAutoSplit() ?
                 TablePartitionRecord.PARTITION_AUTO_BALANCE_ENABLE_ALL : 0;
             partitionInfo.setAutoFlag(autoFlag);
+        }
+
+        /**
+         * 对于import table, 需要修正
+         * 1. 物理表名和逻辑表名应一致
+         * 2. partition中的location
+         * */
+        if (preparedData.isImportTable() || preparedData.isReimportTable()) {
+            rectifyPartitionInfoForImportTable(partitionInfo);
         }
 
         return partitionInfo;
@@ -127,6 +147,7 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
                 data.setPushDown(false);
             }
             (sqlCreateTable).setPushDownForeignKeys(false);
+            (sqlCreateTable).setIsAddLogicalForeignKeyOnly(isAddLogicalForeignKeyOnly());
 
             if (refTables.stream().allMatch(refTable ->
                 pushableForeignConstraint(refTable.right.refSchema, preparedData.getTableName(), refTable,
@@ -189,6 +210,14 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
             return false;
         }
 
+        //import table场景下, 肯定都是单表，所以是pushdown
+        boolean isImportTable = executionContext.getParamManager().getBoolean(ConnectionParams.IMPORT_TABLE)
+            || executionContext.getParamManager().getBoolean(ConnectionParams.REIMPORT_TABLE);
+
+        if (isImportTable) {
+            return true;
+        }
+
         final PartitionInfo leftPartitionInfo = partitionInfo;
         final PartitionInfo rightPartitionInfo =
             OptimizerContext.getContext(schema).getPartitionInfoManager()
@@ -209,10 +238,7 @@ public class CreatePartitionTableBuilder extends CreateTableBuilder {
             return false;
         }
 
-        if (leftPartitionInfo.isSingleTable() && rightPartitionInfo.isSingleTable()) {
-            return true;
-        }
-
-        return false;
+        return leftPartitionInfo.isSingleTable() && rightPartitionInfo.isSingleTable();
     }
+
 }

@@ -35,15 +35,19 @@ import io.airlift.slice.Duration;
 
 import static io.airlift.slice.DataSize.Unit.GIGABYTE;
 import static java.util.concurrent.TimeUnit.DAYS;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
 public class FileMergeCacheConfig {
-    private int maxCachedEntries = 1_000;
+    private boolean enableCache = true;
+    private int maxCachedEntries = 2048;
     private Duration cacheTtl = new Duration(2, DAYS);
     private DataSize maxInMemoryCacheSize = new DataSize(2, GIGABYTE);
+    private DataSize maxInDiskCacheSize = new DataSize(100, GIGABYTE);
 
-    private int maxHotCachedEntries = 1_000;
-    private Duration hotCacheTtl = new Duration(3000, MILLISECONDS);
+    /**
+     * To use bytes cache in Local File Cache.
+     */
+    private boolean useByteCache = false;
+    private double memoryRatioOfBytesCache = 0.3d;
 
     public int getMaxCachedEntries() {
         return maxCachedEntries;
@@ -51,6 +55,24 @@ public class FileMergeCacheConfig {
 
     public FileMergeCacheConfig setMaxCachedEntries(int maxCachedEntries) {
         this.maxCachedEntries = maxCachedEntries;
+        return this;
+    }
+
+    public double getMemoryRatioOfBytesCache() {
+        return memoryRatioOfBytesCache;
+    }
+
+    public FileMergeCacheConfig setMemoryRatioOfBytesCache(double memoryRatioOfBytesCache) {
+        this.memoryRatioOfBytesCache = memoryRatioOfBytesCache;
+        return this;
+    }
+
+    public boolean isUseByteCache() {
+        return useByteCache;
+    }
+
+    public FileMergeCacheConfig setUseByteCache(boolean useByteCache) {
+        this.useByteCache = useByteCache;
         return this;
     }
 
@@ -72,19 +94,19 @@ public class FileMergeCacheConfig {
         return this;
     }
 
-    public int getMaxHotCachedEntries() {
-        return maxHotCachedEntries;
+    public DataSize getMaxInDiskCacheSize() {
+        return maxInDiskCacheSize;
     }
 
-    public void setMaxHotCachedEntries(int maxHotCachedEntries) {
-        this.maxHotCachedEntries = maxHotCachedEntries;
+    public void setMaxInDiskCacheSize(DataSize maxInDiskCacheSize) {
+        this.maxInDiskCacheSize = maxInDiskCacheSize;
     }
 
-    public Duration getHotCacheTtl() {
-        return hotCacheTtl;
+    public boolean isEnableCache() {
+        return enableCache;
     }
 
-    public void setHotCacheTtl(Duration hotCacheTtl) {
-        this.hotCacheTtl = hotCacheTtl;
+    public void setEnableCache(boolean enableCache) {
+        this.enableCache = enableCache;
     }
 }

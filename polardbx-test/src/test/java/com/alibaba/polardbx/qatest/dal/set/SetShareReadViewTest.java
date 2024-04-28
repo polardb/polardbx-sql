@@ -82,7 +82,7 @@ public class SetShareReadViewTest extends DirectConnectionBaseTestCase {
     private void trySetOutsideTrx() {
         String setSql = String.format(SET_SQL_PATTERN, "off");
         executeErrorAssert(tddlConnection, setSql, null,
-            "Variable 'share_read_view' is read only on auto-commit mode");
+            "VARIABLE SHARE_READ_VIEW CAN'T BE SET TO THE VALUE OF OFF");
     }
 
     private void trySetShareReadView() throws SQLException {

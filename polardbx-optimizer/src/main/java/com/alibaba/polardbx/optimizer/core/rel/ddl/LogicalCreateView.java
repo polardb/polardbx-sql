@@ -16,47 +16,71 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
+import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.DDL;
+import org.apache.calcite.rel.ddl.CreateFileStorage;
+import org.apache.calcite.rel.ddl.CreateFunction;
+import org.apache.calcite.rel.ddl.CreateJavaFunction;
+import org.apache.calcite.rel.ddl.CreateView;
 import org.apache.calcite.rel.externalize.RelDrdsWriter;
+import org.apache.calcite.rel.type.RelDataType;
+import org.apache.calcite.sql.SqlCreateJavaFunction;
+import org.apache.calcite.sql.SqlCreateView;
 import org.apache.calcite.sql.SqlNode;
+import org.apache.calcite.sql.SqlNodeList;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * @author dylan
  */
-public final class LogicalCreateView extends DDL {
-
-    private final String schemaName;
-
-    private final String viewName;
+public final class LogicalCreateView extends BaseDdlOperation {
 
     private final boolean replace;
+
+    private final boolean alter;
 
     private final List<String> columnList;
 
     private final SqlNode definition;
 
-    public LogicalCreateView(RelOptCluster cluster, boolean replace, String schemaName, String viewName,
-                             List<String> columnList,
-                             SqlNode definition) {
-        super(cluster, cluster.traitSetOf(DrdsConvention.INSTANCE), null);
-        this.schemaName = schemaName;
-        this.viewName = viewName;
-        this.replace = replace;
+    public LogicalCreateView(DDL ddl) {
+        super(ddl);
+
+        final SqlCreateView sqlCreateView = (SqlCreateView) relDdl.getSqlNode();
+
+        SqlNodeList columns = sqlCreateView.getColumnList();
+        List<String> columnList = null;
+        if (columns != null && columns.size() > 0) {
+            columnList = columns.getList().stream().map(x -> x.toString()).map(SQLUtils::normalizeNoTrim)
+                .collect(Collectors.toList());
+        }
+        this.replace = sqlCreateView.isReplace();
+        this.alter = sqlCreateView.isAlter();
         this.columnList = columnList;
-        this.definition = definition;
+        this.definition = sqlCreateView.getQuery();
     }
 
-    public LogicalCreateView copy(
-        RelTraitSet traitSet, List<RelNode> inputs) {
-        assert traitSet.containsIfApplicable(DrdsConvention.INSTANCE);
-        return new LogicalCreateView(this.getCluster(), replace, schemaName, viewName, columnList, definition);
+    public static LogicalCreateView create(CreateView createView) {
+        return new LogicalCreateView(createView);
+    }
+
+    @Override
+    public boolean isSupportedByFileStorage() {
+        return true;
+    }
+
+    @Override
+    public boolean isSupportedByBindFileStorage() {
+        return true;
     }
 
     public String getSchemaName() {
@@ -64,7 +88,7 @@ public final class LogicalCreateView extends DDL {
     }
 
     public String getViewName() {
-        return viewName;
+        return getTableName();
     }
 
     public List<String> getColumnList() {
@@ -79,9 +103,12 @@ public final class LogicalCreateView extends DDL {
         return replace;
     }
 
+    public boolean isAlter() {
+        return alter;
+    }
+
     @Override
     public RelWriter explainTermsForDisplay(RelWriter pw) {
-
         StringBuilder sqlBuilder = new StringBuilder();
 
         if (replace) {
@@ -89,7 +116,7 @@ public final class LogicalCreateView extends DDL {
         } else {
             sqlBuilder.append("CREATE VIEW ");
         }
-        sqlBuilder.append("`").append(schemaName).append("`.`").append(viewName).append("`");
+        sqlBuilder.append("`").append(schemaName).append("`.`").append(getViewName()).append("`");
 
         if (columnList != null && !columnList.isEmpty()) {
             sqlBuilder.append("(").append(String.join(",", columnList)).append(")");
@@ -101,5 +128,4 @@ public final class LogicalCreateView extends DDL {
 
         return pw.item("sql", sqlBuilder.toString());
     }
-
 }

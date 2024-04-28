@@ -133,6 +133,12 @@ public interface ConfigManager {
     void sync(String dataId);
 
     /**
+     * Synchronize other server nodes
+     * to unbind the listener of dataId.
+     */
+    void syncUnbind(String dataId);
+
+    /**
      * Synchronize sync the listener on current Node. Don't update the version.
      */
     boolean localSync(String dataId);

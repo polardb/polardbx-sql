@@ -17,7 +17,13 @@
 package com.alibaba.polardbx.qatest;
 
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+import com.alibaba.polardbx.cdc.CdcTableUtil;
+import com.alibaba.polardbx.common.cdc.CdcDdlRecord;
+import com.alibaba.polardbx.common.cdc.entity.DDLExtInfo;
 import com.alibaba.polardbx.common.constants.SequenceAttribute;
+import com.alibaba.polardbx.common.ddl.newengine.DdlState;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
@@ -25,8 +31,17 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
+import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexColumnType;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.IndexRecord;
 import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
@@ -42,6 +57,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import com.google.common.truth.Truth;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlColumnDeclaration.SpecialIndex;
 import org.apache.calcite.sql.SqlCreateTable;
@@ -53,6 +69,8 @@ import org.apache.calcite.util.EqualsContext;
 import org.apache.calcite.util.Litmus;
 import org.apache.calcite.util.Pair;
 import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.junit.Assert;
 import org.junit.Before;
 
@@ -77,6 +95,9 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.resultSetContentSameAssert;
@@ -96,6 +117,10 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
         "/*+TDDL:cmd_extra(ALLOW_ADD_GSI=true GSI_CHECK_AFTER_CREATION=false)*/ ";
     protected static final String GSI_ALLOW_ADD_HINT_NO_RESTRICTION =
         "/*+TDDL:cmd_extra(ALLOW_ADD_GSI=true GSI_IGNORE_RESTRICTION=true GSI_CHECK_AFTER_CREATION=false)*/ ";
+    protected static final String SKIP_WAIT_CCI_CREATION_HINT =
+        "/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS=\"WaitColumnarTableCreationTask\")*/ ";
+    protected static final String HINT_PURE_MODE = "/*+TDDL:CMD_EXTRA(PURE_ASYNC_DDL_MODE=TRUE)*/";
+    protected static final String HINT_DDL_FAIL_POINT_TMPL = "/*+TDDL:CMD_EXTRA(%s='%s')*/";
 
     protected static String META_DB_HINT = "/*TDDL:NODE='__META_DB__'*/";
 
@@ -270,6 +295,10 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     }
 
     private String databaseForDDLTest;
+
+    protected String getDdlSchema() {
+        return databaseForDDLTest;
+    }
 
     protected Connection getNewTddlConnection1() throws SQLException {
         Connection newConn = getPolardbxConnection();
@@ -547,6 +576,15 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
     public void dropTableIfExistsInMySql(String tableName) {
         String sql = "drop table if exists " + tableName;
         JdbcUtil.executeUpdateSuccess(mysqlConnection, sql);
+    }
+
+    public void dropTableGroupIfExists(String tgName) {
+        dropTableGroupIfExists(tddlConnection, tgName);
+    }
+
+    public void dropTableGroupIfExists(Connection conn, String tgName) {
+        String sql = String.format("drop tablegroup if exists %s", tgName);
+        JdbcUtil.executeUpdateSuccess(conn, sql);
     }
 
     public void dropFunctionIfExists(String funcName) {
@@ -2164,5 +2202,458 @@ public class DDLBaseNewDBTestCase extends BaseTestCase {
 
     protected boolean useXproto() {
         return useXproto(tddlConnection);
+    }
+
+    protected static String getFirstColumnarIndexNameWithSuffix(Connection conn, String tableName) {
+        final List<String> indexNameList = new ArrayList<>();
+        try {
+            final ResultSet rs =
+                JdbcUtil.executeQuery(String.format("show columnar index from %s", tableName), conn);
+            while (rs.next()) {
+                indexNameList.add(rs.getString("INDEX_NAME"));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        Truth.assertThat(indexNameList).isNotEmpty();
+        Truth.assertThat(indexNameList).hasSize(1);
+
+        return indexNameList.iterator().next();
+    }
+
+    protected void createCciSuccess(String sqlCreateCci) {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, SKIP_WAIT_CCI_CREATION_HINT + sqlCreateCci);
+    }
+
+    protected void createCciFailed(String sqlCreateCci, String errorMessage1, String errorMessage2) {
+        JdbcUtil.executeUpdateFailed(tddlConnection, SKIP_WAIT_CCI_CREATION_HINT + sqlCreateCci, errorMessage1,
+            errorMessage2);
+    }
+
+    protected void createCciAsync(String sqlCreateCci) {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, SKIP_WAIT_CCI_CREATION_HINT + HINT_PURE_MODE + sqlCreateCci);
+    }
+
+    protected void createCciAsync(Connection conn, String sqlCreateCci) {
+        JdbcUtil.executeUpdateSuccess(conn, SKIP_WAIT_CCI_CREATION_HINT + HINT_PURE_MODE + sqlCreateCci);
+    }
+
+    protected void createCciWithErr(String sqlCreateCci, String error) {
+        JdbcUtil.executeUpdateFailed(tddlConnection, SKIP_WAIT_CCI_CREATION_HINT + sqlCreateCci, error);
+    }
+
+    protected String failOnDdlTaskHint(@NotNull String taskName) {
+        return String.format(HINT_DDL_FAIL_POINT_TMPL, FailPointKey.FP_FAIL_ON_DDL_TASK_NAME, taskName);
+    }
+
+    protected String getRealCciName(String tableName, String cciPrefix) {
+        final String sql = String.format("show columnar index from %s;", tableName);
+
+        try (final ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql)) {
+            while (rs.next()) {
+                final String fullCciName = rs.getString(3);
+                if (fullCciName.startsWith(cciPrefix)) {
+                    return fullCciName;
+                }
+            }
+        } catch (SQLException e) {
+            logger.error(e);
+        }
+        return null;
+    }
+
+    @NotNull
+    protected List<TablePartitionRecord> queryCciTablePartitionRecords(String realCciName) throws Exception {
+        final String sqlQueryTablePartition =
+            "select * from metadb.table_partitions where table_name = ? and tbl_type = 7";
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, realCciName);
+        return MetaDbUtil.query(sqlQueryTablePartition, params, TablePartitionRecord.class, tddlConnection);
+    }
+
+    @NotNull
+    protected List<TableGroupRecord> queryCciTgFromMetaDb(String realCciName) throws Exception {
+        final String sqlQueryCciTg = "select b.* \n"
+            + "from metadb.table_partitions a\n"
+            + "join metadb.table_group b on a.group_id = b.id and a.table_schema = b.schema_name\n"
+            + "where a.table_name = ? \n"
+            + "and a.part_level = 0 \n";
+        Map<Integer, ParameterContext> params = new HashMap<>();
+        MetaDbUtil.setParameter(1, params, ParameterMethod.setString, realCciName);
+        return MetaDbUtil.query(sqlQueryCciTg, params, TableGroupRecord.class, tddlConnection);
+    }
+
+    @NotNull
+    protected List<Long> queryCciTgFromInformationSchema(String tgName) throws Exception {
+        final String sqlQueryCciTg = "select * from information_schema.TABLE_GROUP where table_group_name = ?";
+        final List<Object> params = new ArrayList<>();
+        params.add(tgName);
+
+        final List<Long> result = new ArrayList<>();
+        try (final PreparedStatement ps = JdbcUtil.preparedStatementSet(sqlQueryCciTg, params, tddlConnection)) {
+            final ResultSet rs = JdbcUtil.executeQuery(sqlQueryCciTg, ps);
+            while (rs.next()) {
+                result.add(rs.getLong(2));
+            }
+        }
+
+        return result;
+    }
+
+    @NotNull
+    public List<CdcDdlRecord> queryDdlRecordByJobId(Long ddlJobId) throws SQLException {
+        final String sqlQueryDdlRecord =
+            "select * from __cdc__." + CdcTableUtil.CDC_DDL_RECORD_TABLE + " where job_id = ?";
+
+        try (PreparedStatement stmt = tddlConnection.prepareStatement(sqlQueryDdlRecord)) {
+            stmt.setObject(1, ddlJobId);
+            final ResultSet rs = stmt.executeQuery();
+            final List<CdcDdlRecord> result = new ArrayList<>();
+            while (rs.next()) {
+                result.add(CdcDdlRecord.fill(rs));
+            }
+            return result;
+        }
+    }
+
+    @NotNull
+    public List<CdcDdlRecord> queryDdlRecordByCciName(String cciName) throws SQLException {
+        final String sqlQueryDdlRecord =
+            "select * from __cdc__." + CdcTableUtil.CDC_DDL_RECORD_TABLE + " where ddl_sql like ?";
+
+        try (PreparedStatement stmt = tddlConnection.prepareStatement(sqlQueryDdlRecord)) {
+            stmt.setObject(1, String.format("%%%s%%", cciName));
+            final ResultSet rs = stmt.executeQuery();
+            final List<CdcDdlRecord> result = new ArrayList<>();
+            while (rs.next()) {
+                result.add(CdcDdlRecord.fill(rs));
+            }
+            return result;
+        }
+    }
+
+    @NotNull
+    protected List<CdcDdlRecord> queryDdlRecordByDdlSql(String schemaName, String tableName, String ddlSql)
+        throws SQLException {
+        final List<CdcDdlRecord> result = new ArrayList<>();
+
+        final String sql = String.format(
+            "select * from __cdc__.%s where schema_name = ? and table_name = ? and ddl_sql like ?",
+            CdcTableUtil.CDC_DDL_RECORD_TABLE);
+        try (PreparedStatement ps = tddlConnection.prepareStatement(sql)) {
+            ps.setString(1, schemaName);
+            ps.setString(2, tableName);
+            ps.setString(3, "%" + ddlSql + "%");
+
+            final ResultSet resultSet = ps.executeQuery();
+
+            while (resultSet.next()) {
+                result.add(CdcDdlRecord.fill(resultSet));
+            }
+        }
+
+        return result;
+    }
+
+    protected List<ColumnarTableEvolutionRecord> queryLatestColumnarTableEvolutionRecordByDdlJobId(Long ddlJobId)
+        throws SQLException {
+        final List<ColumnarTableEvolutionRecord> result;
+        try (final Connection metaConn = getMetaConnection()) {
+            final TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaConn);
+            result = tableInfoManager.queryColumnarTableEvolutionLatestByDdlJobId(ddlJobId);
+        }
+
+        return result;
+    }
+
+    protected List<ColumnarTableEvolutionRecord> queryColumnarTableEvolutionRecordByDdlJobId(Long ddlJobId)
+        throws SQLException {
+        final List<ColumnarTableEvolutionRecord> result;
+        try (final Connection metaConn = getMetaConnection()) {
+            final TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaConn);
+            result = tableInfoManager.queryColumnarTableEvolutionByDdlJobId(ddlJobId);
+        }
+
+        return result;
+    }
+
+    protected List<ColumnarTableMappingRecord> queryColumnarTableMappingRecordByTableId(Long tableId)
+        throws SQLException {
+        final List<ColumnarTableMappingRecord> result;
+        try (final Connection metaConn = getMetaConnection()) {
+            final TableInfoManager tableInfoManager = new TableInfoManager();
+            tableInfoManager.setConnection(metaConn);
+            result = tableInfoManager.queryColumnarTableMapping(tableId);
+        }
+
+        return result;
+    }
+
+    protected void checkLatestColumnarSchemaEvolutionRecord(Long ddlJobId,
+                                                            String schemaName,
+                                                            String tableName,
+                                                            String indexName,
+                                                            DdlType ddlType,
+                                                            ColumnarTableStatus cciTableStatus) throws SQLException {
+        final List<ColumnarTableEvolutionRecord> columnarTableEvolutionRecords =
+            queryLatestColumnarTableEvolutionRecordByDdlJobId(ddlJobId);
+        Truth.assertThat(columnarTableEvolutionRecords).hasSize(1);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).tableSchema).isEqualTo(schemaName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).tableName).isEqualTo(tableName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).indexName).startsWith(indexName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).ddlType).isEqualTo(ddlType.name());
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).columns).isNotEmpty();
+
+        final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
+            queryColumnarTableMappingRecordByTableId(columnarTableEvolutionRecords.get(0).tableId);
+        Truth.assertThat(columnarTableMappingRecords).hasSize(1);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableSchema).isEqualTo(schemaName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableName).isEqualTo(tableName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).indexName).startsWith(indexName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).status).isEqualTo(cciTableStatus.name());
+        Truth.assertThat(columnarTableMappingRecords.get(0).latestVersionId)
+            .isEqualTo(columnarTableEvolutionRecords.get(0).versionId);
+    }
+
+    protected void checkLatestColumnarSchemaEvolutionRecordByDdlSql(String sqlDdl,
+                                                                    String schemaName,
+                                                                    String tableName,
+                                                                    String indexName,
+                                                                    DdlType ddlType,
+                                                                    ColumnarTableStatus cciTableStatus)
+        throws SQLException {
+        final List<CdcDdlRecord> cdcDdlRecords = queryDdlRecordByDdlSql(schemaName, tableName, sqlDdl);
+        Truth
+            .assertWithMessage("No ddl record found for sql: %s ", sqlDdl)
+            .that(cdcDdlRecords)
+            .hasSize(1);
+
+        final List<ColumnarTableEvolutionRecord> columnarTableEvolutionRecords =
+            queryLatestColumnarTableEvolutionRecordByDdlJobId(cdcDdlRecords.get(0).getJobId());
+        Truth.assertThat(columnarTableEvolutionRecords).hasSize(1);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).tableSchema).isEqualTo(schemaName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).tableName).isEqualTo(tableName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).indexName).startsWith(indexName);
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).ddlType).isEqualTo(ddlType.name());
+        Truth.assertThat(columnarTableEvolutionRecords.get(0).columns).isNotEmpty();
+
+        final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
+            queryColumnarTableMappingRecordByTableId(columnarTableEvolutionRecords.get(0).tableId);
+        Truth.assertThat(columnarTableMappingRecords).hasSize(1);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableSchema).isEqualTo(schemaName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).tableName).isEqualTo(tableName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).indexName).startsWith(indexName);
+        Truth.assertThat(columnarTableMappingRecords.get(0).status).isEqualTo(cciTableStatus.name());
+        Truth.assertThat(columnarTableMappingRecords.get(0).latestVersionId)
+            .isEqualTo(columnarTableEvolutionRecords.get(0).versionId);
+    }
+
+    protected void checkColumnarSchemaEvolutionRecordByDdlSql(String sqlDdl,
+                                                              String schemaName,
+                                                              String tableName,
+                                                              List<String> indexName,
+                                                              DdlType ddlType,
+                                                              ColumnarTableStatus cciTableStatus)
+        throws SQLException {
+        final List<CdcDdlRecord> cdcDdlRecords = queryDdlRecordByDdlSql(schemaName, tableName, sqlDdl);
+        Truth
+            .assertWithMessage("No ddl record found for sql: %s ", sqlDdl)
+            .that(cdcDdlRecords)
+            .hasSize(1);
+
+        final List<ColumnarTableEvolutionRecord> columnarTableEvolutionRecords =
+            queryColumnarTableEvolutionRecordByDdlJobId(cdcDdlRecords.get(0).getJobId());
+        for (int i = 0; i < columnarTableEvolutionRecords.size(); i++) {
+            Truth.assertThat(columnarTableEvolutionRecords.get(i).tableSchema).isEqualTo(schemaName);
+            Truth.assertThat(columnarTableEvolutionRecords.get(i).tableName).isEqualTo(tableName);
+            Truth.assertThat(columnarTableEvolutionRecords.get(i).indexName).startsWith(indexName.get(i));
+            Truth.assertThat(columnarTableEvolutionRecords.get(i).ddlType).isEqualTo(ddlType.name());
+            Truth.assertThat(columnarTableEvolutionRecords.get(i).columns).isNotEmpty();
+
+            final List<ColumnarTableMappingRecord> columnarTableMappingRecords =
+                queryColumnarTableMappingRecordByTableId(columnarTableEvolutionRecords.get(i).tableId);
+            Truth.assertThat(columnarTableMappingRecords.get(0).tableSchema).isEqualTo(schemaName);
+            Truth.assertThat(columnarTableMappingRecords.get(0).tableName).isEqualTo(tableName);
+            Truth.assertThat(columnarTableMappingRecords.get(0).indexName).startsWith(indexName.get(i));
+            Truth.assertThat(columnarTableMappingRecords.get(0).status).isEqualTo(cciTableStatus.name());
+            Truth.assertThat(columnarTableMappingRecords.get(0).latestVersionId)
+                .isEqualTo(columnarTableEvolutionRecords.get(0).versionId);
+
+        }
+    }
+
+    protected void waitForSeconds(int seconds) {
+        try {
+            Thread.sleep(seconds * 1000);
+        } catch (InterruptedException ignored) {
+        }
+    }
+
+    protected void rollbackDDL(JobInfo job) {
+        String sql = String.format("rollback ddl %s", job.parentJob.jobId);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+        waitForSeconds(1);
+    }
+
+    protected static class JobInfo {
+        public JobEntry parentJob;
+        public List<JobEntry> subJobs;
+    }
+
+    protected static class JobEntry {
+        public long jobId;
+        public String state;
+        public String traceId;
+        public String responseNode;
+    }
+
+    protected JobInfo fetchCurrentJob(String expectedTableName) throws SQLException {
+        JobInfo job = null;
+        JobEntry parentJob = null;
+        List<JobEntry> subJobs = new ArrayList<>();
+
+        String sql = "show full ddl";
+        try (PreparedStatement ps = tddlConnection.prepareStatement(sql);
+            ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                JobEntry currentJob = new JobEntry();
+
+                String tableName = rs.getString("OBJECT_NAME");
+
+                if (!TStringUtil.equalsIgnoreCase(tableName, expectedTableName)) {
+                    continue;
+                }
+
+                currentJob.jobId = rs.getLong("JOB_ID");
+                currentJob.state = rs.getString("STATE");
+                currentJob.traceId = rs.getString("TRACE_ID");
+                currentJob.responseNode = rs.getString("RESPONSE_NODE");
+
+                if (currentJob.responseNode.contains("subjob")) {
+                    subJobs.add(currentJob);
+                } else if (parentJob == null) {
+                    parentJob = currentJob;
+                } else {
+                    Assert.fail("Unexpected: found multiple parent jobs");
+                }
+            }
+        }
+
+        if (parentJob != null) {
+            job = new JobInfo();
+            job.parentJob = parentJob;
+            job.subJobs = subJobs;
+        }
+
+        return job;
+    }
+
+    protected void checkJobState(String expected, Callable<JobInfo> jobInfoSupplier) throws Exception {
+        JobInfo job = jobInfoSupplier.call();
+        if (job == null) {
+            Assert.fail("Not found any job");
+        }
+        if (!TStringUtil.equalsIgnoreCase(job.parentJob.state, expected)) {
+            Assert.fail(String.format("Job %s has wrong state %s", job.parentJob.jobId, job.parentJob.state));
+        }
+    }
+
+    protected void checkJobGone(String tableName) throws SQLException {
+        JobInfo job = fetchCurrentJob(tableName);
+        if (job != null) {
+            Assert.fail(String.format("Job %s is still there in %s", job.parentJob.jobId, job.parentJob.state));
+        }
+    }
+
+    protected void checkJobState(DdlState expected, String tableName) throws SQLException {
+        try {
+            checkJobState(expected.toString(), () -> fetchCurrentJob(tableName));
+        } catch (SQLException e) {
+            throw e;
+        } catch (Exception ex) {
+            throw new RuntimeException("", ex);
+        }
+    }
+
+    protected JobInfo fetchCurrentJobUntil(DdlState expectedState, String tableName, int waitSeconds)
+        throws SQLException, InterruptedException {
+        JobInfo job;
+
+        int count = 0;
+        do {
+            if (count > 0) {
+                TimeUnit.SECONDS.sleep(1);
+            }
+
+            job = fetchCurrentJob(tableName);
+
+            count++;
+        } while ((job == null || !expectedState.name().equalsIgnoreCase(job.parentJob.state)) && count <= waitSeconds);
+
+        return job;
+    }
+
+    @Nullable
+    public String queryCciTgName() {
+        try (ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, "show tablegroup")) {
+            while (rs.next()) {
+                String name = rs.getString("TABLE_GROUP_NAME");
+                if (TableGroupNameUtil.isColumnarTg(name)) {
+                    return name;
+                }
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return null;
+    }
+
+    protected List<String> getStorageInstIds(String dbName) {
+        String sql = String.format("show ds where db='%s'", dbName);
+        ResultSet rs = JdbcUtil.executeQuery(sql, tddlConnection);
+        List<String> storageInstIds = new ArrayList<>();
+        try {
+            while (rs.next()) {
+                storageInstIds.add(rs.getString("STORAGE_INST_ID"));
+            }
+        } catch (Exception ex) {
+            String errorMs = "[Execute preparedStatement query] failed! sql is: " + sql;
+            Assert.fail(errorMs + " \n" + ex);
+        }
+        return storageInstIds;
+    }
+
+    protected void executeDdlAndCheckCdcRecord(String sqlDdl, String expectedDdlSql, String tableName,
+                                               boolean withDdlId) throws SQLException {
+        executeDdlAndCheckCdcRecord(sqlDdl,
+            expectedDdlSql,
+            tableName,
+            cdcDdlRecord -> Truth.assertThat(cdcDdlRecord.ddlSql).ignoringCase().contains(expectedDdlSql),
+            ddlExtInfo -> {
+                if (withDdlId) {
+                    Truth.assertThat(ddlExtInfo.getDdlId()).isGreaterThan(0);
+                }
+                Truth.assertThat(ddlExtInfo.getOriginalDdl()).ignoringCase().contains(sqlDdl);
+            });
+    }
+
+    protected void executeDdlAndCheckCdcRecord(String sqlDdl, String expectedDdlSql, String tableName,
+                                               Consumer<CdcDdlRecord> cdcDdlRecordConsumer,
+                                               Consumer<DDLExtInfo> ddlExtInfoConsumer)
+        throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sqlDdl);
+
+        // Check cdc mark
+        final List<CdcDdlRecord> ddlRecords = queryDdlRecordByDdlSql(getDdlSchema(), tableName, expectedDdlSql);
+        Truth
+            .assertWithMessage("No ddl record found for sql: %s \n expected: %s", sqlDdl, expectedDdlSql)
+            .that(ddlRecords)
+            .hasSize(1);
+        cdcDdlRecordConsumer.accept(ddlRecords.get(0));
+        final DDLExtInfo ddlExtInfo = JSONObject.parseObject(ddlRecords.get(0).ext, DDLExtInfo.class);
+        ddlExtInfoConsumer.accept(ddlExtInfo);
     }
 }

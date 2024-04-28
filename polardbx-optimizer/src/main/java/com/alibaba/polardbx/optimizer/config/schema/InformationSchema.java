@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.optimizer.config.schema;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;

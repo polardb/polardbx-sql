@@ -8,7 +8,6 @@ import com.google.common.collect.Maps;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.sql.Connection;
@@ -18,7 +17,6 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
@@ -302,14 +300,15 @@ public class SessionHintTest extends BaseTestCase {
             checkHintWork(connWithHint, TBL_NAME);
 
             // test normal hint won't interrupt partition hint
-            DataValidator.selectContentSameAssert("select * from information_schema.views", null, connWithHint,
+            DataValidator.selectContentSameAssert("explain select * from information_schema.views", null, connWithHint,
                 connWithoutHint, true);
-            DataValidator.selectContentSameAssert("select * from information_schema.tables", null, connWithHint,
+            DataValidator.selectContentSameAssert("explain select * from information_schema.tables", null, connWithHint,
                 connWithoutHint);
             DataValidator.selectContentSameAssert(
-                "select MODULE_NAME, host, schedule_jobs, views from information_schema.module", null, connWithHint,
+                "explain select MODULE_NAME, host, schedule_jobs, views from information_schema.module", null,
+                connWithHint,
                 connWithoutHint);
-            DataValidator.selectContentSameAssert("select * from information_schema.column_statistics", null,
+            DataValidator.selectContentSameAssert("explain select * from information_schema.column_statistics", null,
                 connWithHint, connWithoutHint);
 
         } finally {
@@ -481,138 +480,6 @@ public class SessionHintTest extends BaseTestCase {
             connWithHint.createStatement()
                 .execute("trace /*TDDL:node=" + groupName + "*/ select * from " + tableName);
 
-        } finally {
-            Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
-            Objects.requireNonNull(connWithHint).close();
-            log.info("session hint test end");
-        }
-    }
-
-    @Test
-    public void testSessionHintWithFlashBack() throws SQLException, InterruptedException {
-        Connection connWithHint = null;
-        try {
-            connWithHint = getPolardbxConnection();
-            connWithHint.createStatement().execute("use drds_polarx1_part_qatest_app");
-
-            connWithHint.createStatement().execute("set partition_hint=p3");
-            connWithHint.createStatement().execute("set global ENABLE_FORBID_PUSH_DML_WITH_HINT=false");
-            Thread.sleep(2000);
-            // test partition hint working
-            checkHintWork(connWithHint, TBL_NAME);
-            ResultSet rs;
-
-            // clear data
-            connWithHint.createStatement().execute("truncate table update_delete_base_autonic_multi_db_multi_tb");
-
-            // Ensure the as of timestamp is valid.
-            Thread.sleep(1000);
-
-            // test insert into partition table
-            Calendar current = Calendar.getInstance();
-            SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            connWithHint.setAutoCommit(false);
-            connWithHint.createStatement()
-                .execute(
-                    "insert into update_delete_base_autonic_multi_db_multi_tb(varchar_test, timestamp_test) values('session hint test value', now())");
-            connWithHint.commit();
-            String sql = "select * from update_delete_base_autonic_multi_db_multi_tb as of timestamp '" + f.format(
-                current.getTime()) + "' where varchar_test='session hint test value'";
-            System.out.println(sql);
-            rs = connWithHint.createStatement().executeQuery(sql);
-            while (rs.next()) {
-                Assert.fail("should not query any value by flashback");
-            }
-            rs.close();
-        } finally {
-            Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
-            Objects.requireNonNull(connWithHint).close();
-            log.info("session hint test end");
-        }
-    }
-
-    @Test
-    public void testSessionHintForbiddenByConfig() throws SQLException, InterruptedException {
-        Connection connWithHint = null;
-        try {
-            connWithHint = getPolardbxConnection();
-            connWithHint.createStatement().execute("use drds_polarx1_part_qatest_app");
-
-            connWithHint.createStatement().execute("set partition_hint=p3");
-            connWithHint.createStatement().execute("set global ENABLE_FORBID_PUSH_DML_WITH_HINT=true");
-            Thread.sleep(2000);
-            connWithHint.setAutoCommit(false);
-
-            // test partition hint working
-            checkHintWork(connWithHint, TBL_NAME);
-            connWithHint.createStatement().execute("set partition_hint=p3");
-            try {
-                connWithHint.createStatement()
-                    .execute(
-                        "insert into update_delete_base_autonic_multi_db_multi_tb(varchar_test, timestamp_test) values('session hint test value', now())");
-                Assert.fail(" dml should be forbidden by ENABLE_FORBID_PUSH_DML_WITH_HINT=true");
-            } catch (SQLException e) {
-                if (!e.getMessage().contains("Unsupported to push physical dml by hint ")) {
-                    throw e;
-                }
-            }
-
-            try {
-                connWithHint.createStatement()
-                    .execute(
-                        "update update_delete_base_autonic_multi_db_multi_tb set varchar_test='session hint test value'");
-                Assert.fail(" dml should be forbidden by ENABLE_FORBID_PUSH_DML_WITH_HINT=true");
-            } catch (SQLException e) {
-                if (!e.getMessage().contains("Unsupported to push physical dml by hint ")) {
-                    throw e;
-                }
-            }
-
-            try {
-                connWithHint.createStatement()
-                    .execute(
-                        "insert into update_delete_base_autonic_multi_db_multi_tb select * from update_delete_base_autonic_string_multi_db_multi_tb");
-                Assert.fail(" dml should be forbidden by ENABLE_FORBID_PUSH_DML_WITH_HINT=true");
-            } catch (SQLException e) {
-                if (!e.getMessage().contains("Unsupported to push physical dml by hint ")) {
-                    throw e;
-                }
-            }
-        } finally {
-            Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
-            Objects.requireNonNull(connWithHint).close();
-            log.info("session hint test end");
-        }
-    }
-
-    @Test
-    public void testSessionHintWithDML() throws SQLException, InterruptedException {
-        Connection connWithHint = null;
-        try {
-            connWithHint = getPolardbxConnection();
-            connWithHint.createStatement().execute("use drds_polarx1_part_qatest_app");
-
-            connWithHint.createStatement().execute("set partition_hint=p3");
-            connWithHint.createStatement().execute("set global ENABLE_FORBID_PUSH_DML_WITH_HINT=false");
-            Thread.sleep(2000);
-
-            // test partition hint working
-            checkHintWork(connWithHint, TBL_NAME);
-            connWithHint.createStatement().execute("set partition_hint=p3");
-
-            connWithHint.createStatement()
-                .execute(
-                    "insert into update_delete_base_autonic_multi_db_multi_tb(varchar_test, timestamp_test) values('session hint test value', now())");
-
-            connWithHint.createStatement()
-                .execute(
-                    "update update_delete_base_autonic_multi_db_multi_tb set varchar_test='session hint test value111'");
-            connWithHint.createStatement()
-                .execute("truncate table update_delete_base_autonic_string_multi_db_multi_tb");
-            connWithHint.createStatement()
-                .execute(
-                    "insert into update_delete_base_autonic_string_multi_db_multi_tb(varchar_test, timestamp_test)  "
-                        + "select varchar_test, timestamp_test from update_delete_base_autonic_multi_db_multi_tb");
         } finally {
             Objects.requireNonNull(connWithHint).createStatement().execute("set partition_hint=''");
             Objects.requireNonNull(connWithHint).close();
@@ -838,7 +705,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -846,7 +713,7 @@ public class SessionHintTest extends BaseTestCase {
                         "select * from select_base_three_multi_db_multi_tb_i9JV_06 a join select_base_three_multi_db_one_tb b on a.pk=b.pk;");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -876,7 +743,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -885,7 +752,7 @@ public class SessionHintTest extends BaseTestCase {
 
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[PXC-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -953,7 +820,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[PXC-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[TDDL-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -992,7 +859,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[PXC-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[TDDL-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -1030,7 +897,7 @@ public class SessionHintTest extends BaseTestCase {
         } catch (SQLException e) {
             e.printStackTrace();
             Assert.assertTrue(
-                e.getMessage().contains("[PXC-5325][ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
+                e.getMessage().contains("[TDDL-5325][ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");

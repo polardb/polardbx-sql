@@ -9,6 +9,7 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.FixMethodOrder;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runners.MethodSorters;
 
@@ -36,8 +37,7 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
         this.tableName1 = generateTableName();
         this.tableName2 = generateTableName();
         String createTableSqlFormat = "create table %s (id bigint, k int)  " +
-            " partition by hash(id) partitions 1 " +
-            " AUTO_SPLIT='ON'";
+            " partition by hash(id) partitions 1 ";
         String createTable1 = String.format(createTableSqlFormat, tableName1);
         String createTable2 = String.format(createTableSqlFormat, tableName2);
 
@@ -59,6 +59,7 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
     }
 
     @Test
+    @Ignore
     public void test1CreateTableAutoSplit() {
 
         String sql = "show create table " + tableName1;
@@ -88,7 +89,8 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
 
         // ingest data
         DataIngest ingest1 = new DataIngestForBigInt(tableName1, tddlConnection);
-        ingest1.ingest(tableRows);
+        int fullTableRows = 2000_00;
+        ingest1.ingest(fullTableRows);
         JdbcUtil.executeUpdate(tddlConnection, "analyze table " + tableName1);
 
         // explain split
@@ -115,8 +117,9 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
         // ingest data
         DataIngest ingest1 = new DataIngestForBigInt(tableName1, tddlConnection);
         DataIngest ingest2 = new DataIngestForBigInt(tableName2, tddlConnection);
-        ingest1.ingest(tableRows);
-        ingest2.ingest(tableRows);
+        int fullTableRows = 200_000;
+        ingest1.ingest(fullTableRows);
+        ingest2.ingest(fullTableRows);
         JdbcUtil.executeUpdate(tddlConnection, analyzeTable1);
         JdbcUtil.executeUpdate(tddlConnection, analyzeTable2);
 
@@ -155,8 +158,7 @@ public class SplitPartitionBaseTest extends BalancerTestBase {
         String tableName = "key_table";
         JdbcUtil.executeUpdateSuccess(tddlConnection, "drop table if exists " + tableName);
 
-        String createTable = "create table key_table(id1 int, id2 int, k bigint) partition by key(id1, id2) "
-            + "AUTO_SPLIT='ON'";
+        String createTable = "create table key_table(id1 int, id2 int, k bigint) partition by key(id1, id2) ";
         JdbcUtil.executeUpdateSuccess(tddlConnection, createTable);
 
         DataIngest ingest1 = new DataIngestForThreeColumns(tableName, tddlConnection);

@@ -18,6 +18,7 @@ package com.alibaba.polardbx.executor;
 
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
@@ -26,6 +27,7 @@ import com.alibaba.polardbx.executor.cursor.impl.OutFileStatisticsCursor;
 import com.alibaba.polardbx.executor.mpp.client.MppResultCursor;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.ExplainExecutorUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.meta.CostModelWeight;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -45,8 +47,11 @@ import org.apache.calcite.rel.RelVisitor;
 import org.apache.calcite.rel.logical.LogicalUnion;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 public class PlanExecutor extends AbstractLifecycle {
@@ -61,7 +66,7 @@ public class PlanExecutor extends AbstractLifecycle {
 
         ResultCursor result;
         //record the workload
-        WorkloadUtil.getWorkloadType(context, plan);
+        WorkloadUtil.getAndSetWorkloadType(context, plan);
         try {
             if (enableProfileStat) {
                 context.getRuntimeStatistics().setPlanTree(plan.getPlan());
@@ -76,6 +81,10 @@ public class PlanExecutor extends AbstractLifecycle {
                     SqlConverter.getInstance(context.getSchemaName(), context).getCatalog()));
                 PlanManagerUtil.applyCache(plan.getPlan());
             }
+
+            // reset params for columnar mode.
+            resetParams(plan, context);
+
             if (plan.isExplain()) {
                 result = ExplainExecutorUtil.explain(plan, context, explain);
             } else {
@@ -91,6 +100,79 @@ public class PlanExecutor extends AbstractLifecycle {
             MemoryPoolUtils.clearMemoryPoolIfNeed(context);
         }
         return result;
+    }
+
+    private static void resetParams(ExecutionPlan plan, ExecutionContext context) {
+        // enable columnar schedule
+        if (plan.isUseColumnar()) {
+            context.putIntoHintCmds(ConnectionProperties.ENABLE_COLUMNAR_SCHEDULE, true);
+        }
+
+        // reset connection parameters by plan mode
+        boolean automaticColumnarParams =
+            context.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTOMATIC_COLUMNAR_PARAMS);
+        if (plan.isUseColumnar() && automaticColumnarParams) {
+            Map<String, Object> columnarParams = getColumnarParams(context);
+            context.putAllHintCmds(columnarParams);
+        }
+    }
+
+    static Map<String, Object> getColumnarParams(ExecutionContext context) {
+        Map<String, Object> columnarParams = new HashMap<>();
+        // Basic connection params in query of columnar index for MPP mode.
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.OSS_FILE_CONCURRENT)) {
+            columnarParams.put(ConnectionProperties.OSS_FILE_CONCURRENT, true);
+        }
+
+        // Some parameters are only available in columnar mode , because it may result in higher base overhead
+        // Lots of array allocation
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_VEC_JOIN)) {
+            columnarParams.put(ConnectionProperties.ENABLE_VEC_JOIN, true);
+        }
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_VEC_ACCUMULATOR)) {
+            columnarParams.put(ConnectionProperties.ENABLE_VEC_ACCUMULATOR, true);
+        }
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_VEC_BUILD_JOIN_ROW)) {
+            columnarParams.put(ConnectionProperties.ENABLE_VEC_BUILD_JOIN_ROW, true);
+        }
+
+        // The random shuffle will result in lock cost from local buffer exec.
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_SCAN_RANDOM_SHUFFLE)) {
+            columnarParams.put(ConnectionProperties.ENABLE_SCAN_RANDOM_SHUFFLE, true);
+        }
+
+        // If chunk size is less than chunk limit, the reuse of vector is useless.
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_REUSE_VECTOR)) {
+            columnarParams.put(ConnectionProperties.ENABLE_REUSE_VECTOR, true);
+        }
+
+        // It's not compatible with parameter ENABLE_VEC_JOIN
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_HASH_TABLE_BLOOM_FILTER)) {
+            columnarParams.put(ConnectionProperties.ENABLE_HASH_TABLE_BLOOM_FILTER, false);
+        }
+
+        boolean enableOssCompatible = context.getParamManager().getBoolean(ConnectionParams.ENABLE_OSS_COMPATIBLE);
+
+        // It will result in severe performance regressions
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_OSS_COMPATIBLE)) {
+            enableOssCompatible = false;
+            columnarParams.put(ConnectionProperties.ENABLE_OSS_COMPATIBLE, false);
+        }
+
+        // if oss compatible is enabled, disable slice block with dictionary for correctness
+        if (enableOssCompatible) {
+            // ENABLE_COLUMNAR_SLICE_DICT not set
+            if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_COLUMNAR_SLICE_DICT)) {
+                columnarParams.put(ConnectionProperties.ENABLE_COLUMNAR_SLICE_DICT, false);
+            }
+        }
+
+        // enable new runtime filter in columnar query.
+        if (ExecUtils.needPutIfAbsent(context, ConnectionProperties.ENABLE_NEW_RF)) {
+            columnarParams.put(ConnectionProperties.ENABLE_NEW_RF, true);
+        }
+
+        return columnarParams;
     }
 
     public static ResultCursor execByExecPlanNodeByOne(

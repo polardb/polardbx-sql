@@ -52,7 +52,7 @@ public class CastVarcharToSignedVectorizedExpression extends AbstractVectorizedE
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         // handle nulls
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());

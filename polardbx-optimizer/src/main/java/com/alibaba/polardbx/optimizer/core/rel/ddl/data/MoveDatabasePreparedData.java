@@ -72,6 +72,8 @@ public class MoveDatabasePreparedData extends DdlPreparedData {
      */
     private final Map<String, Pair<String, String>> groupAndStorageInstId;
 
+    protected boolean usePhysicalBackfill = false;
+
     public String getSourceSql() {
         return sourceSql;
     }
@@ -90,5 +92,13 @@ public class MoveDatabasePreparedData extends DdlPreparedData {
 
     public Map<String, Pair<String, String>> getGroupAndStorageInstId() {
         return groupAndStorageInstId;
+    }
+
+    public boolean isUsePhysicalBackfill() {
+        return usePhysicalBackfill;
+    }
+
+    public void setUsePhysicalBackfill(boolean usePhysicalBackfill) {
+        this.usePhysicalBackfill = usePhysicalBackfill;
     }
 }

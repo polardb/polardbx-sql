@@ -102,7 +102,6 @@ public class CastDecimalRandomTest extends NumericTestBase {
 
         // select cast(col as decimal(precision, scale)) from table
         String sql = String.format(CAST_DECIMAL_FORMAT, col, col, precision, scale);
-//        System.out.println(sql);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
     }
 

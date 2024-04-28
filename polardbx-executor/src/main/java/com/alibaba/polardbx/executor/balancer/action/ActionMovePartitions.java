@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.balancer.action;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.balancer.stats.TableGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.dag.DirectedAcyclicGraph;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
@@ -83,6 +84,25 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
             backfillRows += actions.get(toGroup).stream().map(o -> o.getBackfillRows()).mapToLong(o -> o).sum();
         }
         return backfillRows;
+    }
+
+    @Override
+    public Long getDiskSize() {
+        Long diskSize = 0L;
+        for (String toGroup : actions.keySet()) {
+            diskSize += actions.get(toGroup).stream().map(o -> o.getDiskSize()).mapToLong(o -> o).sum();
+        }
+        return diskSize;
+    }
+
+    @Override
+    public double getLogicalTableCount() {
+        double tableCount = 0;
+        for (String toGroup : actions.keySet()) {
+            tableCount += actions.get(toGroup).get(0).getLogicalTableCount();
+        }
+
+        return Math.max(1.0, tableCount / actions.size());
     }
 
     /*
@@ -159,8 +179,8 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
         TableGroupInfoManager tableGroupInfoManager = OptimizerContext.getContext(schema).getTableGroupInfoManager();
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
         SchemaManager schemaManager = OptimizerContext.getContext(schema).getLatestSchemaManager();
-        for (TablePartRecordInfoContext tableInfo : tableGroupConfig.getAllTables()) {
-            TableMeta tableMeta = schemaManager.getTable(tableInfo.getTableName());
+        for (String tableName : tableGroupConfig.getAllTables()) {
+            TableMeta tableMeta = schemaManager.getTable(tableName);
             String primaryTableName = tableMeta.getTableName();
             if (tableMeta.isGsi()) {
                 assert
@@ -178,8 +198,8 @@ public class ActionMovePartitions implements BalanceAction, Comparable<ActionMov
         tableGroups.add(tableGroup);
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroup);
         if (tableGroupConfig != null) {
-            for (TablePartRecordInfoContext tablePartCon : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
-                TableMeta tableMeta = executionContext.getSchemaManager(schema).getTable(tablePartCon.getTableName());
+            for (String tableName : GeneralUtil.emptyIfNull(tableGroupConfig.getAllTables())) {
+                TableMeta tableMeta = executionContext.getSchemaManager(schema).getTable(tableName);
                 if (tableMeta.isGsi()) {
                     String primaryTableName = tableMeta.getGsiTableMetaBean().gsiMetaBean.tableName;
                     tableMeta = OptimizerContext.getContext(schema).getLatestSchemaManager().getTable(primaryTableName);

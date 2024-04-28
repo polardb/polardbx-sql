@@ -78,7 +78,8 @@ public class MoveDataToInnodbTask extends BaseGmsTask {
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             try {
                 MetaDbUtil.beginTransaction(metaDbConn);
-                List<FilesRecord> files = TableMetaChanger.lockOssFileMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
+                List<FilesRecord> files =
+                    TableMetaChanger.lockOssFileMeta(metaDbConn, getTaskId(), schemaName, logicalTableName);
                 if (files != null && files.size() > 0) {
                     throw new TddlRuntimeException(ErrorCode.ERR_CANT_CONTINUE_DDL);
                 }

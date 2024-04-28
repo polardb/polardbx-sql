@@ -48,6 +48,7 @@ import org.apache.orc.PhysicalWriter;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.StripeStatistics;
 import org.apache.orc.TypeDescription;
+import org.apache.orc.UserMetadataUtil;
 import org.apache.orc.impl.writer.WriterEncryptionKey;
 import org.apache.orc.impl.writer.WriterEncryptionVariant;
 import org.apache.orc.impl.writer.StreamOptions;
@@ -120,6 +121,7 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
   private final OrcFile.EncodingStrategy encodingStrategy;
   private final OrcFile.CompressionStrategy compressionStrategy;
   private final boolean[] bloomFilterColumns;
+  private final boolean[] dictionaryColumns;
   private final double bloomFilterFpp;
   private final OrcFile.BloomFilterVersion bloomFilterVersion;
   private final boolean writeTimeZone;
@@ -141,7 +143,10 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
   // do we need to include the current encryption keys in the next stripe
   // information
   private boolean needKeyFlush;
+  private boolean enableDecimal64 = true;
   private final boolean useProlepticGregorian;
+
+  private boolean[] recordFirstAndLatest;
 
   public WriterImpl(FileSystem fs,
                     Path path,
@@ -192,6 +197,7 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
     this.compressionStrategy = opts.getCompressionStrategy();
     this.rowIndexStride = opts.getRowIndexStride();
     this.memoryManager = opts.getMemoryManager();
+    this.recordFirstAndLatest = opts.getRecordFirstAndLatest();
     buildIndex = rowIndexStride > 0;
     if (version == OrcFile.Version.FUTURE) {
       throw new IllegalArgumentException("Can not write in a unknown version.");
@@ -205,6 +211,9 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
       /* do not write bloom filters for ORC v11 */
       buildBloomFilter = false;
     }
+
+    this.dictionaryColumns = OrcUtils.includeColumns(opts.getDictionaryColumns(), schema);
+
     if (!buildBloomFilter) {
       this.bloomFilterColumns = new boolean[schema.getMaximumId() + 1];
     } else {
@@ -213,6 +222,7 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
     }
     this.bloomFilterFpp = opts.getBloomFilterFpp();
     physicalWriter.writeHeader();
+    appendExtraMetadata(opts);
 
     treeWriter = TreeWriter.Factory.create(schema, null, new StreamFactory());
     if (buildIndex && rowIndexStride < MIN_ROW_INDEX_STRIDE) {
@@ -225,6 +235,17 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
     memoryManager.addWriter(path, stripeSize, this);
     LOG.info("ORC writer created for path: {} with stripeSize: {} options: {}",
         path, stripeSize, unencryptedOptions);
+  }
+
+  private void appendExtraMetadata(OrcFile.WriterOptions opts) {
+    addDecimal64Metadata(opts);
+  }
+
+  private void addDecimal64Metadata(OrcFile.WriterOptions opts) {
+    boolean enableDecimal64 = opts.getUseDecimal64();
+    this.enableDecimal64 = enableDecimal64;
+    ByteBuffer byteBuffer = ByteBuffer.wrap(Boolean.toString(enableDecimal64).getBytes());
+    this.addUserMetadata(UserMetadataUtil.ENABLE_DECIMAL_64, byteBuffer);
   }
 
   //@VisibleForTesting
@@ -366,12 +387,25 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
       return unencryptedOptions.getCodec() != null;
     }
 
+    @Override
+    public boolean isDecimal64() {
+      return enableDecimal64;
+    }
+
     /**
      * Get the encoding strategy to use.
      * @return encoding strategy
      */
     public OrcFile.EncodingStrategy getEncodingStrategy() {
       return encodingStrategy;
+    }
+
+    /**
+     * Get the dictionary columns
+     * @return dictionary columns
+     */
+    public boolean[] getDictionaryColumns() {
+      return dictionaryColumns;
     }
 
     /**
@@ -430,6 +464,12 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
       physicalWriter.writeBloomFilter(name, bloom);
     }
 
+    public void writeBitmap(StreamName name,
+                                 OrcProto.BitmapIndex.Builder bitmap
+    ) throws IOException {
+      physicalWriter.writeBitmap(name, bitmap);
+    }
+
     @Override
     public WriterEncryptionVariant getEncryption(int columnId) {
       return columnId < columnEncryption.length ?
@@ -476,6 +516,11 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
     @Override
     public boolean getProlepticGregorian() {
       return useProlepticGregorian;
+    }
+
+    @Override
+    public boolean[] getRecordFirstAndLatest() {
+      return recordFirstAndLatest;
     }
   }
 
@@ -686,6 +731,7 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
         // Batch the writes up to the rowIndexStride so that we can get the
         // right size indexes.
         int posn = 0;
+        long max = -1;
         while (posn < batch.size) {
           int chunkSize = Math.min(batch.size - posn,
               rowIndexStride - rowsInIndex);

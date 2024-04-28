@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
-import com.google.common.collect.Lists;
 import com.alibaba.polardbx.optimizer.core.planner.OneStepTransformer;
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
@@ -57,20 +57,24 @@ public class JoinExchangeRule extends RelOptRule {
 
     public static final JoinExchangeRule BOTH_PROJECT =
         new JoinExchangeRule(operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
             RelFactories.LOGICAL_BUILDER, "JoinExchangeRule:BOTH_PROJECT");
 
     public static final JoinExchangeRule LEFT_PROJECT =
         new JoinExchangeRule(operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
             operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
             RelFactories.LOGICAL_BUILDER, "JoinExchangeRule:LEFT_PROJECT");
 
     public static final JoinExchangeRule RIGHT_PROJECT =
         new JoinExchangeRule(operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
             operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()),
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()))),
             RelFactories.LOGICAL_BUILDER, "JoinExchangeRule:RIGHT_PROJECT");
 
     public JoinExchangeRule(RelOptRuleOperand operand, RelBuilderFactory relBuilderFactory, String description) {

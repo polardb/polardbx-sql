@@ -187,10 +187,8 @@ public class LogicalCreateScheduleHandler extends HandlerCommon {
         }
 
         //权限检查
-        List<TablePartRecordInfoContext> allTables = tableGroupConfig.getAllTables();
-        if (CollectionUtils.isNotEmpty(allTables)) {
-            for (TablePartRecordInfoContext tablePartRecordInfoContext : allTables) {
-                final String tableName = tablePartRecordInfoContext.getTableName();
+        if (CollectionUtils.isNotEmpty(tableGroupConfig.getAllTables())) {
+            for (String tableName : tableGroupConfig.getAllTables()) {
                 PolarPrivilegeUtils.checkPrivilege(tableSchema, tableName, PrivilegePoint.ALTER, executionContext);
             }
         }

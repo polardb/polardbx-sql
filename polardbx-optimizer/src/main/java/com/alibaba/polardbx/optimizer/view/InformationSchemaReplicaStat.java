@@ -47,7 +47,7 @@ public class InformationSchemaReplicaStat extends VirtualView {
         columns.add(
             new RelDataTypeFieldImpl("TASK_ID", columnIndex++, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("TASK_TYPE", columnIndex++,
-            typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("CHANNEL", columnIndex++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(
             new RelDataTypeFieldImpl("SUB_CHANNEL", columnIndex++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));

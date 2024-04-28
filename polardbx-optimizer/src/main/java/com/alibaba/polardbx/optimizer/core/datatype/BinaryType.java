@@ -29,6 +29,18 @@ import java.nio.charset.StandardCharsets;
  */
 public class BinaryType extends BytesType {
 
+    private boolean isFixedLength = false;
+    private int length = 0;
+
+    public BinaryType(int length) {
+        this.isFixedLength = length > 0;
+        this.length = length;
+    }
+
+    public BinaryType() {
+
+    }
+
     private final Calculator calculator = new AbstractDecimalCalculator() {
 
         @Override
@@ -43,6 +55,14 @@ public class BinaryType extends BytesType {
 
     public Calculator getCalculator() {
         return calculator;
+    }
+
+    public boolean isFixedLength() {
+        return isFixedLength;
+    }
+
+    public int length() {
+        return length;
     }
 
     @Override

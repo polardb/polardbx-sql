@@ -64,7 +64,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TopologyHandler extends AbstractLifecycle {
 
     public final static Logger logger = LoggerFactory.getLogger(TopologyHandler.class);
-
     private final Map<String/* group key of upper case */, IGroupExecutor> executorMap =
         new ConcurrentHashMap<String, IGroupExecutor>();
 
@@ -117,7 +116,8 @@ public class TopologyHandler extends AbstractLifecycle {
             // refresh the topology for matrix
             refresh();
         } catch (Throwable ex) {
-            logger.error("matrix topology init error,file is: appname is: " + this.getAppName(), ex);
+            logger.error("matrix topology init error, appname is: "
+                    + this.getAppName(), ex);
             throw GeneralUtil.nestedException(ex);
         }
         MetaDbConfigManager.getInstance().register(MetaDbDataIdBuilder.getDbTopologyDataId(schemaName), null);

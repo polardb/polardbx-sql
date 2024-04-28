@@ -238,12 +238,12 @@ explain select a from sb_pruning_test1 where  a in ( (select t2.a from sb_prunin
 select a from sb_pruning_test1 where  a in ( (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1), (select t2.a from sb_pruning_test2 t2 order by t2.a limit 9,1) )  and a between 97 and 200 order by a;
 
 # scalarSubQuery wrapped with scalarSubQuery;
-explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
-select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 
 # scalarSubQuery wrapped with applySubQuery;
-explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
-select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 5 )  and a between 97 and 200 order by a;
+explain select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
+select a from sb_pruning_test1 where  a in ( select t2.a from sb_pruning_test2 t2  where  t2.a in (select t3.a from sb_pruning_test3 t3 where t3.a in (96,97,98,190) and t3.b<=t2.b ) order by t2.a limit 1,5 )  and a between 97 and 200 order by a;
 
 # (select t2.a from sb_pruning_test2 t2 order by t2.a limit 8,1) = 98
 # (select t3.b from sb_pruning_test3 t2 order by t3.b limit 8,1) = 908

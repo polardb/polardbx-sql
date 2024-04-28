@@ -58,8 +58,10 @@ public class TablePartitionRecord implements SystemTableRecord {
     public final static int PARTITION_TABLE_TYPE_GSI_SINGLE_TABLE = 4;
     public final static int PARTITION_TABLE_TYPE_GSI_BROADCAST_TABLE = 5;
     public final static int PARTITION_TABLE_TYPE_OSS_TABLE = 6;
+    public final static int PARTITION_TABLE_TYPE_COLUMNAR_TABLE = 7;
 
     public final static String PARTITION_ENGINE_INNODB = "InnoDB";
+    public final static String PARTITION_ENGINE_COLUMNAR = "Columnar";
 
     public Long id;
     public Long parentId;
@@ -406,5 +408,36 @@ public class TablePartitionRecord implements SystemTableRecord {
         rec.partFlags = this.partFlags;
         rec.phyTable = this.phyTable;
         return rec;
+    }
+
+    @Override
+    public String toString() {
+        return "TablePartitionRecord{" +
+            "id=" + id +
+            ", parentId=" + parentId +
+            ", createTime=" + createTime +
+            ", updateTime=" + updateTime +
+            ", tableSchema='" + tableSchema + '\'' +
+            ", tableName='" + tableName + '\'' +
+            ", spTempFlag=" + spTempFlag +
+            ", groupId=" + groupId +
+            ", metaVersion=" + metaVersion +
+            ", autoFlag=" + autoFlag +
+            ", tblType=" + tblType +
+            ", partName='" + partName + '\'' +
+            ", partTempName='" + partTempName + '\'' +
+            ", partLevel=" + partLevel +
+            ", nextLevel=" + nextLevel +
+            ", partStatus=" + partStatus +
+            ", partPosition=" + partPosition +
+            ", partMethod='" + partMethod + '\'' +
+            ", partExpr='" + partExpr + '\'' +
+            ", partDesc='" + partDesc + '\'' +
+            ", partComment='" + partComment + '\'' +
+            ", partEngine='" + partEngine + '\'' +
+            ", partExtras=" + partExtras +
+            ", partFlags=" + partFlags +
+            ", phyTable='" + phyTable + '\'' +
+            '}';
     }
 }

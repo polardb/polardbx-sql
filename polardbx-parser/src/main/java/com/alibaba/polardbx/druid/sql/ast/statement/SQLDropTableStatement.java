@@ -19,6 +19,7 @@ import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLCommentHint;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
+import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatementImpl;
 import com.alibaba.polardbx.druid.sql.visitor.SQLASTVisitor;
 
@@ -172,5 +173,35 @@ public class SQLDropTableStatement extends SQLStatementImpl implements SQLDropSt
             x.setParent(this);
         }
         this.where = x;
+    }
+
+    @Override
+    public SQLStatement clone() {
+        SQLDropTableStatement x = new SQLDropTableStatement(dbType);
+        x.purge = purge;
+        x.cascade = cascade;
+        x.restrict = restrict;
+        x.ifExists = ifExists;
+        x.temporary = temporary;
+        x.external = external;
+        x.isDropPartition = isDropPartition;
+        if (where != null) {
+            x.where = where.clone();
+        }
+
+        for (SQLExprTableSource tableSource : tableSources) {
+            SQLExprTableSource newTableSource = tableSource.clone();
+            x.tableSources.add(newTableSource);
+        }
+
+        if (hints != null) {
+            x.hints = new ArrayList<>();
+            for (SQLCommentHint commentHint : hints) {
+                SQLCommentHint newCommentHint = commentHint.clone();
+                x.hints.add(newCommentHint);
+            }
+        }
+
+        return x;
     }
 }

@@ -35,6 +35,7 @@ import java.sql.Connection;
 public class MoveDatabaseReleaseXLockTask extends BaseSyncTask {
 
     protected String targetSchemaName;
+
     public MoveDatabaseReleaseXLockTask(String schema, String targetSchemaName) {
         super(schema);
         this.targetSchemaName = targetSchemaName;
@@ -51,7 +52,8 @@ public class MoveDatabaseReleaseXLockTask extends BaseSyncTask {
             }
         } catch (Exception e) {
             LOGGER.error(String.format(
-                "error occurs while MoveDatabaseReleaseXLock, schemaName:%s, schemaXLockToRelease:%s", schemaName, targetSchemaName));
+                "error occurs while MoveDatabaseReleaseXLock, schemaName:%s, schemaXLockToRelease:%s", schemaName,
+                targetSchemaName));
             throw GeneralUtil.nestedException(e);
         }
     }

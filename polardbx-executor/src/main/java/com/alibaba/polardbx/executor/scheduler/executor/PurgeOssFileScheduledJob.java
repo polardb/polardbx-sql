@@ -29,9 +29,6 @@ import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.engine.FileSystemGroup;
 import com.alibaba.polardbx.gms.engine.FileSystemManager;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
-import com.alibaba.polardbx.optimizer.config.server.DefaultServerConfigManager;
-import com.alibaba.polardbx.optimizer.config.server.IServerConfigManager;
-import com.alibaba.polardbx.optimizer.utils.OptimizerHelper;
 import org.apache.commons.lang3.StringUtils;
 
 import java.time.LocalDateTime;

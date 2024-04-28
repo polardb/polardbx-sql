@@ -117,5 +117,4 @@ public abstract class InterruptDDLByLockTest extends InterruptDDLTest {
                 || jobInfo.parentJob.state.equals(DdlState.ROLLBACK_COMPLETED.name());
         }
     }
-
 }

@@ -96,7 +96,6 @@ public class MppSemiHashJoinConvertRule extends RelOptRule {
             // Hash Shuffle
             RelDataType keyDataType = CalciteUtils.getJoinKeyDataType(
                 semiHashJoin.getCluster().getTypeFactory(), semiHashJoin, keyPair.left, keyPair.right);
-
             RelNode hashLeft = RuleUtils.ensureKeyDataTypeDistribution(left, keyDataType, keyPair.left);
             RelNode hashRight = RuleUtils.ensureKeyDataTypeDistribution(right, keyDataType, keyPair.right);
             implementationList.add(Pair.of(hashLeft.getTraitSet().getDistribution(), Pair.of(hashLeft, hashRight)));
@@ -109,7 +108,6 @@ public class MppSemiHashJoinConvertRule extends RelOptRule {
                 convert(right, right.getTraitSet().replace(RelDistributions.BROADCAST_DISTRIBUTED));
             implementationList.add(Pair.of(RelDistributions.ANY, Pair.of(left, broadcastRight)));
         }
-
         for (Pair<RelDistribution, Pair<RelNode, RelNode>> implementation : implementationList) {
             SemiHashJoin newSemiHashJoin = semiHashJoin.copy(
                 semiHashJoin.getTraitSet().replace(MppConvention.INSTANCE).replace(implementation.left),

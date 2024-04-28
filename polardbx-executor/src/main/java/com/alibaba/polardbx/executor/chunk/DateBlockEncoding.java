@@ -49,19 +49,19 @@ public class DateBlockEncoding implements BlockEncoding {
     @Override
     public void writeBlock(SliceOutput sliceOutput, Block block) {
         // write zone id
-        TimeZone zone = ((DateBlock) block).getTimezone();
+        TimeZone zone = block.cast(DateBlock.class).getTimezone();
         byte[] zoneIdBytes = zone.getID().getBytes();
         sliceOutput.appendInt(zoneIdBytes.length);
         sliceOutput.appendBytes(zoneIdBytes);
 
-        DateBlock dateBlock = (DateBlock) block;
+        DateBlock dateBlock = block.cast(DateBlock.class);
         int positionCount = block.getPositionCount();
         sliceOutput.appendInt(positionCount);
 
         encodeNullsAsBits(sliceOutput, block);
 
         for (int position = 0; position < positionCount; position++) {
-            sliceOutput.writeLong(dateBlock.getPackedLong(position));
+            dateBlock.writeLong(sliceOutput, position);
         }
     }
 

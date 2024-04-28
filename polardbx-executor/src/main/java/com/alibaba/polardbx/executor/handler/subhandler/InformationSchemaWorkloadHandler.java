@@ -24,7 +24,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaWorkload;
@@ -32,7 +32,6 @@ import com.alibaba.polardbx.optimizer.view.VirtualView;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * @author dylan
@@ -74,7 +73,8 @@ public class InformationSchemaWorkloadHandler extends BaseVirtualViewSubClassHan
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
 
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(showProcesslistSyncAction);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(showProcesslistSyncAction,
+            SyncScope.CURRENT_ONLY);
 
         for (List<Map<String, Object>> nodeRows : results) {
             if (nodeRows == null) {

@@ -147,4 +147,18 @@
             ) charset=utf8
         ]]></Create>
     </SystemTable>
+    <SystemTable name="locking_functions">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `locking_functions` (
+                `lock_name` VARCHAR(64),
+                `session_id` VARCHAR(255) ,
+                `need_list` VARCHAR(512) NOT NULL DEFAULT '',
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`lock_name`),
+                KEY session_id_idx (`session_id`),
+                KEY gmt_modified_idx (`gmt_modified`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        ]]></Create>
+    </SystemTable>
 </SystemTables>

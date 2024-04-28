@@ -94,6 +94,10 @@ public abstract class Converters {
 
     public static BlockConverter createBlockConverter(DataType sourceType, DataType targetType,
                                                       ExecutionContext context) {
+        if (context.isEnableOrcRawTypeBlock()) {
+            // Raw type do not need to convert.
+            return BlockConverter.IDENTITY;
+        }
         if (DataTypeUtil.equalsSemantically(sourceType, targetType)) {
             if (sourceType instanceof SliceType
                 && targetType instanceof SliceType
@@ -144,7 +148,7 @@ public abstract class Converters {
         @Override
         public Block apply(Block block) {
             if (block instanceof SliceBlock) {
-                ((SliceBlock) block).resetCollation(collationName);
+                block.cast(SliceBlock.class).resetCollation(collationName);
             }
             return block;
         }

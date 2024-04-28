@@ -89,7 +89,7 @@
   plan: |
 
 - sql: |
-    /*+TDDL:ENABLE_RUNTIME_FILTER=true */
+    /*+TDDL:ENABLE_RUNTIME_FILTER=true ENABLE_BRANCH_AND_BOUND_OPTIMIZATION=false*/
     select
       supp_nation,
       cust_nation,

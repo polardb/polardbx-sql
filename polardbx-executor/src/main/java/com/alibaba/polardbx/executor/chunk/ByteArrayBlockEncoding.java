@@ -47,7 +47,7 @@ public class ByteArrayBlockEncoding
     @Override
     public void writeBlock(SliceOutput sliceOutput, Block block) {
 
-        ByteArrayBlock byteArrayBlock = (ByteArrayBlock) block;
+        ByteArrayBlock byteArrayBlock = block.cast(ByteArrayBlock.class);
         int positionCount = block.getPositionCount();
         sliceOutput.appendInt(positionCount);
 

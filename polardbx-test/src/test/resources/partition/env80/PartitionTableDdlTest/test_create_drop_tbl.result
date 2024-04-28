@@ -21,10 +21,10 @@ a
 101
 explain select * from tbl where a=99 order by a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p1]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p1]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="99")
 explain select * from tbl where a=200 order by a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p4]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p4]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="200")
 explain select * from tbl where a<200 order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")
@@ -52,7 +52,7 @@ a
 2014-10-12 12:12:12.0
 explain select * from tbl where a='2012-10-12 12:12:12' order by a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p3]", sql="SELECT `a` FROM `tbl` AS `tbl` WHERE (`a` = ?) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p3]", sql="SELECT `tbl`.`a` FROM ? AS `tbl` WHERE (`tbl`.`a` = ?) ORDER BY `a`", params="2012-10-12 12:12:12")
 explain select * from tbl where a>'2010-10-12 12:12:12' order by a;
 Logical ExecutionPlan
 MergeSort(sort="a ASC")

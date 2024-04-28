@@ -16,21 +16,21 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.StateMachine;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
+import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.util.concurrent.Futures.immediateFuture;
-import static com.alibaba.polardbx.common.properties.MetricLevel.isSQLMetricEnabled;
 import static java.util.Objects.requireNonNull;
 
 public class PartitionedOutputBuffer

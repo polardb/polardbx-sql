@@ -21,13 +21,14 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
+import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.PlannerContext;
+import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.planner.SqlConverter;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupSplitPartitionPreparedData;
-import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
@@ -74,7 +75,7 @@ public class LogicalAlterTableGroupSplitPartition extends LogicalAlterTableSplit
             throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_IS_EMPTY,
                 "can't modify the empty tablegroup:" + tableGroupName);
         }
-        String firstTableInTg = tableGroupConfig.getTables().get(0).getTableName();
+        String firstTableInTg = tableGroupConfig.getTables().get(0);
         assert sqlAlterTableGroup.getAlters().get(0) instanceof SqlAlterTableGroupSplitPartition;
         SqlAlterTableGroupSplitPartition sqlAlterTableGroupSplitPartition =
             (SqlAlterTableGroupSplitPartition) sqlAlterTableGroup.getAlters().get(0);
@@ -177,5 +178,13 @@ public class LogicalAlterTableGroupSplitPartition extends LogicalAlterTableSplit
         AlterTableGroupSplitPartition alterTableGroupAddPartition = (AlterTableGroupSplitPartition) relDdl;
         String tableGroupName = alterTableGroupAddPartition.getTableGroupName();
         return !CheckOSSArchiveUtil.checkTableGroupWithoutOSS(schemaName, tableGroupName);
+    }
+
+    @Override
+    public boolean checkIfFileStorage(ExecutionContext executionContext) {
+        final AlterTableGroupSplitPartition alterTableGroupSplitPartition = (AlterTableGroupSplitPartition) relDdl;
+        final String tableGroupName = alterTableGroupSplitPartition.getTableGroupName();
+
+        return TableGroupNameUtil.isFileStorageTg(tableGroupName);
     }
 }

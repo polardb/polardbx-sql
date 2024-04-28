@@ -30,7 +30,6 @@ import com.alibaba.polardbx.optimizer.core.function.SqlDateManipulationFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlDayOfYearFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlFunctionWithOneStringArg;
 import com.alibaba.polardbx.optimizer.core.function.SqlGroupConcatFunction;
-import com.alibaba.polardbx.optimizer.core.function.SqlHyperLogLogFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlIfFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlIfNullFunction;
 import com.alibaba.polardbx.optimizer.core.function.SqlLocateFunction;
@@ -66,8 +65,11 @@ import org.apache.calcite.sql.SqlOperatorBinding;
 import org.apache.calcite.sql.SqlPrefixOperator;
 import org.apache.calcite.sql.SqlSyntax;
 import org.apache.calcite.sql.SqlWriter;
+import org.apache.calcite.sql.fun.SqlFinalHyperloglogFunction;
+import org.apache.calcite.sql.fun.SqlHyperloglogFunction;
 import org.apache.calcite.sql.fun.SqlMonotonicBinaryOperator;
 import org.apache.calcite.sql.fun.SqlNoParameterTimeFunction;
+import org.apache.calcite.sql.fun.SqlPartialHyperloglogFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.MySQLStandardTypeInference;
@@ -166,6 +168,8 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
             ReturnTypes.VARCHAR_2000,
             InferTypes.VARCHAR_2000,
             OperandTypes.COMPARABLE_UNORDERED_COMPARABLE_UNORDERED);
+    public static final SqlFunction ALL_MY_LOCK = new FunctionWithoutArg("ALL_MY_LOCK",
+        ReturnTypes.VARCHAR_2000);
 
     // Todo: BENCHMARK
 
@@ -557,6 +561,12 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     public static final SqlFunction IS_USED_LOCK = new SqlFunction("IS_USED_LOCK",
         SqlKind.OTHER_FUNCTION,
         ReturnTypes.VARCHAR_2000,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.STRING,
+        SqlFunctionCategory.SYSTEM);
+    public static final SqlFunction IS_MY_LOCK = new SqlFunction("IS_MY_LOCK",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.INTEGER,
         InferTypes.FIRST_KNOWN,
         OperandTypes.STRING,
         SqlFunctionCategory.SYSTEM);
@@ -977,7 +987,10 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
     /**
      * Other functions
      */
-    public static SqlFunction HYPERLOGLOG = new SqlHyperLogLogFunction();
+    public static SqlFunction HYPERLOGLOG = new SqlHyperloglogFunction();
+
+    public static SqlFunction PARTIAL_HYPERLOGLOG = new SqlPartialHyperloglogFunction();
+    public static SqlFunction FINAL_HYPERLOGLOG = new SqlFinalHyperloglogFunction();
 
     /**
      * 聚合函数
@@ -2396,6 +2409,41 @@ public class TddlOperatorTable extends SqlStdOperatorTable {
         ReturnTypes.VARCHAR_2000,
         InferTypes.FIRST_KNOWN,
         OperandTypes.NILADIC,
+        SqlFunctionCategory.SYSTEM);
+
+    public static SqlFunction LBAC_CHECK = new SqlFunction("LBAC_CHECK",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
+        SqlFunctionCategory.SYSTEM);
+
+    public static SqlFunction LBAC_READ = new SqlFunction("LBAC_READ",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
+        SqlFunctionCategory.SYSTEM);
+
+    public static SqlFunction LBAC_WRITE = new SqlFunction("LBAC_WRITE",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.BIGINT,
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
+        SqlFunctionCategory.SYSTEM);
+
+    public static SqlFunction LBAC_WRITE_STRICT_CHECK = new SqlFunction("LBAC_WRITE_STRICT_CHECK",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.explicit(SqlTypeName.CHAR),
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
+        SqlFunctionCategory.SYSTEM);
+
+    public static SqlFunction LBAC_USER_WRITE_LABEL = new SqlFunction("LBAC_USER_WRITE_LABEL",
+        SqlKind.OTHER_FUNCTION,
+        ReturnTypes.explicit(SqlTypeName.CHAR),
+        InferTypes.FIRST_KNOWN,
+        OperandTypes.VARIADIC,
         SqlFunctionCategory.SYSTEM);
 
     public static SqlFunction MATCH_AGAINST = new MySQLMatchAgainst();

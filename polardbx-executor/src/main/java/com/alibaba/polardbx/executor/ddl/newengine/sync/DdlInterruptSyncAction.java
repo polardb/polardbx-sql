@@ -16,12 +16,16 @@
 
 package com.alibaba.polardbx.executor.ddl.newengine.sync;
 
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutor;
 import com.alibaba.polardbx.executor.ddl.newengine.DdlEngineDagExecutorMap;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
 import org.apache.commons.collections.CollectionUtils;
 
 public class DdlInterruptSyncAction implements IGmsSyncAction {
+
+    private static final Logger logger = LoggerFactory.getLogger(DdlInterruptSyncAction.class);
 
     private DdlRequest ddlRequest;
 
@@ -42,9 +46,14 @@ public class DdlInterruptSyncAction implements IGmsSyncAction {
         for (Long jobId : ddlRequest.getJobIds()) {
             DdlEngineDagExecutor ddlEngineDagExecutor = DdlEngineDagExecutorMap.get(schemaName, jobId);
             if (ddlEngineDagExecutor == null) {
+                logger.warn(
+                    String.format("The ddl job %s on schema %s does not exits", jobId, schemaName));
                 continue;
             }
             ddlEngineDagExecutor.interrupt();
+            logger.warn(
+                String.format("The ddl job %s on schema %s has been interrupted by DdlInterruptSyncAction", jobId,
+                    schemaName));
         }
 
         return null;

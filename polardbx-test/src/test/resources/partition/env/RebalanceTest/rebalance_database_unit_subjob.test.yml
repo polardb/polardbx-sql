@@ -124,22 +124,22 @@ singleBalanceCaseBeans:
       expectedManipulateResult: [ "LockResource", "ActionInitPartitionDb", "WriteDataDistLog" ]
       expectedManipulateColumns: [ 2 ]
     dataDistributionCheckActions:
-    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated'"
       expectedConditionResult: [ "0" ]
       objectName: "t1"
       objectType: "table"
       expectedMu: 0.2
-    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated'"
       expectedConditionResult: [ "0" ]
       objectName: "t2"
       objectType: "table"
       expectedMu: 0.2
-    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated'"
       expectedConditionResult: [ "0" ]
       objectName: "t3"
       objectType: "table"
       expectedMu: 0.2
-    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success'"
+    - conditionStmt: "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated'"
       expectedConditionResult: [ "0" ]
       objectName: "t4"
       objectType: "table"

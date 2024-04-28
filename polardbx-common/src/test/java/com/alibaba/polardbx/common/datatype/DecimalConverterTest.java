@@ -48,7 +48,8 @@ public class DecimalConverterTest {
         doTestString("123E5", "12300000", E_DEC_OK);
         doTestString("123E-2", "1.23", E_DEC_OK);
 
-        doTestString("99999999999999999999999999999999999999999999999999999999999999999", "99999999999999999999999999999999999999999999999999999999999999999", E_DEC_OK);
+        doTestString("99999999999999999999999999999999999999999999999999999999999999999",
+            "99999999999999999999999999999999999999999999999999999999999999999", E_DEC_OK);
     }
 
     private void doTestBinary(String from, int precision, int scale, String to, int error) {
@@ -209,5 +210,27 @@ public class DecimalConverterTest {
         doTestUnsignedLongToDecimal(12345L, "12345", E_DEC_OK);
         doTestUnsignedLongToDecimal(0L, "0", E_DEC_OK);
         doTestUnsignedLongToDecimal(Long.parseUnsignedLong("18446744073709551615"), "18446744073709551615", E_DEC_OK);
+    }
+
+    @Test
+    public void testGetUnscaledDecimal() {
+        doTestGetUnscaledDecimal(new byte[] {-125, -50, 50, -111, 69}, 10, 2, 6384500969L);
+    }
+
+    private void doTestGetUnscaledDecimal(byte[] buffer, int precision, int scale,
+                                          long expectResult) {
+        long unscaledDecimal = DecimalConverter.getUnscaledDecimal(buffer, precision, scale);
+        Assert.assertEquals(expectResult, unscaledDecimal);
+    }
+
+    @Test
+    public void testGetDecimal() {
+        doTestGetDecimal(new byte[] {-125, -50, 50, -111, 69}, 10, 2, Decimal.fromString("63845009.69"));
+    }
+
+    private void doTestGetDecimal(byte[] buffer, int precision, int scale,
+                                  Decimal expectResult) {
+        Decimal decimal = DecimalConverter.getDecimal(buffer, precision, scale);
+        Assert.assertEquals(expectResult, decimal);
     }
 }

@@ -67,4 +67,5 @@ public abstract class IndexTestCommon extends PlanTestCommon {
         plan = removeSubqueryHashCode(plan, relNode, null);
         return plan;
     }
+
 }

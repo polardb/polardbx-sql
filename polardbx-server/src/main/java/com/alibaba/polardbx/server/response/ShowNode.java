@@ -19,6 +19,7 @@ package com.alibaba.polardbx.server.response;
 import com.alibaba.polardbx.Fields;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.config.SchemaConfig;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
 import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
@@ -96,7 +97,7 @@ public final class ShowNode {
         }
 
         // write rows
-        String charset = c.getCharset();
+        String charset = c.getResultSetCharset();
 
         String db = c.getSchema();
         if (db == null) {
@@ -124,7 +125,8 @@ public final class ShowNode {
         int i = 0;
 
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new ShowNodeSyncAction(c.getSchema()), c.getSchema());
+            SyncManagerHelper.sync(
+                new ShowNodeSyncAction(c.getSchema()), c.getSchema(), SyncScope.CURRENT_ONLY);
 
         Map<String, Long> masterReadCounts = new HashMap();
         Map<String, Long> slaveReadCounts = new HashMap();

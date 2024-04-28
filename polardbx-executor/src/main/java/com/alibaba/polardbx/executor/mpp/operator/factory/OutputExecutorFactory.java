@@ -53,12 +53,14 @@ public class OutputExecutorFactory implements ConsumeExecutorFactory {
             .equals(PartitionShuffleHandle.PartitionShuffleMode.BROADCAST)
             || partitioningScheme.getPartitionCount() == 1) {
             return new TaskOutputCollector(inputType, outputType, outputBuffer,
-                this.pagesSerdeFactory.createPagesSerde(outputType), context);
+                this.pagesSerdeFactory.createPagesSerde(outputType, context), context);
         } else {
             int chunkLimit = context.getParamManager().getInt(ConnectionParams.CHUNK_SIZE);
-            return new PartitionedOutputCollector(partitioningScheme.getPartitionCount(), inputType,
-                outputType, partitioningScheme.getPartChannels(), outputBuffer, this.pagesSerdeFactory, chunkLimit,
-                context);
+            return new PartitionedOutputCollector(partitioningScheme.getPartitionCount(),
+                partitioningScheme.getPrunePartitions(), partitioningScheme.getFullPartCount(),
+                inputType, partitioningScheme.isRemotePairWise(), outputType, partitioningScheme.getPartChannels(),
+                outputBuffer, this.pagesSerdeFactory,
+                chunkLimit, context);
         }
     }
 }

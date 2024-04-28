@@ -145,7 +145,7 @@ export class WorkerThreadList extends React.Component {
         return (
             <div key={threadInfo.id}>
                 <span
-                    className="font-white">{threadInfo.name} {threadInfo.state} #{threadInfo.id} {threadInfo.lockOwnerId}</span>
+                    className="font-black">{threadInfo.name} {threadInfo.state} #{threadInfo.id} {threadInfo.lockOwnerId}</span>
                 <a className="copy-button" data-clipboard-target={"#stack-trace-" + threadInfo.id} data-toggle="tooltip"
                    data-placement="right"
                    title="Copy to clipboard">

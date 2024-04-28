@@ -28,8 +28,6 @@ import org.apache.calcite.sql.util.SqlVisitor;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.apache.calcite.sql.SqlKind.PLUS;
-
 /**
  * An operator describing a query. (Not a query itself.)
  *
@@ -304,6 +302,10 @@ public class SqlSelectOperator extends SqlOperator {
         SqlBasicCall oldFrom = (SqlBasicCall) fromNode;
         SqlNode firstOperand = oldFrom.getOperands()[0];
         if (firstOperand.getKind() != SqlKind.VALUES) {
+            return true;
+        }
+
+        if (fromNode instanceof SqlValuesTableSource || firstOperand instanceof SqlValuesTableSource) {
             return true;
         }
 

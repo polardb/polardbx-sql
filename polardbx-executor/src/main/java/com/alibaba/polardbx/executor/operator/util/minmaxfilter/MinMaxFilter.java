@@ -26,10 +26,8 @@ import io.airlift.slice.Slice;
 import java.sql.Date;
 import java.sql.Timestamp;
 
-
 /**
  * @author chenzilin
- * @date 2021/12/8 14:33
  */
 public class MinMaxFilter {
     public static MinMaxFilter create(DataType type) {
@@ -59,42 +57,42 @@ public class MinMaxFilter {
 
     public static MinMaxFilter from(MinMaxFilterInfo minMaxFilterInfo) {
         switch (minMaxFilterInfo.getType()) {
-            case NULL:
-                return new BlackHoleMinMaxFilter();
-            case INTEGER:
-                return new IntegerMinMaxFilter(
-                        minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().intValue(),
-                        minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().intValue());
-            case LONG:
-                return new LongMinMaxFilter(
-                        minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
-                        minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
-            case STRING:
-                return new StringMinMaxFilter(
-                        minMaxFilterInfo.getMinString() == null ? null : minMaxFilterInfo.getMinString(),
-                        minMaxFilterInfo.getMaxString() == null ? null : minMaxFilterInfo.getMaxString());
-            case TIMESTAMP:
-                return new TimestampMinMaxFilter(
-                        minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
-                        minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
-            case DATE:
-                return new DateMinMaxFilter(
-                        minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
-                        minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
-            case DECIMAL:
-                return new DecimalMinMaxFilter(
-                        minMaxFilterInfo.getMinString() == null ? null : Decimal.fromString(minMaxFilterInfo.getMinString()),
-                        minMaxFilterInfo.getMaxString() == null ? null : Decimal.fromString(minMaxFilterInfo.getMaxString()));
-            case DOUBLE:
-                return new DoubleMinMaxFilter(
-                        minMaxFilterInfo.getMinDouble() == null ? null : minMaxFilterInfo.getMinDouble(),
-                        minMaxFilterInfo.getMaxDouble() == null ? null : minMaxFilterInfo.getMaxDouble());
-            case FLOAT:
-                return new FloatMinMaxFilter(
-                        minMaxFilterInfo.getMinFloat() == null ? null : minMaxFilterInfo.getMinFloat(),
-                        minMaxFilterInfo.getMaxFloat() == null ? null : minMaxFilterInfo.getMaxFloat());
-            default:
-                throw new UnsupportedOperationException();
+        case NULL:
+            return new BlackHoleMinMaxFilter();
+        case INTEGER:
+            return new IntegerMinMaxFilter(
+                minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().intValue(),
+                minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().intValue());
+        case LONG:
+            return new LongMinMaxFilter(
+                minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
+                minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
+        case STRING:
+            return new StringMinMaxFilter(
+                minMaxFilterInfo.getMinString() == null ? null : minMaxFilterInfo.getMinString(),
+                minMaxFilterInfo.getMaxString() == null ? null : minMaxFilterInfo.getMaxString());
+        case TIMESTAMP:
+            return new TimestampMinMaxFilter(
+                minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
+                minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
+        case DATE:
+            return new DateMinMaxFilter(
+                minMaxFilterInfo.getMinNumber() == null ? null : minMaxFilterInfo.getMinNumber().longValue(),
+                minMaxFilterInfo.getMaxNumber() == null ? null : minMaxFilterInfo.getMaxNumber().longValue());
+        case DECIMAL:
+            return new DecimalMinMaxFilter(
+                minMaxFilterInfo.getMinString() == null ? null : Decimal.fromString(minMaxFilterInfo.getMinString()),
+                minMaxFilterInfo.getMaxString() == null ? null : Decimal.fromString(minMaxFilterInfo.getMaxString()));
+        case DOUBLE:
+            return new DoubleMinMaxFilter(
+                minMaxFilterInfo.getMinDouble() == null ? null : minMaxFilterInfo.getMinDouble(),
+                minMaxFilterInfo.getMaxDouble() == null ? null : minMaxFilterInfo.getMaxDouble());
+        case FLOAT:
+            return new FloatMinMaxFilter(
+                minMaxFilterInfo.getMinFloat() == null ? null : minMaxFilterInfo.getMinFloat(),
+                minMaxFilterInfo.getMaxFloat() == null ? null : minMaxFilterInfo.getMaxFloat());
+        default:
+            throw new UnsupportedOperationException();
         }
     }
 

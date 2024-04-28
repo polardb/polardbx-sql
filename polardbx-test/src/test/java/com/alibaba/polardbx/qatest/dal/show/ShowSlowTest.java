@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.dal.show;
 
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
@@ -158,6 +159,7 @@ public class ShowSlowTest extends ReadBaseTestCase {
      * 普通用户无法看到 root 账号的慢SQL
      */
     @Test
+    @CdcIgnore(ignoreReason = "暂时未查到原因，可能是并行跑各种实验室导致。本地无法复现，且对replica实验室无影响")
     public void testNormalUserShowSlow() {
         final String polardbxUser = ConnectionManager.getInstance().getPolardbxUser();
         Connection slowConn = getPolardbxConnection();

@@ -34,6 +34,7 @@ public class SQLIndexOptions extends SQLObjectImpl {
     private SQLExpr comment;
     private String algorithm;
     private String lock;
+    private String dictionaryColumns;
     private List<SQLAssignItem> otherOptions = new ArrayList<SQLAssignItem>();
 
     public String getIndexType() {
@@ -135,6 +136,14 @@ public class SQLIndexOptions extends SQLObjectImpl {
         }
     }
 
+    public String getDictionaryColumns() {
+        return dictionaryColumns;
+    }
+
+    public void setDictionaryColumns(String dictionaryColumns) {
+        this.dictionaryColumns = dictionaryColumns;
+    }
+
     public List<SQLAssignItem> getOtherOptions() {
         return otherOptions;
     }
@@ -164,6 +173,7 @@ public class SQLIndexOptions extends SQLObjectImpl {
         }
         options.algorithm = algorithm;
         options.lock = lock;
+        options.dictionaryColumns = dictionaryColumns;
         for (SQLAssignItem item : otherOptions) {
             SQLAssignItem item1 = item.clone();
             item1.setParent(parent);

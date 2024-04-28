@@ -61,6 +61,10 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(rs3.next());
             Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
             Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
+            Assert.assertTrue(rs3.next());
             Assert.assertTrue(rs3.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {
             throw new RuntimeException("", e);
@@ -102,6 +106,10 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
             Assert.assertTrue(rs.next());
             Assert.assertTrue(rs.getString(1).contains("ALTER_TABLE"));
             Assert.assertTrue(rs.next());
+            Assert.assertTrue(rs.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs.next());
+            Assert.assertTrue(rs.getString(1).contains("DROP_TABLE"));
+            Assert.assertTrue(rs.next());
             Assert.assertTrue(rs.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {
             throw new RuntimeException("", e);
@@ -112,10 +120,12 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
         sql = String.format("explain alter table %s modify column a varchar(12), ALGORITHM=OMC", tableName);
         ResultSet rs2 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
-            for (int i = 0; i < 5; ++i) {
-                Assert.assertTrue(rs2.next());
-                Assert.assertTrue(rs2.getString(1).contains("ALTER_TABLE"));
-            }
+            Assert.assertTrue(rs2.next());
+            Assert.assertTrue(rs2.getString(1).contains("ALTER_TABLE"));
+            Assert.assertTrue(rs2.next());
+            Assert.assertTrue(rs2.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs2.next());
+            Assert.assertTrue(rs2.getString(1).contains("DROP_TABLE"));
             Assert.assertTrue(rs2.next());
             Assert.assertTrue(rs2.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {
@@ -178,10 +188,16 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
         sql = String.format("explain alter table %s modify column b varchar(12)", tableName);
         ResultSet rs3 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
-            for (int i = 0; i < 10; ++i) {
-                Assert.assertTrue(rs3.next());
-                Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
-            }
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
             Assert.assertTrue(rs3.next());
             Assert.assertTrue(rs3.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {
@@ -343,10 +359,16 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
         sql = String.format("explain alter table %s modify column b varchar(12)", tableName);
         ResultSet rs3 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
-            for (int i = 0; i < 10; ++i) {
-                Assert.assertTrue(rs3.next());
-                Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
-            }
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
             Assert.assertTrue(rs3.next());
             Assert.assertTrue(rs3.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {
@@ -508,10 +530,16 @@ public class ExplainValidateTest extends DDLBaseNewDBTestCase {
         sql = String.format("explain alter table %s change column b b varchar(12)", tableName);
         ResultSet rs3 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
         try {
-            for (int i = 0; i < 10; ++i) {
-                Assert.assertTrue(rs3.next());
-                Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
-            }
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("ALTER_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("CREATE_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
+            Assert.assertTrue(rs3.next());
+            Assert.assertTrue(rs3.getString(1).contains("DROP_TABLE"));
             Assert.assertTrue(rs3.next());
             Assert.assertTrue(rs3.getString(1).contains("EXCLUDE_RESOURCE"));
         } catch (SQLException e) {

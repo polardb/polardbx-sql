@@ -30,10 +30,13 @@ import java.util.List;
 
 public class SqlShowTrans extends SqlShow {
 
-    private static final SqlSpecialOperator OPERATOR = new SqlShowTransOperator();
+    private SqlSpecialOperator operator;
 
-    public SqlShowTrans(SqlParserPos pos) {
+    private boolean columnar;
+
+    public SqlShowTrans(SqlParserPos pos, boolean columnar) {
         super(pos, ImmutableList.of());
+        this.columnar = columnar;
     }
 
     @Override
@@ -43,7 +46,11 @@ public class SqlShowTrans extends SqlShow {
 
     @Override
     public SqlOperator getOperator() {
-        return OPERATOR;
+        if (null == operator) {
+            operator = new SqlShowTransOperator(columnar);
+        }
+
+        return operator;
     }
 
     @Override
@@ -51,10 +58,17 @@ public class SqlShowTrans extends SqlShow {
         return SqlKind.SHOW_TRANS;
     }
 
+    public boolean isColumnar() {
+        return columnar;
+    }
+
     public static class SqlShowTransOperator extends SqlSpecialOperator {
 
-        public SqlShowTransOperator(){
+        private boolean columnar;
+
+        public SqlShowTransOperator(boolean columnar) {
             super("SHOW_TRANS", SqlKind.SHOW_TRANS);
+            this.columnar = columnar;
         }
 
         @Override
@@ -64,8 +78,11 @@ public class SqlShowTrans extends SqlShow {
             columns.add(new RelDataTypeFieldImpl("TRANS_ID", 0, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("TYPE", 1, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
             columns.add(new RelDataTypeFieldImpl("DURATION_MS", 2, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-            columns.add(new RelDataTypeFieldImpl("STATE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-            columns.add(new RelDataTypeFieldImpl("PROCESS_ID", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            columns.add(new RelDataTypeFieldImpl("STATE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+            columns.add(new RelDataTypeFieldImpl("PROCESS_ID", 4, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            if (columnar) {
+                columns.add(new RelDataTypeFieldImpl("TSO", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+            }
             return typeFactory.createStructType(columns);
         }
     }

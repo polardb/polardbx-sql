@@ -29,8 +29,8 @@
  */
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.executor.mpp.split.SplitInfo;
+import com.google.common.collect.ImmutableList;
 
 import javax.annotation.concurrent.Immutable;
 import java.util.List;
@@ -40,20 +40,20 @@ import static java.util.Objects.requireNonNull;
 @Immutable
 public class SubPlan {
     private final PlanFragment fragment;
-    private final SplitInfo logicalViewInfo;
+    private final List<SplitInfo> logicalViewInfos;
     private final List<SplitInfo> expandViewInfos;
     private final List<SubPlan> children;
 
     public SubPlan(
         PlanFragment fragment,
-        SplitInfo logicalViewInfo,
+        List<SplitInfo> logicalViewInfos,
         List<SplitInfo> expandViewInfos,
         List<SubPlan> children) {
         requireNonNull(fragment, "fragment is null");
         requireNonNull(children, "children is null");
 
         this.fragment = fragment;
-        this.logicalViewInfo = logicalViewInfo;
+        this.logicalViewInfos = logicalViewInfos;
         this.expandViewInfos = expandViewInfos;
         this.children = ImmutableList.copyOf(children);
     }
@@ -66,8 +66,8 @@ public class SubPlan {
         return children;
     }
 
-    public SplitInfo getLogicalViewInfo() {
-        return logicalViewInfo;
+    public List<SplitInfo> getLogicalViewInfos() {
+        return logicalViewInfos;
     }
 
     public List<SplitInfo> getExpandSplitInfos() {
@@ -81,8 +81,8 @@ public class SubPlan {
         ImmutableList.Builder<PlanFragment> fragments = ImmutableList.builder();
 
         fragments.add(getFragment());
-        if (logicalViewInfo != null) {
-            getFragment().setAllSplitNums(logicalViewInfo.getSplitCount());
+        if (logicalViewInfos != null) {
+            getFragment().setAllSplitNums(logicalViewInfos.stream().mapToInt(SplitInfo::getSplitCount).sum());
         }
         for (SubPlan child : getChildren()) {
             fragments.addAll(child.getAllFragments());

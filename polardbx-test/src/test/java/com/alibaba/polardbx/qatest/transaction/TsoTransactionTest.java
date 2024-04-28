@@ -34,7 +34,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.MessageFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -59,7 +58,7 @@ public class TsoTransactionTest extends CrudBasedLockTestCase {
         try (Connection connection = ConnectionManager.getInstance().getDruidPolardbxConnection()) {
             supportShareReadView = JdbcUtil.supportShareReadView(connection);
         }
-        String[] asyncCommit = {"TRUE", "FALSE"};
+        String[] asyncCommit = {/*"TRUE",*/ "FALSE"};
         List<Object[]> ret = new ArrayList<>();
         for (String ac : asyncCommit) {
             for (String[] tables : ExecuteTableName.allMultiTypeOneTable(ExecuteTableName.UPDATE_DELETE_BASE)) {

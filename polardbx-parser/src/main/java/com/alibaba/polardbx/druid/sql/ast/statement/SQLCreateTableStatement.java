@@ -50,6 +50,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import static com.alibaba.polardbx.druid.sql.ast.SqlType.SHOW_CONVERT_TABLE_MODE;
+
 public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLStatement, SQLCreateStatement {
 
     protected boolean ifNotExists = false;
@@ -91,6 +93,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     protected boolean replace = false;
     protected boolean ignore = false;
     protected boolean dimension;
+    protected boolean onlyConvertTableMode = false;
 
     public SQLCreateTableStatement() {
 
@@ -217,6 +220,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         return tableElementList;
     }
 
+    public void setTableElementList(List<SQLTableElement> tableElementList) {
+        this.tableElementList = tableElementList;
+    }
+
     public SQLColumnDefinition getColumn(String columnName) {
         long hashCode64 = FnvHash.hashCode64(columnName);
 
@@ -319,6 +326,14 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
     public void setIfNotExiists(boolean ifNotExists) {
         this.ifNotExists = ifNotExists;
+    }
+
+    public boolean isOnlyConvertTableMode() {
+        return onlyConvertTableMode;
+    }
+
+    public void setOnlyConvertTableMode(boolean onlyConvertTableMode) {
+        this.onlyConvertTableMode = onlyConvertTableMode;
     }
 
     public SQLExprTableSource getInherits() {
@@ -898,11 +913,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     continue;
                 }
                 SQLUniqueConstraint unique = (SQLUniqueConstraint) e;
-                if (unique.getName().nameHashCode64() == indexNameHashCode64) {
+                if (SQLUtils.nameEquals(unique.getName(), x.getIndexName())) {
                     tableElementList.remove(i);
                     return true;
                 }
-
             } else if (e instanceof MySqlTableIndex) {
                 MySqlTableIndex tableIndex = (MySqlTableIndex) e;
                 if (SQLUtils.nameEquals(tableIndex.getName(), x.getIndexName())) {
@@ -1035,7 +1049,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
                     continue;
                 }
                 SQLUniqueConstraint unique = (SQLUniqueConstraint) e;
-                if (unique.getName().nameHashCode64() == indexNameHashCode64) {
+                if (compareName(unique, indexNameHashCode64)) {
                     SQLUniqueConstraint constraint = (SQLUniqueConstraint) tableElementList.get(i);
                     constraint.setName(item.getTo());
                     return true;
@@ -1049,6 +1063,14 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
             }
         }
         return false;
+    }
+
+    private boolean compareName(SQLConstraint constraint, long indexNameHashCode64) {
+        SQLName sqlName = constraint.getName();
+        if (sqlName == null) {
+            return false;
+        }
+        return sqlName.nameHashCode64() == indexNameHashCode64;
     }
 
     // SQLAlterTableRenameColumn
@@ -1432,15 +1454,27 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
     }
 
     public String toString() {
-        return SQLUtils.toSQLString(this, dbType);
+        return toSqlStringWithFeature();
     }
 
-    public String toSqlString(boolean showHashPartitionsByRange) {
+    public String toSqlString(boolean showHashPartitionsByRange, boolean outputMySQLIndent) {
+        List<VisitorFeature> features = new ArrayList<>();
         if (showHashPartitionsByRange) {
-            return SQLUtils.toSQLString(this, dbType, null, VisitorFeature.OutputHashPartitionsByRange);
-        } else {
-            return SQLUtils.toSQLString(this, dbType, null, null);
+            features.add(VisitorFeature.OutputHashPartitionsByRange);
         }
+        if (outputMySQLIndent) {
+            features.add(VisitorFeature.OutputMySQLIndentString);
+        }
+
+        if (!features.isEmpty()) {
+            return toSqlStringWithFeature(features.toArray(new VisitorFeature[] {}));
+        } else {
+            return toSqlStringWithFeature();
+        }
+    }
+
+    public String toSqlStringWithFeature(VisitorFeature... features) {
+        return SQLUtils.toSQLString(this, dbType, null, features);
     }
 
     public boolean isOnCommitPreserveRows() {
@@ -1663,6 +1697,10 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
 
     @Override
     public SqlType getSqlType() {
-        return SqlType.CREATE;
+        if (this.isOnlyConvertTableMode()) {
+            return SHOW_CONVERT_TABLE_MODE;
+        } else {
+            return SqlType.CREATE;
+        }
     }
 }

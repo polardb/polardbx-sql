@@ -50,15 +50,18 @@ public class OSSBackFillExecutor {
         this.targetEngine = targetEngine;
     }
 
-    public int backFill2FileStore(String schemaName, String sourceTableName, String targetTableName, ExecutionContext baseEc,
+    public int backFill2FileStore(String schemaName, String sourceTableName, String targetTableName,
+                                  ExecutionContext baseEc,
                                   Map<String, Set<String>> sourcePhyTables, int indexStride, long parallelism,
                                   Map<Pair<String, String>, OSSBackFillWriterTask> tasks,
                                   String designatedPhysicalPartition) {
-        return backFill2FileStore(schemaName, sourceTableName, targetTableName, baseEc, sourcePhyTables, indexStride, parallelism,
+        return backFill2FileStore(schemaName, sourceTableName, targetTableName, baseEc, sourcePhyTables, indexStride,
+            parallelism,
             tasks, designatedPhysicalPartition, false);
     }
 
-    public int backFill2FileStore(String schemaName, String sourceTableName, String targetTableName, ExecutionContext baseEc,
+    public int backFill2FileStore(String schemaName, String sourceTableName, String targetTableName,
+                                  ExecutionContext baseEc,
                                   Map<String, Set<String>> sourcePhyTables, int indexStride, long parallelism,
                                   Map<Pair<String, String>, OSSBackFillWriterTask> tasks,
                                   String designatedPhysicalPartition, boolean supportPause) {
@@ -74,9 +77,8 @@ public class OSSBackFillExecutor {
 
         // Init extractor and loader
         final OSSBackFillExtractor extractor =
-            OSSBackFillExtractor
-                .create(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
-                    baseEc, designatedPhysicalPartition, sourceEngine, targetEngine);
+            OSSBackFillExtractor.create(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit,
+                parallelism, sourcePhyTables, baseEc, designatedPhysicalPartition, sourceEngine, targetEngine);
 
         final BatchConsumer batchConsumer = new OSSBackFillConsumer(tasks);
 
@@ -94,7 +96,8 @@ public class OSSBackFillExecutor {
         return affectRows.get();
     }
 
-    public int backFill2Innodb(String schemaName, String sourceTableName, String targetTableName, ExecutionContext baseEc,
+    public int backFill2Innodb(String schemaName, String sourceTableName, String targetTableName,
+                               ExecutionContext baseEc,
                                Map<String, Set<String>> sourcePhyTables, int indexStride, long parallelism,
                                BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                Map<String, String> sourceTargetDbMap, String designateLogicalPart) {
@@ -110,9 +113,8 @@ public class OSSBackFillExecutor {
 
         // Init extractor and loader
         final Extractor extractor =
-            OSSBackFillExtractor
-                .create(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, sourcePhyTables,
-                    baseEc, null, sourceEngine, targetEngine);
+            OSSBackFillExtractor.create(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit,
+                parallelism, sourcePhyTables, baseEc, null, sourceEngine, targetEngine);
 
         final Loader loader =
             OSSBackFillLoader

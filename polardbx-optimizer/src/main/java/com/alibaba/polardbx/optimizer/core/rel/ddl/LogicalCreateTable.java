@@ -28,6 +28,11 @@ import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityManager;
+import com.alibaba.polardbx.gms.lbac.PolarSecurityLabelColumn;
+import com.alibaba.polardbx.lbac.LBACException;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.config.table.DefaultExprUtil;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
@@ -41,10 +46,10 @@ import com.alibaba.polardbx.optimizer.parse.FastsqlParser;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.TableMetaParser;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
+import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfo;
 import com.alibaba.polardbx.optimizer.utils.DdlCharsetInfoUtil;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-import groovy.sql.Sql;
 import org.apache.calcite.rel.ddl.CreateTable;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlBinaryStringLiteral;
@@ -70,7 +75,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_FUNCTION_ALIAS;
-import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_CREATE_SELECT_UPDATE;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CREATE_TABLE_WITH_CHARSET_COLLATE;
 
 public class LogicalCreateTable extends LogicalTableOperation {
@@ -78,6 +82,8 @@ public class LogicalCreateTable extends LogicalTableOperation {
     protected SqlCreateTable sqlCreateTable;
 
     protected String createTableSqlForLike;
+    protected boolean importTable = false;
+    protected boolean reImportTable = false;
 
     protected CreateTablePreparedData createTablePreparedData;
     private CreateTableWithGsiPreparedData createTableWithGsiPreparedData;
@@ -157,9 +163,29 @@ public class LogicalCreateTable extends LogicalTableOperation {
         return sqlCreateTable;
     }
 
+    public boolean isImportTable() {
+        return importTable;
+    }
+
+    public void setImportTable(boolean importTable) {
+        this.importTable = importTable;
+    }
+
+    public boolean isReImportTable() {
+        return reImportTable;
+    }
+
+    public void setReImportTable(boolean reImportTable) {
+        this.reImportTable = reImportTable;
+    }
+
     public void prepareData(ExecutionContext executionContext) {
         // A normal logical table or a primary table with GSIs.
         createTablePreparedData = preparePrimaryData(executionContext);
+
+        createTablePreparedData.setImportTable(this.importTable);
+
+        createTablePreparedData.setReimportTable(this.reImportTable);
 
         final boolean isAutoPartition = sqlCreateTable.isAutoPartition();
 
@@ -168,9 +194,10 @@ public class LogicalCreateTable extends LogicalTableOperation {
             return;
         }
 
-        if (sqlCreateTable.createGsi()) {
-            String primaryTableName = createTablePreparedData.getTableName();
-            String primaryTableDefinition = sqlCreateTable.rewriteForGsi().toString();
+        // Init primary table definition
+        if (sqlCreateTable.createGsiOrCci()) {
+            final String primaryTableName = createTablePreparedData.getTableName();
+            final String primaryTableDefinition = sqlCreateTable.rewriteForGsi().toString();
 
             createTablePreparedData.setTableDefinition(primaryTableDefinition);
 
@@ -223,6 +250,18 @@ public class LogicalCreateTable extends LogicalTableOperation {
                     uniqueIndexTablePreparedData.setVisible(gusi.getValue().isVisible());
                     uniqueIndexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
                     createTableWithGsiPreparedData.addIndexTablePreparedData(uniqueIndexTablePreparedData);
+                }
+            }
+
+            if (sqlCreateTable.getColumnarKeys() != null) {
+                for (Pair<SqlIdentifier, SqlIndexDefinition> cci : sqlCreateTable.getColumnarKeys()) {
+                    // Use CreateGlobalIndexPreparedData#columnarIndex for marking cci
+                    CreateGlobalIndexPreparedData columnarIndexTablePreparedData =
+                        prepareGsiData(primaryTableName, primaryTableDefinition, cci, false);
+                    columnarIndexTablePreparedData.setVisible(cci.getValue().isVisible());
+                    columnarIndexTablePreparedData.setJoinGroupName(createTablePreparedData.getJoinGroupName());
+                    columnarIndexTablePreparedData.setCreateTableWithIndex(true);
+                    createTableWithGsiPreparedData.addIndexTablePreparedData(columnarIndexTablePreparedData);
                 }
             }
         }
@@ -384,6 +423,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
             sqlCreateTable.getSqlPartition(),
             localPartitionDefinitionInfo,
             sqlCreateTable.getTableGroupName(),
+            sqlCreateTable.isWithImplicitTableGroup(),
             sqlCreateTable.getJoinGroupName(),
             sqlCreateTable.getLocality(),
             ((CreateTable) relDdl).getPartBoundExprInfo(),
@@ -516,6 +556,50 @@ public class LogicalCreateTable extends LogicalTableOperation {
             res.setArchiveTableName(sqlCreateTable.getLoadTableName());
         }
 
+        if (res.isWithImplicitTableGroup()) {
+            TableGroupInfoManager tableGroupInfoManager =
+                OptimizerContext.getContext(res.getSchemaName()).getTableGroupInfoManager();
+            String tableGroupName = res.getTableGroupName() == null ? null :
+                ((SqlIdentifier) res.getTableGroupName()).getLastName();
+            assert tableGroupName != null;
+            if (tableGroupInfoManager.getTableGroupConfigByName(tableGroupName) == null) {
+                res.getRelatedTableGroupInfo().put(tableGroupName, true);
+            } else {
+                res.getRelatedTableGroupInfo().put(tableGroupName, false);
+            }
+        }
+
+        //check and collect lbac attr
+        if (sqlCreateTable.getSecurityPolicy() != null) {
+            if (LBACSecurityManager.getInstance().getPolicy(sqlCreateTable.getSecurityPolicy()) == null) {
+                throw new LBACException("security policy is not exist");
+            }
+            LBACSecurityEntity esa =
+                new LBACSecurityEntity(LBACSecurityEntity.EntityKey.createTableKey(schemaName, tableName),
+                    LBACSecurityEntity.EntityType.TABLE, sqlCreateTable.getSecurityPolicy());
+            res.setTableEAS(esa);
+        }
+
+        for (Pair<SqlIdentifier, SqlColumnDeclaration> pair : sqlCreateTable.getColDefs()) {
+            if (pair.getValue().getSecuredWith() != null) {
+                List<LBACSecurityEntity> colESAList = res.getColEASList();
+                if (colESAList == null) {
+                    colESAList = new ArrayList<>();
+                    res.setColEASList(colESAList);
+                }
+                colESAList.add(new LBACSecurityEntity(
+                    LBACSecurityEntity.EntityKey.createColumnKey(schemaName, tableName, pair.getKey().getSimple()),
+                    LBACSecurityEntity.EntityType.COLUMN,
+                    pair.getValue().getSecuredWith()
+                ));
+            }
+            //check psl column type
+            if (PolarSecurityLabelColumn.checkPSLName(pair.getKey().getSimple()) &&
+                !PolarSecurityLabelColumn.checkPSLType(pair.getValue().getDataType().getTypeName().getSimple())) {
+                throw new LBACException("polar security column type is invalid");
+            }
+        }
+
         return res;
     }
 
@@ -547,6 +631,11 @@ public class LogicalCreateTable extends LogicalTableOperation {
         ArchiveMode archiveMode;
         if ((archiveMode = this.sqlCreateTable.getArchiveMode()) != null) {
             createTableAst.setArchiveMode(archiveMode);
+        }
+
+        List<String> dictColumns;
+        if ((dictColumns = sqlCreateTable.getDictColumns()) != null) {
+            createTableAst.setDictColumns(dictColumns);
         }
 
         if (this.sqlCreateTable.shouldLoad() || this.sqlCreateTable.shouldBind()) {
@@ -597,8 +686,12 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 createTablePreparedData.getLocalPartitionDefinitionInfo(),
                 isUnique,
                 indexDef.isClustered(),
+                indexDef.isColumnar(),
                 indexDef.getTableGroupName(),
-                createTablePreparedData.getLocality().toString(),
+                indexDef.isWithImplicitTableGroup(),
+                null,
+                // Do not set locality for cci
+                indexDef.isColumnar() ? "" : createTablePreparedData.getLocality().toString(),
                 ((CreateTable) relDdl).getPartBoundExprInfo(),
                 createTablePreparedData.getSourceSql());
 
@@ -615,6 +708,18 @@ public class LogicalCreateTable extends LogicalTableOperation {
         if (indexDef.getIndexType() != null) {
             preparedData.setIndexType(null == indexDef.getIndexType() ? null : indexDef.getIndexType().name());
         }
+        if (preparedData.isWithImplicitTableGroup()) {
+            TableGroupInfoManager tableGroupInfoManager =
+                OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager();
+            String tableGroupName = preparedData.getTableGroupName() == null ? null :
+                ((SqlIdentifier) preparedData.getTableGroupName()).getLastName();
+            assert tableGroupName != null;
+            if (tableGroupInfoManager.getTableGroupConfigByName(tableGroupName) == null) {
+                createTablePreparedData.getRelatedTableGroupInfo().put(tableGroupName, true);
+            } else {
+                createTablePreparedData.getRelatedTableGroupInfo().put(tableGroupName, false);
+            }
+        }
 
         return preparedData;
     }
@@ -627,4 +732,12 @@ public class LogicalCreateTable extends LogicalTableOperation {
         return prepareCreateLocalIndexData(tableName, indexName, isOnClustered, true);
     }
 
+    public void setDdlVersionId(Long ddlVersionId) {
+        if (null != getCreateTablePreparedData()) {
+            getCreateTablePreparedData().setDdlVersionId(ddlVersionId);
+        }
+        if (null != getCreateTableWithGsiPreparedData()) {
+            getCreateTableWithGsiPreparedData().setDdlVersionId(ddlVersionId);
+        }
+    }
 }

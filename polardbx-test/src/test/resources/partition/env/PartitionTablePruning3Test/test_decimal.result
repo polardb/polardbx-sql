@@ -144,16 +144,16 @@ create table if not exists key_decimal_2400 (c1 decimal(24,0) default null ) par
 insert into key_decimal_2400(c1) values (-1234567890123456789012340),(-999999999999999999999999);
 explain select * from key_decimal_2400 where c1='-999999999999999999999999';
 Logical ExecutionPlan
-LogicalView(tables="key_decimal_2400[p11]", sql="SELECT `c1` FROM `key_decimal_2400` AS `key_decimal_2400` WHERE (`c1` = ?)")
+PhyTableOperation(tables="key_decimal_2400[p11]", sql="SELECT `key_decimal_2400`.`c1` FROM ? AS `key_decimal_2400` WHERE (`key_decimal_2400`.`c1` = ?)", params="-999999999999999999999999")
 explain select * from key_decimal_2400 where c1=-999999999999999999999999;
 Logical ExecutionPlan
-LogicalView(tables="key_decimal_2400[p11]", sql="SELECT `c1` FROM `key_decimal_2400` AS `key_decimal_2400` WHERE (`c1` = ?)")
+PhyTableOperation(tables="key_decimal_2400[p11]", sql="SELECT `key_decimal_2400`.`c1` FROM ? AS `key_decimal_2400` WHERE (`key_decimal_2400`.`c1` = ?)", params="-999999999999999999999999")
 explain select * from key_decimal_2400 where c1=-1234567890123456789012340;
 Logical ExecutionPlan
-LogicalView(tables="key_decimal_2400[p11]", sql="SELECT `c1` FROM `key_decimal_2400` AS `key_decimal_2400` WHERE (`c1` = ?)")
+PhyTableOperation(tables="key_decimal_2400[p11]", sql="SELECT `key_decimal_2400`.`c1` FROM ? AS `key_decimal_2400` WHERE (`key_decimal_2400`.`c1` = ?)", params="-1234567890123456789012340")
 explain select * from key_decimal_2400 where c1='-1234567890123456789012340';
 Logical ExecutionPlan
-LogicalView(tables="key_decimal_2400[p11]", sql="SELECT `c1` FROM `key_decimal_2400` AS `key_decimal_2400` WHERE (`c1` = ?)")
+PhyTableOperation(tables="key_decimal_2400[p11]", sql="SELECT `key_decimal_2400`.`c1` FROM ? AS `key_decimal_2400` WHERE (`key_decimal_2400`.`c1` = ?)", params="-1234567890123456789012340")
 select * from key_decimal_2400 where c1='-999999999999999999999999';
 c1
 -999999999999999999999999
@@ -221,14 +221,14 @@ PARTITION pmax VALUES LESS THAN (maxvalue)
 );
 explain select * from rng_decimal_6500 where c1='-99999999999999999999999999999999999999999999999999999999999999999';
 Logical ExecutionPlan
-LogicalView(tables="rng_decimal_6500[p0]", sql="SELECT `c1` FROM `rng_decimal_6500` AS `rng_decimal_6500` WHERE (`c1` = ?)")
+PhyTableOperation(tables="rng_decimal_6500[p0]", sql="SELECT `rng_decimal_6500`.`c1` FROM ? AS `rng_decimal_6500` WHERE (`rng_decimal_6500`.`c1` = ?)", params="-99999999999999999999999999999999999999999999999999999999999999999")
 explain select * from rng_decimal_6500 where c1<'-99999999999999999999999999999999999999999999999999999999999999998';
 Logical ExecutionPlan
 Gather(concurrent=true)
   LogicalView(tables="rng_decimal_6500[pmin,p0]", shardCount=2, sql="SELECT `c1` FROM `rng_decimal_6500` AS `rng_decimal_6500` WHERE (`c1` < ?)")
 explain select * from rng_decimal_6500 where c1='99999999999999999999999999999999999999999999999999999999999999999';
 Logical ExecutionPlan
-LogicalView(tables="rng_decimal_6500[pmax]", sql="SELECT `c1` FROM `rng_decimal_6500` AS `rng_decimal_6500` WHERE (`c1` = ?)")
+PhyTableOperation(tables="rng_decimal_6500[pmax]", sql="SELECT `rng_decimal_6500`.`c1` FROM ? AS `rng_decimal_6500` WHERE (`rng_decimal_6500`.`c1` = ?)", params="99999999999999999999999999999999999999999999999999999999999999999")
 explain select * from rng_decimal_6500 where c1>'99999999999999999999999999999999999999999999999999999999999999999';
 Logical ExecutionPlan
 PhyTableOperation(tables="rng_decimal_6500[pmax]", sql="SELECT `rng_decimal_6500`.`c1` FROM ? AS `rng_decimal_6500` WHERE (`rng_decimal_6500`.`c1` > ?)", params="99999999999999999999999999999999999999999999999999999999999999999")

@@ -34,4 +34,31 @@ public class MathUtils {
         return x - ceilDiv(x, y) * y;
     }
 
+    /**
+     * Overflow iff both arguments have the opposite sign of the result
+     */
+    public static boolean longAddOverflow(long x, long y, long r) {
+        return ((x ^ r) & (y ^ r)) < 0;
+    }
+
+    public static boolean longSubOverflow(long x, long y, long r) {
+        return ((x ^ y) & (x ^ r)) < 0;
+    }
+
+    public static boolean longMultiplyOverflow(long x, long y, long r) {
+        long ax = Math.abs(x);
+        long ay = Math.abs(y);
+        if (((ax | ay) >>> 31 != 0)) {
+            // Some bits greater than 2^31 that might cause overflow
+            // Check the result using the divide operator
+            // and check for the special case of Long.MIN_VALUE * -1
+            return ((y != 0) && (r / y != x)) ||
+                (x == Long.MIN_VALUE && y == -1);
+        }
+        return false;
+    }
+
+    public static boolean isPowerOfTwo(int val) {
+        return (val & -val) == val;
+    }
 }

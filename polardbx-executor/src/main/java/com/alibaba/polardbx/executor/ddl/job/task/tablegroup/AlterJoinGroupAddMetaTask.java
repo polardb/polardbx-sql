@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.ImplicitTableGroupUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
@@ -36,6 +37,7 @@ import com.alibaba.polardbx.gms.tablegroup.PartitionGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupAccessor;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupUtils;
 import com.alibaba.polardbx.gms.util.TableGroupNameUtil;
@@ -145,6 +147,7 @@ public class AlterJoinGroupAddMetaTask extends BaseDdlTask {
 
     private void addNewTableGroupInfo(Set<String> tableTobeAlter, Connection metaDbConnection,
                                       ExecutionContext executionContext) {
+        ImplicitTableGroupUtil.checkAutoCreateTableGroup(executionContext);
         TableGroupAccessor tableGroupAccessor = new TableGroupAccessor();
         PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
         TablePartitionAccessor tablePartitionAccessor = new TablePartitionAccessor();
@@ -176,8 +179,8 @@ public class AlterJoinGroupAddMetaTask extends BaseDdlTask {
         PartitionInfo partitionInfo =
             executionContext.getSchemaManager(schemaName).getTable(firstTableName).getPartitionInfo();
         Long oldTableGroupId = partitionInfo.getTableGroupId();
-        TableGroupConfig tableGroupConfig =
-            TableGroupUtils.getTableGroupInfoByGroupId(metaDbConnection, oldTableGroupId);
+        TableGroupDetailConfig tableGroupConfig =
+            TableGroupUtils.getTableGroupDetailInfoByGroupId(metaDbConnection, oldTableGroupId);
         List<PartitionGroupRecord> partitionGroupRecords = tableGroupConfig.getPartitionGroupRecords();
         Map<Long, Long> partitionIdsMap = new HashMap<>();
         for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
@@ -187,7 +190,8 @@ public class AlterJoinGroupAddMetaTask extends BaseDdlTask {
         }
         for (String tableName : tableTobeAlter) {
             Optional<TablePartRecordInfoContext> tablePartRecordInfoContext =
-                tableGroupConfig.getAllTables().stream().filter(o -> o.getTableName().equalsIgnoreCase(tableName))
+                tableGroupConfig.getTablesPartRecordInfoContext().stream()
+                    .filter(o -> o.getTableName().equalsIgnoreCase(tableName))
                     .findFirst();
             if (!tablePartRecordInfoContext.isPresent()) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLEGROUP_META_TOO_OLD,

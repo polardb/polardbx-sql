@@ -22,13 +22,13 @@ import com.alibaba.polardbx.common.jdbc.BatchInsertPolicy;
 import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.properties.LongConfigParam;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.properties.SystemPropertiesHelper;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.config.InstanceRoleManager;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.ExecutorCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -36,6 +36,8 @@ import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.operator.FilterExec;
 import com.alibaba.polardbx.executor.operator.ResultSetCursorExec;
 import com.alibaba.polardbx.executor.spi.IRepository;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
@@ -84,6 +86,10 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
             for (Map.Entry<String, Object> entry : executionContext.getExtraServerVariables().entrySet()) {
                 variables.put(entry.getKey(), entry.getValue());
             }
+        }
+
+        if (!ConfigDataMode.needDNResource()) {
+            return;
         }
 
         //extract dn variables from mysql
@@ -138,15 +144,62 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
             BatchInsertPolicy.getVariableName().toLowerCase(Locale.ROOT),
             executionContext.getConnection().getBatchInsertPolicy(executionContext.getExtraCmds()).getName());
 
-        // DRDS_INSTANCE_ROLE
+        // POLARDBX_INSTANCE_ROLE
         variables.put(
-            InstanceRoleManager.INSTANCE_ROLE_VARIABLE.toLowerCase(Locale.ROOT),
-            InstanceRoleManager.INSTANCE.getInstanceRole());
+            ConfigDataMode.INSTANCE_ROLE_VARIABLE.toLowerCase(Locale.ROOT),
+            ConfigDataMode.getInstanceRole());
 
         // SHARE_READ_VIEW
         variables.put(
             TransactionAttribute.SHARE_READ_VIEW.toLowerCase(Locale.ROOT),
             executionContext.isShareReadView());
+
+        // XA_TSO
+        variables.put(
+            ConnectionProperties.ENABLE_XA_TSO.toLowerCase(Locale.ROOT),
+            InstConfUtil.getBool(ConnectionParams.ENABLE_XA_TSO));
+
+        // XA_TSO
+        variables.put(
+            ConnectionProperties.ENABLE_AUTO_COMMIT_TSO.toLowerCase(Locale.ROOT),
+            InstConfUtil.getBool(ConnectionParams.ENABLE_AUTO_COMMIT_TSO));
+
+        // AUTO_SP
+        variables.put(
+            ConnectionProperties.ENABLE_AUTO_SAVEPOINT.toLowerCase(Locale.ROOT),
+            executionContext.isSupportAutoSavepoint());
+
+        // ENABLE_X_PROTO_OPT_FOR_AUTO_SP
+        // AUTO_SP
+        variables.put(
+            ConnectionProperties.ENABLE_X_PROTO_OPT_FOR_AUTO_SP.toLowerCase(Locale.ROOT),
+            DynamicConfig.getInstance().enableXProtoOptForAutoSp());
+
+        if (null != executionContext.getTransaction()) {
+            // TRX_TYPE
+            variables.put(
+                "TRX_CLASS",
+                executionContext.getTransaction().getClass().getSimpleName()
+            );
+        }
+
+        // TRX_RECOVER
+        variables.put(
+            ConnectionProperties.ENABLE_TRANSACTION_RECOVER_TASK.toLowerCase(Locale.ROOT),
+            InstConfUtil.getBool(ConnectionParams.ENABLE_TRANSACTION_RECOVER_TASK)
+        );
+
+        // TRX_LOG_METHOD
+        variables.put(
+            ConnectionProperties.TRX_LOG_METHOD.toLowerCase(Locale.ROOT),
+            DynamicConfig.getInstance().getTrxLogMethod()
+        );
+
+        // INSTANCE_READ_ONLY
+        variables.put(
+            ConnectionProperties.INSTANCE_READ_ONLY.toLowerCase(Locale.ROOT),
+            MetaDbInstConfigManager.getInstance().getCnVariableConfigMap()
+                .getProperty(ConnectionProperties.INSTANCE_READ_ONLY, "false"));
     }
 
     public void updateReturnVariables(TreeMap<String, Object> variables, ExecutionContext executionContext) {
@@ -154,22 +207,17 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
         SSLVariables.fill(variables);
 
         if (variables.containsKey("max_allowed_packet")) {
-            String maxAllowedPacket = System.getProperty("maxAllowedPacket", String.valueOf(1024 * 1024));
             String maxAllowedPacketCustom =
                 String.valueOf(executionContext.getParamManager().getLong(ConnectionParams.MAX_ALLOWED_PACKET));
-            if (StringUtils.isNotEmpty(maxAllowedPacketCustom)) {
-                maxAllowedPacket = maxAllowedPacketCustom;
-            }
-
-            variables.put("max_allowed_packet", maxAllowedPacket);
+            variables.put("max_allowed_packet", maxAllowedPacketCustom);
         }
 
         if (variables.containsKey("max_user_connections")) {
-            variables.put("max_user_connections", System.getProperty("maxConnection", "20000"));
+            variables.put("max_user_connections", DynamicConfig.getInstance().getMaxConnections());
         }
 
         if (variables.containsKey("max_connections")) {
-            variables.put("max_connections", System.getProperty("maxConnection", "20000"));
+            variables.put("max_connections", DynamicConfig.getInstance().getMaxConnections());
         }
 
         if (variables.containsKey("autocommit")) {
@@ -183,9 +231,11 @@ public class LogicalShowVariablesMyHandler extends HandlerCommon {
         if (variables.containsKey("read_only")) {
             if (ConfigDataMode.isMasterMode()) {
                 variables.put("read_only", "OFF");
-            } else if (ConfigDataMode.isSlaveMode()) {
+            } else if (ConfigDataMode.isReadOnlyMode()) {
                 variables.put("read_only", "ON");
             }
+        } else if (ConfigDataMode.isReadOnlyMode()) {
+            variables.put("read_only", "ON");
         }
 
         boolean allSequencesGroupOrTime = SequenceManagerProxy.getInstance()

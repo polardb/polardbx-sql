@@ -185,8 +185,14 @@ public class FastsqlParser {
                 }
                 converted = convertStatementToSqlNode(statement, params, contextParameters, ec);
                 if (statement instanceof MySqlHintStatement && converted instanceof SqlNodeList) {
+                    if (statement.getAsync() != null) {
+                        ((SqlNodeList) converted).getList().forEach(o -> o.setAsync(statement.getAsync()));
+                    }
                     sqlNodes.addAll(((SqlNodeList) converted).getList());
                 } else {
+                    if (statement.getAsync() != null) {
+                        converted.setAsync(statement.getAsync());
+                    }
                     sqlNodes.add(converted);
                 }
             }

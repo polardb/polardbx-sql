@@ -32,6 +32,10 @@ import static java.util.Objects.requireNonNull;
 public class RowChunkBuilder {
     private final List<DataType> types;
 
+    private int partIndex;
+
+    private int partCount;
+
     public static RowChunkBuilder rowChunkBuilder(DataType... types) {
         return rowChunkBuilder(ImmutableList.copyOf(types));
     }
@@ -85,5 +89,21 @@ public class RowChunkBuilder {
     private void append(int channel, Object element) {
         BlockBuilder blockBuilder = builders.get(channel);
         blockBuilder.writeObject(element);
+    }
+
+    public void setPartIndex(int partIndex) {
+        this.partIndex = partIndex;
+    }
+
+    public void setPartCount(int partCount) {
+        this.partCount = partCount;
+    }
+
+    public int getPartIndex() {
+        return partIndex;
+    }
+
+    public int getPartCount() {
+        return partCount;
     }
 }

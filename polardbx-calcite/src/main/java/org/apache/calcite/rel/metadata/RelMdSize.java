@@ -298,6 +298,7 @@ public class RelMdSize implements MetadataHandler<BuiltInMetadata.Size> {
     case REAL:
     case DECIMAL:
     case DATE:
+    case DATETIME:
     case TIME:
     case TIME_WITH_LOCAL_TIME_ZONE:
     case INTERVAL_YEAR:

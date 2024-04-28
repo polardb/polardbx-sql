@@ -30,7 +30,6 @@ import com.alibaba.polardbx.executor.mdl.MdlRequest;
 import com.alibaba.polardbx.executor.mdl.MdlTicket;
 import com.alibaba.polardbx.executor.mdl.MdlType;
 import com.alibaba.polardbx.executor.mdl.lock.MdlLockStamped;
-
 import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 
 import java.util.ArrayList;
@@ -63,9 +62,13 @@ public class MdlManagerStamped extends MdlManager {
 
     private final ScheduledExecutorService scheduler;
 
-    private final int cleanInterval = 60 * 60;
+    private final static int cleanInterval = 60 * 60;
 
     public MdlManagerStamped(String schema) {
+        this(schema, cleanInterval);
+    }
+
+    public MdlManagerStamped(String schema, int cleanIntervalInSec) {
         super(schema);
 
         scheduler = ExecutorUtil.createScheduler(1,
@@ -82,8 +85,10 @@ public class MdlManagerStamped extends MdlManager {
                 mdlKeys.forEach(k -> mdlMap.computeIfPresent(k, (key, lock) -> {
                     if (lock.latchWrite()) {
                         try {
-                            // remove unused lock
-                            return null;
+                            if (!lock.isLocked()) {
+                                // remove unused lock
+                                return null;
+                            }
                         } finally {
                             lock.unlatchWrite();
                         }
@@ -95,7 +100,7 @@ public class MdlManagerStamped extends MdlManager {
             } catch (Exception e) {
                 logger.error(e);
             }
-        }, cleanInterval, cleanInterval, TimeUnit.SECONDS);
+        }, cleanIntervalInSec, cleanIntervalInSec, TimeUnit.SECONDS);
     }
 
     // For show metadata lock.

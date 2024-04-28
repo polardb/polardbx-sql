@@ -30,10 +30,10 @@ import com.alibaba.polardbx.executor.archive.pruning.OssAggPruner;
 import com.alibaba.polardbx.executor.archive.pruning.OssOrcFilePruner;
 import com.alibaba.polardbx.executor.archive.pruning.PruningResult;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
+import com.alibaba.polardbx.executor.columnar.CSVRow;
 import com.alibaba.polardbx.optimizer.config.table.StripeColumnMeta;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import org.apache.calcite.sql.SqlKind;
@@ -134,6 +134,20 @@ class DatetimeColumnProvider implements ColumnProvider<Long> {
             accumulator.ifPresent(a -> a.appendHash(Long.hashCode(packed)));
         }
 
+    }
+
+    @Override
+    public void parseRow(BlockBuilder blockBuilder, CSVRow row, int columnId, DataType dataType) {
+        if (row.isNullAt(columnId)) {
+            blockBuilder.appendNull();
+        } else {
+            final int scale = dataType.getScale();
+            byte[] bytes = row.getBytes(columnId);
+
+            long result = ColumnProvider.convertDateTimeToLong(bytes, scale);
+
+            blockBuilder.writeLong(result);
+        }
     }
 
     @Override

@@ -48,5 +48,6 @@ public class MurmurHashUtils {
     public static long murmurHashWithZeroSeed(long data) {
         return murmurHash3_128(data);
     }
+
 }
 

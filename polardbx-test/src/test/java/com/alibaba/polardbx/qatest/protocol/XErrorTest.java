@@ -10,10 +10,10 @@ import org.junit.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @version 1.0
@@ -70,7 +70,7 @@ public class XErrorTest extends ReadBaseTestCase {
                         s.execute("select * from " + polardbxOneDB + ".select_base_one_multi_db_multi_tb where pk=1");
                     }
                 }
-                Assert.fail("should fail whit max conns exceed");
+                Assert.fail("should fail with max conns exceed");
             } catch (Throwable e) {
                 Assert.assertTrue("Should throw out of max session count",
                     e.getMessage().contains("Out of max session count"));
@@ -85,5 +85,45 @@ public class XErrorTest extends ReadBaseTestCase {
             // restore
             JdbcUtil.executeUpdateSuccess(tddlConnection, "set global polarx_max_connections=" + max_conns);
         }
+    }
+
+    @Test
+    @Ignore("测会话超出阈值会影响到其他并发case，这个场景已经在单元测试中测了，ignore掉")
+    public void MaxActiveSessionTest() {
+        if (!useXproto(tddlConnection)) {
+            return;
+        }
+
+        // make more connections
+        final List<Thread> threads = new ArrayList<>(1000);
+        final AtomicReference<Exception> exc = new AtomicReference<>(null);
+        for (int i = 0; i < 1000; ++i) {
+            if (exc.get() != null) {
+                break;
+            }
+            final Thread t = new Thread(() -> {
+                try (final Connection conn = getPolardbxDirectConnection()) {
+                    conn.setAutoCommit(false);
+                    try (final Statement s = conn.createStatement()) {
+                        s.execute("select sleep(5),pk from " + polardbxOneDB
+                            + ".select_base_one_multi_db_multi_tb where pk=1");
+                    }
+                } catch (Exception e) {
+                    exc.compareAndSet(null, e);
+                }
+            });
+            t.start();
+            threads.add(t);
+        }
+        try {
+            for (Thread t : threads) {
+                t.join();
+            }
+        } catch (Throwable ignore) {
+        }
+
+        final Exception e = exc.get();
+        Assert.assertTrue("Should throw max concurrent or wait exceed.",
+            e != null && e.getMessage().contains("Max concurrent or wait exceed."));
     }
 }

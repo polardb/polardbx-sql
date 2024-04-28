@@ -54,7 +54,7 @@ public class StringBlockEncoding implements BlockEncoding {
 
     @Override
     public void writeBlock(SliceOutput sliceOutput, Block block) {
-        StringBlock stringBlock = (StringBlock) block;
+        StringBlock stringBlock = block.cast(StringBlock.class);
         DataType dataType = stringBlock.getType();
         boolean hasStringType = dataType != null;
         sliceOutput.writeBoolean(hasStringType);

@@ -22,6 +22,7 @@ import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.CreateProcedureRegisterMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.procedure.CreateProcedureSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcCreateProcedureMarkTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.pl.PLUtils;
@@ -68,13 +69,18 @@ public class CreateProcedureJobFactory extends AbstractProcedureJobFactory {
             procedureSchema, SQLUtils.normalize(procedureName.getSimpleName()),
             createProcedure.getSqlCreateProcedure().getText());
 
+        CdcCreateProcedureMarkTask cdcCreateProcedureMarkTask = new CdcCreateProcedureMarkTask(
+            procedureSchema, SQLUtils.normalize(procedureName.getSimpleName())
+        );
+
         DdlTask syncTask =
             new CreateProcedureSyncTask(executionSchema, procedureSchema,
                 SQLUtils.normalize(procedureName.getSimpleName()));
 
         return Lists.newArrayList(
             addMetaTask,
-            syncTask
+            syncTask,
+            cdcCreateProcedureMarkTask
         );
     }
 

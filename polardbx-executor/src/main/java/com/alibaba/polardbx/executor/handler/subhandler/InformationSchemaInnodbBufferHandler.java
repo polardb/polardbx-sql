@@ -16,12 +16,15 @@
 
 package com.alibaba.polardbx.executor.handler.subhandler;
 
+import com.alibaba.druid.util.JdbcUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
+import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.executor.utils.transaction.TransactionUtils;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;

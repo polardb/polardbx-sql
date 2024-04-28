@@ -18,12 +18,14 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.TablesSyncTask;
+import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcAlterTableGroupRenamePartitionMarkTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupRenamePartitionChangeMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.AlterTableGroupValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.tablegroup.TableGroupSyncTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
+import com.alibaba.polardbx.executor.ddl.newengine.job.TransientDdlJob;
 import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -64,6 +66,9 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
 
     @Override
     protected ExecutableDdlJob doCreate() {
+        if (preparedData.isRenameNothing()) {
+            return new TransientDdlJob();
+        }
         boolean enablePreemptiveMdl =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_PREEMPTIVE_MDL);
         Long initWait = executionContext.getParamManager().getLong(ConnectionParams.PREEMPTIVE_MDL_INITWAIT);
@@ -75,8 +80,7 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+        for (String tableName : tableGroupConfig.getAllTables()) {
             String primaryTableName;
             TableMeta tableMeta = executionContext.getSchemaManager(preparedData.getSchemaName()).getTable(tableName);
             if (tableMeta.isGsi()) {
@@ -104,13 +108,18 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
         DdlTask validateTask =
             new AlterTableGroupValidateTask(preparedData.getSchemaName(), preparedData.getTableGroupName(),
                 tablesVersion,
-                true, null);
+                true, null, false);
+
+        CdcAlterTableGroupRenamePartitionMarkTask cdcAlterTableGroupRenamePartitionMarkTask =
+            new CdcAlterTableGroupRenamePartitionMarkTask(preparedData.getSchemaName(),
+                preparedData.getTableGroupName());
 
         DdlTask reloadTableGroup =
             new TableGroupSyncTask(preparedData.getSchemaName(), preparedData.getTableGroupName());
         executableDdlJob.addSequentialTasks(Lists.newArrayList(
             validateTask,
             changeMetaTask,
+            cdcAlterTableGroupRenamePartitionMarkTask,
             syncTask,
             reloadTableGroup
         ));
@@ -133,8 +142,7 @@ public class AlterTableGroupRenamePartitionJobFactory extends DdlJobFactory {
         TableGroupConfig tableGroupConfig =
             OptimizerContext.getContext(preparedData.getSchemaName()).getTableGroupInfoManager()
                 .getTableGroupConfigByName(preparedData.getTableGroupName());
-        for (TablePartRecordInfoContext tablePartRecordInfoContext : tableGroupConfig.getAllTables()) {
-            String tableName = tablePartRecordInfoContext.getLogTbRec().getTableName();
+        for (String tableName : tableGroupConfig.getAllTables()) {
             resources.add(concatWithDot(preparedData.getSchemaName(), tableName));
         }
     }

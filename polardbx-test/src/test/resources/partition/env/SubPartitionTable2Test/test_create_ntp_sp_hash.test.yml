@@ -1,0 +1,52 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `t1_sp_tp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1,
+PARTITION p2,
+PARTITION p3
+);
+show create table t1_sp_tp_k_k;
+
+CREATE TABLE `t1_sp_ntp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1 SUBPARTITIONS 3,
+PARTITION p2 SUBPARTITIONS 4,
+PARTITION p3 SUBPARTITIONS 5
+);
+show create table t1_sp_ntp_k_k;
+
+CREATE TABLE `t2_sp_ntp_k_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` bigint DEFAULT NULL,
+`tid` bigint DEFAULT NULL,
+`user_id` varchar(32) DEFAULT NULL,
+`order_id` varchar(32) DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`) ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`order_id`,`user_id`)
+SUBPARTITION BY KEY(`sid`,`tid`)
+(
+PARTITION p1,
+PARTITION p2,
+PARTITION p3 SUBPARTITIONS 5
+);
+show create table t2_sp_ntp_k_k;

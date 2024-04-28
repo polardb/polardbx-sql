@@ -24,11 +24,9 @@ import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableGroupItemPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableMovePartitionPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
-import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
 import com.alibaba.polardbx.optimizer.tablegroup.AlterTableGroupSnapShotUtils;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.sql.SqlAlterTable;
-import org.apache.calcite.sql.SqlAlterTableMovePartition;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
@@ -43,6 +41,10 @@ public class AlterTableMovePartitionChangeSetSubTaskJobFactory extends AlterTabl
                                                              AlterTableMovePartitionPreparedData parentPrepareData,
                                                              AlterTableGroupItemPreparedData preparedData,
                                                              List<PhyDdlTableOperation> phyDdlTableOperations,
+                                                             List<PhyDdlTableOperation> discardTableSpaceOperations,
+                                                             Map<String, Pair<String, String>> ptbGroupMap,
+                                                             Map<String, String> sourceAndTarDnMap,
+                                                             Map<String, Pair<String, String>> storageInstAndUserInfos,
                                                              Map<String, List<List<String>>> tableTopology,
                                                              Map<String, Set<String>> targetTableTopology,
                                                              Map<String, Set<String>> sourceTableTopology,
@@ -52,10 +54,10 @@ public class AlterTableMovePartitionChangeSetSubTaskJobFactory extends AlterTabl
                                                              boolean skipBackfill,
                                                              ComplexTaskMetaManager.ComplexTaskType taskType,
                                                              ExecutionContext executionContext) {
-        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, tableTopology, targetTableTopology,
-            sourceTableTopology,
-            orderedTargetTableLocations, targetPartition, skipBackfill,
-            null, null, taskType, executionContext);
+        super(ddl, parentPrepareData, preparedData, phyDdlTableOperations, discardTableSpaceOperations,
+            ptbGroupMap, sourceAndTarDnMap, storageInstAndUserInfos,
+            tableTopology, targetTableTopology, sourceTableTopology,
+            orderedTargetTableLocations, targetPartition, skipBackfill, null, null, taskType, executionContext);
         this.parentPrepareData = parentPrepareData;
     }
 

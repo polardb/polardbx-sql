@@ -1099,7 +1099,7 @@ public final class FastSqlConstructUtils {
             }
         }
 
-        return (SqlColumnDeclaration) SqlDdlNodes.column(SqlParserPos.ZERO,
+        SqlColumnDeclaration decl = (SqlColumnDeclaration) SqlDdlNodes.column(SqlParserPos.ZERO,
             tableSourceSqlNode,
             sqlDataTypeSpec,
             columnNull,
@@ -1119,6 +1119,12 @@ public final class FastSqlConstructUtils {
             generatedAlways,
             generatedAlwaysLogical,
             generatedAlwaysExpr);
+
+        if (tableColumn.getSecuredWith() != null) {
+            decl.setSecuredWith(tableColumn.getSecuredWith().getSimpleName().toLowerCase());
+        }
+
+        return decl;
     }
 
     public static boolean collectSourceTable(SqlNode source, List<SqlNode> outTargetTables, List<SqlNode> outAliases,

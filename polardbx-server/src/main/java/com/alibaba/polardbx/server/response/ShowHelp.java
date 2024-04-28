@@ -80,7 +80,7 @@ public final class ShowHelp {
 
         // write rows
         for (HelpData data : datas) {
-            RowDataPacket row = getRow(data.key, data.desc, data.example, c.getCharset());
+            RowDataPacket row = getRow(data.key, data.desc, data.example, c.getResultSetCharset());
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         }

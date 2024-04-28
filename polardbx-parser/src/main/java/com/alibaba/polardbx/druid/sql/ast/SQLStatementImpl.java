@@ -27,6 +27,7 @@ public abstract class SQLStatementImpl extends SQLObjectImpl implements SQLState
     protected DbType dbType;
     protected boolean afterSemi;
     protected List<SQLCommentHint> headHints;
+    protected Boolean async = null;
 
     public SQLStatementImpl() {
 
@@ -91,5 +92,13 @@ public abstract class SQLStatementImpl extends SQLObjectImpl implements SQLState
 
     public void setHeadHints(List<SQLCommentHint> headHints) {
         this.headHints = headHints;
+    }
+
+    public Boolean getAsync() {
+        return async;
+    }
+
+    public void setAsync(Boolean async) {
+        this.async = async;
     }
 }

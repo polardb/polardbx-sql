@@ -29,14 +29,14 @@
  */
 package com.alibaba.polardbx.executor.mpp.client;
 
+import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
-import com.alibaba.polardbx.executor.mpp.metadata.NotNull;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;

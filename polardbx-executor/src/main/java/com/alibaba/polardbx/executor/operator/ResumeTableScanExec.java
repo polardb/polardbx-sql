@@ -16,25 +16,20 @@
 
 package com.alibaba.polardbx.executor.operator;
 
-import com.alibaba.polardbx.common.jdbc.BytesSql;
-import com.alibaba.polardbx.common.jdbc.StreamBytesSql;
-import com.alibaba.polardbx.common.jdbc.UnionBytesSql;
-import com.google.common.base.Preconditions;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.jdbc.BytesSql;
+import com.alibaba.polardbx.common.jdbc.StreamBytesSql;
 import com.alibaba.polardbx.executor.mpp.metadata.Split;
 import com.alibaba.polardbx.executor.mpp.split.JdbcSplit;
 import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
-import com.alibaba.polardbx.optimizer.core.rel.PhyTableScanBuilder;
-import org.bouncycastle.util.Arrays;
+import com.google.common.base.Preconditions;
 
 import java.util.Iterator;
 import java.util.List;
-
-import static com.alibaba.polardbx.common.utils.GeneralUtil.buildPhysicalQuery;
 
 public class ResumeTableScanExec extends TableScanExec implements ResumeExec {
 

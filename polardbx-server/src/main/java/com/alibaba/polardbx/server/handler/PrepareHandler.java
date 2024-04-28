@@ -35,7 +35,6 @@ import com.alibaba.polardbx.matrix.jdbc.TConnection;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
 import com.alibaba.polardbx.optimizer.parse.visitor.ParamCountVisitor;
-import com.alibaba.polardbx.stats.MatrixStatistics;
 
 import java.sql.SQLException;
 import java.sql.SQLSyntaxErrorException;

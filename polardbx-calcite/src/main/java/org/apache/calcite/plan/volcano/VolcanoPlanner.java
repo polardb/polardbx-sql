@@ -173,6 +173,8 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
 
   boolean enableDerive = true;
 
+  boolean enableColumnar = false;
+
   /**
    * Extra roots for explorations.
    */
@@ -401,7 +403,7 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
     this.root = null;
     this.originalRoot = null;
     if (ruleCounter != null) {
-      ruleCount = ruleCounter.values().stream().reduce(0L, (a,b) -> a + b).longValue();
+      ruleCount = ruleCounter.values().stream().reduce(0L, Long::sum);
       this.ruleCounter.clear();
     }
   }
@@ -1720,7 +1722,7 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
       return costFactory.makeInfiniteCost();
     }
     // use new mq to avoid metadata cache
-    mq = RelMetadataQuery.instance();
+    mq = RelMetadataQuery.instance(mq.metadataProvider);
     // for efficiency, use RelSubsetBest Cost For CumulativeCost
     mq.setUseRelSubsetBestCostForCumulativeCost(true);
     RelOptCost cost = mq.getStartUpCost(rel);
@@ -1764,5 +1766,13 @@ public class VolcanoPlanner extends AbstractRelOptPlanner {
 
   public void setEnableDerive(boolean enableDerive) {
     this.enableDerive = enableDerive;
+  }
+
+  public boolean isEnableColumnar() {
+    return enableColumnar;
+  }
+
+  public void setEnableColumnar(boolean enableColumnar) {
+    this.enableColumnar = enableColumnar;
   }
 }

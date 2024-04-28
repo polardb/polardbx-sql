@@ -5,7 +5,7 @@ create table tb1(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -35,14 +35,14 @@ select b from tb1 partition(p1spd) order by b;
 select b from tb1 partition(p2) order by b;
 select b from tb1 partition(pd) order by b;
 show create table tb1;
-
-# template: list, algorithm=instant
+  
+  # template: list, algorithm=instant
 create tablegroup tg_modify_2;
 create table tb2(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -66,13 +66,13 @@ select b from tb2 partition(p2) order by b;
 select b from tb2 partition(pd) order by b;
 show create table tb2;
   
-# template: list columns, algorithm=default
+  # template: list columns, algorithm=default
 create tablegroup tg_modify_3;
 create table tb3(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(a, b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in((1, "1"),(2, "2")),
 subpartition sp2 values in((1, "3"),(2, "4")),
 subpartition spd values in(default)
@@ -103,13 +103,13 @@ select b from tb3 partition(p2) order by b;
 select b from tb3 partition(pd) order by b;
 show create table tb3;
   
-# template: list columns, algorithm=instant
+  # template: list columns, algorithm=instant
 create tablegroup tg_modify_4;
 create table tb4(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(a, b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in((1, "1"),(2, "2")),
 subpartition sp2 values in((1, "3"),(2, "4")),
 subpartition spd values in(default)
@@ -133,13 +133,13 @@ select b from tb4 partition(p2) order by b;
 select b from tb4 partition(pd) order by b;
 show create table tb4;
   
-# template: list columns(single), algorithm=default
+  # template: list columns(single), algorithm=default
 create tablegroup tg_modify_5;
 create table tb5(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -170,13 +170,13 @@ select b from tb5 partition(p2) order by b;
 select b from tb5 partition(pd) order by b;
 show create table tb5;
   
-# template: list columns(single), algorithm=instant
+  # template: list columns(single), algorithm=instant
 create tablegroup tg_modify_6;
 create table tb6(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -199,8 +199,8 @@ select b from tb6 partition(p1spd) order by b;
 select b from tb6 partition(p2) order by b;
 select b from tb6 partition(pd) order by b;
 show create table tb6;
-
-# non-template: list, algorithm=default
+  
+  # non-template: list, algorithm=default
 create tablegroup tg_modify_7;
 create table tb7(
 a int,
@@ -238,7 +238,7 @@ select b from tb7 partition(p2sp2) order by b;
 select b from tb7 partition(p2sp3) order by b;
 show create table tb7;
   
-# non-template: list, algorithm=instant
+  # non-template: list, algorithm=instant
 create tablegroup tg_modify_8;
 create table tb8(
 a int,
@@ -270,7 +270,7 @@ select b from tb8 partition(p2sp2) order by b;
 select b from tb8 partition(p2sp3) order by b;
 show create table tb8;
   
-# non-template: list columns, algorithm=default
+  # non-template: list columns, algorithm=default
 create tablegroup tg_modify_9;
 create table tb9(
 a int,
@@ -304,7 +304,7 @@ select b from tb9 partition(p2sp2) order by b;
 select b from tb9 partition(p2sp3) order by b;
 show create table tb9;
   
-# non-template: list columns, algorithm=instant
+  # non-template: list columns, algorithm=instant
 create tablegroup tg_modify_10;
 create table tb10(
 a int,
@@ -332,7 +332,7 @@ select b from tb10 partition(p2sp2) order by b;
 select b from tb10 partition(p2sp3) order by b;
 show create table tb10;
   
-# non-template: list columns(single), algorithm=default
+  # non-template: list columns(single), algorithm=default
 create tablegroup tg_modify_11;
 create table tb11(
 a int,
@@ -370,7 +370,7 @@ select b from tb11 partition(p2sp2) order by b;
 select b from tb11 partition(p2sp3) order by b;
 show create table tb11;
   
-# non-template: list columns(single), algorithm=instant
+  # non-template: list columns(single), algorithm=instant
 create tablegroup tg_modify_12;
 create table tb12(
 a int,
@@ -401,8 +401,8 @@ select b from tb12 partition(p2sp1) order by b;
 select b from tb12 partition(p2sp2) order by b;
 select b from tb12 partition(p2sp3) order by b;
 show create table tb12;
-
-# logical partition: list, algorithm=default
+  
+  # logical partition: list, algorithm=default
 create tablegroup tg_modify_13;
 create table tb13(
 a int,
@@ -438,8 +438,8 @@ select b from tb13 partition(p1) order by b;
 select b from tb13 partition(p2) order by b;
 select b from tb13 partition(pd) order by b;
 show create table tb13;
-
-# logical partition: list, algorithm=default
+  
+  # logical partition: list, algorithm=default
 create tablegroup tg_modify_14;
 create table tb14(
 a int,

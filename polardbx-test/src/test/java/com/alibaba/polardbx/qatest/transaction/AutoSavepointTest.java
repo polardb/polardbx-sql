@@ -105,7 +105,7 @@ public class AutoSavepointTest extends CrudBasedLockTestCase {
         final String createMysqlTableSql = MessageFormat.format(
             createTableTemplate, mysqlName, columnDef, uniqueIndexMysqlStr, "");
         // Create table.
-        dropTableWithGsi(primaryName, ImmutableList.of(gsiName));
+        dropTableIfExists(myPolarXConn, primaryName);
         JdbcUtil.executeUpdateSuccess(myPolarXConn, createTddlTableSql);
         dropTableIfExists(myMysqlConn, mysqlName);
         JdbcUtil.executeUpdateSuccess(myMysqlConn, createMysqlTableSql);
@@ -139,18 +139,6 @@ public class AutoSavepointTest extends CrudBasedLockTestCase {
     private void dropTableIfExists(Connection conn, String tableName) {
         String sql = "drop table if exists " + tableName;
         JdbcUtil.executeUpdateSuccess(conn, sql);
-    }
-
-    private void dropTableWithGsi(String primary, List<String> indexNames) {
-        final String finalPrimary = quoteSpecialName(primary);
-        try (final Statement stmt = myPolarXConn.createStatement()) {
-            stmt.execute("DROP TABLE IF EXISTS " + finalPrimary);
-            for (String gsi : Optional.ofNullable(indexNames).orElse(ImmutableList.of())) {
-                stmt.execute("DROP TABLE IF EXISTS " + quoteSpecialName(gsi));
-            }
-        } catch (Exception e) {
-            throw GeneralUtil.nestedException(e);
-        }
     }
 
     @After
@@ -617,6 +605,40 @@ public class AutoSavepointTest extends CrudBasedLockTestCase {
             myPolarXConn.rollback();
             myPolarXConn.setAutoCommit(true);
         }
+    }
+
+    @Test
+    public void testRollbackFirstAutoSp() throws SQLException {
+        String tableName = "testRollbackFirstAutoSp";
+        String createSql = "create table " + tableName + " (id int primary key, a int) dbpartition by hash(id)";
+        String dropSql = "drop table if exists " + tableName;
+        String insertSql = "insert into " + tableName + " values ";
+        JdbcUtil.executeUpdateSuccess(myPolarXConn, dropSql);
+        JdbcUtil.executeUpdateSuccess(myPolarXConn, createSql);
+        // init data: (0, 0), (1, 1)
+        JdbcUtil.executeUpdateSuccess(myPolarXConn, insertSql + "(0, 0), (1, 1)");
+        try {
+            // begin transaction
+            myPolarXConn.setAutoCommit(false);
+            final String setTrxPolicySql = String.format("set drds_transaction_policy = %s", trxPolicy);
+            JdbcUtil.executeUpdateSuccess(myPolarXConn, setTrxPolicySql);
+            // insert duplicate value should be rollback
+            JdbcUtil.executeUpdateFailed(myPolarXConn, insertSql + "(0, 0), (1, 1), (2, 2), (3, 3)",
+                "Duplicate entry");
+            JdbcUtil.executeUpdateSuccess(myPolarXConn, insertSql + "(4, 4), (5, 5)");
+            myPolarXConn.commit();
+        } finally {
+            myPolarXConn.rollback();
+            myPolarXConn.setAutoCommit(true);
+        }
+        ResultSet rs = JdbcUtil.executeQuerySuccess(myPolarXConn, "select id from " + tableName + " order by id");
+        int[] expectedData = {0, 1, 4, 5};
+        int i = 0;
+        while (rs.next()) {
+            Assert.assertEquals(expectedData[i], rs.getInt(1));
+            i++;
+        }
+        JdbcUtil.executeUpdateSuccess(myPolarXConn, dropSql);
     }
 
 }

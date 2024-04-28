@@ -27,9 +27,9 @@ import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
-import com.alibaba.polardbx.stats.MatrixStatistics;
 import com.google.common.collect.ImmutableMap;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.GlobalStorageStatistics;
@@ -37,50 +37,21 @@ import org.apache.hadoop.fs.StorageStatistics;
 
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class FileStoreStatistics {
-    public static long STATS_TIME_PERIOD = 5 * 1000;
 
-    public static final ScheduledExecutorService SCHEDULER =
-        Executors.newScheduledThreadPool(1, new NamedThreadFactory("File-Store-Stats", true));
-    public static final MatrixStatistics EMPTY = new MatrixStatistics(false);
-
-    public static final String PROPERTY_STATS_TIME_PERIOD = "STATS_TIME_PERIOD";
-
-    private static final List<Map<StatisticItem, String>> PREVIOUS_STATS = new ArrayList<>();
-
-    private static final ReadWriteLock LOCK = new ReentrantReadWriteLock();
+    private static long lastRecordTime = 0L;
+    private static List<Map<StatisticItem, String>> PREVIOUS_STATS = null;
 
     private static final int FILE_STORAGE_FIELD_COUNT = 10;
 
-    public static final int CACHE_STATS_FIELD_COUNT = 10;
+    public static final int CACHE_STATS_FIELD_COUNT = 13;
 
-    private static AtomicLong lastUpdateTime;
-
-    static {
-        lastUpdateTime = new AtomicLong(System.currentTimeMillis());
-        if (System.getProperty(PROPERTY_STATS_TIME_PERIOD) != null) {
-            STATS_TIME_PERIOD = Long.valueOf(System.getProperty("STATS_TIME_PERIOD"));
-        }
-
-        SCHEDULER.scheduleWithFixedDelay(
-            () -> {
-                // collect statistics data.
-                collectStatistics();
-            }, 0, STATS_TIME_PERIOD, TimeUnit.MILLISECONDS);
-    }
-
-    private static void collectStatistics() {
+    private static List<Map<StatisticItem, String>> collectStatistics() {
         List<Map<StatisticItem, String>> localStats = new ArrayList<>();
         for (Engine engine : Engine.values()) {
             // for each file store engine
@@ -100,17 +71,7 @@ public class FileStoreStatistics {
                 }
             }
         }
-
-        // replace with new stats.
-        Lock writeLock = LOCK.writeLock();
-        try {
-            writeLock.lock();
-            PREVIOUS_STATS.clear();
-            PREVIOUS_STATS.addAll(localStats);
-            lastUpdateTime.set(System.currentTimeMillis());
-        } finally {
-            writeLock.unlock();
-        }
+        return localStats;
     }
 
     private static void foreachFileSystem(FileSystem fileSystem, Engine engine, boolean isMaster,
@@ -164,11 +125,7 @@ public class FileStoreStatistics {
             statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(-1L));
             statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(-1L));
         }
-
         localStats.add(statsBuilder.build());
-
-        // reset all statistics value to 0.
-        storageStatistics.reset();
     }
 
     public enum StatisticItem {
@@ -199,112 +156,156 @@ public class FileStoreStatistics {
         }
     }
 
-    public static Iterator<Map<StatisticItem, String>> currentStats() {
-        return PREVIOUS_STATS.iterator();
+    public synchronized static List<byte[][]> generateFileStoragePacket(Map<String, Object> connectionVariables) {
+        List<byte[][]> fileStorageRows = new ArrayList<>();
+        List<Map<StatisticItem, String>> mapList = collectStatistics();
+
+        boolean value = false;
+        if (connectionVariables.containsKey(ConnectionProperties.ENABLE_FILE_STORAGE_DELTA_STATISTIC)) {
+            value = Boolean.parseBoolean(connectionVariables.get(
+                ConnectionProperties.ENABLE_FILE_STORAGE_DELTA_STATISTIC).toString());
+        }
+
+        for (int index = 0; index < mapList.size(); index++) {
+            byte[][] result = new byte[FILE_STORAGE_FIELD_COUNT][];
+            int pos = 0;
+
+            Map<StatisticItem, String> current = mapList.get(index);
+            // basic info.
+            result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.ENGINE));
+            result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.ENDPOINT));
+            result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.FILE_URI));
+            result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.IS_MASTER));
+            // statistics info.
+
+            /**
+             * By default, the result values mean the total data volume,
+             * but it will switch to outputting incremental values after executing the following command.
+             *
+             * set ENABLE_FILE_STORAGE_DELTA_STATISTIC=true;
+             */
+            if (value && PREVIOUS_STATS != null && PREVIOUS_STATS.get(index) != null) {
+                long deltaTs = System.currentTimeMillis() - lastRecordTime;
+                Map<StatisticItem, String> last = PREVIOUS_STATS.get(index);
+                result[pos++] = deltaBytesOfStats(current.get(FileStoreStatistics.StatisticItem.BYTES_READ),
+                    last.get(FileStoreStatistics.StatisticItem.BYTES_READ), deltaTs);
+                result[pos++] = deltaBytesOfStats(current.get(FileStoreStatistics.StatisticItem.BYTES_WRITTEN),
+                    last.get(FileStoreStatistics.StatisticItem.BYTES_WRITTEN), deltaTs);
+                result[pos++] = deltaBytesOfStats(current.get(FileStoreStatistics.StatisticItem.READ_OPS),
+                    last.get(FileStoreStatistics.StatisticItem.READ_OPS), deltaTs);
+                result[pos++] = deltaBytesOfStats(current.get(FileStoreStatistics.StatisticItem.WRITE_OPS),
+                    last.get(FileStoreStatistics.StatisticItem.WRITE_OPS), deltaTs);
+            } else {
+                result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.BYTES_READ));
+                result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.BYTES_WRITTEN));
+                result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.READ_OPS));
+                result[pos++] = bytesOfString(current.get(FileStoreStatistics.StatisticItem.WRITE_OPS));
+            }
+
+            // rate limit info.
+            result[pos++] = bytesOfString(current.get(StatisticItem.MAX_READ_RATE));
+            result[pos++] = bytesOfString(current.get(StatisticItem.MAX_WRITE_RATE));
+
+            fileStorageRows.add(result);
+        }
+        lastRecordTime = System.currentTimeMillis();
+        PREVIOUS_STATS = mapList;
+        return fileStorageRows;
     }
 
-    public synchronized static List<byte[][]> generateFileStoragePacket() {
-        if (PREVIOUS_STATS.isEmpty()
-            || lastUpdateTime.updateAndGet(l -> System.currentTimeMillis() - l) > STATS_TIME_PERIOD) {
-            // force collection.
-            collectStatistics();
-        }
-
-        List<byte[][]> fileStorageRows = new ArrayList<>();
-
-        Lock readLock = LOCK.readLock();
-        try {
-            readLock.lock();
-            Iterator<Map<FileStoreStatistics.StatisticItem, String>> iterator = currentStats();
-            while (iterator.hasNext()) {
-                Map<FileStoreStatistics.StatisticItem, String> statsMap = iterator.next();
-
-                byte[][] result = new byte[FILE_STORAGE_FIELD_COUNT][];
-                int pos = 0;
-
-                // basic info.
-                result[pos++] = bytesOfString(statsMap.get(FileStoreStatistics.StatisticItem.ENGINE));
-                result[pos++] = bytesOfString(statsMap.get(FileStoreStatistics.StatisticItem.ENDPOINT));
-                result[pos++] = bytesOfString(statsMap.get(FileStoreStatistics.StatisticItem.FILE_URI));
-                result[pos++] = bytesOfString(statsMap.get(FileStoreStatistics.StatisticItem.IS_MASTER));
-
-                // statistics info.
-                result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.BYTES_READ));
-                result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.BYTES_WRITTEN));
-                result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.READ_OPS));
-                result[pos++] = bytesOfStats(statsMap.get(FileStoreStatistics.StatisticItem.WRITE_OPS));
-
-                // rate limit info.
-                result[pos++] = bytesOfString(statsMap.get(StatisticItem.MAX_READ_RATE));
-                result[pos++] = bytesOfString(statsMap.get(StatisticItem.MAX_WRITE_RATE));
-
-                fileStorageRows.add(result);
+    private static HashMap<Engine, FileSystemGroup> getSystemEngine() {
+        HashMap<Engine, FileSystemGroup> fsGroupMap = new HashMap<>();
+        for (Engine engine : Engine.values()) {
+            FileSystemGroup group = FileSystemManager.getFileSystemGroup(engine, false);
+            if (group == null) {
+                continue;
             }
-            return fileStorageRows;
-        } finally {
-            readLock.unlock();
+            fsGroupMap.put(engine, group);
         }
+        return fsGroupMap;
     }
 
     public synchronized static List<byte[][]> generateCacheStatsPacket() {
-        if (PREVIOUS_STATS.isEmpty()
-            || lastUpdateTime.updateAndGet(l -> System.currentTimeMillis() - l) > STATS_TIME_PERIOD) {
-            // force collection.
-            collectStatistics();
-        }
 
         List<byte[][]> cacheStatsResultsList = new ArrayList<>();
 
-        Lock readLock = LOCK.readLock();
-        try {
-            readLock.lock();
-            Iterator<Map<FileStoreStatistics.StatisticItem, String>> iterator = FileStoreStatistics.currentStats();
-            while (iterator.hasNext()) {
-                Map<FileStoreStatistics.StatisticItem, String> statsMap = iterator.next();
-                FileSystem fileSystem = FileSystemManager.getFileSystemGroup(
-                    Engine.valueOf(statsMap.get(FileStoreStatistics.StatisticItem.ENGINE))).getMaster();
-                if (fileSystem instanceof FileMergeCachingFileSystem) {
-                    CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
+        Map<Engine, FileSystemGroup> rets = getSystemEngine();
 
-                    if (cacheManager != null) {
-                        CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
-                        FileMergeCacheConfig fileMergeCacheConfig =
-                            ((FileMergeCacheManager) cacheManager).getFileMergeCacheConfig();
-                        CacheConfig cacheConfig = ((FileMergeCacheManager) cacheManager).getCacheConfig();
-                        BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
-                        long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();
+        for (Map.Entry<Engine, FileSystemGroup> entry : rets.entrySet()) {
+            if (entry.getValue() == null) {
+                continue;
+            }
 
-                        byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
-                        int pos = 0;
-                        results[pos++] =
-                            String.valueOf(statsMap.get(FileStoreStatistics.StatisticItem.ENGINE)).getBytes();
-                        results[pos++] = String.valueOf(cacheSize).getBytes();
-                        results[pos++] = String.valueOf(cacheEntries).getBytes();
-                        results[pos++] = String.valueOf(cacheStats.getInMemoryRetainedBytes()).getBytes();
-                        results[pos++] = String.valueOf(cacheStats.getCacheHit()).getBytes();
-                        results[pos++] = String.valueOf(cacheStats.getCacheMiss()).getBytes();
-                        results[pos++] = String.valueOf(cacheStats.getQuotaExceed()).getBytes();
-                        results[pos++] = cacheConfig.getBaseDirectory().toString().getBytes();
-                        results[pos++] = fileMergeCacheConfig.getCacheTtl().toString().getBytes();
-                        results[pos++] = String.valueOf(fileMergeCacheConfig.getMaxCachedEntries()).getBytes();
+            FileSystem fileSystem = entry.getValue().getMaster();
+            if (fileSystem instanceof FileMergeCachingFileSystem) {
+                CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
 
-                        cacheStatsResultsList.add(results);
+                if (cacheManager != null) {
+                    CacheStats cacheStats = ((FileMergeCacheManager) cacheManager).getStats();
+                    FileMergeCacheConfig fileMergeCacheConfig =
+                        FileConfig.getInstance().getMergeCacheConfig();
+                    CacheConfig cacheConfig = FileConfig.getInstance().getCacheConfig();
+                    BigInteger cacheSize = ((FileMergeCacheManager) cacheManager).calcCacheSize();
+                    long cacheEntries = ((FileMergeCacheManager) cacheManager).currentCacheEntries();
+
+                    byte[][] results = new byte[CACHE_STATS_FIELD_COUNT][];
+                    int pos = 0;
+                    results[pos++] =
+                        String.valueOf(entry.getKey()).getBytes();
+                    results[pos++] = String.valueOf(cacheSize).getBytes();
+                    results[pos++] = String.valueOf(cacheEntries).getBytes();
+                    results[pos++] = String.valueOf(cacheStats.getInMemoryRetainedBytes()).getBytes();
+                    results[pos++] = String.valueOf(cacheStats.getCacheHit()).getBytes();
+                    results[pos++] = String.valueOf(0).getBytes();
+                    results[pos++] = String.valueOf(cacheStats.getCacheMiss()).getBytes();
+                    results[pos++] = String.valueOf(cacheStats.getQuotaExceed()).getBytes();
+                    results[pos++] = String.valueOf(cacheStats.getCacheUnavailable()).getBytes();
+                    results[pos++] = cacheConfig.getBaseDirectory().toString().getBytes();
+                    results[pos++] = fileMergeCacheConfig.getCacheTtl().toString().getBytes();
+                    results[pos++] = new StringBuilder().append(fileMergeCacheConfig.getMaxCachedEntries())
+                        .append(" ENTRIES").toString().getBytes();
+                    results[pos++] =
+                        new StringBuilder().append(fileMergeCacheConfig.getMaxInDiskCacheSize().toBytes())
+                            .append(" Bytes").toString().getBytes();
+
+                    cacheStatsResultsList.add(results);
+
+                    // Generate cache stats for compressed bytes cache.
+                    if (fileMergeCacheConfig.isUseByteCache()) {
+                        byte[][] bytesCachePacket = ((FileMergeCacheManager) cacheManager).generatePacketOfBytesCache();
+                        cacheStatsResultsList.add(bytesCachePacket);
                     }
                 }
             }
-            return cacheStatsResultsList;
-        } finally {
-            readLock.unlock();
         }
+        return cacheStatsResultsList;
     }
 
-    private static byte[] bytesOfStats(String value) {
-        if (TStringUtil.isEmpty(value)) {
+    public synchronized static List<byte[][]> generateCacheFileStatsPacket() {
+        List<byte[][]> cacheStatsResultsList = new ArrayList<>();
+        Map<Engine, FileSystemGroup> rets = getSystemEngine();
+        for (Map.Entry<Engine, FileSystemGroup> entry : rets.entrySet()) {
+            FileSystem fileSystem = entry.getValue().getMaster();
+            if (fileSystem instanceof FileMergeCachingFileSystem) {
+                CacheManager cacheManager = ((FileMergeCachingFileSystem) fileSystem).getCacheManager();
+
+                if (cacheManager != null) {
+
+                    cacheStatsResultsList.addAll(((FileMergeCacheManager) cacheManager).collectLocalFileStats());
+                }
+            }
+        }
+        return cacheStatsResultsList;
+    }
+
+    private static byte[] deltaBytesOfStats(String value, String lastValue, long delta) {
+        if (TStringUtil.isEmpty(value) || TStringUtil.isEmpty(lastValue)) {
             return new byte[] {};
         }
         long stat = Long.valueOf(value);
-        stat /= (FileStoreStatistics.STATS_TIME_PERIOD / 1000);
-        return bytesOfString(String.valueOf(stat));
+        long lastStat = Long.valueOf(lastValue);
+        double ret = (stat - lastStat) / 1000.0 / delta;
+        return bytesOfString(String.valueOf(ret));
     }
 
     private static byte[] bytesOfString(String value) {

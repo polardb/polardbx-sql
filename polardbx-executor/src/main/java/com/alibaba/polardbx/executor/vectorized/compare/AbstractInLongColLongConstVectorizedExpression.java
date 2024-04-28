@@ -16,7 +16,6 @@
 
 package com.alibaba.polardbx.executor.vectorized.compare;
 
-import com.alibaba.polardbx.executor.chunk.IntegerBlock;
 import com.alibaba.polardbx.executor.chunk.LongBlock;
 import com.alibaba.polardbx.executor.chunk.MutableChunk;
 import com.alibaba.polardbx.executor.chunk.RandomAccessBlock;
@@ -25,7 +24,6 @@ import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 
 public abstract class AbstractInLongColLongConstVectorizedExpression extends AbstractVectorizedExpression {
     protected final boolean[] operandIsNulls;
@@ -85,7 +83,7 @@ public abstract class AbstractInLongColLongConstVectorizedExpression extends Abs
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = outputVectorSlot.cast(LongBlock.class).longArray();
 
         if (anyOperandsNull()) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -96,7 +94,7 @@ public abstract class AbstractInLongColLongConstVectorizedExpression extends Abs
             return;
         }
 
-        long[] longArray = ((LongBlock) leftInputVectorSlot).longArray();
+        long[] longArray = leftInputVectorSlot.cast(LongBlock.class).longArray();
 
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {

@@ -16,10 +16,10 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.buffer;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.executor.mpp.OutputBuffers;
 import com.alibaba.polardbx.executor.mpp.execution.StateMachine;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.units.DataSize;
 
 import java.util.List;

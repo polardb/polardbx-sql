@@ -74,6 +74,20 @@ public abstract class InterruptDDLTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    protected void injectDDLException(Connection conn, String failPointKey, String value)
+        throws SQLException {
+        String sql = String.format(SET_FAIL_POINT, failPointKey, value);
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.executeUpdate();
+        }
+    }
+
+    protected void clearDDLFailPoint(Connection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(SET_FP_CLEAR)) {
+            ps.executeUpdate();
+        }
+    }
+
     protected void continueUntilComplete(JobInfo job) throws SQLException {
         continueDDL(job);
         waitUntilJobCompletedOrPaused();
@@ -229,7 +243,7 @@ public abstract class InterruptDDLTest extends DDLBaseNewDBTestCase {
 
     protected void continueDDLWithError(JobInfo job, String errMsg) {
         String sql = String.format("continue ddl %s", job.parentJob.jobId);
-        JdbcUtil.executeFaied(tddlConnection, sql, errMsg);
+        JdbcUtil.executeFailed(tddlConnection, sql, errMsg);
     }
 
     protected void checkJobPaused() throws SQLException {
@@ -241,73 +255,21 @@ public abstract class InterruptDDLTest extends DDLBaseNewDBTestCase {
     }
 
     protected void checkJobState(String expected) throws SQLException {
-        JobInfo job = fetchCurrentJob();
-        if (job == null) {
-            Assert.fail("Not found any job");
-        }
-        if (!TStringUtil.equalsIgnoreCase(job.parentJob.state, expected)) {
-            Assert.fail(String.format("Job %s has wrong state %s", job.parentJob.jobId, job.parentJob.state));
+        try {
+            checkJobState(expected, this::fetchCurrentJob);
+        } catch (SQLException e) {
+            throw e;
+        } catch (Exception ex) {
+            throw new RuntimeException("", ex);
         }
     }
 
     protected void checkJobGone() throws SQLException {
-        JobInfo job = fetchCurrentJob();
-        if (job != null) {
-            Assert.fail(String.format("Job %s is still there in %s", job.parentJob.jobId, job.parentJob.state));
-        }
+        checkJobGone(TEST_TABLE);
     }
 
     protected JobInfo fetchCurrentJob() throws SQLException {
-        JobInfo job = null;
-        JobEntry parentJob = null;
-        List<JobEntry> subJobs = new ArrayList<>();
-
-        String sql = "show full ddl";
-        try (PreparedStatement ps = tddlConnection.prepareStatement(sql);
-            ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                JobEntry currentJob = new JobEntry();
-
-                String tableName = rs.getString("OBJECT_NAME");
-
-                if (!TStringUtil.equalsIgnoreCase(tableName, TEST_TABLE)) {
-                    continue;
-                }
-
-                currentJob.jobId = rs.getLong("JOB_ID");
-                currentJob.state = rs.getString("STATE");
-                currentJob.traceId = rs.getString("TRACE_ID");
-                currentJob.responseNode = rs.getString("RESPONSE_NODE");
-
-                if (currentJob.responseNode.contains("subjob")) {
-                    subJobs.add(currentJob);
-                } else if (parentJob == null) {
-                    parentJob = currentJob;
-                } else {
-                    Assert.fail("Unexpected: found multiple parent jobs");
-                }
-            }
-        }
-
-        if (parentJob != null) {
-            job = new JobInfo();
-            job.parentJob = parentJob;
-            job.subJobs = subJobs;
-        }
-
-        return job;
-    }
-
-    protected static class JobInfo {
-        JobEntry parentJob;
-        List<JobEntry> subJobs;
-    }
-
-    protected static class JobEntry {
-        long jobId;
-        String state;
-        String traceId;
-        String responseNode;
+        return fetchCurrentJob(TEST_TABLE);
     }
 
     protected void checkTable(boolean tableExpectedToExist) {
@@ -550,13 +512,6 @@ public abstract class InterruptDDLTest extends DDLBaseNewDBTestCase {
     protected void dropTable() {
         String sql = String.format(DROP_TABLE_IF_EXISTS, TEST_TABLE);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-    }
-
-    protected void waitForSeconds(int seconds) {
-        try {
-            Thread.sleep(seconds * 1000);
-        } catch (InterruptedException ignored) {
-        }
     }
 
     public boolean usingNewPartDb() {

@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor;
 
-import java.time.ZonedDateTime;
-
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -26,8 +24,9 @@ import com.alibaba.polardbx.executor.partitionvisualizer.PartitionHeatCollector;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
-
 import org.apache.commons.lang3.StringUtils;
+
+import java.time.ZonedDateTime;
 
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;

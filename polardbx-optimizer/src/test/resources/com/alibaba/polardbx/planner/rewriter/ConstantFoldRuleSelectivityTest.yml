@@ -1,0 +1,34 @@
+SQL:
+  - sql: |
+      select 1+3<4 as a from lineitem where 1+3<2;
+    plan: |
+      project(a="0"): rowcount = 1.0, cumulative cost = value = 6.176347e7, cpu = 4873470.0, memory = 0.0, io = 4628.0, net = 6.75
+        filter(condition="0"): rowcount = 1.0, cumulative cost = value = 6.1763469e7, cpu = 4873469.0, memory = 0.0, io = 4628.0, net = 6.75
+          logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey` from `lineitem` as `lineitem`"): rowcount = 5414964.0, cumulative cost = value = 6.1763468e7, cpu = 4873468.0, memory = 0.0, io = 4628.0, net = 6.75
+  - sql: |
+      select 11 as a from lineitem where true;
+    plan: |
+      project(a="11"): rowcount = 5414964.0, cumulative cost = value = 6.1763469e7, cpu = 4873469.0, memory = 0.0, io = 4628.0, net = 6.75
+        logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey` from `lineitem` as `lineitem`"): rowcount = 5414964.0, cumulative cost = value = 6.1763468e7, cpu = 4873468.0, memory = 0.0, io = 4628.0, net = 6.75
+  - sql: |
+      select 11 as a from lineitem where false;
+    plan: |
+      project(a="11"): rowcount = 1.0, cumulative cost = value = 6.176347e7, cpu = 4873470.0, memory = 0.0, io = 4628.0, net = 6.75
+        filter(condition="false"): rowcount = 1.0, cumulative cost = value = 6.1763469e7, cpu = 4873469.0, memory = 0.0, io = 4628.0, net = 6.75
+          logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey` from `lineitem` as `lineitem`"): rowcount = 5414964.0, cumulative cost = value = 6.1763468e7, cpu = 4873468.0, memory = 0.0, io = 4628.0, net = 6.75
+  - sql: |
+      select 1+3=4 as a from lineitem where 1=1;
+    plan: |
+      project(a="1"): rowcount = 5414964.0, cumulative cost = value = 6.176347e7, cpu = 4873470.0, memory = 0.0, io = 4628.0, net = 6.75
+        filter(condition="1"): rowcount = 5414964.0, cumulative cost = value = 6.1763469e7, cpu = 4873469.0, memory = 0.0, io = 4628.0, net = 6.75
+          logicalview(tables="[0000-0003].lineitem_[00-15]", shardcount=16, sql="select `l_suppkey` from `lineitem` as `lineitem`"): rowcount = 5414964.0, cumulative cost = value = 6.1763468e7, cpu = 4873468.0, memory = 0.0, io = 4628.0, net = 6.75
+DDL:
+  lineitem:
+    CREATE TABLE `lineitem` (`l_suppkey` int(11) NOT NULL,KEY `auto_shard_key_l_suppkey` USING BTREE (`l_suppkey`) ) ENGINE = InnoDB DEFAULT CHARSET = latin1 DBPARTITION BY RIGHT_SHIFT(`l_suppkey`, 6) TBPARTITION BY RIGHT_SHIFT(`l_suppkey`, 6) TBPARTITIONS 4;
+STATISTICS:
+  lineitem:
+    5414964
+CONFIG:
+  defaltxxAPPName.isNew:
+    false
+

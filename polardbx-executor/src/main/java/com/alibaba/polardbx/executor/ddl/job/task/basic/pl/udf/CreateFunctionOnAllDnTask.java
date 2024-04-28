@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.executor.ddl.job.task.basic.pl.udf;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
@@ -46,6 +47,8 @@ public class CreateFunctionOnAllDnTask extends BaseDdlTask {
 
     @Override
     protected void beforeTransaction(ExecutionContext executionContext) {
+        updateTaskStateInNewTxn(DdlTaskState.DIRTY);
+
         Set<String> allDnId = ExecUtils.getAllDnStorageId();
         for (String dnId : allDnId) {
             try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);

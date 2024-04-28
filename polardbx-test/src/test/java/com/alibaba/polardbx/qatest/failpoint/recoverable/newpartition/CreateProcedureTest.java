@@ -18,7 +18,6 @@ package com.alibaba.polardbx.qatest.failpoint.recoverable.newpartition;
 
 import com.alibaba.polardbx.executor.utils.failpoint.FailPointKey;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
-import net.jcip.annotations.NotThreadSafe;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -118,7 +117,7 @@ public class CreateProcedureTest extends BasePartitionedTableFailPointTestCase {
         JdbcUtil.executeSuccess(failPointConnection, String.format("call %s", procedureName));
 
         JdbcUtil.executeSuccess(failPointConnection, String.format(dropProcedureStmt, procedureName));
-        JdbcUtil.executeFaied(failPointConnection, String.format(showCreateProcedure, procedureName),
+        JdbcUtil.executeFailed(failPointConnection, String.format(showCreateProcedure, procedureName),
             "ERR_PROCEDURE_NOT_FOUND");
     }
 

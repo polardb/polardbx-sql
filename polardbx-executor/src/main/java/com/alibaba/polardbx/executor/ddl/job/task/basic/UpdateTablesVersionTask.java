@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.task.basic;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
+import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.google.common.base.Joiner;
@@ -26,6 +27,8 @@ import lombok.Getter;
 
 import java.sql.Connection;
 import java.util.List;
+
+import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_UPDATE_TABLES_VERSION_ERROR;
 
 @Getter
 @TaskName(name = "UpdateTablesVersionTask")
@@ -46,6 +49,8 @@ public class UpdateTablesVersionTask extends BaseGmsTask {
 
     @Override
     protected void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
+        FailPoint.injectExceptionFromHintWithKeyEnable(FP_UPDATE_TABLES_VERSION_ERROR, executionContext);
+
         updateTablesVersion(metaDbConnection);
     }
 

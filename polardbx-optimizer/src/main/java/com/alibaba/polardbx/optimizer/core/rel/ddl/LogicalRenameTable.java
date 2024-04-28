@@ -17,14 +17,21 @@
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameTablePreparedData;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.rule.TableRule;
 import org.apache.calcite.rel.ddl.RenameTable;
 import org.apache.calcite.sql.SqlIdentifier;
+
+import static com.alibaba.polardbx.common.ddl.Attribute.RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME;
 
 public class LogicalRenameTable extends BaseDdlOperation {
 
@@ -63,10 +70,47 @@ public class LogicalRenameTable extends BaseDdlOperation {
 
         preparedData.setSchemaName(schemaName);
         preparedData.setTableName(tableName);
+        preparedData.setNeedRenamePhyTable(!checkTableNamePatternForRename(schemaName, tableName));
         preparedData.setNewTableName(newTableName.getLastName());
         preparedData.setTableVersion(tableMeta.getVersion());
 
         return preparedData;
+    }
+
+    public static boolean checkTableNamePatternForRename(String schemaName, String logicalTableName) {
+        if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            PartitionInfo partitionInfo =
+                OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(logicalTableName);
+            return partitionInfo.isRandomTableNamePatternEnabled();
+        } else {
+            boolean hasRandomSuffixInTableNamePattern = true;
+
+            try {
+                TableRule tableRule =
+                    OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
+                if (tableRule != null) {
+                    String tableNamePattern = tableRule.getTbNamePattern();
+                    if (TStringUtil.isEmpty(tableNamePattern)
+                        || tableNamePattern.length() <= RANDOM_SUFFIX_LENGTH_OF_PHYSICAL_TABLE_NAME) {
+                        // Must be single or broadcast table.
+                        hasRandomSuffixInTableNamePattern = false;
+                    } else if (TStringUtil.startsWithIgnoreCase(tableNamePattern, logicalTableName)) {
+                        // Not renamed yet.
+                        String randomSuffix = tableRule.extractRandomSuffix();
+                        hasRandomSuffixInTableNamePattern = TStringUtil.isNotEmpty(randomSuffix);
+                    } else {
+                        // The table may have been renamed when logical table name
+                        // is supported, so that the table name pattern's prefix is
+                        // not the logical table name, so it should be safe to
+                        // contain random string.
+                        hasRandomSuffixInTableNamePattern = true;
+                    }
+                }
+            } catch (Throwable ignored) {
+            }
+
+            return hasRandomSuffixInTableNamePattern;
+        }
     }
 
     @Override

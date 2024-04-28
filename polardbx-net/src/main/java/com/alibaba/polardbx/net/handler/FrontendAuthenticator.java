@@ -92,7 +92,7 @@ public class FrontendAuthenticator implements NIOHandler {
         }
 
         // check if host is in trusted ip, otherwise check password
-        boolean trustLogin = isTrustedIp(source.getHost(), auth.user);
+        boolean trustLogin = isTrustedIp(source.getHost(), auth.user) || source.isLoopAddress();
         if (!trustLogin) {
             // manage port , but not allow user login
             if (source.isManaged() && !source.isAllowManagerLogin()) {

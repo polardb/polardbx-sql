@@ -28,6 +28,8 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
     private boolean ifExists;
     private boolean repartition;
     private String repartitionTableName;
+    private boolean isColumnar;
+    private String originalIndexName;
 
     public DropGlobalIndexPreparedData(final String schemaName,
                                        final String primaryTableName,
@@ -41,6 +43,7 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
             TableMeta gsiTableMeta =
                 OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(indexTableName);
             indexTablePreparedData.setTableVersion(gsiTableMeta.getVersion());
+            this.isColumnar = gsiTableMeta.isColumnar();
         } catch (Exception ex) {
             //ignore, i.e repartition the indexTableName is not created yet
         }
@@ -85,11 +88,23 @@ public class DropGlobalIndexPreparedData extends DdlPreparedData {
         this.repartition = repartition;
     }
 
+    public boolean isColumnar() {
+        return isColumnar;
+    }
+
     public void setRepartitionTableName(String repartitionTableName) {
         this.repartitionTableName = repartitionTableName;
     }
 
     public String getRepartitionTableName() {
         return repartitionTableName;
+    }
+
+    public String getOriginalIndexName() {
+        return originalIndexName;
+    }
+
+    public void setOriginalIndexName(String originalIndexName) {
+        this.originalIndexName = originalIndexName;
     }
 }

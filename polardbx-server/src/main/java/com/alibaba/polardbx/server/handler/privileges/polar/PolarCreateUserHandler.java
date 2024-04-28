@@ -17,6 +17,9 @@
 package com.alibaba.polardbx.server.handler.privileges.polar;
 
 import com.alibaba.polardbx.CobarServer;
+import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLCharExpr;
 import com.alibaba.polardbx.druid.sql.ast.expr.SQLIdentifierExpr;
 import com.alibaba.polardbx.druid.sql.parser.ParserException;
@@ -37,10 +40,14 @@ import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
+import com.google.common.collect.Maps;
+import groovy.sql.Sql;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildExtendParameter;
 import static com.alibaba.polardbx.server.handler.privileges.polar.PolarHandlerCommon.checkDrdsRoot;
 import static com.alibaba.polardbx.server.handler.privileges.polar.PolarHandlerCommon.encryptPassword;
 import static com.alibaba.polardbx.gms.privilege.audit.AuditPrivilege.polarAudit;
@@ -119,5 +126,10 @@ public class PolarCreateUserHandler extends AbstractPrivilegeCommandHandler {
         PolarPrivManager.getInstance().createAccount(granter, getServerConn().getActiveRoles(),
             grantees, stmt.isIfNotExists());
         polarAudit(getServerConn().getConnectionInfo(), getSql().toString(), AuditAction.CREATE_USER);
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.CREATE_USER;
     }
 }

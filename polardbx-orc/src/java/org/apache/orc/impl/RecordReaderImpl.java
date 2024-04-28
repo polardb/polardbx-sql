@@ -17,12 +17,6 @@
  */
 package org.apache.orc.impl;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
-import java.time.ZoneOffset;
-import java.time.chrono.ChronoLocalDate;
-import java.time.format.DateTimeFormatter;
 import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
@@ -30,7 +24,6 @@ import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.hadoop.hive.ql.util.TimestampUtils;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.orc.sarg.SearchArgument.TruthValue;
 import org.apache.orc.BooleanColumnStatistics;
 import org.apache.orc.CollectionColumnStatistics;
 import org.apache.orc.ColumnStatistics;
@@ -53,6 +46,7 @@ import org.apache.orc.impl.reader.ReaderEncryption;
 import org.apache.orc.impl.reader.StripePlanner;
 import org.apache.orc.sarg.PredicateLeaf;
 import org.apache.orc.sarg.SearchArgument;
+import org.apache.orc.sarg.SearchArgument.TruthValue;
 import org.apache.orc.util.BloomFilter;
 import org.apache.orc.util.BloomFilterIO;
 import org.slf4j.Logger;
@@ -61,6 +55,12 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.time.chrono.ChronoLocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -83,6 +83,13 @@ public class RecordReaderImpl implements RecordReader {
   private int currentStripe = -1;
   private long rowBaseInStripe = 0;
   private long rowCountInStripe = 0;
+
+  /**
+   * 读stripe时是否一个一个rowGroup加载，默认是直接加载一整个stripe
+   */
+  private boolean readStripeByRowGroup = false;
+  private int currentRowGroup = -1;
+  private long rowGroupCountInStripe =0;
   private final TreeReaderFactory.TreeReader reader;
   private final OrcIndex indexes;
   private final SargApplier sargApp;
@@ -215,6 +222,11 @@ public class RecordReaderImpl implements RecordReader {
       FSDataInputStream file = fileReader.takeFile();
       if (file != null) {
         builder.withFile(file);
+      } else if (fileReader.getRateLimiter() != null) {
+        //file 包含限速
+        file = new FSDataInputStreamRateLimiter(fileReader.getFileSystemSupplier().get().open(path),
+            fileReader.getRateLimiter());
+        builder.withFile(file);
       }
       this.dataReader = RecordReaderUtils.createDefaultDataReader(
           builder.build());
@@ -232,6 +244,7 @@ public class RecordReaderImpl implements RecordReader {
           .skipCorrupt(skipCorrupt)
           .fileFormat(fileReader.getFileVersion())
           .useUTCTimestamp(fileReader.useUTCTimestamp)
+          .useDecimal64(fileReader.useDecimal64)
           .setProlepticGregorian(fileReader.writerUsedProlepticGregorian(),
               fileReader.options.getConvertToProlepticGregorian())
           .setEncryption(encryption);
@@ -241,11 +254,13 @@ public class RecordReaderImpl implements RecordReader {
     int columns = evolution.getFileSchema().getMaximumId() + 1;
     indexes = new OrcIndex(new OrcProto.RowIndex[columns],
         new OrcProto.Stream.Kind[columns],
-        new OrcProto.BloomFilterIndex[columns]);
+        new OrcProto.BloomFilterIndex[columns],
+        new OrcProto.BitmapIndex[columns]);
 
     planner = new StripePlanner(evolution.getFileSchema(), encryption,
         dataReader, writerVersion, ignoreNonUtf8BloomFilter,
         maxDiskRangeChunkLimit);
+    this.readStripeByRowGroup = fileReader.getReadStripeByRowGroup();
 
     try {
       advanceToNextRow(reader, 0L, true);
@@ -509,7 +524,7 @@ public class RecordReaderImpl implements RecordReader {
       }
     } else if (writerVersion == OrcFile.WriterVersion.ORC_135 &&
                category == TypeDescription.Category.DECIMAL &&
-               type.getPrecision() <= TypeDescription.MAX_DECIMAL64_PRECISION) {
+               TypeUtils.isDecimal64Precision(type.getPrecision())) {
       // ORC 1.5.0 to 1.5.5, which use WriterVersion.ORC_135, have broken
       // min and max values for decimal64. See ORC-517.
       LOG.debug("Not using predicate push down on {}, because the file doesn't"+
@@ -1119,7 +1134,7 @@ public class RecordReaderImpl implements RecordReader {
    */
   private void readStripe() throws IOException {
     StripeInformation stripe = beginReadStripe();
-    planner.parseStripe(stripe, fileIncluded);
+    planner.parseStripe(stripe, fileIncluded, stripeFooter);
     includedRowGroups = pickRowGroups();
 
     // move forward to the first unskipped row
@@ -1132,12 +1147,30 @@ public class RecordReaderImpl implements RecordReader {
 
     // if we haven't skipped the whole stripe, read the data
     if (rowInStripe < rowCountInStripe) {
-      planner.readData(indexes, includedRowGroups, false);
-      reader.startStripe(planner);
-      // if we skipped the first row group, move the pointers forward
-      if (rowInStripe != 0) {
-        seekToRowEntry(reader, (int) (rowInStripe / rowIndexStride));
+      if (readStripeByRowGroup && rowIndexStride != 0) {
+        //需先加载indexes
+        if (includedRowGroups == null) {
+          planner.readRowIndex(null, indexes);
+        }
+        readRowGroupInStripe((int) (rowInStripe / rowIndexStride));
+        //这里的rowInStripe一定是rowGroup为边界，不需要seekRow
+      } else {
+        planner.readData(indexes, includedRowGroups, false);
+        reader.startStripe(planner);
+        // if we skipped the first row group, move the pointers forward
+        if (rowInStripe != 0) {
+          seekToRowEntry(reader, (int) (rowInStripe / rowIndexStride));
+        }
       }
+    }
+  }
+
+  private void readRowGroupInStripe(int rowGroupIndex) throws IOException  {
+    currentRowGroup = rowGroupIndex;
+    planner.readRowGroupData(indexes, rowGroupIndex, false);
+    reader.startStripe(planner);
+    if (currentRowGroup != 0 ) {
+      seekToRowEntry(reader, currentRowGroup);
     }
   }
 
@@ -1149,6 +1182,8 @@ public class RecordReaderImpl implements RecordReader {
     rowCountInStripe = stripe.getNumberOfRows();
     rowInStripe = 0;
     rowBaseInStripe = 0;
+    rowGroupCountInStripe = (rowCountInStripe + rowIndexStride - 1) / rowIndexStride;
+    currentRowGroup = -1;
     for (int i = 0; i < currentStripe; ++i) {
       rowBaseInStripe += stripes.get(i).getNumberOfRows();
     }
@@ -1203,6 +1238,14 @@ public class RecordReaderImpl implements RecordReader {
         nextRowInStripe = Math.min(rowCountInStripe, rowGroup * rowIndexStride);
       }
     }
+
+    if (readStripeByRowGroup && rowIndexStride != 0 && nextRowInStripe < rowCountInStripe &&
+        (nextRowInStripe / rowIndexStride) != currentRowGroup) {
+      //如果下一个要读的不是当前rowGroup。
+      //注：如果是最后一个rowGroup读完了，则nextRowInStripe < rowCountInStripe会false
+      readRowGroupInStripe((int) (nextRowInStripe / rowIndexStride));
+
+    }
     if (nextRowInStripe >= rowCountInStripe) {
       if (canAdvanceStripe) {
         advanceStripe();
@@ -1210,7 +1253,10 @@ public class RecordReaderImpl implements RecordReader {
       return canAdvanceStripe;
     }
     if (nextRowInStripe != rowInStripe) {
-      if (rowIndexStride != 0) {
+      if (readStripeByRowGroup && rowIndexStride != 0) {
+        //这个已经加载到rowGroup了，只需要加载行数
+        reader.skipRows(nextRowInStripe - (nextRowInStripe / rowIndexStride) * rowIndexStride);
+      } else if (rowIndexStride != 0) {
         int rowGroup = (int) (nextRowInStripe / rowIndexStride);
         seekToRowEntry(reader, rowGroup);
         reader.skipRows(nextRowInStripe - rowGroup * rowIndexStride);
@@ -1277,6 +1323,15 @@ public class RecordReaderImpl implements RecordReader {
       if (isLogDebugEnabled && batchSize < targetBatchSize) {
         LOG.debug("markerPosition: " + markerPosition + " batchSize: " + batchSize);
       }
+    } else if (readStripeByRowGroup) {
+      //计算当前rowGroup还可以读取多少
+      long canReadInRowGroup = 0;
+      if (currentRowGroup == rowGroupCountInStripe - 1) {
+        canReadInRowGroup = (rowCountInStripe - rowInStripe);
+      } else {
+        canReadInRowGroup = rowIndexStride - (rowInStripe % rowIndexStride);
+      }
+      batchSize = (int) Math.min(targetBatchSize, canReadInRowGroup);
     } else {
       batchSize = (int) Math.min(targetBatchSize, (rowCountInStripe - rowInStripe));
     }
@@ -1329,7 +1384,7 @@ public class RecordReaderImpl implements RecordReader {
         included = new boolean[schema.getMaximumId() + 1];
         Arrays.fill(included, true);
       }
-      copy.parseStripe(stripes.get(stripeIndex), included);
+      copy.parseStripe(stripes.get(stripeIndex), included, null);
       return copy.readRowIndex(sargColumns, null);
     }
   }

@@ -29,6 +29,7 @@ public class TableGroupNameUtil {
     public static final String SINGLE_DEFAULT_TG_NAME_TEMPLATE = "single_tg";
     static final String SINGLE_NON_DEFAULT_TG_NAME_TEMPLATE = "single_tg%s";
     public static final String OSS_TG_NAME_TEMPLATE = "oss_tg%s";
+    public static final String COLUMNAR_TG_NAME_TEMPLATE = "columnar_tg%s";
 
     public static String autoBuildTableGroupName(Long tgId, int tgType) {
         String tgName;
@@ -40,6 +41,8 @@ public class TableGroupNameUtil {
             tgName = String.format(SINGLE_NON_DEFAULT_TG_NAME_TEMPLATE, tgId);
         } else if (tgType == TableGroupRecord.TG_TYPE_OSS_TBL_TG) {
             tgName = String.format(OSS_TG_NAME_TEMPLATE, tgId);
+        } else if (tgType == TableGroupRecord.TG_TYPE_COLUMNAR_TBL_TG) {
+            tgName = String.format(COLUMNAR_TG_NAME_TEMPLATE, tgId);
         } else {
             tgName = String.format(TG_NAME_TEMPLATE, tgId);
         }
@@ -51,5 +54,19 @@ public class TableGroupNameUtil {
             return false;
         }
         return tgName.startsWith("oss_tg");
+    }
+
+    public static boolean isColumnarTg(String tgName) {
+        if (StringUtils.isEmpty(tgName)) {
+            return false;
+        }
+        return tgName.startsWith("columnar_tg");
+    }
+
+    public static boolean isFileStorageTg(String tgName) {
+        if (StringUtils.isEmpty(tgName)) {
+            return false;
+        }
+        return isOssTg(tgName) || isColumnarTg(tgName);
     }
 }

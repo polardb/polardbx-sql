@@ -35,7 +35,7 @@ public final class DeallocateHandler {
     public static boolean handle(ByteString stmt, ServerConnection c, boolean hasMore, boolean inProcedureCall) {
 
         try {
-            parseAndRemove(stmt, c.getSmForQuery());
+            parseAndRemove(stmt, c);
 
             if (!inProcedureCall) {
                 // return OK
@@ -49,12 +49,12 @@ public final class DeallocateHandler {
         }
     }
 
-    private static void parseAndRemove(ByteString sql, StatementMap map) throws SQLSyntaxErrorException {
+    private static void parseAndRemove(ByteString sql, ServerConnection c) throws SQLSyntaxErrorException {
         try {
             MysqlDeallocatePrepareStatement statement =
                 (MysqlDeallocatePrepareStatement) FastsqlUtils.parseSql(sql).get(0);
             String name = statement.getStatementName().getSimpleName();
-            map.delete(name);
+            c.removePreparedCache(name, false);
         } catch (Exception e) {
             throw new SQLSyntaxErrorException("deallocate prepare statement error", e);
         }

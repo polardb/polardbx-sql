@@ -18,7 +18,6 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
 import com.alibaba.polardbx.optimizer.core.MppConvention;
-import com.alibaba.polardbx.optimizer.core.rel.TopN;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateMaterializedView;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.Convention;

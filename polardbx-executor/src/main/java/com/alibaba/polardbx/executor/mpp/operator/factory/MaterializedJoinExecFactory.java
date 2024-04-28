@@ -69,10 +69,7 @@ public class MaterializedJoinExecFactory extends ExecutorFactory {
                 IExpression condition = convertExpression(join.getCondition(), context);
                 Executor exec = new MaterializedSemiJoinExec(
                     outer, inner, join.isDistinctInput(), joinKeys, join.getJoinType(), condition, context);
-                exec.setId(join.getRelatedId());
-                if (context.getRuntimeStatistics() != null) {
-                    RuntimeStatHelper.registerStatForExec(join, exec, context);
-                }
+                registerRuntimeStat(exec, join, context);
                 executors.add(exec);
             }
         }

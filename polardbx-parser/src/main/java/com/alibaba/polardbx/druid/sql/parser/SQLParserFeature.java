@@ -31,6 +31,7 @@ public enum SQLParserFeature {
     DRDSBaseline,
     DrdsGSI,
     DrdsMisc,
+    EnableFillKeyName,
     DrdsCCL,
     InsertReader,
     IgnoreNameQuotes,
@@ -57,12 +58,11 @@ public enum SQLParserFeature {
     Presto,
     ;
 
-    private SQLParserFeature(){
+    private SQLParserFeature() {
         mask = (1 << ordinal());
     }
 
     public final int mask;
-
 
     public static boolean isEnabled(int features, SQLParserFeature feature) {
         return (features & feature.mask) != 0;
@@ -85,7 +85,7 @@ public enum SQLParserFeature {
 
         int value = 0;
 
-        for (SQLParserFeature feature: features) {
+        for (SQLParserFeature feature : features) {
             value |= feature.mask;
         }
 

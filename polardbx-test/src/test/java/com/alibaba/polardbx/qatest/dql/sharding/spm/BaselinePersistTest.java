@@ -73,7 +73,7 @@ public class BaselinePersistTest extends BaseTestCase {
 
     private void check() throws SQLException {
         try (Connection c = getPolardbxConnection()) {
-            ResultSet rs = c.createStatement().executeQuery("SELECT COUNT(1) FROM METADB.PLAN_INFO WHERE !accepted");
+            ResultSet rs = c.createStatement().executeQuery("SELECT COUNT(1) FROM METADB.SPM_PLAN WHERE !accepted");
             rs.next();
             Assert.assertTrue(rs.getInt(1) == 0);
         }

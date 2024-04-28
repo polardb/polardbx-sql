@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupInfoRecord;
 import com.alibaba.polardbx.gms.tablegroup.JoinGroupUtils;
@@ -30,7 +32,6 @@ import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoUtil;
@@ -41,6 +42,7 @@ import org.apache.calcite.sql.SqlPartition;
 import org.apache.calcite.sql.SqlSubPartition;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,6 +62,7 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
     }
 
     private String tableGroupName;
+    private String targetImplicitTableGroupName;
 
     /**
      * After doing alter, the phy parts of newPartitionNames
@@ -92,6 +95,8 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
     private boolean useTemplatePart;
     private boolean operateOnSubPartition;
     private List<String> logicalParts;
+
+    protected boolean usePhysicalBackfill = false;
 
     protected List<GroupDetailInfoExRecord> targetGroupDetailInfoExRecords;
 
@@ -157,6 +162,14 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
 
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
+    }
+
+    public boolean isUsePhysicalBackfill() {
+        return false;
+    }
+
+    public void setUsePhysicalBackfill(boolean usePhysicalBackfill) {
+        throw new NotSupportException("not support physical backfill for the operation");
     }
 
     public void prepareInvisiblePartitionGroup() {
@@ -303,6 +316,14 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
         this.operateOnSubPartition = operateOnSubPartition;
     }
 
+    public String getTargetImplicitTableGroupName() {
+        return targetImplicitTableGroupName;
+    }
+
+    public void setTargetImplicitTableGroupName(String targetImplicitTableGroupName) {
+        this.targetImplicitTableGroupName = targetImplicitTableGroupName;
+    }
+
     public void updatePrepareDate(TableGroupConfig targetTableConfig, PartitionInfo curPartitionInfo,
                                   PartitionInfo newPartitionInfo) {
         List<PartitionGroupRecord> partitionGroupRecords = targetTableConfig.getPartitionGroupRecords();
@@ -328,7 +349,9 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
     public void findCandidateTableGroupAndUpdatePrepareDate(TableGroupConfig curTableGroupConfig,
                                                             PartitionInfo newPartitionInfo,
                                                             List<SqlPartition> sqlPartitions,
-                                                            String partitionNamePrefix, int flag, ExecutionContext ec) {
+                                                            String partitionNamePrefix,
+                                                            int flag,
+                                                            ExecutionContext ec) {
         findCandidateTableGroupAndUpdatePrepareDate(curTableGroupConfig, newPartitionInfo, sqlPartitions,
             partitionNamePrefix, flag, false, ec);
     }
@@ -336,8 +359,26 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
     public void findCandidateTableGroupAndUpdatePrepareDate(TableGroupConfig curTableGroupConfig,
                                                             PartitionInfo newPartitionInfo,
                                                             List<SqlPartition> sqlPartitions,
-                                                            String partitionNamePrefix, int flag, boolean isReorg,
+                                                            String partitionNamePrefix,
+                                                            int flag,
+                                                            boolean isReorg,
                                                             ExecutionContext ec) {
+        boolean withImplicitTableGroup = false;
+        if (!StringUtils.isEmpty(targetImplicitTableGroupName)) {
+            withImplicitTableGroup = true;
+            TableGroupConfig srcTgInfo = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
+                .getTableGroupConfigById(newPartitionInfo.getTableGroupId());
+            if (srcTgInfo.getTableGroupRecord().tg_name.equalsIgnoreCase(targetImplicitTableGroupName)) {
+                if (srcTgInfo.getTables().size() != 1) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                        "the tablegroup：" + targetImplicitTableGroupName + " has other tables:"
+                            + srcTgInfo.getTables());
+                }
+                setRemainInOriginalTableGroup(true);
+                return;
+            }
+        }
+
         TableMeta tableMeta = ec.getSchemaManager(getSchemaName()).getTable(newPartitionInfo.getTableName());
         String primaryTableName = newPartitionInfo.getTableName();
         if (tableMeta.isGsi()) {
@@ -349,7 +390,10 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
         Map<String, String> newPartNamesMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, Map<String, String>> subNewPartNamesMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         TableGroupConfig candidateTGConfig =
-            PartitionInfoUtil.getTheBestTableGroupInfo(newPartitionInfo, null, joinGroup, partitionNamePrefix, flag,
+            PartitionInfoUtil.getTheBestTableGroupInfo(newPartitionInfo, targetImplicitTableGroupName,
+                withImplicitTableGroup,
+                joinGroup, partitionNamePrefix,
+                flag,
                 operateOnSubPartition, taskType, newPartNamesMap, subNewPartNamesMap, ec);
         if (candidateTGConfig != null) {
             setMoveToExistTableGroup(true);
@@ -480,7 +524,7 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
             }
 
             assert candidateTGConfig.getTableCount() > 0;
-            String tableInTargetTableGroup = candidateTGConfig.getTables().get(0).getTableName();
+            String tableInTargetTableGroup = candidateTGConfig.getTables().get(0);
             TableMeta tm = ec.getSchemaManager(getSchemaName()).getTable(tableInTargetTableGroup);
             if (tm.isGsi()) {
                 tableInTargetTableGroup = tm.getGsiTableMetaBean().gsiMetaBean.tableName;
@@ -494,5 +538,14 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
         } else {
             setCreateNewTableGroup(true);
         }
+    }
+
+    public boolean needFindCandidateTableGroup() {
+        TableGroupConfig implicitTableGroupConfig =
+            TStringUtil.isEmpty(this.getTargetImplicitTableGroupName()) ? null :
+                OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
+                    .getTableGroupConfigByName(this.getTargetImplicitTableGroupName());
+        return TStringUtil.isEmpty(this.getTargetImplicitTableGroupName()) || (implicitTableGroupConfig != null
+            && !implicitTableGroupConfig.isEmpty());
     }
 }

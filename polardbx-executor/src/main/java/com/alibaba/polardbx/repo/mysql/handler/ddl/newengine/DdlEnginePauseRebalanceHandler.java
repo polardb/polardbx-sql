@@ -51,35 +51,47 @@ public class DdlEnginePauseRebalanceHandler extends DdlEngineJobsHandler {
     @Override
     public Cursor doHandle(final LogicalDal logicalPlan, ExecutionContext executionContext) {
         SqlPauseRebalanceJob command = (SqlPauseRebalanceJob) logicalPlan.getNativeSqlNode();
+        if (command.isAll()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
 
-        return doPause(command.isAll(), command.getJobIds(), executionContext);
+        if (command.getJobIds() == null || command.getJobIds().isEmpty()) {
+            return new AffectRowCursor(0);
+        }
+
+        if (command.getJobIds().size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "Operation on multi ddl jobs is not allowed");
+        }
+
+        return doPause(command.getJobIds().get(0), executionContext);
     }
 
-    public Cursor doPause(boolean isAll, List<Long> jobIds, ExecutionContext executionContext) {
+    public Cursor doPause(Long jobId, ExecutionContext executionContext) {
         boolean enableOperateSubJob =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_OPERATE_SUBJOB);
 
         boolean enableContinueRunningSubJob =
             executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_CONTINUE_RUNNING_SUBJOB);
 
-        List<DdlEngineRecord> records = fetchRecords(executionContext.getSchemaName(), isAll, jobIds);
+        DdlEngineRecord record = schedulerManager.fetchRecordByJobId(jobId);
 
-        for (DdlEngineRecord record : records) {
-            if (!REBALANCE.name().equalsIgnoreCase(record.ddlType)
-                && !ALTER_TABLEGROUP.name().equalsIgnoreCase(record.ddlType)
-                && !MOVE_DATABASE.name().equalsIgnoreCase(record.ddlType)) {
-                throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
-                    "Operation on non-rebalance job is not allowed");
-            }
+        if (record == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR, "The ddl job does not exist");
+        }
+
+        if (!REBALANCE.name().equalsIgnoreCase(record.ddlType)
+            && !ALTER_TABLEGROUP.name().equalsIgnoreCase(record.ddlType)
+            && !MOVE_DATABASE.name().equalsIgnoreCase(record.ddlType)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_ERROR,
+                "Operation on non-rebalance job is not allowed");
         }
 
         int countDone =
-            DdlEngineRequester.pauseJobs(records, enableOperateSubJob, enableContinueRunningSubJob, executionContext);
+            DdlEngineRequester.pauseJob(record, enableOperateSubJob, enableContinueRunningSubJob, executionContext);
 
-        boolean asyncPause = executionContext.getParamManager().getBoolean(ConnectionParams.ASYNC_PAUSE);
-        if (!asyncPause && CollectionUtils.isNotEmpty(records) && CollectionUtils.size(records) == 1) {
-            DdlEngineRecord record = records.get(0);
-
+        boolean asyncPause = executionContext.getParamManager().getBoolean(ConnectionParams.PURE_ASYNC_DDL_MODE)
+            || executionContext.getParamManager().getBoolean(ConnectionParams.ASYNC_PAUSE);
+        if (!asyncPause) {
             try {
                 respond(record.schemaName, record.jobId, executionContext, false, true);
             } catch (RuntimeException e) {
@@ -87,6 +99,6 @@ public class DdlEnginePauseRebalanceHandler extends DdlEngineJobsHandler {
             }
         }
 
-        return new AffectRowCursor(new int[] {countDone});
+        return new AffectRowCursor(countDone);
     }
 }

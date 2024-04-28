@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;

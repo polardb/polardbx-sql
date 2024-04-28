@@ -24,6 +24,7 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.utils.ExprContextProvider;
 import org.apache.calcite.rex.RexNode;
 
@@ -196,7 +197,21 @@ public class PartPruneStepBuildingContext {
         this.pruneStepOpCountLimit = ec.getParamManager().getInt(ConnectionParams.PARTITION_PRUNING_STEP_COUNT_LIMIT);
         this.useFastSinglePointIntervalMerging =
             ec.getParamManager().getBoolean(ConnectionParams.USE_FAST_SINGLE_POINT_INTERVAL_MERGING);
+        this.enableIntervalMerging = checkAllowUseIntervalMerging(this.partInfo, this.partLevel);
 
+    }
+
+    protected boolean checkAllowUseIntervalMerging(PartitionInfo partInfo, PartKeyLevel partLevel) {
+        PartitionByDefinition targetPartBy = partInfo.getPartitionBy();
+        if (partLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            targetPartBy = partInfo.getPartitionBy().getSubPartitionBy();
+        }
+
+        if (targetPartBy.getStrategy() == PartitionStrategy.CO_HASH) {
+            return false;
+        }
+
+        return true;
     }
 
     protected void addPartPredIntoContext(PartClauseInfo partClause) {

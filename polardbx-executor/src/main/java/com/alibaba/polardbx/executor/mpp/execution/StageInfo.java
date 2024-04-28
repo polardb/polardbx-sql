@@ -29,17 +29,22 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution;
 
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.mpp.operator.DriverStats;
+import com.alibaba.polardbx.executor.mpp.operator.TaskStats;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.util.MoreObjects;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
-import com.alibaba.polardbx.util.MoreObjects;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import org.apache.commons.lang3.StringUtils;
 
 import javax.annotation.Nullable;
 import javax.annotation.concurrent.Immutable;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
@@ -198,6 +203,62 @@ public class StageInfo {
         );
 
         return newStage;
+    }
+
+    public static void collectStats(StageInfo rootStage, Map<String, List<Object[]>> driverStatistics) {
+        String stageId = rootStage.getStageId().toString();
+        if (rootStage.isCompleteInfo() && !driverStatistics.containsKey(stageId)) {
+            List<Object[]> driverInfoResult = new ArrayList<>();
+            driverStatistics.put(stageId, driverInfoResult);
+
+            // Receive DriverInfo for each driver in each task.
+            List<TaskInfo> taskInfoList = rootStage.getTasks();
+            for (TaskInfo taskInfo : taskInfoList) {
+                TaskStats taskStats = taskInfo.getTaskStats();
+
+                for (DriverStats driverStats : taskStats.getDriverStats()) {
+                    DriverContext.DriverRuntimeStatistics driverRuntimeStatistics =
+                        driverStats.getDriverRuntimeStatistics();
+
+                    // Convert
+                    // [traceId].[stageId].[nodeId].[pipelineId].[threadId]
+                    // into
+                    // | traceId | stageId-pipelineId | nodeId | threadId |
+                    String[] splitDriverId = StringUtils.split(driverStats.getDriverId(), ".");
+                    final String traceId = splitDriverId[0];
+                    final String stageAndPipeline = splitDriverId[1] + '-' + splitDriverId[3];
+                    final String nodeId = splitDriverId[2];
+                    final String threadId = splitDriverId[4];
+
+                    if (driverRuntimeStatistics == null) {
+                        // Use -1 as the default value when there is no dump in TaskExecution.
+                        driverInfoResult.add(new Object[] {
+                            traceId, stageAndPipeline, nodeId, threadId,
+                            -1, -1, -1, -1, -1, -1, -1, -1});
+                    } else {
+                        driverInfoResult.add(new Object[] {
+                            traceId, stageAndPipeline, nodeId, threadId,
+                            driverRuntimeStatistics.getRunningCost(),
+                            driverRuntimeStatistics.getPendingCost(),
+                            driverRuntimeStatistics.getBlockedCost(),
+                            driverRuntimeStatistics.getOpenCost(),
+                            driverRuntimeStatistics.getTotalCost(),
+                            driverRuntimeStatistics.getRunningCount(),
+                            driverRuntimeStatistics.getPendingCount(),
+                            driverRuntimeStatistics.getBlockedCount()
+                        });
+                    }
+
+                }
+            }
+        }
+
+        // Traverse the children stages.
+        if (rootStage.getSubStages() != null && !rootStage.getSubStages().isEmpty()) {
+            for (int i = 0; i < rootStage.getSubStages().size(); i++) {
+                collectStats(rootStage.getSubStages().get(i), driverStatistics);
+            }
+        }
     }
 
     public StageInfo summary() {

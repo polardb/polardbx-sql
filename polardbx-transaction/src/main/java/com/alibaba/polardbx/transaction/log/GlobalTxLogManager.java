@@ -18,203 +18,106 @@ package com.alibaba.polardbx.transaction.log;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.common.constants.SystemTables;
+import com.alibaba.polardbx.common.constants.TransactionAttribute;
+import com.alibaba.polardbx.common.eventlogger.EventLogger;
+import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IConnection;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.trx.TrxLogTableConstants;
 import com.alibaba.polardbx.common.type.TransactionType;
 import com.alibaba.polardbx.common.utils.LockUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
+import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
+import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
+import com.alibaba.polardbx.gms.util.InstIdUtil;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.rpc.compatible.XPreparedStatement;
+import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
 import com.alibaba.polardbx.transaction.TransactionLogger;
 import com.alibaba.polardbx.transaction.TransactionManager;
 import com.alibaba.polardbx.transaction.TransactionState;
-import com.alibaba.polardbx.transaction.TsoTransaction;
 import com.alibaba.polardbx.transaction.utils.XAUtils;
 import com.google.protobuf.ByteString;
+import com.alibaba.polardbx.transaction.jdbc.DeferredConnection;
 
-import java.security.MessageDigest;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.alibaba.polardbx.transaction.TsoTransaction.SET_DISTRIBUTED_TRX_ID;
+import static com.alibaba.polardbx.common.constants.SystemTables.DRDS_GLOBAL_TX_LOG;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_ADD_MAX_PARTITION;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_ADD_PARTITION;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_COMMIT_TS;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_DROP_PARTITION_PREFIX;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_INIT_PARTITION;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_GLOBAL_TX_TABLE_TYPE_ENUMS;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.ALTER_REDO_LOG_TABLE;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.APPEND_TRX;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.APPEND_TRX_DIGEST;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.APPEND_TRX_WITH_TS_DIGEST;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.CREATE_GLOBAL_TX_TABLE;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.CREATE_GLOBAL_TX_TABLE_V2;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.CREATE_REDO_LOG_TABLE;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.EXISTS_GLOBAL_TX_TABLE_V2;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.GLOBAL_TX_TABLE_GET_PARTITIONS;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.REDO_LOG_TABLE;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_DIGEST;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_V2;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SELECT_BY_ID_V2_ARCHIVE;
+import static com.alibaba.polardbx.common.trx.TrxLogTableConstants.SET_DISTRIBUTED_TRX_ID;
+import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithInnodbLockWaitTimeout;
+import static com.alibaba.polardbx.common.utils.LockUtil.wrapWithLockWaitTimeout;
 
 public class GlobalTxLogManager extends AbstractLifecycle {
 
     protected final static Logger logger = LoggerFactory.getLogger(GlobalTxLogManager.class);
 
     private static final String GLOBAL_TX_LOG_TABLE = SystemTables.DRDS_GLOBAL_TX_LOG;
-    private static final String GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE = SystemTables.POLARDBX_ASYNC_COMMIT_TX_LOG_TABLE;
-    private static final String GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE = "mysql";
-    private static final String REDO_LOG_TABLE = SystemTables.DRDS_REDO_LOG;
 
-    private static final String CREATE_REDO_LOG_TABLE =
-        "CREATE TABLE IF NOT EXISTS `" + REDO_LOG_TABLE + "` (\n"
-            + "  `TXID` BIGINT NOT NULL,\n"
-            + "  `SCHEMA` VARCHAR(64) NULL,\n"
-            + "  `SEQ`  INT(11) NOT NULL,\n"
-            + "  `INFO` LONGTEXT NOT NULL,\n"
-            + "  PRIMARY KEY (`TXID`, `SEQ`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4\n";
-
-    private static final String GLOBAL_TX_TABLE_MAX_PARTITION = "p_unlimited";
-
-    private static final String CREATE_GLOBAL_TX_TABLE =
-        "CREATE TABLE IF NOT EXISTS `" + GLOBAL_TX_LOG_TABLE + "` (\n"
-            + "  `TXID` BIGINT NOT NULL,\n"
-            + "  `START_TIME` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
-            + "  `TYPE` ENUM('TCC', 'XA', 'BED', 'TSO', 'HLC') NOT NULL,\n"
-            + "  `STATE` ENUM('PREPARE', 'COMMIT', 'ROLLBACK', 'SUCCEED', 'ABORTED') NOT NULL,\n"
-            + "  `RETRIES` INT(11) NOT NULL DEFAULT 0,\n"
-            + "  `COMMIT_TS` BIGINT DEFAULT NULL,\n"
-            + "  `PARTICIPANTS` BLOB DEFAULT NULL,\n"
-            + "  `TIMEOUT` TIMESTAMP NULL,\n"
-            + "  `SERVER_ADDR` VARCHAR(21) NOT NULL,\n"
-            + "  `CONTEXT` TEXT NOT NULL,\n"
-            + "  `ERROR` TEXT NULL,\n"
-            + "  PRIMARY KEY (`TXID`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8\n"
-            + "PARTITION BY RANGE (`TXID`) (PARTITION `%s` VALUES LESS THAN (%d), PARTITION `"
-            + GLOBAL_TX_TABLE_MAX_PARTITION + "` VALUES LESS THAN MAXVALUE)";
-
-    /**
-     * Support Async Commit.
-     * Column: TXID, COMMIT_TS, N_PARTICIPANTS
-     */
-    private static final String CREATE_GLOBAL_TX_TABLE_V2 =
-        "CREATE TABLE IF NOT EXISTS `" + GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE + "`.`" + GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE
-            + "` (\n"
-            + "  `TXID` BIGINT UNSIGNED NOT NULL,\n"
-            + "  `TRX_SEQ` BIGINT UNSIGNED NOT NULL DEFAULT 18446744073709551615 COMMENT \"DEFAULT INVALID_SEQUENCE_NUMBER\",\n"
-            + "  `N_PARTICIPANTS` INT UNSIGNED NOT NULL DEFAULT 0,\n"
-            + "  PRIMARY KEY (`TXID`)\n"
-            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8\n"
-            + "PARTITION BY RANGE (`TXID`) (PARTITION `%s` VALUES LESS THAN (%d), PARTITION `"
-            + GLOBAL_TX_TABLE_MAX_PARTITION + "` VALUES LESS THAN MAXVALUE)";
-
-    private static final String EXISTS_GLOBAL_TX_TABLE_V2 =
-        "SELECT 1 FROM information_schema.tables WHERE table_schema = '"
-            + GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE + "' AND table_name = '" + GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE + "'";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_INIT_PARTITION =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` \n"
-            + "PARTITION BY RANGE (`TXID`) (PARTITION `" + GLOBAL_TX_TABLE_MAX_PARTITION
-            + "` VALUES LESS THAN MAXVALUE)";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_ADD_MAX_PARTITION =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` \n"
-            + "PARTITION BY RANGE (`TXID`) (PARTITION `" + GLOBAL_TX_TABLE_MAX_PARTITION
-            + "` VALUES LESS THAN MAXVALUE)";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_ADD_PARTITION =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` \n"
-            + "REORGANIZE PARTITION `" + GLOBAL_TX_TABLE_MAX_PARTITION + "` INTO \n"
-            + "(PARTITION `%s` VALUES LESS THAN (%d), PARTITION `" + GLOBAL_TX_TABLE_MAX_PARTITION
-            + "` VALUES LESS THAN MAXVALUE)";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_DROP_PARTITION_PREFIX =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` \n"
-            + "DROP PARTITION ";
-
-    private static final String GLOBAL_TX_TABLE_GET_PARTITIONS =
-        "SELECT `PARTITION_NAME`, `PARTITION_DESCRIPTION`, `TABLE_ROWS` FROM  INFORMATION_SCHEMA.PARTITIONS\n"
-            + "WHERE TABLE_NAME = '" + GLOBAL_TX_LOG_TABLE + "'\n"
-            + "AND TABLE_SCHEMA = DATABASE()";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_TYPE_ENUMS =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` MODIFY COLUMN `TYPE` "
-            + "enum('TCC', 'XA', 'BED', 'TSO', 'HLC') NOT NULL";
-
-    private static final String ALTER_GLOBAL_TX_TABLE_COMMIT_TS =
-        "ALTER TABLE `" + GLOBAL_TX_LOG_TABLE + "` "
-            + "ADD COLUMN `COMMIT_TS` BIGINT DEFAULT NULL, "
-            + "ADD COLUMN `PARTICIPANTS` BLOB DEFAULT NULL, "
-            + "ALGORITHM=INPLACE, LOCK=NONE";
-
-    /**
-     * Note: We want to use same digest for all sql on different physical DB, so we treat table as a parameter.
-     */
-
-    private static final String APPEND_TRX =
-        "INSERT INTO ? (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`) VALUES (?, ?, ?, ?, ?)";
-
-    private static ByteString APPEND_TRX_DIGEST;
-
-    private static final String APPEND_TRX_WITH_TS =
-        "INSERT INTO ? (`TXID`, `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS`) VALUES (?, ?, ?, ?, ?, ?)";
-
-    /**
-     * Column: TXID, START_TIME, TYPE, STATE, COMMIT_TS, N_PARTICIPANTS, SERVER_ADDR, EXTRA
-     */
-    private static final String APPEND_ASYNC_COMMIT_TRX =
-        "INSERT INTO " + GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE + "." + GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE +
-            " (`TXID`, `TRX_SEQ`) VALUES (%s, %s)";
-
-    private static final String DELETE_ASYNC_COMMIT_TRX =
-        "DELETE FROM " + GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE + "." + GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE +
-            " WHERE `TXID` = ?";
-
-    private static ByteString APPEND_TRX_WITH_TS_DIGEST;
-
-    private static final String SELECT_BY_ID =
-        "SELECT `TYPE`, `STATE`, `SERVER_ADDR`, `CONTEXT`, `COMMIT_TS` FROM ? WHERE `TXID` = ?";
-
-    private static ByteString SELECT_BY_ID_DIGEST;
-
-    private static final String ALTER_REDO_LOG_TABLE = "ALTER TABLE `" + REDO_LOG_TABLE + "` "
-        + "ADD COLUMN `SCHEMA` VARCHAR(64) NULL AFTER `TXID`";
-
-    /**
-     * Column: TXID, START_TIME, TYPE, STATE, COMMIT_TS, N_PARTICIPANTS, SERVER_ADDR, EXTRA
-     */
-    private static final String SELECT_BY_ID_V2 =
-        "SELECT `TRX_SEQ`, `N_PARTICIPANTS` FROM %s WHERE `TXID` = %s";
-
-    /**
-     * 18446744073709551611 is a magic snapshot sequence. Using it you can see prepared trx.
-     */
-    private static final String RECOVER_TIMESTAMP_SQL =
-        "SET innodb_snapshot_seq = 18446744073709551611";
-
-    private String currentServerAddr;
+    private static volatile String currentServerAddr;
 
     private TransactionExecutor executor;
 
-    static {
-        try {
-            final MessageDigest md5 = MessageDigest.getInstance("md5");
-            APPEND_TRX_DIGEST = ByteString.copyFrom(md5.digest(APPEND_TRX.getBytes()));
-            APPEND_TRX_WITH_TS_DIGEST = ByteString.copyFrom(md5.digest(APPEND_TRX_WITH_TS.getBytes()));
-            SELECT_BY_ID_DIGEST = ByteString.copyFrom(md5.digest(SELECT_BY_ID.getBytes()));
-        } catch (Exception e) {
-            logger.error(e);
-        }
-    }
+    private static final AtomicLong appendV2FailedCnt = new AtomicLong(0);
+    private static final AtomicLong appendV2FailedLastTime = new AtomicLong(0);
 
     @Override
     public void doInit() {
         if (currentServerAddr == null) {
-            String ipAddress = System.getProperty("ipAddress");
+            synchronized (GlobalTxLogManager.class) {
+                if (currentServerAddr == null) {
+                    String ipAddress = System.getProperty("ipAddress");
 
-            if (TStringUtil.isEmpty(ipAddress)) {
-                logger.error("Cannot get ipAddress");
+                    if (TStringUtil.isEmpty(ipAddress)) {
+                        logger.error("Cannot get ipAddress");
+                    }
+                    String managerPort = System.getProperty("managerPort");
+                    if (TStringUtil.isEmpty(managerPort)) {
+                        logger.error("Cannot get managerPort");
+                    }
+                    currentServerAddr = ipAddress + ":" + managerPort;
+                }
             }
-            String managerPort = System.getProperty("managerPort");
-            if (TStringUtil.isEmpty(managerPort)) {
-                logger.error("Cannot get managerPort");
-            }
-            currentServerAddr = ipAddress + ":" + managerPort;
         }
     }
 
@@ -226,13 +129,52 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         return this.executor;
     }
 
-    public void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
-                       IConnection conn) throws SQLException {
+    /**
+     * @return true if using trx log v2
+     */
+    public boolean appendTrxLog(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                                IConnection conn) throws SQLException {
+        if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+            append(txid, type, state, context, conn);
+            return false;
+        } else {
+            // Use 1 to represent XA transaction.
+            appendV2(txid, 1, conn);
+            long lastLogTime = TransactionAttribute.LAST_LOG_TRX_LOG_V2.get();
+            if (TransactionManager.shouldWriteEventLog(lastLogTime)
+                && TransactionAttribute.LAST_LOG_TRX_LOG_V2.compareAndSet(lastLogTime, System.nanoTime())) {
+                EventLogger.log(EventType.TRX_INFO, "Found use of A/B table as trx log");
+            }
+            return true;
+        }
+    }
+
+    /**
+     * @return true if using trx log v2
+     */
+    public boolean appendTrxLog(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                                long commitTimestamp, IConnection conn) throws SQLException {
+        if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+            append(txid, type, state, context, commitTimestamp, conn);
+            return false;
+        } else {
+            appendV2(txid, commitTimestamp, conn);
+            long lastLogTime = TransactionAttribute.LAST_LOG_TRX_LOG_V2.get();
+            if (TransactionManager.shouldWriteEventLog(lastLogTime)
+                && TransactionAttribute.LAST_LOG_TRX_LOG_V2.compareAndSet(lastLogTime, System.nanoTime())) {
+                EventLogger.log(EventType.TRX_INFO, "Found use of A/B table as trx log");
+            }
+            return true;
+        }
+    }
+
+    public static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                              IConnection conn) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement(APPEND_TRX)) {
             if (ps.isWrapperFor(XPreparedStatement.class)) {
                 ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_DIGEST);
             }
-            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
+            ps.setObject(1, new TableName(DRDS_GLOBAL_TX_LOG));
             ps.setLong(2, txid);
             ps.setString(3, type.name());
             ps.setString(4, state.name());
@@ -242,13 +184,13 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
-                       long commitTimestamp, IConnection conn) throws SQLException {
-        try (PreparedStatement ps = conn.prepareStatement(APPEND_TRX_WITH_TS)) {
+    public static void append(long txid, TransactionType type, TransactionState state, ConnectionContext context,
+                              long commitTimestamp, IConnection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(TrxLogTableConstants.APPEND_TRX_WITH_TS)) {
             if (ps.isWrapperFor(XPreparedStatement.class)) {
                 ps.unwrap(XPreparedStatement.class).setGalaxyDigest(APPEND_TRX_WITH_TS_DIGEST);
             }
-            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
+            ps.setObject(1, new TableName(DRDS_GLOBAL_TX_LOG));
             ps.setLong(2, txid);
             ps.setString(3, type.name());
             ps.setString(4, state.name());
@@ -256,6 +198,101 @@ public class GlobalTxLogManager extends AbstractLifecycle {
             ps.setString(6, JSON.toJSONString(context));
             ps.setLong(7, commitTimestamp);
             ps.executeUpdate();
+        }
+    }
+
+    public static void appendWithLockWaitTimeout(long txid, TransactionType type, TransactionState state,
+                                                 ConnectionContext context,
+                                                 IConnection conn) throws SQLException {
+        AtomicReference<SQLException> exception = new AtomicReference<>();
+        wrapWithLockWaitTimeout(conn, 3, () -> {
+            try {
+                wrapWithInnodbLockWaitTimeout(conn, 3, () -> {
+                    try {
+                        append(txid, type, state, context, conn);
+                    } catch (SQLException e) {
+                        logger.error(e);
+                        exception.set(e);
+                    }
+                });
+            } catch (SQLException e) {
+                logger.error(e);
+                exception.set(e);
+            }
+        });
+        if (null != exception.get()) {
+            throw exception.get();
+        }
+    }
+
+    public static void appendV2(long txid, long commitTimestamp, IConnection conn) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement(TrxLogTableConstants.APPEND_TRX_V2)) {
+            ps.setLong(1, txid);
+            ps.setLong(2, commitTimestamp);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            EventLogger.log(EventType.TRX_LOG_ERR, "Append trx log v2 failed, caused by " + e.getMessage());
+            try {
+                handleV2LogError();
+            } catch (Throwable t) {
+                EventLogger.log(EventType.TRX_LOG_ERR, "Handle trx log v2 error failed, "
+                    + "caused by " + e.getMessage());
+                logger.error("Handle trx log v2 error failed", t);
+            }
+            throw e;
+        }
+    }
+
+    private static void handleV2LogError() throws SQLException {
+        long lastErrTime = appendV2FailedLastTime.get();
+        if ((System.nanoTime() - lastErrTime) / 1000000000 > 600
+            && appendV2FailedLastTime.compareAndSet(lastErrTime, System.nanoTime())) {
+            // First error in 10 min, reset err cnt.
+            appendV2FailedCnt.set(0);
+        }
+        // 10 err occurs in the last 10 min, switch to legacy method for safety.
+        if (appendV2FailedCnt.incrementAndGet() == 10) {
+            try {
+                if (0 == DynamicConfig.getInstance().getTrxLogMethod()) {
+                    return;
+                }
+
+                turnOffNewTrxLogMethod();
+            } finally {
+                appendV2FailedCnt.set(0);
+            }
+        }
+    }
+
+    public static void turnOffNewTrxLogMethod() throws SQLException {
+        // Set global.
+        Properties properties = new Properties();
+        properties.setProperty(ConnectionProperties.TRX_LOG_METHOD, String.valueOf(0));
+        MetaDbUtil.setGlobal(properties);
+    }
+
+    public static void appendV2WithLockWaitTimeout(long txid, long commitTimestamp, IConnection conn)
+        throws SQLException {
+        AtomicReference<SQLException> exception = new AtomicReference<>();
+        wrapWithLockWaitTimeout(conn, 3, () -> {
+            try {
+                wrapWithInnodbLockWaitTimeout(conn, 3, () -> {
+                    try {
+                        appendV2(txid, commitTimestamp, conn);
+                    } catch (SQLException e) {
+                        logger.error(e);
+                        exception.set(e);
+                    }
+                });
+            } catch (SQLException e) {
+                logger.error(e);
+                EventLogger.log(EventType.TRX_LOG_ERR, "Append trx log v2 with lock wait timeout "
+                    + "failed, caused by " + e.getMessage());
+                exception.set(e);
+            }
+        });
+        if (null != exception.get()) {
+            throw exception.get();
         }
     }
 
@@ -372,71 +409,108 @@ public class GlobalTxLogManager extends AbstractLifecycle {
     }
 
     public GlobalTxLog get(String primaryGroup, long txid) throws SQLException {
+        AtomicReference<SQLException> exception = new AtomicReference<>();
+        AtomicReference<GlobalTxLog> trans = new AtomicReference<>();
         IDataSource dataSource = executor.getGroupExecutor(primaryGroup).getDataSource();
         try (IConnection conn = dataSource.getConnection();
             PreparedStatement ps = conn.prepareStatement(SELECT_BY_ID)) {
-            if (ps.isWrapperFor(XPreparedStatement.class)) {
-                ps.unwrap(XPreparedStatement.class).setGalaxyDigest(SELECT_BY_ID_DIGEST);
-            }
-            ps.setObject(1, new TableName(GLOBAL_TX_LOG_TABLE));
-            ps.setLong(2, txid);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    GlobalTxLog trans = new GlobalTxLog();
-                    trans.setGroup(primaryGroup);
-                    trans.setTxid(txid);
-                    trans.setType(TransactionType.valueOf(rs.getString(1)));
-                    trans.setState(TransactionState.valueOf(rs.getString(2)));
-                    trans.setServerAddr(rs.getString(3));
-                    trans.setContext(JSON.parseObject(rs.getString(4), ConnectionContext.class));
-                    long commitTimestamp = rs.getLong(5);
-                    if (commitTimestamp > 0) { // zero for NULL
-                        trans.setCommitTimestamp(commitTimestamp);
-                    }
-                    return trans;
-                }
-            }
-        }
-        return null;
-    }
-
-    public static GlobalTxLog getAsyncCommitLog(IDataSource dataSource, long txid, String schema) throws SQLException {
-        if (!TransactionManager.getInstance(schema).supportAsyncCommit()) {
-            return null;
-        }
-        final AtomicReference<SQLException> exception = new AtomicReference<>();
-        final AtomicReference<GlobalTxLog> transRef = new AtomicReference<>();
-        try (IConnection conn = dataSource.getConnection()) {
-            LockUtil.wrapWithLockWaitTimeout(conn, 5, stmt -> {
+            wrapWithLockWaitTimeout(conn, 3, () -> {
                 try {
-                    stmt.execute("begin");
-                    try {
-                        stmt.execute(String.format(SET_DISTRIBUTED_TRX_ID, txid));
-                        stmt.execute(RECOVER_TIMESTAMP_SQL);
-                        ResultSet rs = stmt.executeQuery(
-                            String.format(SELECT_BY_ID_V2,
-                                GLOBAL_ASYNC_COMMIT_TX_LOG_DATABASE + "." + GLOBAL_ASYNC_COMMIT_TX_LOG_TABLE,
-                                txid));
+                    if (ps.isWrapperFor(XPreparedStatement.class)) {
+                        ps.unwrap(XPreparedStatement.class).setGalaxyDigest(SELECT_BY_ID_DIGEST);
+                    }
+                    ps.setObject(1, new TableName(DRDS_GLOBAL_TX_LOG));
+                    ps.setLong(2, txid);
+                    try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
-                            GlobalTxLog trans = new GlobalTxLog();
-                            trans.setTxid(txid);
-                            trans.setCommitTimestamp(rs.getLong(1));
-                            trans.setParticipants(rs.getInt(2));
-                            if (0 == trans.getCommitTimestamp()) {
-                                trans.setState(TransactionState.ABORTED);
-                                transRef.set(trans);
-                            } else if (TsoTransaction.isMinCommitSeq(trans.getCommitTimestamp())) {
-                                trans.setState(TransactionState.PREPARE);
-                                transRef.set(trans);
-                            } else {
-                                logger.warn("Found invalid trans format.");
+                            trans.set(new GlobalTxLog());
+                            trans.get().setGroup(primaryGroup);
+                            trans.get().setTxid(txid);
+                            trans.get().setType(TransactionType.valueOf(rs.getString(1)));
+                            trans.get().setState(TransactionState.valueOf(rs.getString(2)));
+                            trans.get().setServerAddr(rs.getString(3));
+                            trans.get().setContext(JSON.parseObject(rs.getString(4), ConnectionContext.class));
+                            long commitTimestamp = rs.getLong(5);
+                            if (commitTimestamp > 0) { // zero for NULL
+                                trans.get().setCommitTimestamp(commitTimestamp);
                             }
                         }
-                    } finally {
-                        stmt.execute("rollback");
                     }
                 } catch (SQLException e) {
                     exception.set(e);
+                }
+            });
+        }
+
+        if (null != exception.get()) {
+            throw exception.get();
+        }
+
+        return trans.get();
+    }
+
+    /**
+     * Get trx log V2, either an async commit log, or a new trx log.
+     */
+    public static GlobalTxLog getV2(IDataSource dataSource, long txid, boolean dn57) throws SQLException {
+        AtomicReference<SQLException> exception = new AtomicReference<>();
+        AtomicReference<GlobalTxLog> trans = new AtomicReference<>();
+        try (DeferredConnection conn = new DeferredConnection(dataSource.getConnection(),
+            InstConfUtil.getBool(ConnectionParams.USING_RDS_RESULT_SKIP))) {
+            wrapWithLockWaitTimeout(conn, 3, () -> {
+                try (Statement stmt = conn.createStatement()) {
+                    conn.executeLater("begin");
+                    if (dn57) {
+                        conn.executeLater(String.format(SET_DISTRIBUTED_TRX_ID, txid));
+                        conn.executeLater(TrxLogTableConstants.RECOVER_TIMESTAMP_SQL);
+                    }
+                    ResultSet rs = stmt.executeQuery(String.format(SELECT_BY_ID_V2, txid));
+                    if (!rs.next()) {
+                        // Not found in table A, try to find in table B.
+                        try {
+                            rs = stmt.executeQuery(String.format(SELECT_BY_ID_V2_ARCHIVE, txid));
+                        } catch (SQLException e) {
+                            if (e.getMessage().contains("doesn't exist")) {
+                                // Ignore. Archive table is already dropped.
+                                return;
+                            } else {
+                                throw e;
+                            }
+                        }
+                        if (!rs.next()) {
+                            // Not found in table B either.
+                            return;
+                        }
+                    }
+                    // Already call rs.next().
+                    trans.set(new GlobalTxLog());
+                    trans.get().setTxid(txid);
+                    trans.get().setCommitTimestamp(rs.getLong(1));
+                    trans.get().setParticipants(rs.getInt(2));
+                    trans.get().setType(TransactionType.TSO);
+                    if (0 == trans.get().getCommitTimestamp()) {
+                        // Aborted transaction.
+                        trans.get().setState(TransactionState.ABORTED);
+                    } else if (1 == trans.get().getCommitTimestamp()) {
+                        // Committed XA transaction.
+                        trans.get().setType(TransactionType.XA);
+                        trans.get().setState(TransactionState.SUCCEED);
+                    } else if (AsyncCommitTransaction.isMinCommitSeq(trans.get().getCommitTimestamp())) {
+                        // Prepared/Committed async commit transaction, just mark it as PREPARE.
+                        trans.get().setState(TransactionState.PREPARE);
+                    } else {
+                        // Committed normal TSO transaction.
+                        trans.get().setState(TransactionState.SUCCEED);
+                    }
+                } catch (SQLException e) {
+                    exception.set(e);
+                } finally {
+                    // Cleanup async commit variables.
+                    try (Statement stmt = conn.createStatement()) {
+                        stmt.execute("rollback");
+                    } catch (SQLException e) {
+                        logger.warn("rollback failed when get v2 log", e);
+                    }
                 }
             });
         }
@@ -445,46 +519,14 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         if (null != exception.get()) {
             throw exception.get();
         }
-        return transRef.get();
-    }
-
-    public static void appendAsyncCommitLog(long txid, long commitTimestamp, IConnection conn) throws SQLException {
-        AtomicReference<SQLException> exception = new AtomicReference<>();
-        LockUtil.wrapWithLockWaitTimeout(conn, 5, stmt -> {
-            try {
-                stmt.execute(String.format(APPEND_ASYNC_COMMIT_TRX, txid, commitTimestamp));
-            } catch (SQLException e) {
-                logger.warn("Append async commit log failed.", e);
-                exception.set(e);
-            }
-        });
-
-        if (null != exception.get()) {
-            throw exception.get();
-        }
-    }
-
-    public static void deleteAsyncCommitLog(long txid, IConnection conn) throws SQLException {
-        AtomicReference<SQLException> exception = new AtomicReference<>();
-        LockUtil.wrapWithLockWaitTimeout(conn, 5, stmt -> {
-            try {
-                stmt.execute(String.format(DELETE_ASYNC_COMMIT_TRX, txid));
-            } catch (SQLException e) {
-                logger.warn("Delete async commit log failed.", e);
-                exception.set(e);
-            }
-        });
-
-        if (null != exception.get()) {
-            throw exception.get();
-        }
+        return trans.get();
     }
 
     public static int rotate(IDataSource dataSource, long beforeTxid, long nextTxid) {
         try (IConnection connection = dataSource.getConnection()) {
             AtomicLong dropped = new AtomicLong();
-            LockUtil.wrapWithLockWaitTimeout(connection, 60, stmt -> {
-                try {
+            LockUtil.wrapWithLockWaitTimeout(connection, 10, () -> {
+                try (Statement stmt = connection.createStatement()) {
                     ArrayList<String> partitionsWillDrop = new ArrayList<>();
                     long txidUpperBound = Long.MIN_VALUE;
                     try (ResultSet rs = stmt.executeQuery(GLOBAL_TX_TABLE_GET_PARTITIONS)) {
@@ -534,11 +576,15 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public static void createTables(IDataSource dataSource, long initTxid) {
+    public static void createTables(IDataSource dataSource, long initTxid, Set<String> dnSet) {
         try (Connection conn = dataSource.getConnection();
             Statement stmt = conn.createStatement()) {
+            String instanceId = ((TGroupDataSource) dataSource).getMasterSourceAddress();
+            if (dnSet.add(instanceId)) {
+                // One table only for each DN.
+                createGlobalTxLogTableV2(stmt);
+            }
             createGlobalTxLogTable(stmt, initTxid);
-            createGlobalTxLogTableV2(stmt, initTxid);
             createRedoLogTable(stmt);
         } catch (SQLException ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG, ex,
@@ -553,7 +599,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         boolean needCreate = false;
         boolean needAlterType = true;
         boolean needAddCommitTs = true;
-        try (ResultSet rs = stmt.executeQuery("SHOW COLUMNS FROM " + GLOBAL_TX_LOG_TABLE)) {
+        try (ResultSet rs = stmt.executeQuery("SHOW COLUMNS FROM " + DRDS_GLOBAL_TX_LOG)) {
             while (rs.next()) {
                 String field = rs.getString(1);
                 String type = rs.getString(2);
@@ -585,7 +631,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
                         needAlterPartition = true;
                         if (rs.next()) {
                             throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
-                                GLOBAL_TX_LOG_TABLE + "have multiple partitions with NULL partition name");
+                                DRDS_GLOBAL_TX_LOG + "have multiple partitions with NULL partition name");
                         }
                     }
                     if ("MAXVALUE".equalsIgnoreCase(partitionDesc)) {
@@ -599,7 +645,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
                     }
                 } else {
                     throw new TddlRuntimeException(ErrorCode.ERR_TRANS_LOG,
-                        "Empty result in " + GLOBAL_TX_LOG_TABLE + " partitions");
+                        "Empty result in " + DRDS_GLOBAL_TX_LOG + " partitions");
                 }
             }
         }
@@ -635,7 +681,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    private static void createGlobalTxLogTableV2(Statement stmt, long initTxid) throws SQLException {
+    private static void createGlobalTxLogTableV2(Statement stmt) throws SQLException {
         try {
             ResultSet rs = stmt.executeQuery(EXISTS_GLOBAL_TX_TABLE_V2);
             if (rs.next()) {
@@ -646,7 +692,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
             logger.warn("Test global tx log table v2 exists failed", t);
         }
         logger.warn("Creating system table: mysql.GLOBAL_TX_LOG_V2");
-        stmt.executeUpdate(String.format(CREATE_GLOBAL_TX_TABLE_V2, "p_" + initTxid, initTxid));
+        stmt.executeUpdate(CREATE_GLOBAL_TX_TABLE_V2);
     }
 
     /**
@@ -688,7 +734,7 @@ public class GlobalTxLogManager extends AbstractLifecycle {
         }
     }
 
-    public String getCurrentServerAddr() {
-        return currentServerAddr;
+    public IDataSource getDatasource(String group) {
+        return executor.getGroupExecutor(group).getDataSource();
     }
 }

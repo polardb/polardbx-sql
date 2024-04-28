@@ -25,28 +25,28 @@ public class ${className} extends AbstractVectorizedExpression {
     }
 
     @Override
-    public void eval(EvaluationContext ctx) {
-    super.evalChildren(ctx);
-    MutableChunk chunk = ctx.getPreAllocatedChunk();
-    int batchSize = chunk.batchSize();
-    boolean isSelectionInUse = chunk.isSelectionInUse();
-    int[] sel = chunk.selection();
+	public void eval(EvaluationContext ctx) {
+	super.evalChildren(ctx);
+	MutableChunk chunk = ctx.getPreAllocatedChunk();
+	int batchSize = chunk.batchSize();
+	boolean isSelectionInUse = chunk.isSelectionInUse();
+	int[] sel = chunk.selection();
 
-        RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
-        RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
+	RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
+	RandomAccessBlock inputVectorSlot = chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        ${type.inputType}[] inputArray = ((${type.inputVectorType}) inputVectorSlot).${type.inputType}Array();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+    ${type.inputType}[] inputArray = (inputVectorSlot.cast(${type.inputVectorType}.class)).${type.inputType}Array();
+	long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
-        if (isSelectionInUse) {
-            for (int i = 0; i < batchSize; i++) {
-                int j = sel[i];
-                res[j] = (inputArray[j] == 0) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
-        } else {
-            for (int i = 0; i < batchSize; i++) {
-                res[i] = (inputArray[i] == 0) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
-            }
+	if (isSelectionInUse) {
+	for (int i = 0; i < batchSize; i++) {
+	int j = sel[i];
+	res[j] = (inputArray[j] == 0) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+	}
+	} else {
+	for (int i = 0; i < batchSize; i++) {
+	res[i] = (inputArray[i] == 0) ? LongBlock.TRUE_VALUE : LongBlock.FALSE_VALUE;
+	}
         }
         VectorizedExpressionUtils.mergeNulls(chunk, outputIndex, children[0].getOutputIndex());
     }

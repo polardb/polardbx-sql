@@ -19,6 +19,7 @@ package com.alibaba.polardbx.executor.ddl.job.meta;
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.ddl.newengine.DdlConstants;
+import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -31,29 +32,34 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.timezone.InternalTimeZone;
 import com.alibaba.polardbx.common.utils.timezone.TimeZoneUtils;
 import com.alibaba.polardbx.common.utils.timezone.TimestampUtils;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
-import com.alibaba.polardbx.executor.ddl.sync.ClearPlanCacheSyncAction;
 import com.alibaba.polardbx.executor.gms.TableRuleManager;
 import com.alibaba.polardbx.executor.gms.util.SequenceUtil;
-import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.gms.listener.ConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbConfigManager;
 import com.alibaba.polardbx.gms.listener.impl.MetaDbDataIdBuilder;
+import com.alibaba.polardbx.gms.metadb.foreign.ForeignColsRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignRecord;
 import com.alibaba.polardbx.gms.metadb.seq.SequenceBaseRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnMetasRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.FilesRecord;
+import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.metadb.table.IndexesInfoSchemaRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.group.jdbc.TGroupDirectConnection;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfoManager;
@@ -65,6 +71,7 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SequenceBean;
 import org.apache.calcite.sql.SqlKind;
+import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -73,6 +80,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -110,7 +118,9 @@ public class TableMetaChanger {
                                     boolean hasTimestampColumnDefault, ExecutionContext executionContext,
                                     Map<String, String> specialDefaultValues,
                                     Map<String, Long> specialDefaultValueFlags,
-                                    List<ForeignKeyData> addedForeignKeys) {
+                                    List<ForeignKeyData> addedForeignKeys,
+                                    Map<String, String> columnMapping,
+                                    List<String> addNewColumns) {
         String schemaName = phyInfoSchemaContext.tableSchema;
         String tableName = phyInfoSchemaContext.tableName;
 
@@ -120,20 +130,24 @@ public class TableMetaChanger {
         long newSeqCacheSize = executionContext.getParamManager().getLong(ConnectionParams.NEW_SEQ_CACHE_SIZE);
         newSeqCacheSize = newSeqCacheSize < 1 ? 0 : newSeqCacheSize;
         tableInfoManager.addTable(phyInfoSchemaContext, newSeqCacheSize,
-            SequenceUtil.buildFailPointInjector(executionContext), addedForeignKeys);
+            SequenceUtil.buildFailPointInjector(executionContext), addedForeignKeys, columnMapping, addNewColumns);
+
+        //check referenced foreign key table and update fk index
+        updateForeignKeyRefIndex(metaDbConn, schemaName, tableName);
 
         //add foreign key table meta
         if (GeneralUtil.isNotEmpty(addedForeignKeys)) {
             try {
                 for (ForeignKeyData addedForeignKey : addedForeignKeys) {
-                    TableInfoManager.updateTableVersion(addedForeignKey.refSchema, addedForeignKey.refTableName,
+                    TableInfoManager.updateTableVersionWithoutDataId(addedForeignKey.refSchema,
+                        addedForeignKey.refTableName,
                         metaDbConn);
                     Map<String, Set<String>> fkTables =
                         ForeignKeyUtils.getAllForeignKeyRelatedTables(addedForeignKey.refSchema,
                             addedForeignKey.refTableName);
                     for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                         for (String table : entry.getValue()) {
-                            TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConn);
+                            TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConn);
                         }
                     }
                 }
@@ -152,6 +166,171 @@ public class TableMetaChanger {
             tableInfoManager.updateSpecialColumnDefaults(schemaName, tableName, specialDefaultValues,
                 specialDefaultValueFlags);
         }
+    }
+
+    public static void updateForeignKeyRefIndex(Connection metaDbConn, String schemaName, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        List<ForeignRecord> foreignRecords = tableInfoManager.queryReferencedTable(schemaName, tableName);
+        for (ForeignRecord record : foreignRecords) {
+            List<ForeignColsRecord> fkColRecords =
+                tableInfoManager.queryForeignKeysCols(record.schemaName, record.tableName, record.indexName);
+            List<String> refColumns = fkColRecords.stream().map(c -> c.refColName).collect(Collectors.toList());
+            List<IndexesInfoSchemaRecord> indexesRecords =
+                tableInfoManager.queryForeignKeyRefIndexes(schemaName, tableName, refColumns);
+            if (GeneralUtil.isEmpty(indexesRecords)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_ADD_FK_CONSTRAINT, "Foreign key columns do not exist");
+            }
+            String refIndexName = indexesRecords.get(0).indexName;
+            tableInfoManager.updateForeignKeyRefIndex(record.schemaName, record.tableName, record.indexName,
+                refIndexName);
+        }
+    }
+
+    public static void updateForeignKeyRefIndexNull(Connection metaDbConn, String schemaName, String tableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        List<ForeignRecord> foreignRecords = tableInfoManager.queryReferencedTable(schemaName, tableName);
+        for (ForeignRecord record : foreignRecords) {
+            tableInfoManager.updateForeignKeyRefIndex(record.schemaName, record.tableName, record.indexName, "");
+        }
+    }
+
+    public static List<ColumnsRecord> addColumnarTableMeta(Connection metaDbConn, String schemaName,
+                                                           String primaryTableName, String columnarTableName,
+                                                           Engine engine) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        return tableInfoManager.addColumnarTable(schemaName, primaryTableName, columnarTableName, engine);
+    }
+
+    public static void changeColumnarTableMeta(Connection metaDbConnection,
+                                               String schemaName,
+                                               String primaryTableName,
+                                               List<String> addedColumns,
+                                               List<String> droppedColumns,
+                                               List<String> updateColumns,
+                                               List<Pair<String, String>> changeColumns,
+                                               long versionId,
+                                               long ddlJobId) {
+
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        Set<Pair<Long, String>> indexes = tableInfoManager.queryCci(schemaName, primaryTableName);
+        if (GeneralUtil.isEmpty(indexes)) {
+            return;
+        }
+
+        // ADD COLUMN
+        if (GeneralUtil.isNotEmpty(addedColumns)) {
+            tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
+                DdlType.ALTER_TABLE_ADD_COLUMN, new ArrayList<>());
+        }
+
+        // DROP COLUMN
+        if (GeneralUtil.isNotEmpty(droppedColumns)) {
+            tableInfoManager.dropColumnarTableColumns(schemaName, primaryTableName, indexes, droppedColumns,
+                versionId, ddlJobId);
+        }
+
+        // MODIFY COLUMN
+        if (GeneralUtil.isNotEmpty(updateColumns)) {
+            tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
+                DdlType.ALTER_TABLE_MODIFY_COLUMN, new ArrayList<>());
+        }
+
+        // CHANGE COLUMN
+        if (GeneralUtil.isNotEmpty(changeColumns)) {
+            tableInfoManager.alterColumnarTableColumns(schemaName, primaryTableName, indexes, versionId, ddlJobId,
+                DdlType.ALTER_TABLE_CHANGE_COLUMN, changeColumns);
+        }
+    }
+
+    public static ColumnarTableMappingRecord addCreateCciSchemaEvolutionMeta(Connection metaDbConn,
+                                                                             String schemaName,
+                                                                             String primaryTableName,
+                                                                             String columnarTableName,
+                                                                             Map<String, String> options,
+                                                                             long versionId,
+                                                                             long ddlJobId) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        // Add columnar table mapping and columnar table evolution
+        return tableInfoManager.addCreateCciSchemaEvolutionMeta(schemaName,
+            primaryTableName,
+            columnarTableName,
+            options,
+            versionId,
+            ddlJobId);
+    }
+
+    public static void addRollbackCreateCciSchemaEvolutionMeta(Connection metaDbConnection,
+                                                               @NotNull ColumnarTableMappingRecord tableMappingRecord,
+                                                               Long rollbackVersionId,
+                                                               Long ddlJobId) {
+        final TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        // Add columnar table evolution and update columnar table mapping status
+        tableInfoManager.addDropCciSchemaEvolutionMeta(tableMappingRecord,
+            rollbackVersionId,
+            ddlJobId);
+    }
+
+    public static void addDropCciSchemaEvolutionMeta(Connection metaDbConnection,
+                                                     String schemaName,
+                                                     String primaryTableName,
+                                                     String columnarTableName,
+                                                     Long versionId,
+                                                     Long ddlJobId) {
+        final TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        // Add columnar table evolution and update columnar table mapping status
+        tableInfoManager.addDropCciSchemaEvolutionMeta(schemaName,
+            primaryTableName,
+            columnarTableName,
+            versionId,
+            ddlJobId);
+    }
+
+    public static void removeColumnarTableMeta(Connection metaDbConnection, String schemaName,
+                                               String columnarTableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        // TODO(mocheng) make sure no snapshot and streaming task is running on columnar
+        tableInfoManager.removeColumnarTable(schemaName, columnarTableName);
+    }
+
+    public static void renameColumnarTableMeta(Connection metaDbConn, String schemaName, String primaryTableName,
+                                               String newPrimaryTableName, long versionId, long ddlJobId) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+        tableInfoManager.renameColumnarTable(schemaName, primaryTableName, newPrimaryTableName, versionId, ddlJobId);
+    }
+
+    public static void notifyCreateColumnarIndex(Connection metaDbConn, String schemaName,
+                                                 String primaryTableName) {
+        String columnarTableListDataId = MetaDbDataIdBuilder.getColumnarTableListDataId(schemaName);
+        String columnarTableDataId = MetaDbDataIdBuilder.getColumnarDataId(schemaName, primaryTableName);
+        // register new columnar table data id.
+        CONFIG_MANAGER.register(columnarTableDataId, metaDbConn);
+        // update columnar table list data id
+        CONFIG_MANAGER.notify(columnarTableListDataId, metaDbConn);
+    }
+
+    /**
+     * TODO: check remaining columnar indexes on the target table
+     */
+    public static void notifyDropColumnarIndex(Connection metaDbConn, String schemaName,
+                                               String primaryTableName) {
+        String columnarTableListDataId = MetaDbDataIdBuilder.getColumnarTableListDataId(schemaName);
+        String columnarTableDataId = MetaDbDataIdBuilder.getColumnarDataId(schemaName, primaryTableName);
+        // unregister columnar table listener
+        CONFIG_MANAGER.unregister(columnarTableDataId, metaDbConn);
+        CONFIG_MANAGER.unbindListener(columnarTableDataId);
+        // update columnar table list data id
+        CONFIG_MANAGER.notify(columnarTableListDataId, metaDbConn);
     }
 
     public static void addOssTableMeta(Connection metaDbConn, PhyInfoSchemaContext phyInfoSchemaContext,
@@ -245,6 +424,14 @@ public class TableMetaChanger {
         tableInfoManager.validOSSColumnsMeta(taskId, tableSchema, tableName);
     }
 
+    public static void updateArchiveTable(Connection metaDbConnection,
+                                          String schemaName, String tableName,
+                                          String archiveTableSchema, String archiveTableName) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+        tableInfoManager.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
+    }
+
     public static PhyInfoSchemaContext buildPhyInfoSchemaContext(String schemaName, String logicalTableName,
                                                                  String dbIndex, String phyTableName,
                                                                  SequenceBean sequenceBean,
@@ -259,6 +446,31 @@ public class TableMetaChanger {
             tablesExtRecord, isPartitioned, ifNotExists, sqlKind, executionContext);
 
         if (needToCreate) {
+            SequenceBaseRecord sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
+            phyInfoSchemaContext.sequenceRecord = sequenceRecord;
+        }
+
+        phyInfoSchemaContext.ts = ts;
+
+        return phyInfoSchemaContext;
+    }
+
+    public static PhyInfoSchemaContext buildPhyInfoSchemaContextAndCreateSequence(String schemaName,
+                                                                                  String logicalTableName,
+                                                                                  String dbIndex, String phyTableName,
+                                                                                  SequenceBean sequenceBean,
+                                                                                  TablesExtRecord tablesExtRecord,
+                                                                                  boolean isPartitioned,
+                                                                                  boolean ifNotExists, SqlKind sqlKind,
+                                                                                  long ts,
+                                                                                  ExecutionContext executionContext) {
+        PhyInfoSchemaContext phyInfoSchemaContext =
+            CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
+
+        SequenceMetaChanger.createSequenceWithoutCheckExists(schemaName, logicalTableName, sequenceBean,
+            tablesExtRecord, isPartitioned, executionContext);
+
+        if (sequenceBean != null) {
             SequenceBaseRecord sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
             phyInfoSchemaContext.sequenceRecord = sequenceRecord;
         }
@@ -286,15 +498,12 @@ public class TableMetaChanger {
     public static void afterNewTableMeta(String schemaName, String logicalTableName) {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
-
         CommonMetaChanger.sync(tableListDataId);
-
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
             CONFIG_MANAGER.notify(tableDataId, metaDbConn);
         } catch (SQLException e) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
         }
-
         CommonMetaChanger.sync(tableDataId);
     }
 
@@ -329,6 +538,9 @@ public class TableMetaChanger {
         // Remove all table meta.
         tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition);
 
+        //check referenced foreign key table and update fk index
+        updateForeignKeyRefIndexNull(metaDbConnection, schemaName, logicalTableName);
+
         // Change foreign logical if contains child table
         TableMeta tableMeta =
             OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
@@ -337,7 +549,8 @@ public class TableMetaChanger {
                 TableMetaChanger.addLogicalForeignKeyMeta(metaDbConnection, schemaName, logicalTableName,
                     new ArrayList<>(tableMeta.getReferencedForeignKeys().values()));
                 for (Map.Entry<String, ForeignKeyData> entry : tableMeta.getReferencedForeignKeys().entrySet()) {
-                    TableInfoManager.updateTableVersion(entry.getValue().schema, entry.getValue().tableName,
+                    TableInfoManager.updateTableVersionWithoutDataId(entry.getValue().schema,
+                        entry.getValue().tableName,
                         metaDbConnection);
                 }
             } catch (SQLException ex) {
@@ -352,7 +565,7 @@ public class TableMetaChanger {
                     logicalTableName);
             for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                 for (String table : entry.getValue()) {
-                    TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
+                    TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
                 }
             }
         } catch (SQLException ex) {
@@ -367,6 +580,33 @@ public class TableMetaChanger {
         CONFIG_MANAGER.unregister(tableDataId, metaDbConnection);
 
         CONFIG_MANAGER.notify(tableListDataId, metaDbConnection);
+
+        if (sequenceRecord != null) {
+            SequenceManagerProxy.getInstance().invalidate(schemaName, sequenceBean.getName());
+        }
+    }
+
+    public static void removeTableMetaWithoutNotify(Connection metaDbConnection, String schemaName,
+                                                    String logicalTableName,
+                                                    boolean withTablesExtOrPartition,
+                                                    ExecutionContext executionContext) {
+        // Remove sequence meta if exists.
+        SequenceBaseRecord sequenceRecord = null;
+        SequenceBean sequenceBean = SequenceMetaChanger.dropSequenceIfExists(schemaName, logicalTableName);
+        if (sequenceBean != null) {
+            sequenceRecord = SequenceUtil.convert(sequenceBean, schemaName, executionContext);
+        }
+        final SequenceBaseRecord finalSequenceRecord = sequenceRecord;
+
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConnection);
+
+        // Remove all table meta.
+        tableInfoManager.removeTable(schemaName, logicalTableName, finalSequenceRecord, withTablesExtOrPartition);
+
+        if (withTablesExtOrPartition) {
+            tableInfoManager.removeTableExt(schemaName, logicalTableName);
+        }
 
         if (sequenceRecord != null) {
             SequenceManagerProxy.getInstance().invalidate(schemaName, sequenceBean.getName());
@@ -405,19 +645,28 @@ public class TableMetaChanger {
         CommonMetaChanger.sync(tableListDataId);
     }
 
+    public static void syncTableDataId(String schemaName, String logicalTableName) {
+        String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
+
+        CommonMetaChanger.sync(tableDataId);
+    }
+
     public static void renameTableMeta(Connection metaDbConn, String schemaName, String logicalTableName,
-                                       String newLogicalTableName, ExecutionContext executionContext) {
-        renameTableMeta(metaDbConn, schemaName, logicalTableName, newLogicalTableName, executionContext, true);
+                                       String newLogicalTableName, boolean needRenamePhyTables,
+                                       ExecutionContext executionContext) {
+        renameTableMeta(metaDbConn, schemaName, logicalTableName, newLogicalTableName, executionContext, true,
+            needRenamePhyTables);
     }
 
     public static void renameTableMeta(Connection metaDbConn, String schemaName, String logicalTableName,
                                        String newLogicalTableName, ExecutionContext executionContext,
-                                       boolean notifyTableListDataId) {
+                                       boolean notifyTableListDataId, boolean needRenamePhyTables) {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
         String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
         String newTbNamePattern =
-            buildNewTbNamePattern(executionContext, schemaName, logicalTableName, newLogicalTableName);
+            buildNewTbNamePattern(executionContext, schemaName, logicalTableName, newLogicalTableName,
+                needRenamePhyTables);
         boolean isGsi = TableValidator.checkTableIsGsi(schemaName, logicalTableName);
 
         // Rename sequence if exists.
@@ -437,7 +686,7 @@ public class TableMetaChanger {
         }
 
         // Replace with new table name
-        if (!executionContext.needToRenamePhyTables()) {
+        if (!needRenamePhyTables) {
             newTbNamePattern = null;
         }
         tableInfoManager
@@ -446,29 +695,30 @@ public class TableMetaChanger {
         // update foreign key and table meta
         renameForeignKeyTable(metaDbConn, schemaName, logicalTableName, newLogicalTableName, tableInfoManager);
 
-        // Unregister the old table data id.
-        CONFIG_MANAGER.unregister(tableDataId, metaDbConn);
-
-        // Register new table data id.
-        CONFIG_MANAGER.register(newTableDataId, metaDbConn);
-
         if (notifyTableListDataId) {
+            // Unregister the old table data id.
+            CONFIG_MANAGER.unregister(tableDataId, metaDbConn);
+
+            // Register new table data id.
+            CONFIG_MANAGER.register(newTableDataId, metaDbConn);
+
             CONFIG_MANAGER.notify(tableListDataId, metaDbConn);
         }
     }
 
     public static void renamePartitionTableMeta(Connection metaDbConn, String schemaName, String logicalTableName,
-                                                String newLogicalTableName, ExecutionContext executionContext) {
-        renamePartitionTableMeta(metaDbConn, schemaName, logicalTableName, newLogicalTableName, executionContext, true);
+                                                String newLogicalTableName, boolean needRenamePhyTables,
+                                                ExecutionContext executionContext) {
+        renamePartitionTableMeta(metaDbConn, schemaName, logicalTableName, newLogicalTableName, executionContext, true,
+            needRenamePhyTables);
     }
 
     public static void renamePartitionTableMeta(Connection metaDbConn, String schemaName, String logicalTableName,
                                                 String newLogicalTableName, ExecutionContext executionContext,
-                                                boolean notifyTableListDataId) {
+                                                boolean notifyTableListDataId, boolean needRenamePhyTables) {
         String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
         String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
         String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
-        boolean renamePhyTable = executionContext.needToRenamePhyTables();
         boolean isGsi = TableValidator.checkTableIsGsi(schemaName, logicalTableName);
 
         // Rename sequence if exists.
@@ -490,7 +740,7 @@ public class TableMetaChanger {
         }
 
         // Replace with new physical table name
-        if (renamePhyTable) {
+        if (needRenamePhyTables) {
             tableInfoManager.renamePartitionTablePhyTable(schemaName, logicalTableName, newLogicalTableName);
         }
 
@@ -505,15 +755,28 @@ public class TableMetaChanger {
         // update foreign key indexesAccessor and table meta
         renameForeignKeyTable(metaDbConn, schemaName, logicalTableName, newLogicalTableName, tableInfoManager);
 
+        if (notifyTableListDataId) {
+            // Unregister the old table data id.
+            CONFIG_MANAGER.unregister(tableDataId, metaDbConn);
+
+            // Register new table data id.
+            CONFIG_MANAGER.register(newTableDataId, metaDbConn);
+
+            CONFIG_MANAGER.notify(tableListDataId, metaDbConn);
+        }
+    }
+
+    public static void renameTableDataId(Connection metaDbConn, String schemaName, String logicalTableName,
+                                         String newLogicalTableName) {
+        String tableListDataId = MetaDbDataIdBuilder.getTableListDataId(schemaName);
+        String tableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, logicalTableName);
+        String newTableDataId = MetaDbDataIdBuilder.getTableDataId(schemaName, newLogicalTableName);
+
         // Unregister the old table data id.
         CONFIG_MANAGER.unregister(tableDataId, metaDbConn);
 
         // Register new table data id.
         CONFIG_MANAGER.register(newTableDataId, metaDbConn);
-
-        if (notifyTableListDataId) {
-            CONFIG_MANAGER.notify(tableListDataId, metaDbConn);
-        }
     }
 
     private static void renameForeignKeyTable(Connection metaDbConn, String schemaName, String logicalTableName,
@@ -537,7 +800,8 @@ public class TableMetaChanger {
                     // referenced table -> table
                     String referencedSchemaName = e.getValue().schema;
                     String referencedTableName = e.getValue().tableName;
-                    TableInfoManager.updateTableVersion(referencedSchemaName, referencedTableName, metaDbConn);
+                    TableInfoManager.updateTableVersionWithoutDataId(referencedSchemaName, referencedTableName,
+                        metaDbConn);
                 }
             }
 
@@ -562,7 +826,7 @@ public class TableMetaChanger {
                     ForeignKeyUtils.getAllForeignKeyRelatedTables(schemaName, logicalTableName);
                 for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                     for (String table : entry.getValue()) {
-                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConn);
+                        TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConn);
                     }
                 }
             }
@@ -582,6 +846,15 @@ public class TableMetaChanger {
         tableInfoManager.hideColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.hideIndexesColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.hideIndexes(schemaName, logicalTableName, indexNames);
+
+        // hide columnar related columns and indexes
+        Set<Pair<Long, String>> columnarIndexes = tableInfoManager.queryCci(schemaName, logicalTableName);
+        if (GeneralUtil.isNotEmpty(columnarIndexes)) {
+            for (Pair<Long, String> columnarIndex : columnarIndexes) {
+                tableInfoManager.hideColumns(schemaName, columnarIndex.getValue(), columnNames);
+                tableInfoManager.hideIndexesColumns(schemaName, columnarIndex.getValue(), indexNames);
+            }
+        }
     }
 
     public static void showTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
@@ -591,6 +864,15 @@ public class TableMetaChanger {
         tableInfoManager.showColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.showIndexesColumns(schemaName, logicalTableName, columnNames);
         tableInfoManager.showIndexes(schemaName, logicalTableName, indexNames);
+
+        // show columnar related columns and indexes
+        Set<Pair<Long, String>> columnarIndexes = tableInfoManager.queryCci(schemaName, logicalTableName);
+        if (GeneralUtil.isNotEmpty(columnarIndexes)) {
+            for (Pair<Long, String> columnarIndex : columnarIndexes) {
+                tableInfoManager.showColumns(schemaName, columnarIndex.getValue(), columnNames);
+                tableInfoManager.showIndexesColumns(schemaName, columnarIndex.getValue(), indexNames);
+            }
+        }
     }
 
     public static void changeTableMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
@@ -630,106 +912,35 @@ public class TableMetaChanger {
         Map<String, Map<String, Object>> columnJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
             phyInfoSchemaContext.phyTableSchema, phyInfoSchemaContext.phyTableName, phyInfoSchemaContext.dataSource);
 
-        // Remove dropped column meta if exist.
+        // NOTICE: FOR COLUMN OPERATION, THE ONLY CORRECT ORDER MUST BE DROP => CHANGE => ADD/MODIFY
+        // for all this meta changer.
+        // We first query meta from information_schema.column in DN by (new_column_names).
+        // Then we delete the meta by (old_column_names).
+        // finally, we insert/update the meta by meta queried before.
+
+        // A. Remove dropped column meta if exist.
         if (GeneralUtil.isNotEmpty(droppedColumns)) {
+            // TODO(yijin): for columns firstly dropped and then added, we should keep its index here.
             tableInfoManager.removeColumns(schemaName, logicalTableName, droppedColumns);
         }
 
-        // Update existing column meta if exist and column name may be changed as well.
+        // B. Update existing column meta if exist and column name may be changed as well.
         if (GeneralUtil.isNotEmpty(changedColumns)) {
             tableInfoManager.changeColumns(phyInfoSchemaContext, columnJdbcExtInfo, changedColumns);
-            // Reset binary default value flag
-            for (Pair<String, String> changeColumn : changedColumns) {
-                String columnName = changeColumn.getKey();
-                tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
-            }
-
-            // update foreign key column and table meta
-            Map<String, String> reverseChangeColumns = new HashMap<>();
-            for (Pair<String, String> entry : changedColumns) {
-                reverseChangeColumns.put(entry.getValue(), entry.getKey());
-            }
-
-            try {
-                TableMeta tableMeta =
-                    OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTableWithNull(logicalTableName);
-                if (tableMeta != null) {
-                    Map<String, ForeignKeyData> referencedForeignKeys = tableMeta.getReferencedForeignKeys();
-                    if (!referencedForeignKeys.isEmpty()) {
-                        for (Map.Entry<String, ForeignKeyData> e : referencedForeignKeys.entrySet()) {
-                            boolean sync = false;
-                            for (int i = 0; i < e.getValue().columns.size(); ++i) {
-                                String oldColumn = e.getValue().refColumns.get(i);
-                                if (reverseChangeColumns.containsKey(oldColumn)) {
-                                    String columnName = reverseChangeColumns.get(oldColumn);
-                                    String indexName = e.getValue().indexName;
-                                    tableInfoManager
-                                        .updateReferencedForeignKeyColumn(e.getValue().schema,
-                                            e.getValue().tableName, indexName,
-                                            columnName, oldColumn);
-                                    sync = true;
-                                }
-                            }
-
-                            // referenced table -> table
-                            if (sync) {
-                                String referencedSchemaName = e.getValue().schema;
-                                String referredTableName = e.getValue().tableName;
-                                TableInfoManager.updateTableVersion(referencedSchemaName, referredTableName,
-                                    metaDbConnection);
-                            }
-                        }
-                    }
-
-                    Map<String, ForeignKeyData> foreignKeys = tableMeta.getForeignKeys();
-                    if (!foreignKeys.isEmpty()) {
-                        for (Map.Entry<String, ForeignKeyData> e : foreignKeys.entrySet()) {
-                            boolean sync = false;
-                            for (int i = 0; i < e.getValue().columns.size(); ++i) {
-                                String oldColumn = e.getValue().columns.get(i);
-                                if (reverseChangeColumns.containsKey(oldColumn)) {
-                                    String columnName = reverseChangeColumns.get(oldColumn);
-                                    String indexName = e.getValue().indexName;
-                                    tableInfoManager
-                                        .updateForeignKeyColumn(schemaName, logicalTableName, indexName, columnName,
-                                            oldColumn);
-                                    sync = true;
-                                }
-                            }
-                            // referencing table -> table
-                            if (sync) {
-                                Map<String, Set<String>> fkTables =
-                                    ForeignKeyUtils.getAllForeignKeyRelatedTables(e.getValue().refSchema,
-                                        e.getValue().refTableName);
-                                for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
-                                    for (String table : entry.getValue()) {
-                                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (SQLException ex) {
-                throw new RuntimeException(ex);
-            }
+            changeForeignKeyRefIndex(metaDbConnection, tableInfoManager, schemaName, logicalTableName, changedColumns);
         }
 
-        // Add new column meta if exist.
+        // C. Add new column meta if exist.
         if (GeneralUtil.isNotEmpty(addedColumns)) {
             tableInfoManager.addColumns(phyInfoSchemaContext, columnJdbcExtInfo, addedColumns);
         }
 
-        // Update existing column meta if exist.
+        // D. Update existing column meta if exist.
         if (GeneralUtil.isNotEmpty(updatedColumns)) {
             tableInfoManager.updateColumns(phyInfoSchemaContext, columnJdbcExtInfo, updatedColumns);
-            // Clear binary default value flag
-            for (String columnName : updatedColumns) {
-                tableInfoManager.resetColumnBinaryDefaultFlag(schemaName, logicalTableName, columnName);
-            }
         }
 
-        // Refresh related column order.
+        // finally refresh related column order by after.
         refreshColumnOrder(schemaName, logicalTableName, columnAfterAnother, requireLogicalColumnOrder,
             tableInfoManager);
 
@@ -760,6 +971,9 @@ public class TableMetaChanger {
         // Remove existing index meta.
         if (GeneralUtil.isNotEmpty(droppedIndexes)) {
             tableInfoManager.removeIndexes(schemaName, logicalTableName, droppedIndexes);
+
+            // check referenced foreign key table and update fk index
+            updateForeignKeyRefIndex(metaDbConnection, schemaName, logicalTableName);
         }
 
         // Rename existing index meta.
@@ -774,6 +988,9 @@ public class TableMetaChanger {
             } else {
                 tableInfoManager.renameIndexes(schemaName, logicalTableName, renamedIndexes);
             }
+
+            // check referenced foreign key table and update fk index
+            updateForeignKeyRefIndex(metaDbConnection, schemaName, logicalTableName);
         }
 
         // Add new index meta if existed.
@@ -820,11 +1037,173 @@ public class TableMetaChanger {
 
         tableInfoManager.showTable(schemaName, logicalTableName, sequenceRecord,
             !(onlineModifyColumnIndexTask || isAddLogicalGeneratedColumn));
+
+        // Change columnar table meta in same transaction
+        Set<Pair<Long, String>> indexes = tableInfoManager.queryCci(schemaName, logicalTableName);
+        if (GeneralUtil.isNotEmpty(indexes)) {
+            // columns, indexes
+            changeCciRelatedMeta(metaDbConnection, tableInfoManager, schemaName, logicalTableName, phyInfoSchemaContext,
+                addedColumns, droppedColumns, changedColumns);
+        }
+    }
+
+    public static void changeCciRelatedMeta(Connection metaDbConnection,
+                                            TableInfoManager tableInfoManager,
+                                            String schemaName, String logicalTableName,
+                                            PhyInfoSchemaContext context,
+                                            List<String> addedColumns,
+                                            List<String> droppedColumns,
+                                            List<Pair<String, String>> changeColumns) {
+        Set<Pair<Long, String>> columnarIndexes = tableInfoManager.queryCci(schemaName, logicalTableName);
+        List<String> indexNames = columnarIndexes.stream().map(Pair::getValue).collect(Collectors.toList());
+
+        Map<String, Map<String, Object>> columnsJdbcExtInfo = tableInfoManager.fetchColumnJdbcExtInfo(
+            context.phyTableSchema, context.phyTableName, context.dataSource);
+
+        // CHANGE INDEXES TABLE
+        // ADD COLUMN
+        if (GeneralUtil.isNotEmpty(addedColumns)) {
+            Map<String, String> isNullable = tableInfoManager.getIsNullable(context, columnsJdbcExtInfo, addedColumns);
+
+            for (String indexName : indexNames) {
+                final GsiMetaManager.GsiIndexMetaBean gsiIndexMetaBean =
+                    ExecutorContext
+                        .getContext(schemaName)
+                        .getGsiManager()
+                        .getGsiMetaManager()
+                        .getIndexMeta(schemaName, logicalTableName, indexName, IndexStatus.ALL);
+
+                final int seqInIndex =
+                    gsiIndexMetaBean.indexColumns.size() + gsiIndexMetaBean.coveringColumns.size() + 1;
+
+                final List<GsiMetaManager.IndexRecord> indexRecords =
+                    GsiUtils.buildIndexMetaByAddColumns(
+                        addedColumns,
+                        schemaName,
+                        logicalTableName,
+                        indexName,
+                        seqInIndex,
+                        IndexStatus.PUBLIC,
+                        isNullable
+                    );
+                GsiMetaChanger.addIndexColumnMeta(metaDbConnection, schemaName, logicalTableName, indexRecords);
+            }
+        }
+
+        // DROP COLUMN
+        if (GeneralUtil.isNotEmpty(droppedColumns)) {
+            for (String indexName : indexNames) {
+                for (String column : droppedColumns) {
+                    ExecutorContext
+                        .getContext(schemaName)
+                        .getGsiManager()
+                        .getGsiMetaManager()
+                        .removeColumnMeta(metaDbConnection, schemaName, logicalTableName, indexName, column);
+                }
+            }
+        }
+
+        // CHANGE COLUMN
+        if (GeneralUtil.isNotEmpty(changeColumns)) {
+            for (String indexName : indexNames) {
+                tableInfoManager.changeColumnarIndexColumnMeta(context, columnsJdbcExtInfo, changeColumns, indexName);
+            }
+        }
+
+        // CHANGE COLUMNS TABLE
+        tableInfoManager.changeColumnarIndexTableColumns(indexNames, schemaName, logicalTableName, changeColumns);
+    }
+
+    public static void changeForeignKeyRefIndex(Connection metaDbConnection, TableInfoManager tableInfoManager,
+                                                String schemaName, String tableName,
+                                                List<Pair<String, String>> changedColumns) {
+        // 先删除再插入，不用update，避免 change column a b, change column b a 交换列名造成update的错误
+        Map<String, List<ForeignColsRecord>> oldFkColsRecords = new HashMap<>();
+        List<ForeignColsRecord> newFkColsRecords = new ArrayList<>();
+        Map<String, Set<String>> syncTables = new HashMap<>();
+
+        for (Pair<String, String> changeColumn : changedColumns) {
+            String oldName = changeColumn.getValue();
+            String newName = changeColumn.getKey();
+
+            // change parent table columns
+            List<ForeignRecord> fks = tableInfoManager.queryReferencedForeignKeys(schemaName, tableName);
+            if (!fks.isEmpty()) {
+                for (ForeignRecord fk : fks) {
+                    List<ForeignColsRecord> columns =
+                        tableInfoManager.queryForeignKeysCols(fk.schemaName, fk.tableName, fk.indexName);
+                    for (ForeignColsRecord column : columns) {
+                        if (column.refColName.equalsIgnoreCase(oldName)) {
+                            // old
+                            oldFkColsRecords.putIfAbsent(fk.indexName, new ArrayList<>());
+                            oldFkColsRecords.get(fk.indexName).add(column);
+                            // new
+                            ForeignColsRecord newColumn =
+                                new ForeignColsRecord(column.schemaName, column.tableName, column.indexName,
+                                    column.forColName,
+                                    newName, column.pos);
+                            newFkColsRecords.add(newColumn);
+
+                            syncTables.putIfAbsent(fk.schemaName, new HashSet<>());
+                            syncTables.get(fk.schemaName).add(fk.tableName);
+                        }
+                    }
+                }
+            }
+
+            // change child table columns
+            fks = tableInfoManager.queryForeignKeys(schemaName, tableName);
+            if (!fks.isEmpty()) {
+                for (ForeignRecord fk : fks) {
+                    List<ForeignColsRecord> columns =
+                        tableInfoManager.queryForeignKeysCols(fk.schemaName, fk.tableName, fk.indexName);
+                    for (ForeignColsRecord column : columns) {
+                        if (column.forColName.equalsIgnoreCase(oldName)) {
+                            // old
+                            oldFkColsRecords.putIfAbsent(fk.indexName, new ArrayList<>());
+                            oldFkColsRecords.get(fk.indexName).add(column);
+                            // new
+                            ForeignColsRecord newColumn =
+                                new ForeignColsRecord(column.schemaName, column.tableName, column.indexName, newName,
+                                    column.refColName, column.pos);
+                            newFkColsRecords.add(newColumn);
+
+                            syncTables.putIfAbsent(fk.refSchemaName, new HashSet<>());
+                            syncTables.get(fk.refSchemaName).add(fk.refTableName);
+                        }
+                    }
+                }
+            }
+        }
+
+        // delete old records
+        for (Map.Entry<String, List<ForeignColsRecord>> entry : oldFkColsRecords.entrySet()) {
+            String schema = entry.getValue().get(0).schemaName;
+            String table = entry.getValue().get(0).tableName;
+            tableInfoManager.deleteForeignKeyCols(schema, table, entry.getKey(),
+                entry.getValue().stream().map(record -> record.forColName).collect(Collectors.toList()));
+        }
+
+        // insert new records
+        if (GeneralUtil.isNotEmpty(newFkColsRecords)) {
+            tableInfoManager.insertForeignKeyCols(newFkColsRecords);
+        }
+
+        try {
+            //sync
+            for (Map.Entry<String, Set<String>> entry : syncTables.entrySet()) {
+                for (String table : entry.getValue()) {
+                    TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
+                }
+            }
+        } catch (SQLException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     public static void addForeignKeyMeta(Connection metaDbConnection, String schemaName, String logicalTableName,
                                          String dbIndex, String phyTableName,
-                                         List<ForeignKeyData> addedForeignKeys) {
+                                         List<ForeignKeyData> addedForeignKeys, boolean withoutIndex) {
         TableInfoManager.PhyInfoSchemaContext phyInfoSchemaContext =
             CommonMetaChanger.getPhyInfoSchemaContext(schemaName, logicalTableName, dbIndex, phyTableName);
 
@@ -837,17 +1216,17 @@ public class TableMetaChanger {
                 // create foreign key constraints symbol
                 String symbol = ForeignKeyUtils.getForeignKeyConstraintName(schemaName, logicalTableName);
 
-                tableInfoManager.addForeignKeys(phyInfoSchemaContext, addedForeignKeys, symbol);
+                tableInfoManager.addForeignKeys(phyInfoSchemaContext, addedForeignKeys, symbol, withoutIndex);
 
                 // update table meta
                 ForeignKeyData data = addedForeignKeys.get(0);
-                TableInfoManager.updateTableVersion(data.refSchema, data.refTableName, metaDbConnection);
+                TableInfoManager.updateTableVersionWithoutDataId(data.refSchema, data.refTableName, metaDbConnection);
 
                 Map<String, Set<String>> fkTables =
                     ForeignKeyUtils.getAllForeignKeyRelatedTables(schemaName, logicalTableName);
                 for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                     for (String table : entry.getValue()) {
-                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
+                        TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
                     }
                 }
             }
@@ -874,7 +1253,7 @@ public class TableMetaChanger {
                     ForeignKeyUtils.getAllForeignKeyRelatedTables(schemaName, logicalTableName);
                 for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                     for (String table : entry.getValue()) {
-                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
+                        TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
                     }
                 }
             }
@@ -895,13 +1274,13 @@ public class TableMetaChanger {
                 tableInfoManager.updateForeignKeyPushDown(fk.schema, fk.tableName, fk.indexName, pushDown);
 
                 // update table meta
-                TableInfoManager.updateTableVersion(fk.refSchema, fk.refTableName, metaDbConnection);
+                TableInfoManager.updateTableVersionWithoutDataId(fk.refSchema, fk.refTableName, metaDbConnection);
 
                 Map<String, Set<String>> fkTables =
                     ForeignKeyUtils.getAllForeignKeyRelatedTables(schemaName, logicalTableName);
                 for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                     for (String table : entry.getValue()) {
-                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
+                        TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
                     }
                 }
             }
@@ -923,13 +1302,13 @@ public class TableMetaChanger {
                 tableInfoManager.updateForeignKeyPushDown(fk.schema, fk.tableName, fk.indexName, pushDown);
 
                 // update table meta
-                TableInfoManager.updateTableVersion(fk.refSchema, fk.refTableName, metaDbConnection);
+                TableInfoManager.updateTableVersionWithoutDataId(fk.refSchema, fk.refTableName, metaDbConnection);
 
                 Map<String, Set<String>> fkTables =
                     ForeignKeyUtils.getAllForeignKeyRelatedTables(schemaName, logicalTableName);
                 for (Map.Entry<String, Set<String>> entry : fkTables.entrySet()) {
                     for (String table : entry.getValue()) {
-                        TableInfoManager.updateTableVersion(entry.getKey(), table, metaDbConnection);
+                        TableInfoManager.updateTableVersionWithoutDataId(entry.getKey(), table, metaDbConnection);
                     }
                 }
             }
@@ -1255,11 +1634,15 @@ public class TableMetaChanger {
             TableInfoManager tableInfoManager = new TableInfoManager();
             tableInfoManager.setConnection(metaDbConnection);
             tableInfoManager.removeIndex(schemaName, logicalTableName, indexName);
+
+            // check referenced foreign key table and update fk index
+            updateForeignKeyRefIndex(metaDbConnection, schemaName, logicalTableName);
         }
     }
 
     public static String buildNewTbNamePattern(ExecutionContext executionContext, String schemaName,
-                                               String logicalTableName, String newLogicalTableName) {
+                                               String logicalTableName, String newLogicalTableName,
+                                               boolean needRenamePhyTables) {
         TddlRuleManager tddlRuleManager = OptimizerContext.getContext(schemaName).getRuleManager();
         TableRule tableRule = tddlRuleManager.getTableRule(logicalTableName);
 
@@ -1276,7 +1659,7 @@ public class TableMetaChanger {
 
         String newTbNamePattern = tableRule.getTbNamePattern();
 
-        if (executionContext.needToRenamePhyTables()) {
+        if (needRenamePhyTables) {
             newTbNamePattern =
                 TStringUtil.replaceWithIgnoreCase(newTbNamePattern, logicalTableName, newLogicalTableName);
         }
@@ -1300,7 +1683,7 @@ public class TableMetaChanger {
     }
 
     public static void addPartitionInfoMeta(Connection metaDbConnection,
-                                            TableGroupConfig tableGroupConfig,
+                                            TableGroupDetailConfig tableGroupConfig,
                                             ExecutionContext executionContext,
                                             boolean isUpsert) {
 
@@ -1484,24 +1867,5 @@ public class TableMetaChanger {
         TableInfoManager tableInfoManager = new TableInfoManager();
         tableInfoManager.setConnection(metaDbConn);
         tableInfoManager.endUpdateColumnDefaultVal(schema, table, column);
-    }
-
-    private static void clearPlancache() {
-        Set<String> activeSchemas = OptimizerContext.getActiveSchemaNames();
-        for (String schema : activeSchemas) {
-            OptimizerContext optimizerContext = OptimizerContext.getContext(schema);
-            if (optimizerContext != null) {
-                // TODO: find more precise way
-                SyncManagerHelper.sync(new ClearPlanCacheSyncAction(schema), schema);
-            }
-        }
-    }
-
-    public static void updateArchiveTable(Connection metaDbConnection,
-                                          String schemaName, String tableName,
-                                          String archiveTableSchema, String archiveTableName) {
-        TableInfoManager tableInfoManager = new TableInfoManager();
-        tableInfoManager.setConnection(metaDbConnection);
-        tableInfoManager.updateArchiveTable(schemaName, tableName, archiveTableSchema, archiveTableName);
     }
 }

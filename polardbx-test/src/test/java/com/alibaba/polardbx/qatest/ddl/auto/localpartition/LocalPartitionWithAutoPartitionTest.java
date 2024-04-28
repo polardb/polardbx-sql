@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.localpartition;
 
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
 import org.junit.Assert;
@@ -29,6 +30,7 @@ import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentS
 /**
  * @version 1.0
  */
+@BinlogIgnore(ignoreReason = "drop local partition的动作目前无法透传给下游，导致binlog实验室上下游数据不一致，暂时忽略")
 public class LocalPartitionWithAutoPartitionTest extends LocalPartitionBaseTest {
 
     private static final String TABLE_NAME = "local_partition_with_auto_partition_tb";

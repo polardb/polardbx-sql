@@ -22,7 +22,6 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
-import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
 import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -30,8 +29,6 @@ import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter.Like;
 import com.alibaba.polardbx.optimizer.view.*;
-import org.apache.calcite.rex.RexDynamicParam;
-import org.apache.calcite.rex.RexLiteral;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -67,87 +64,26 @@ public class InformationSchemaStorageStatusHandler extends BaseVirtualViewSubCla
 
     @Override
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
-
-        InformationSchemaStorageStatus informationSchemaStorageStatus = (InformationSchemaStorageStatus) virtualView;
-
         HashMap<String, String> storageStatus = new HashMap();
 
-        List<Object> tableStorageInstIdIndexValue =
-            virtualView.getIndex().get(informationSchemaStorageStatus.getTableStorageInstIdIndex());
-
-        Object tableStorageInstLikeValue =
-            virtualView.getLike().get(informationSchemaStorageStatus.getTableStorageInstIdIndex());
-
-        List<Object> tableInstRoleIndexValue =
-            virtualView.getIndex().get(informationSchemaStorageStatus.getTableInstRoleIndex());
-
-        Object tableInstRoleLikeValue =
-            virtualView.getLike().get(informationSchemaStorageStatus.getTableInstRoleIndex());
-
-        List<Object> tableInstKindIndexValue =
-            virtualView.getIndex().get(informationSchemaStorageStatus.getTableInstKindIndex());
-
-        Object tableInstKindLikeValue =
-            virtualView.getLike().get(informationSchemaStorageStatus.getTableInstKindIndex());
+        final int instIdIndex = InformationSchemaStorageStatus.getTableStorageInstIdIndex();
+        final int instRoleIndex = InformationSchemaStorageStatus.getTableInstRoleIndex();
+        final int instKindIndex = InformationSchemaStorageStatus.getTableInstKindIndex();
 
         Map<Integer, ParameterContext> params = executionContext.getParams().getCurrentParameter();
 
         // StorageInstIdIndex
-        Set<String> indexStorageInstId = new HashSet<>();
-        if (tableStorageInstIdIndexValue != null && !tableStorageInstIdIndexValue.isEmpty()) {
-            for (Object obj : tableStorageInstIdIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexStorageInstId);
-            }
-        }
-
+        Set<String> indexStorageInstId = virtualView.getEqualsFilterValues(instIdIndex, params);
         // StorageInstIdLike
-        String storageInstIdLike = null;
-        if (tableStorageInstLikeValue != null) {
-            if (tableStorageInstLikeValue instanceof RexDynamicParam) {
-                storageInstIdLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableStorageInstLikeValue).getIndex() + 1).getValue());
-            } else if (tableStorageInstLikeValue instanceof RexLiteral) {
-                storageInstIdLike = ((RexLiteral) tableStorageInstLikeValue).getValueAs(String.class);
-            }
-        }
-
+        String storageInstIdLike = virtualView.getLikeString(instIdIndex, params);
         // InstRoleIndex
-        Set<String> indexInstRole = new HashSet<>();
-        if (tableInstRoleIndexValue != null && !tableInstRoleIndexValue.isEmpty()) {
-            for (Object obj : tableInstRoleIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexInstRole);
-            }
-        }
-
+        Set<String> indexInstRole = virtualView.getEqualsFilterValues(instRoleIndex, params);
         // InstRoleLike
-        String instRoleLike = null;
-        if (tableInstRoleLikeValue != null) {
-            if (tableInstRoleLikeValue instanceof RexDynamicParam) {
-                instRoleLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableInstRoleLikeValue).getIndex() + 1).getValue());
-            } else if (tableInstRoleLikeValue instanceof RexLiteral) {
-                instRoleLike = ((RexLiteral) tableInstRoleLikeValue).getValueAs(String.class);
-            }
-        }
-
+        String instRoleLike = virtualView.getLikeString(instRoleIndex, params);
         // InstKindIndex
-        Set<String> indexInstKind = new HashSet<>();
-        if (tableInstKindIndexValue != null && !tableInstKindIndexValue.isEmpty()) {
-            for (Object obj : tableInstKindIndexValue) {
-                ExecUtils.handleTableNameParams(obj, params, indexInstKind);
-            }
-        }
-
+        Set<String> indexInstKind = virtualView.getEqualsFilterValues(instKindIndex, params);
         // InstKindLike
-        String instKindLike = null;
-        if (tableInstKindIndexValue != null) {
-            if (tableInstKindLikeValue instanceof RexDynamicParam) {
-                instKindLike =
-                    String.valueOf(params.get(((RexDynamicParam) tableInstKindLikeValue).getIndex() + 1).getValue());
-            } else if (tableInstKindLikeValue instanceof RexLiteral) {
-                instKindLike = ((RexLiteral) tableInstKindLikeValue).getValueAs(String.class);
-            }
-        }
+        String instKindLike = virtualView.getLikeString(instKindIndex, params);
 
         Map<String, StorageInstHaContext> storageStatusMap = StorageHaManager.getInstance().getStorageHaCtxCache();
 
@@ -162,12 +98,14 @@ public class InformationSchemaStorageStatusHandler extends BaseVirtualViewSubCla
             String instanceRole = (instanceId.equals(masterInstanceId) ? "leader" : "learner");
             String instanceKind = StorageInfoRecord.getInstKind(ctx.getStorageKind());
 
-            if ((!indexStorageInstId.isEmpty() && !indexStorageInstId.contains(instanceId) || (!indexInstRole.isEmpty()
-                && !indexInstRole.contains(instanceRole)) || (!indexInstKind.isEmpty() && !indexInstKind.contains(
-                instanceKind))
-                || (storageInstIdLike != null && !new Like().like(instanceId,
-                storageInstIdLike)) || (instRoleLike != null && !new Like().like(instanceRole, instRoleLike))
-                || (instKindLike != null && !new Like().like(instanceKind, instKindLike)))) {
+            if ((!indexStorageInstId.isEmpty() && !indexStorageInstId.contains(instanceId.toLowerCase())) ||
+                (!indexInstRole.isEmpty() && !indexInstRole.contains(instanceRole.toLowerCase())) ||
+                (!indexInstKind.isEmpty() && !indexInstKind.contains(instanceKind.toLowerCase()))) {
+                continue;
+            }
+            if ((storageInstIdLike != null && !new Like().like(instanceId, storageInstIdLike)) ||
+                (instRoleLike != null && !new Like().like(instanceRole, instRoleLike)) ||
+                (instKindLike != null && !new Like().like(instanceKind, instKindLike))) {
                 continue;
             }
 

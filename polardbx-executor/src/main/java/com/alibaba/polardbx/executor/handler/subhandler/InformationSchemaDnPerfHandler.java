@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaDnPerf;
@@ -64,7 +65,7 @@ public class InformationSchemaDnPerfHandler extends BaseVirtualViewSubClassHandl
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction, SyncScope.CURRENT_ONLY);
 
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {

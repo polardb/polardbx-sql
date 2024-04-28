@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.planner;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.parse.SqlParameterizeUtils;
@@ -67,6 +69,24 @@ public class PlanCacheTest extends PlanTestCommon {
     @Override
     public void testSql() {
 
+    }
+
+    @Test
+    public void testExpireTime() {
+        // default config test, 12H
+        testExpireTimeEqualsConfig(12 * 3600 * 1000);
+
+        // manual set config test
+        int manualExpireTime = 110 * 1000;
+        DynamicConfig.getInstance().loadValue(null, ConnectionProperties.PLAN_CACHE_EXPIRE_TIME, manualExpireTime + "");
+        testExpireTimeEqualsConfig(manualExpireTime);
+    }
+
+    private void testExpireTimeEqualsConfig(int expectedTime) {
+        int expireTime = DynamicConfig.getInstance().planCacheExpireTime();
+        PlanCache planCache = new PlanCache(1);
+        assert expireTime == planCache.getPlanCacheExpireTime();
+        assert expireTime == expectedTime;
     }
 
     @Test

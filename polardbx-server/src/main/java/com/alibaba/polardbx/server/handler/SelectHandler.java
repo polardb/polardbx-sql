@@ -19,6 +19,8 @@ package com.alibaba.polardbx.server.handler;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.parser.ServerParseSelect;
+import com.alibaba.polardbx.server.response.SelectEncdbProcessMessage;
+import com.alibaba.polardbx.server.response.SelectCompatibilityLevel;
 import com.alibaba.polardbx.server.response.SelectPolardbVersion;
 import com.alibaba.polardbx.server.response.SelectCurrentTransId;
 import com.alibaba.polardbx.server.response.SelectCurrentTransPolicy;
@@ -75,6 +77,10 @@ public final class SelectHandler {
             case ServerParseSelect.SEQ_SKIP_BENCHMARK:
                 recordSql = false;
                 return SelectSequenceBenchmark.response(c, hasMore, exData, false);
+            case ServerParseSelect.COMPATIBILITY_LEVEL:
+                return SelectCompatibilityLevel.execute(c, stmt);
+            case ServerParseSelect.ENCDB_PROCESS_MESSAGE:
+                return SelectEncdbProcessMessage.response(c, hasMore, (String) exData[0]);
             default:
                 recordSql = false;
                 return c.execute(stmt, hasMore);

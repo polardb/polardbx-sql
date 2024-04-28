@@ -63,6 +63,34 @@ public enum MySQLIntervalType {
             .orElse(null);
     }
 
+    public static boolean isDate(MySQLIntervalType intervalType) {
+        switch (intervalType) {
+        case INTERVAL_YEAR:
+        case INTERVAL_YEAR_MONTH:
+        case INTERVAL_QUARTER:
+        case INTERVAL_MONTH:
+        case INTERVAL_WEEK:
+        case INTERVAL_DAY:
+            return true;
+        case INTERVAL_DAY_HOUR:
+        case INTERVAL_DAY_MINUTE:
+        case INTERVAL_DAY_SECOND:
+        case INTERVAL_HOUR:
+        case INTERVAL_HOUR_MINUTE:
+        case INTERVAL_HOUR_SECOND:
+        case INTERVAL_MINUTE:
+        case INTERVAL_MINUTE_SECOND:
+        case INTERVAL_SECOND:
+        case INTERVAL_MICROSECOND:
+        case INTERVAL_DAY_MICROSECOND:
+        case INTERVAL_HOUR_MICROSECOND:
+        case INTERVAL_MINUTE_MICROSECOND:
+        case INTERVAL_SECOND_MICROSECOND:
+        default:
+            return false;
+        }
+    }
+
     private static String normalize(String intervalName) {
         if (intervalName == null) {
             return null;

@@ -27,6 +27,7 @@ import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PolarRolePrivilege;
 import com.alibaba.polardbx.gms.privilege.audit.AuditPrivilege;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -84,6 +85,11 @@ public class PolarRevokeRoleHandler extends AbstractPrivilegeCommandHandler {
             });
         AuditPrivilege.polarAudit(getServerConn().getConnectionInfo(), getSql().toString(), AuditAction.REVOKE_ROLE);
         getPrivManager().triggerReload();
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.REVOKE_ROLE;
     }
 
     private List<PolarAccountInfo> checkAndGetInputRoles() {

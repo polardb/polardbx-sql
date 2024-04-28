@@ -94,13 +94,18 @@ public class DataValidator {
 
     public static void explainResultMatchAssert(String sql, List<Object> param, Connection tddlConnection,
                                                 String expectPattern) {
+        explainResultMatchAssert(sql, param, tddlConnection, expectPattern, 1);
+    }
+
+    public static void explainResultMatchAssert(String sql, List<Object> param, Connection tddlConnection,
+                                                String expectPattern, int index) {
         PreparedStatement tddlPs = JdbcUtil.preparedStatementSet(sql, param, tddlConnection);
         String errorMess = null;
         String actualExplainResult = "";
         try {
             ResultSet rs = tddlPs.executeQuery();
             rs.next();
-            actualExplainResult = rs.getString(1);
+            actualExplainResult = rs.getString(index);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -110,6 +115,27 @@ public class DataValidator {
         }
         Assert.assertTrue("expect pattern is " + expectPattern + "\n but actual is " + actualExplainResult,
             actualExplainResult.matches(expectPattern));
+
+    }
+
+    public static void explainResultStrictMatchAssert(String sql, List<Object> param, Connection tddlConnection,
+                                                      String expectPattern, int index) {
+        PreparedStatement tddlPs = JdbcUtil.preparedStatementSet(sql, param, tddlConnection);
+        String errorMess = null;
+        String actualExplainResult = "";
+        try {
+            ResultSet rs = tddlPs.executeQuery();
+            rs.next();
+            actualExplainResult = rs.getString(index);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            errorMess = e.getMessage();
+        } finally {
+            JdbcUtil.close(tddlPs);
+        }
+        Assert.assertTrue("expect pattern is " + expectPattern + "\n but actual is " + actualExplainResult,
+            actualExplainResult.equalsIgnoreCase(expectPattern));
 
     }
 

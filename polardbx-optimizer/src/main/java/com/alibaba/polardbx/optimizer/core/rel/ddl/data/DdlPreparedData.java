@@ -16,8 +16,14 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl.data;
 
+import com.google.common.base.Preconditions;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.Objects;
+
+import static com.alibaba.polardbx.common.cdc.ICdcManager.DEFAULT_DDL_VERSION_ID;
 
 @Data
 @NoArgsConstructor
@@ -26,14 +32,25 @@ public class DdlPreparedData {
     private String schemaName;
     private String tableName;
     private boolean withHint;
+    private boolean needRenamePhyTable;
+
     /**
      * the table's version when prepare data for ddl task
      */
     protected Long tableVersion = -1L;
+    /**
+     * Every ddl has its own version id
+     */
+    protected Long ddlVersionId = DEFAULT_DDL_VERSION_ID;
 
     public DdlPreparedData(final String schemaName, final String tableName) {
         this.schemaName = schemaName;
         this.tableName = tableName;
     }
 
+    public synchronized void setDdlVersionId(@NotNull Long ddlVersionId) {
+        Preconditions.checkArgument(Objects.equals(this.ddlVersionId, DEFAULT_DDL_VERSION_ID),
+            "Do not support update ddl version id");
+        this.ddlVersionId = ddlVersionId;
+    }
 }

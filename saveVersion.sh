@@ -40,10 +40,10 @@ elif [ -d .git ]; then
   #branch=`git branch --no-color | grep '*' | awk '{print $2}'`
   case "`uname`" in
     Darwin)
-      version=`cat pom.xml | head -n 10 | egrep -o '<version>5\..*?(-SNAPSHOT)?<' | cut -c 10- | awk -F'<' '{print $1}'`
+      version=`cat .flattened-pom.xml | head -n 10 | egrep -o '<version>5\..*?(-SNAPSHOT)?<' | cut -c 10- | awk -F'<' '{print $1}'`
       ;;
     *)
-      version=`cat pom.xml | head -n 10 | grep -oP '<version>5\..*?(-SNAPSHOT)?<' | cut -c 10- | awk -F'<' '{print $1}'`
+      version=`cat .flattened-pom.xml | head -n 10 | grep -oP '<version>5\..*?(-SNAPSHOT)?<' | cut -c 10- | awk -F'<' '{print $1}'`
     ;;
   esac
 else
@@ -55,7 +55,8 @@ fi
 
 # for rpm
 if [ "x${RELEASE}" != "x" ];then
-  ec="echo $version | sed 's/SNAPSHOT/$RELEASE/g'"
+  # since 5.4.19, version changes into "5.4.19-${DATE}_${BUILDNUMBER}-SNAPSHOT"
+  ec="echo $version | sed 's/_.*-SNAPSHOT//'"
   version=`eval $ec`
 elif [ "x${FW_BRANCH_NAME}" != "x" ]; then
   # for fastwork read from rpm tag build name

@@ -70,7 +70,24 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
         String createTable = "create table %s (a int,b char)";
         executeAndCheck(createTable, tableName);
 
-        String alterTable = "alter table %s drop column c";
+        String hint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=true)*/";
+        String alterTable = hint + "alter table %s drop column c";
+        if (isMySQL80()) {
+            executeAndFail(alterTable, tableName, "Unknown column 'c'");
+        } else {
+            executeAndFail(alterTable, tableName, "check that column/key exists");
+        }
+    }
+
+    @Test
+    public void testDropUnknownColumnLegacy() {
+        String tableName = "test_drop_unknown_column_legacy";
+
+        String createTable = "create table %s (a int,b char)";
+        executeAndCheck(createTable, tableName);
+
+        String hint = "/*+TDDL:cmd_extra(ENABLE_DRDS_MULTI_PHASE_DDL=false)*/";
+        String alterTable = hint + "alter table %s drop column c";
         executeAndFail(alterTable, tableName, "Unknown column");
     }
 
@@ -159,9 +176,9 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
         executeAndCheck(createTable, tableName);
 
         String alterTable = "alter table %s change column a b int, change column b c int";
-        executeAndFail(alterTable, tableName, "Duplicate column");
+//        executeAndFail(alterTable, tableName, "Duplicate column");
         // TODO: the usage should be OK, so we will have to change AlterTableValidateTask in the near future.
-        //executeAndCheck(alterTable, tableName);
+        executeAndCheck(alterTable, tableName);
     }
 
     @Test
@@ -399,7 +416,7 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
 
         String alterTable =
             "alter table %s change column a b int after c, change column b c double after d, change column c d varchar(10) after a, change column d a int after b";
-        executeAndFail(alterTable, tableName, "Duplicate column");
+        executeAndCheck(alterTable, tableName);
     }
 
     @Test
@@ -411,7 +428,7 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
 
         String alterTable =
             "alter table %s add column a int, add column b double, change column a x int after a, change column b y int after b";
-        executeAndFail(alterTable, tableName, "Duplicate column");
+        executeAndCheck(alterTable, tableName);
     }
 
     @Test
@@ -424,7 +441,7 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
 
         String alterTable =
             "alter table %s add column a int, change column a x int after a, change column b y int after b, add column b double";
-        executeAndFail(alterTable, tableName, "Duplicate column");
+        executeAndFail(alterTable, tableName, "Unknown column");
     }
 
     @Test
@@ -437,6 +454,6 @@ public class AlterTableCompatibilityTest extends AlterTableCompatBaseTest {
 
         String alterTable =
             "alter table %s add column a int, change column b y int after b, add column b double, change column a x int after a";
-        executeAndFail(alterTable, tableName, "Duplicate column");
+        executeAndFail(alterTable, tableName, "Unknown column");
     }
 }

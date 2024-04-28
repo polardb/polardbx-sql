@@ -32,6 +32,7 @@ package com.alibaba.polardbx.executor.operator.spill;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import java.io.Closeable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -39,6 +40,8 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.OpenOption;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -94,7 +97,15 @@ final class FileHolder implements Closeable {
     public synchronized void doClean() {
         try {
             if (Files.exists(filePath)) {
-                Files.delete(filePath);
+                if (Files.isDirectory(filePath)) {
+                    try (Stream<Path> stream = Files.walk(filePath)) {
+                        stream.sorted(Comparator.reverseOrder())
+                            .map(Path::toFile)
+                            .forEach(File::delete);
+                    }
+                } else {
+                    Files.delete(filePath);
+                }
             }
         } catch (IOException e) {
             throw new UncheckedIOException(e);

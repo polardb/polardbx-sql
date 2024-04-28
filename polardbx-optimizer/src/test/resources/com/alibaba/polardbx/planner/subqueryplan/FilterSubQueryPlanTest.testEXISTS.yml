@@ -191,7 +191,7 @@
 
   plan: |
 
-    SemiHashJoin(condition="id = int_col1", type="semi")
+    SemiHashJoin(condition="id = int_col1", type="semi", build="inner")
       Gather(concurrent=true)
         LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb`")
       Gather(concurrent=true)
@@ -230,7 +230,7 @@
 
   plan: |
 
-    SemiHashJoin(condition="id = int_col1", type="semi")
+    SemiHashJoin(condition="id = int_col1", type="semi", build="inner")
       Gather(concurrent=true)
         LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id` FROM `test_hash_tb` AS `test_hash_tb` WHERE (`id` > 3)")
       Gather(concurrent=true)
@@ -614,7 +614,7 @@
   plan: |
 
     Project(id="id")
-      SemiHashJoin(condition="name = name AND id = int_col1", type="semi")
+      SemiHashJoin(condition="name = name AND id = int_col1", type="semi", build="inner")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
         Gather(concurrent=true)
@@ -654,7 +654,7 @@
   plan: |
 
     Project(id="id")
-      SemiHashJoin(condition="name = name AND id = int_col4", type="semi")
+      SemiHashJoin(condition="name = name AND id = int_col4", type="semi", build="inner")
         Gather(concurrent=true)
           LogicalView(tables="[0000-0003].test_hash_tb", shardCount=4, sql="SELECT `id`, `name` FROM `test_hash_tb` AS `test_hash_tb`")
         Gather(concurrent=true)

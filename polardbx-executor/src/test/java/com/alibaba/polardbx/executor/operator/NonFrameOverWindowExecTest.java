@@ -20,18 +20,20 @@ import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.operator.util.RowChunksBuilder;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.executor.calc.Aggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Max;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Min;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Rank;
-import com.alibaba.polardbx.executor.calc.aggfunctions.RowNumber;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.AvgV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitAnd;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitOr;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitXor;
+
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.MaxV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.MinV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Rank;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.RowNumber;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum0;
+
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import org.junit.Ignore;
 import org.junit.Test;
 
@@ -93,8 +95,8 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testSumAndSumV2() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum0(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new Sum0(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         // 那几列是partition by 的key
         List<Integer> partitionIndexes = new ArrayList<>();
@@ -123,8 +125,8 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testMaxAndMin() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Max(1, DataTypes.IntegerType, DataTypes.IntegerType, -1));
-        aggregators.add(new Min(1, DataTypes.IntegerType, DataTypes.IntegerType, -1));
+        aggregators.add(new MaxV2(1,  -1));
+        aggregators.add(new MinV2(1,  -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -151,8 +153,8 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testAvgV2AndCountV2() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Avg(1, false, DataTypes.DecimalType, -1));
-        aggregators.add(new Count(new int[] {2}, false, -1));
+        aggregators.add(new AvgV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new CountV2(new int[] {2}, false,context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         // 那几列是partition by 的key
         List<Integer> partitionIndexes = new ArrayList<>();
@@ -181,9 +183,9 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testBitRelated() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new BitAnd(2, DataTypes.IntegerType, DataTypes.ULongType, -1));
-        aggregators.add(new BitOr(2, DataTypes.IntegerType, DataTypes.ULongType, -1));
-        aggregators.add(new BitXor(2, DataTypes.IntegerType, DataTypes.ULongType, -1));
+        aggregators.add(new BitAnd(2, -1));
+        aggregators.add(new BitOr(2, -1));
+        aggregators.add(new BitXor(2,  -1));
 
         // 那几列是partition by 的key
         List<Integer> partitionIndexes = new ArrayList<>();
@@ -268,8 +270,8 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testResetAccumulators() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum(1, false, DataTypes.LongType, -1));
-        aggregators.add(new Sum0(2, false, DataTypes.LongType, -1));
+        aggregators.add(new SumV2(1, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
+        aggregators.add(new Sum0(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -296,7 +298,7 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
     public void testPartitionIndexList() throws Exception {
         prepareNormalData();
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum0(2, false, DataTypes.LongType, -1));
+        aggregators.add(new Sum0(2, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>();
         partitionIndexes.add(0);
@@ -351,7 +353,7 @@ public class NonFrameOverWindowExecTest extends BaseExecTest {
         input = rowChunksBuilder.buildExec();
 
         List<Aggregator> aggregators = new ArrayList<>();
-        aggregators.add(new Sum0(6, false, DataTypes.LongType, -1));
+        aggregators.add(new Sum0(6, false, context.getMemoryPool().getMemoryAllocatorCtx(), -1));
 
         List<Integer> partitionIndexes = new ArrayList<>(Arrays.asList(0, 1, 2, 3, 4, 5));
 

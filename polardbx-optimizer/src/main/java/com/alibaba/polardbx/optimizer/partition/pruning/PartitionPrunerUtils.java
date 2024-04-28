@@ -22,11 +22,10 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
-import com.alibaba.polardbx.common.utils.CaseInsensitive;
+import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.BinaryType;
@@ -37,14 +36,13 @@ import com.alibaba.polardbx.optimizer.core.expression.calc.IExpression;
 import com.alibaba.polardbx.optimizer.core.field.FieldCheckLevel;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.core.field.TypeConversionStatus;
-import com.alibaba.polardbx.optimizer.core.function.SqlSubStrFunction;
-import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundSpec;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundValueKind;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
+import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionFieldBuilder;
 import com.alibaba.polardbx.optimizer.partition.datatype.function.PartitionFunctionBuilder;
@@ -59,7 +57,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.type.SqlTypeName;
 
 import java.util.ArrayList;
@@ -68,7 +65,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeSet;
 
 /**
  * @author chenghui.lch
@@ -379,10 +375,10 @@ public class PartitionPrunerUtils {
         return partBitSet;
     }
 
-    protected static BitSet setPartBitSetByStartEnd(BitSet partBitSet,
-                                                    Integer startPartPosi,
-                                                    Integer endPartPosi,
-                                                    boolean bitSetVal) {
+    public static BitSet setPartBitSetByStartEnd(BitSet partBitSet,
+                                                 Integer startPartPosi,
+                                                 Integer endPartPosi,
+                                                 boolean bitSetVal) {
 
         int bitSetStart = 0;
         int bitSetEnd = 0;
@@ -460,9 +456,9 @@ public class PartitionPrunerUtils {
         return partBitSet;
     }
 
-    protected static BitSet setPartBitSetForPartList(BitSet partBitSet,
-                                                     Set<Integer> partPostSet,
-                                                     boolean bitSetVal) {
+    public static BitSet setPartBitSetForPartList(BitSet partBitSet,
+                                                  Set<Integer> partPostSet,
+                                                  boolean bitSetVal) {
         for (Integer posi : partPostSet) {
             partBitSet.set(posi - 1, bitSetVal);
         }
@@ -602,11 +598,6 @@ public class PartitionPrunerUtils {
             evalValObj = calcExpr.eval(null, executionContext);
         }
 
-//        // list meaning this value come from IN expr.
-//        if(evalValObj instanceof List){
-//            evalValObj = ((List<?>) evalValObj).get(0);
-//        }
-
         /**
          * Try to fetch the data type from evalValObj
          */
@@ -650,6 +641,7 @@ public class PartitionPrunerUtils {
      */
     protected static PartitionField evalPartFuncVal(PartitionField partField,
                                                     PartitionIntFunction partFunc,
+                                                    PartitionStrategy partStrategy,
                                                     ExecutionContext context,
                                                     boolean[] endpoints,
                                                     PartFieldAccessType scenario) {
@@ -675,8 +667,25 @@ public class PartitionPrunerUtils {
             fullPartColFlds.add(partField);
             List<PartitionField> fullParams = partFunc.getFullParamsByPartColFields(fullPartColFlds);
             evalObj = partFunc.evalEndpoint(fullParams, sessionProperties, endpoints);
-            newPartField = PartitionPrunerUtils.buildPartField(evalObj,
+            PartitionField partFunEvalField = PartitionPrunerUtils.buildPartField(evalObj,
                 partFunc.getReturnType(), partFunc.getReturnType(), endpoints, context, scenario);
+
+            /**
+             * <pre>
+             * For the partition definition as the following ( int_col1 and int_col2 are partition columns):
+             *    CO_HASH( right(int_col1, 4), int_col2 ) or CO_HASH( right(int_col1, 4), right(int_col1, 4) )
+             * , some substring of the eval result of right(int_col1) /left(int_col1) /substr(int_col1)
+             *  maybe a number with zero-symbol-beginning, such as
+             *      right(12000001) == "0001"
+             *  , bue the original value of int_col2 is just 1,
+             *  then the routing result of "0001" and "1" will be different if they are treated as varchar datatype objects.
+             *  so we must convert these substring of the eval result into the dateype of partColMeta for number datatype,
+             *  including tinyint/smallint/mediumint/int/bigint/decimal with scale=0
+             * </pre>
+             */
+            newPartField =
+                PartitionPrunerUtils.convertPartFuncEvalValueToPartColDataTypeIfNeed(partFunEvalField, partField,
+                    partFunc, partStrategy, context, endpoints, scenario);
         }
 
         return newPartField;
@@ -788,13 +797,29 @@ public class PartitionPrunerUtils {
             newCmpKind = PartFuncMonotonicityUtil.buildComparisonKind(epInfo);
         } else {
             int invalidTypeCastPartColInddex = -1;
+            ComparisonKind exprInfoCmpKind = exprInfo.getCmpKind();
             for (int j = 0; j < partColNum; j++) {
                 searchValArr[j] =
                     PartitionPrunerUtils.evalExecAndBuildBoundValue(context, pruningCtx, predExprExecArr[j], epInfo);
                 if (searchValArr[j].isNormalValue() && !searchValArr[j].isNullValue()) {
-                    if (searchValArr[j].getValue().lastStatus() != TypeConversionStatus.TYPE_OK) {
-                        invalidTypeCastPartColInddex = j;
-                        break;
+                    TypeConversionStatus typeConvertStatus = searchValArr[j].getValue().lastStatus();
+                    if (typeConvertStatus != TypeConversionStatus.TYPE_OK) {
+                        /**
+                         * typeConvertStatus must be a type-truncated-status
+                         */
+                        if (exprInfoCmpKind == ComparisonKind.EQUAL) {
+                            /**
+                             * <pre>
+                             * For full-part-col equality predicate,
+                             * just use the truncated partFld to finish routing
+                             * </pre>
+                             *
+                             */
+                            continue;
+                        } else {
+                            invalidTypeCastPartColInddex = j;
+                            break;
+                        }
                     }
                 }
             }
@@ -805,7 +830,6 @@ public class PartitionPrunerUtils {
              * max/min value to enlarge the range..
              */
             if (invalidTypeCastPartColInddex > -1) {
-                ComparisonKind exprInfoCmpKind = exprInfo.getCmpKind();
                 PartitionBoundVal autoFillVal = null;
                 if (exprInfoCmpKind == ComparisonKind.GREATER_THAN_OR_EQUAL
                     || exprInfoCmpKind == ComparisonKind.GREATER_THAN) {
@@ -823,6 +847,10 @@ public class PartitionPrunerUtils {
                     for (int i = invalidTypeCastPartColInddex; i < partColNum; i++) {
                         searchValArr[i] = autoFillVal;
                     }
+                } else {
+                    /**
+                     * Impossible come here
+                     */
                 }
             } else {
                 newCmpKind = PartFuncMonotonicityUtil.buildComparisonKind(epInfo);
@@ -1089,5 +1117,70 @@ public class PartitionPrunerUtils {
             PRUNER_LOG.error(ex);
             return null;
         }
+    }
+
+    /**
+     * <pre>
+     *
+     * Convert the computed result PartField of part function of substr/right/left to the PartFiled of PartCol
+     * which datatype is int and decimal
+     *
+     * </pre>
+     */
+    private static PartitionField convertPartFuncEvalValueToPartColDataTypeIfNeed(PartitionField partFuncEvalValFld,
+                                                                                  PartitionField partColInputFld,
+                                                                                  PartitionIntFunction partFun,
+                                                                                  PartitionStrategy partStrategy,
+                                                                                  ExecutionContext context,
+                                                                                  boolean[] endpoints,
+                                                                                  PartFieldAccessType scenario) {
+        /**
+         * <pre>
+         * For the partition definition as the following ( int_col1 and int_col2 are partition columns):
+         *    CO_HASH( right(int_col1, 4), int_col2 ) or CO_HASH( right(int_col1, 4), right(int_col1, 4) )
+         * , some substring of the eval result of right(int_col1) /left(int_col1) /substr(int_col1)
+         *  maybe a number with zero-symbol-beginning, such as
+         *      right(12000001) == "0001"
+         *  , bue the original value of int_col2 is just 1,
+         *  then the routing result of "0001" and "1" will be different if they are treated as varchar datatype objects.
+         *  so we must convert these substring of the eval result into the dateype of partColMeta for number datatype,
+         *  including tinyint/smallint/mediumint/int/bigint/decimal with scale=0
+         * </pre>
+         */
+
+        if (partStrategy != PartitionStrategy.CO_HASH) {
+            return partFuncEvalValFld;
+        }
+
+        if (!PartitionFunctionBuilder.isStringFamilyPartitionFunction(partFun.getSqlOperator().getName())) {
+            return partFuncEvalValFld;
+        }
+
+        /**
+         * The dataTYpe of partColMeta
+         */
+        DataType partColDataType = partColInputFld.dataType();
+        if (!(DataTypeUtil.isUnderBigintUnsignedType(partColDataType) || DataTypeUtil.isDecimalType(partColDataType))) {
+            return partFuncEvalValFld;
+        }
+
+        PartitionField newPartColFldReturn = PartitionFieldBuilder.createField(partColDataType);
+        if (partFuncEvalValFld.isNull()) {
+            newPartColFldReturn.setNull(true);
+            return newPartColFldReturn;
+        }
+        String strVal = partFuncEvalValFld.stringValue().toStringUtf8();
+        if (StringUtils.isEmpty(strVal)) {
+            return newPartColFldReturn;
+        }
+
+        /**
+         * The dataTYpe of partition Function return
+         */
+        DataType partFuncReturnDataType = partFuncEvalValFld.dataType();
+
+        newPartColFldReturn.store(strVal, partFuncReturnDataType);
+        processTypeConversionStatus(scenario, partFuncReturnDataType, newPartColFldReturn, endpoints);
+        return newPartColFldReturn;
     }
 }

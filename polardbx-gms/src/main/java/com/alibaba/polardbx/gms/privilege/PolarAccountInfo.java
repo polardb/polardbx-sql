@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.gms.privilege;
 
 import com.google.common.base.Preconditions;
+import com.taobao.tddl.common.privilege.AuthPlugin;
 import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
@@ -166,6 +167,10 @@ public class PolarAccountInfo {
 
     public String getPassword() {
         return getAccount().getPassword();
+    }
+
+    public AuthPlugin getAuthPlugin() {
+        return getAccount().getAuthPlugin();
     }
 
     public void setPassword(String newPassword) {

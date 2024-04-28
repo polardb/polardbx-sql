@@ -42,6 +42,7 @@ import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.Field;
 import com.alibaba.polardbx.optimizer.config.table.GeneratedColumnUtil;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
+import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
@@ -99,6 +100,7 @@ import org.apache.calcite.sql.SqlAlterTableDropIndex;
 import org.apache.calcite.sql.SqlAlterTableRenameIndex;
 import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlCall;
+import org.apache.calcite.sql.SqlCheckColumnarIndex;
 import org.apache.calcite.sql.SqlCreateIndex;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.sql.SqlDmlKeyword;
@@ -142,6 +144,7 @@ import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.calcite.util.mapping.Mappings.TargetMapping;
+import org.jetbrains.annotations.Nullable;
 
 import java.text.MessageFormat;
 import java.util.ArrayDeque;
@@ -160,6 +163,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -199,6 +203,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
             RelOptTable targetTable = modify.getTable();
             ExecutionContext ec = PlannerContext.getPlannerContext(relNode).getExecutionContext();
+            validateDuplicateColumn(call, ec);
             final Pair<String, String> qn = RelUtils.getQualifiedTableName(targetTable);
             final String schema = qn.left;
             final String tableName = qn.right;
@@ -350,7 +355,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                                 if (DataTypeUtil.anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
                                     DataTypes.DatetimeType)) {
                                     final SqlBasicCall currentTimestamp =
-                                        new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP, SqlNode.EMPTY_ARRAY,
+                                        new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP,
+                                            new SqlNode[] {
+                                                SqlLiteral.createExactNumeric(
+                                                    String.valueOf(field.getDataType().getScale()),
+                                                    SqlParserPos.ZERO)},
                                             SqlParserPos.ZERO);
                                     final SqlIdentifier targetColumnId =
                                         new SqlIdentifier(columnName, SqlParserPos.ZERO);
@@ -376,6 +385,31 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
 
         return relNode;
+    }
+
+    public void validateDuplicateColumn(SqlInsert insert, ExecutionContext executionContext) {
+        List<String> duplicateColumn = validateDuplicateColumn(insert.getTargetColumnList());
+        boolean insertDuplicateColumn =
+            executionContext.getParamManager().getBoolean(ConnectionParams.INSERT_DUPLICATE_COLUMN);
+        if (!insertDuplicateColumn && !duplicateColumn.isEmpty()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                String.format("Column '%s' specified twice.", duplicateColumn.get(0)));
+        }
+    }
+
+    protected List<String> validateDuplicateColumn(SqlNodeList columns) {
+        if (columns == null) {
+            return new ArrayList<>();
+        }
+        Map<String, Long> elementToStringCount = columns.getList().stream()
+            .map(Object::toString)
+            .collect(Collectors.groupingBy(java.util.function.Function.identity(), Collectors.counting()));
+
+        // find columns count greater than 1
+        return elementToStringCount.entrySet().stream()
+            .filter(entry -> entry.getValue() > 1)
+            .map(Map.Entry::getKey)
+            .collect(Collectors.toList());
     }
 
     private class ReplaceDefaultOnDuplicateKeyUpdateList {
@@ -697,9 +731,13 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
         // Check all foreign key has been specified a value
         final boolean withForeignKey = tableMeta.hasForeignKey();
+        final boolean withRefForeignKey = tableMeta.hasReferencedForeignKey();
         final Set<String> foreignKeys = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         if (withForeignKey) {
             tableMeta.getForeignKeys().values().stream().map(v -> v.columns).forEach(foreignKeys::addAll);
+        } else if (withRefForeignKey) {
+            // replace or upsert
+            tableMeta.getPhysicalColumns().forEach(c -> foreignKeys.add(c.getName()));
         }
 
         // Get sql_mode
@@ -726,10 +764,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             }
         });
 
-        // Aad source column's default value in column multi-write, otherwise the default values of primary and gsi may
-        // differ
-        final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
-        Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
+        boolean isModifying = TableColumnUtils.isModifying(schemaName, tableName, ec);
 
         // Append all column in target table for upsert with multi write
         final SqlNodeList duplicateKeyUpdateList = (SqlNodeList) call.getOperandList().get(4);
@@ -760,9 +795,9 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final Boolean pushdownDuplicateCheck = isPushdownDuplicateCheck();
         final boolean appendAllColumnsForUpsert =
             duplicateKeyUpdateList.size() > 0 && (isBroadcast || withGsi || withScaleOutMultiWrite
-                || !pushdownDuplicateCheck || upsertModifyPartitionKey || withForeignKey
+                || !pushdownDuplicateCheck || upsertModifyPartitionKey || withForeignKey || withRefForeignKey
                 || hintEx == ExecutionStrategy.LOGICAL
-                || columnMapping != null || upsertContainUnpushableFunc);
+                || isModifying || upsertContainUnpushableFunc);
 
         Map<String, Integer> indexInTableMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (int i = 0; i < targetRowType.getFieldNames().size(); i++) {
@@ -783,15 +818,11 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 node = bb.get().getRexBuilder().constantNull();
             } else if (logicalGeneratedColumns.contains(targetFieldName)) {
                 // Do nothing, we will add it after loop, since we may add default value later
-            } else if (columnMapping != null && targetFieldName.equalsIgnoreCase(columnMapping.right)) {
-                // Do nothing, we will add it later in WriterFactory
             } else if (partitionKeys.contains(targetFieldName) || uniqueKeys.contains(targetFieldName)
                 || defaultCurrentTimestamp.contains(targetFieldName) || primaryKeys.contains(targetFieldName)
-                || appendAllColumnsForUpsert || autoFillDefaultColumns.contains(targetFieldName) || (
-                columnMapping != null && targetFieldName.equalsIgnoreCase(columnMapping.left))
+                || appendAllColumnsForUpsert || autoFillDefaultColumns.contains(targetFieldName)
                 || referencedColumns.contains(targetFieldName) || defaultExpr.contains(targetFieldName)
-                || foreignKeys.contains(targetFieldName)
-                || referencedColumns.contains(targetFieldName)) {
+                || foreignKeys.contains(targetFieldName)) {
                 // Add literal or function call as default value of column;
                 int indexInTable = indexInTableMap.get(targetFieldName);
 
@@ -1216,9 +1247,14 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
     }
 
     private String assignGsiName(SqlNode queryName, Set<String> existsNames, String preferName) {
+        return assignGsiName(queryName, existsNames, preferName, false);
+    }
+
+    private String assignGsiName(SqlNode queryName, Set<String> existsNames, String preferName, boolean isColumnar) {
         preferName = unwrapGsiName(preferName); // Unwrap and assign again.
         if (existsNames.contains(preferName)) {
-            throw validator.newValidationError(queryName, RESOURCE.gsiExists(preferName));
+            throw validator.newValidationError(
+                queryName, isColumnar ? RESOURCE.duplicateIndexName(preferName) : RESOURCE.gsiExists(preferName));
         }
         // Put in the set.
         existsNames.add(preferName);
@@ -1414,7 +1450,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 query.getGlobalKeys().forEach(pair -> {
                     final String newName = assignGsiName(query.getName(), existsNames, pair.getKey().getLastName());
                     final SqlIdentifier newIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
-                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null, false)));
+                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null)));
                 });
                 query.setGlobalKeys(tmp);
             }
@@ -1424,7 +1460,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 query.getGlobalUniqueKeys().forEach(pair -> {
                     final String newName = assignGsiName(query.getName(), existsNames, pair.getKey().getLastName());
                     final SqlIdentifier newIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
-                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null, false)));
+                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null)));
                 });
                 query.setGlobalUniqueKeys(tmp);
             }
@@ -1434,7 +1470,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 query.getClusteredKeys().forEach(pair -> {
                     final String newName = assignGsiName(query.getName(), existsNames, pair.getKey().getLastName());
                     final SqlIdentifier newIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
-                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null, true)));
+                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null)));
                 });
                 query.setClusteredKeys(tmp);
             }
@@ -1444,16 +1480,35 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 query.getClusteredUniqueKeys().forEach(pair -> {
                     final String newName = assignGsiName(query.getName(), existsNames, pair.getKey().getLastName());
                     final SqlIdentifier newIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
-                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null, true)));
+                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null)));
                 });
                 query.setClusteredUniqueKeys(tmp);
+            }
+            if (GeneralUtil.isNotEmpty(query.getColumnarKeys())) {
+                if (!plannerContext
+                    .getExecutionContext()
+                    .getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK)
+                    && !SqlUtil.hasExplicitPrimaryKey(query)) {
+                    throw validator.newValidationError(query.getName(), RESOURCE.createCciOnTableWithoutPk());
+                }
+
+                final List<Pair<SqlIdentifier, SqlIndexDefinition>> tmp =
+                    new ArrayList<>(query.getColumnarKeys().size());
+                query.getColumnarKeys().forEach(pair -> {
+                    final String newName =
+                        assignGsiName(query.getName(), existsNames, pair.getKey().getLastName(), true);
+                    final SqlIdentifier newIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
+                    tmp.add(new Pair<>(newIdentifier, pair.right.rebuildToGsiNewPartition(newIdentifier, null)));
+                });
+                query.setColumnarKeys(tmp);
             }
         }
 
         final Set<String> gsiNames = new HashSet<>();
         if (GeneralUtil.isNotEmpty(query.getGlobalKeys())) {
             query.getGlobalKeys().forEach(pair -> {
-                validator.validateGsiName(gsiNames, pair.getKey());
+                validator.validateGsiName(gsiNames, pair.getValue());
                 final String indexName = pair.getKey().getLastName();
 
                 if (!plannerContext.getExecutionContext().getSchemaManager(plannerContext.getSchemaName())
@@ -1466,7 +1521,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
         if (GeneralUtil.isNotEmpty(query.getGlobalUniqueKeys())) {
             query.getGlobalUniqueKeys().forEach(pair -> {
-                validator.validateGsiName(gsiNames, pair.getKey());
+                validator.validateGsiName(gsiNames, pair.getValue());
                 final String indexName = pair.getKey().getLastName();
                 if (!OptimizerContext.getContext(plannerContext.getSchemaName()).getLatestSchemaManager()
                     .getGsi(indexName,
@@ -1478,7 +1533,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
         if (GeneralUtil.isNotEmpty(query.getClusteredKeys())) {
             query.getClusteredKeys().forEach(pair -> {
-                validator.validateGsiName(gsiNames, pair.getKey());
+                validator.validateGsiName(gsiNames, pair.getValue());
                 final String indexName = pair.getKey().getLastName();
                 if (!OptimizerContext.getContext(plannerContext.getSchemaName()).getLatestSchemaManager()
                     .getGsi(indexName,
@@ -1490,7 +1545,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
         if (GeneralUtil.isNotEmpty(query.getClusteredUniqueKeys())) {
             query.getClusteredUniqueKeys().forEach(pair -> {
-                validator.validateGsiName(gsiNames, pair.getKey());
+                validator.validateGsiName(gsiNames, pair.getValue());
                 final String indexName = pair.getKey().getLastName();
                 if (!plannerContext.getExecutionContext().getSchemaManager(plannerContext.getSchemaName())
                     .getGsi(indexName,
@@ -1500,16 +1555,46 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             });
         }
 
+        final Set<String> cciNames = new HashSet<>();
+        if (GeneralUtil.isNotEmpty(query.getColumnarKeys())) {
+            query.getColumnarKeys().forEach(pair -> {
+                validator.validateGsiName(cciNames, pair.getValue());
+                final String indexName = pair.getKey().getLastName();
+                if (!plannerContext.getExecutionContext().getSchemaManager(plannerContext.getSchemaName())
+                    .getGsi(indexName, IndexStatus.ALL).isEmpty()) {
+                    throw validator.newValidationError(query.getName(), RESOURCE.cciExists(indexName));
+                }
+            });
+        }
+
         final String tableName = ((SqlIdentifier) query.getName()).getLastName();
         if (gsiNames.contains(tableName)) {
             throw validator.newValidationError(query.getName(), RESOURCE.gsiExists(tableName));
+        }
+        if (cciNames.contains(tableName)) {
+            throw validator.newValidationError(query.getName(), RESOURCE.cciExists(tableName));
+        }
+        if (cciNames.size() > plannerContext.getExecutionContext().getParamManager()
+            .getLong(ConnectionParams.MAX_CCI_COUNT)) {
+            throw validator.newValidationError(query.getName(), RESOURCE.cciMoreThanOne(tableName));
         }
 
         return query;
     }
 
-    static private SqlNode generateNewPartition(TableMeta tableMeta, List<String> indexColNames, boolean unique,
-                                                boolean global) {
+    private long getDefaultPartitions(boolean isColumnar) {
+        final long defaultPartitions = DynamicConfig.getInstance().getAutoPartitionPartitions(isColumnar);
+
+        if (isColumnar) {
+            return plannerContext.getExecutionContext().getParamManager()
+                .getWithDefault(ConnectionParams.COLUMNAR_DEFAULT_PARTITIONS, Long.class, defaultPartitions);
+        }
+
+        return defaultPartitions;
+    }
+
+    private SqlNode generateNewPartition(TableMeta tableMeta, List<String> indexColNames, boolean unique,
+                                         boolean global, boolean columnar) {
         final List<ColumnMeta> columnMetas = new ArrayList<>(indexColNames.size());
         for (String name : indexColNames) {
             ColumnMeta meta =
@@ -1524,7 +1609,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         final List<String> typeNames = columnMetas.stream()
             .map(meta -> meta.getField().getDataType().getStringSqlType().toLowerCase()).collect(Collectors.toList());
 
-        if (typeNames.isEmpty() || (!SqlValidatorImpl.supportNewPartition(typeNames.get(0)) && !global)) {
+        if (typeNames.isEmpty() || (!SqlValidatorImpl.supportNewPartition(typeNames.get(0)) && !global && !columnar)) {
             return null;
         }
 
@@ -1545,13 +1630,13 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
         assert concatKeys.size() == typeNames.size();
 
-        long defaultPartitions = DynamicConfig.getInstance().getAutoPartitionPartitions();
+        long defaultPartitions = getDefaultPartitions(columnar);
         if (tableMeta.getPartitionInfo() != null) {
             PartitionByDefinition partitionBy = tableMeta.getPartitionInfo().getPartitionBy();
             defaultPartitions = partitionBy == null ? defaultPartitions : partitionBy.getPartitions().size();
         }
         return SqlValidatorImpl.assignAutoPartitionNewPartition(concatKeys, typeNames, pks, pkTypeNames,
-            defaultPartitions, global);
+            defaultPartitions, global, columnar);
     }
 
     @Override
@@ -1572,17 +1657,25 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 || SqlCreateIndex.SqlIndexConstraintType.UNIQUE == query.getConstraintType())
                 && !Engine.isFileStore(tableMeta.getEngine());
 
-        if (plannerContext.isExplain() || (!query.createGsi() && !convertToGSI)) {
+        final boolean columnarIndex = query.createCci();
+        if (plannerContext.isExplain()
+            || (!query.createGsi() && !columnarIndex && !convertToGSI)) {
             return query;
+        }
+
+        if (columnarIndex
+            && !plannerContext
+            .getExecutionContext()
+            .getParamManager()
+            .getBoolean(ConnectionParams.ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK)
+            && !GlobalIndexMeta.hasExplicitPrimaryKey(tableMeta)) {
+            throw validator.newValidationError(query.getName(), RESOURCE.createCciOnTableWithoutPk());
         }
 
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             // Collect existing names.
             final Set<String> existsNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-            tableMeta.getSecondaryIndexes().forEach(meta -> existsNames.add(meta.getPhysicalIndexName()));
-            if (tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().indexMap != null) {
-                tableMeta.getGsiTableMetaBean().indexMap.forEach((k, v) -> existsNames.add(unwrapGsiName(k)));
-            }
+            collectIndexNames(tableMeta, existsNames);
 
             // Assign name if no name spec.
             final String orgName;
@@ -1604,10 +1697,10 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             }
 
             // Now assign gsi name and do auto partition rewrite.
-            final String newName = assignGsiName(query.getName(), existsNames, orgName);
+            final String newName = assignGsiName(query.getName(), existsNames, orgName, query.createCci());
             final SqlIdentifier newNameIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
 
-            if (tableMeta.isAutoPartition()) {
+            if (tableMeta.isAutoPartition() || columnarIndex) {
                 // Assign name and partition.
                 if (query.getDbPartitionBy() != null || query.getDbPartitions() != null ||
                     query.getTbPartitionBy() != null || query.getTbPartitions() != null) {
@@ -1624,26 +1717,35 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     .map(SqlIndexColumnName::getColumnNameStr).collect(Collectors.toList());
                 final boolean unique = query.getConstraintType() != null &&
                     SqlCreateIndex.SqlIndexConstraintType.UNIQUE == query.getConstraintType();
+                // Generate PARTITION part of index on auto partition table for cases like:
+                // 1. index without indexResiding(GLOBAL or LOCAL) specified
+                // 2. GLOBAL/CLUSTERED/COLUMNAR index without partitioning part specified
                 final SqlNode newPartition =
                     null == query.getPartitioning() ?
-                        generateNewPartition(tableMeta, indexColNames, unique, query.createGsi()) : null;
+                        generateNewPartition(
+                            tableMeta,
+                            indexColNames,
+                            unique,
+                            query.createGsi(),
+                            columnarIndex)
+                        : null;
                 if (null == query.getPartitioning() && null == newPartition) {
                     return query; // No extra dealing needed.
                 } else {
                     // Convert to GSI only if new partition is generated or it has one(GSI).
-                    query = query.rebuildToGsiNewPartition(
-                        newNameIdentifier, newPartition, query.createClusteredIndex());
+                    query = query.rebuildToGsiNewPartition(newNameIdentifier, newPartition);
                 }
             } else {
                 // Assign name only.
                 assert query.getIndexResiding()
                     == SqlIndexDefinition.SqlIndexResiding.GLOBAL; // Not convert to GSI, so it is GSI.
-                query = query.rebuildToGsiNewPartition(newNameIdentifier, null, query.createClusteredIndex());
+                query = query.rebuildToGsiNewPartition(newNameIdentifier, null);
+
             }
         }
 
         final Set<String> gsiNames = new HashSet<>();
-        validator.validateGsiName(gsiNames, query.getIndexName());
+        validator.validateGsiName(gsiNames, query);
 
         final String indexName = query.getIndexName().getLastName();
         if (!plannerContext.getExecutionContext().getSchemaManager(schemaName)
@@ -1657,6 +1759,18 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
 
         return query;
+    }
+
+    /**
+     * Collecting local index, global index and columnar index name
+     * Unwrap global index and columnar index name
+     * Add to existsNames
+     */
+    private static void collectIndexNames(TableMeta tableMeta, Set<String> existsNames) {
+        // Add local index names
+        tableMeta.getSecondaryIndexes().forEach(meta -> existsNames.add(meta.getPhysicalIndexName()));
+        // Add unwrapped gsi names
+        tableMeta.gsiNameStream().forEach(k -> existsNames.add(unwrapGsiName(k)));
     }
 
     @Override
@@ -1677,15 +1791,13 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
         }
 
         if (null == query.getIndexName() || query.getIndexName().getLastName().isEmpty()) {
-            throw validator.newValidationError(query.getName(), RESOURCE.gsiExists(""));
+            throw validator.newValidationError(query.getName(), RESOURCE.indexNotFound(""));
         }
 
         if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
             // Add GSI suffix if drop GSI.
             final String indexName = query.getIndexName().getLastName();
-            final String wrapped = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                .findFirst().orElse(null);
+            final String wrapped = getWrappedIndexName(tableMeta, indexName);
             if (wrapped != null) {
                 query = query.replaceIndexName(new SqlIdentifier(wrapped, SqlParserPos.ZERO));
             }
@@ -1695,12 +1807,108 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
     }
 
     @Override
+    protected SqlCheckColumnarIndex checkAndRewriteGsiName(SqlCheckColumnarIndex query) {
+        final String schemaName = Optional
+            .ofNullable(query.getTableName())
+            .filter(tn -> tn.names.size() == 2)
+            .map(tn -> tn.names.get(0))
+            .orElse(plannerContext.getSchemaName());
+
+        // Check schema name
+        final OptimizerContext oc = OptimizerContext.getContext(schemaName);
+        if (null == oc) {
+            throw validator.newValidationError(query.getTableName(), RESOURCE.schemaNotFound(schemaName));
+        }
+
+        // Check database type
+        if ((!ConfigDataMode.isPolarDbX() && INFORMATION_SCHEMA.equalsIgnoreCase(schemaName))
+            || !DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
+            return query;
+        }
+
+        final String indexName = Optional
+            .ofNullable(query.getIndexName())
+            .map(SqlIdentifier::getLastName)
+            .orElse(null);
+        if (null == indexName) {
+            throw validator.newValidationError(query, RESOURCE.indexNotFound(""));
+        }
+
+        // Check and rewrite index name
+        if (query.withTableName()) {
+            final TableMeta tableMeta = plannerContext
+                .getExecutionContext()
+                .getSchemaManager(schemaName)
+                .getTable(query.getTableName().getLastName());
+
+            // Get index name with suffix
+            final String wrapped = getWrappedCciName(tableMeta, indexName);
+            if (wrapped != null) {
+                // Replace index name
+                query = query.replaceIndexName(new SqlIdentifier(wrapped, SqlParserPos.ZERO));
+            } else {
+                // Check index exists
+                final boolean indexNotFound = tableMeta
+                    .gsiNameStream(imb -> imb.columnarIndex)
+                    .noneMatch(in -> TStringUtil.equalsIgnoreCase(in, indexName));
+                if (indexNotFound) {
+                    throw new SqlValidateException(
+                        "CCI '" + indexName + "' on table '" + query.getTableName().toString() + "' doesn't exist.");
+                }
+            }
+        } else {
+            // Table not specified. Try CCI name match.
+            final String indexTableName = query.getIndexName().getLastName();
+
+            final SchemaManager schemaManager = plannerContext.getExecutionContext().getSchemaManager(schemaName);
+            final Set<String> cci = schemaManager.guessGsi(indexTableName, imb -> imb.columnarIndex);
+            if (1 == cci.size()) {
+                // Replace index name
+                query = query.replaceIndexName(new SqlIdentifier(cci.iterator().next(), SqlParserPos.ZERO));
+            } else if (cci.size() >= 2) {
+                throw new SqlValidateException("Multiple CCI named '" + indexTableName + "' found.");
+            } else {
+                // Check index exists
+                if (!schemaManager.getGsi(indexTableName, IndexStatus.ALL).isColumnar(indexTableName)) {
+                    throw new SqlValidateException("CCI '" + indexTableName + "' doesn't exist.");
+                }
+            }
+        }
+
+        return query;
+    }
+
+    @Nullable
+    private static String getWrappedIndexName(TableMeta tableMeta, String indexName) {
+        return getWrappedIndexName(tableMeta, indexName, imb -> true);
+    }
+
+    @Nullable
+    private static String getWrappedCciName(TableMeta tableMeta, String indexName) {
+        return getWrappedIndexName(tableMeta, indexName, imb -> imb.columnarIndex);
+    }
+
+    @Nullable
+    private static String getWrappedIndexName(TableMeta tableMeta,
+                                              String indexName,
+                                              Predicate<GsiMetaManager.GsiIndexMetaBean> filter) {
+        return tableMeta
+            .gsiNameStream(filter)
+            .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
+            .findFirst()
+            .orElse(null);
+    }
+
+    @Override
     protected SqlAlterTable checkAndRewriteGsiName(SqlAlterTable query) {
         final String schemaName =
             2 == query.getOriginTableName().names.size() ? query.getOriginTableName().names.get(0) :
                 plannerContext.getSchemaName();
-        final TableMeta tableMeta = OptimizerContext.getContext(schemaName).getLatestSchemaManager()
-            .getTable(query.getOriginTableName().getLastName());
+        OptimizerContext oc = OptimizerContext.getContext(schemaName);
+        if (oc == null) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNKNOWN_DATABASE, schemaName);
+        }
+        final TableMeta tableMeta = oc.getLatestSchemaManager().getTable(query.getOriginTableName().getLastName());
 
         // Pre check of single GSI related operation.
         boolean check = false;
@@ -1726,25 +1934,34 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     continue;
                 }
 
+                if (query.createCci()
+                    && !plannerContext
+                    .getExecutionContext()
+                    .getParamManager()
+                    .getBoolean(ConnectionParams.ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK)
+                    && !GlobalIndexMeta.hasExplicitPrimaryKey(tableMeta)) {
+                    throw validator.newValidationError(query.getName(), RESOURCE.createCciOnTableWithoutPk());
+                }
+
                 if (query.getAlters().size() != 1) {
                     throw new NotSupportException("Multi alter specifications when create GSI");
+                }
+
+                if (query.getAlters().size() > 0 && query.getTableOptions() != null) {
+                    throw new NotSupportException("set table options when create GSI");
                 }
                 check = true;
             } else if (alterSpecification instanceof SqlAlterTableDropIndex) {
                 final SqlAlterTableDropIndex dropIndex = (SqlAlterTableDropIndex) alterSpecification;
 
                 if (null == dropIndex.getIndexName() || dropIndex.getIndexName().getLastName().isEmpty()) {
-                    throw validator.newValidationError(query.getName(), RESOURCE.gsiExists(""));
+                    throw validator.newValidationError(query.getName(), RESOURCE.indexNotFound(""));
                 }
 
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     // Add GSI suffix if drop GSI.
                     final String indexName = dropIndex.getIndexName().getLastName();
-                    final String wrapped =
-                        null == tableMeta.getGsiTableMetaBean() || null == tableMeta.getGsiTableMetaBean().indexMap ?
-                            null : tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                            .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                            .findFirst().orElse(null);
+                    final String wrapped = getWrappedIndexName(tableMeta, indexName);
                     if (wrapped != null) {
                         // Drop GSI.
                         if (query.getAlters().size() != 1) {
@@ -1757,19 +1974,15 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final SqlAlterTableRenameIndex renameIndex = (SqlAlterTableRenameIndex) alterSpecification;
 
                 if (null == renameIndex.getIndexName() || renameIndex.getIndexName().getLastName().isEmpty()) {
-                    throw validator.newValidationError(query.getName(), RESOURCE.gsiExists(""));
+                    throw validator.newValidationError(query.getName(), RESOURCE.indexNotFound(""));
                 }
 
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     final String indexName = renameIndex.getIndexName().getLastName();
-                    final String wrapped =
-                        null == tableMeta.getGsiTableMetaBean() || null == tableMeta.getGsiTableMetaBean().indexMap ?
-                            null : tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                            .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                            .findFirst().orElse(null);
+                    final String wrapped = getWrappedIndexName(tableMeta, indexName);
                     if (wrapped != null) {
                         if (query.getAlters().size() != 1) {
-                            throw new NotSupportException("Multi alter specifications when drop GSI");
+                            throw new NotSupportException("Multi alter specifications when rename GSI");
                         }
                         check = true;
                     }
@@ -1780,12 +1993,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 if (alterTableAlterIndex.isAlterIndexVisibility()) {
                     if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                         final String indexName = alterTableAlterIndex.getIndexName().getLastName();
-                        final String wrapped =
-                            null == tableMeta.getGsiTableMetaBean()
-                                || null == tableMeta.getGsiTableMetaBean().indexMap ?
-                                null : tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                                .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                                .findFirst().orElse(null);
+                        final String wrapped = getWrappedIndexName(tableMeta, indexName);
                         if (wrapped != null) {
                             if (query.getAlters().size() != 1) {
                                 throw new NotSupportException("Multi alter specifications is not allowed");
@@ -1802,10 +2010,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     // Collect existing names.
                     final Set<String> existsNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-                    tableMeta.getSecondaryIndexes().forEach(meta -> existsNames.add(meta.getPhysicalIndexName()));
-                    if (tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().indexMap != null) {
-                        tableMeta.getGsiTableMetaBean().indexMap.forEach((k, v) -> existsNames.add(unwrapGsiName(k)));
-                    }
+                    collectIndexNames(tableMeta, existsNames);
 
                     final SqlAddIndex addIndex = (SqlAddIndex) query.getAlters().get(0);
 
@@ -1829,10 +2034,10 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     }
 
                     // Now assign gsi name and do auto partition rewrite.
-                    final String newName = assignGsiName(query.getName(), existsNames, orgName);
+                    final String newName = assignGsiName(query.getName(), existsNames, orgName, query.createCci());
                     final SqlIdentifier newNameIdentifier = new SqlIdentifier(newName, SqlParserPos.ZERO);
 
-                    if (tableMeta.isAutoPartition()) {
+                    if (tableMeta.isAutoPartition() || query.createCci()) {
                         // Assign name and partition.
                         if (addIndex.getIndexDef().getDbPartitionBy() != null
                             || addIndex.getIndexDef().getDbPartitions() != null ||
@@ -1851,14 +2056,18 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                             .map(SqlIndexColumnName::getColumnNameStr).collect(Collectors.toList());
                         final SqlNode newPartition =
                             null == addIndex.getIndexDef().getPartitioning() ?
-                                generateNewPartition(tableMeta, indexColNames, addIndex instanceof SqlAddUniqueIndex,
-                                    addIndex.getIndexDef().isGlobal()) : null;
+                                generateNewPartition(
+                                    tableMeta,
+                                    indexColNames,
+                                    addIndex instanceof SqlAddUniqueIndex,
+                                    addIndex.getIndexDef().isGlobal(),
+                                    addIndex.isColumnarIndex())
+                                : null;
                         if (null == newPartition && null == addIndex.getIndexDef().getPartitioning()) {
                             return query; // No extra dealing needed.
                         } else {
                             final SqlIndexDefinition newIndexDefinition = addIndex.getIndexDef()
-                                .rebuildToGsiNewPartition(newNameIdentifier, newPartition,
-                                    addIndex.getIndexDef().isClustered());
+                                .rebuildToGsiNewPartition(newNameIdentifier, newPartition);
                             final SqlAddIndex newAddIndex;
                             if (addIndex instanceof SqlAddUniqueIndex) {
                                 newAddIndex = new SqlAddUniqueIndex(
@@ -1876,7 +2085,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                         assert addIndex.getIndexDef().isGlobal() || addIndex.getIndexDef()
                             .isClustered(); // Not convert to GSI, so it is GSI.
                         final SqlIndexDefinition newIndexDefinition = addIndex.getIndexDef()
-                            .rebuildToGsiNewPartition(newNameIdentifier, null, addIndex.getIndexDef().isClustered());
+                            .rebuildToGsiNewPartition(newNameIdentifier, null);
                         final SqlAddIndex newAddIndex;
                         if (addIndex instanceof SqlAddUniqueIndex) {
                             newAddIndex =
@@ -1893,7 +2102,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 final SqlAddIndex addIndex = (SqlAddIndex) query.getAlters().get(0);
 
                 final Set<String> gsiNames = new HashSet<>();
-                validator.validateGsiName(gsiNames, addIndex.getIndexName());
+                validator.validateGsiName(gsiNames, addIndex.getIndexDef());
 
                 final String indexName = addIndex.getIndexName().getLastName();
                 if (!plannerContext.getExecutionContext().getSchemaManager(schemaName)
@@ -1911,14 +2120,10 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     // Add GSI suffix if drop GSI.
                     final String indexName = dropIndex.getIndexName().getLastName();
-                    final String wrapped = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                        .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                        .findFirst().orElse(null);
+                    final String wrapped = getWrappedIndexName(tableMeta, indexName);
                     if (wrapped != null) {
                         final SqlAlterTableDropIndex newDropIndex =
-                            new SqlAlterTableDropIndex((SqlIdentifier) dropIndex.getTableName(),
-                                new SqlIdentifier(wrapped, SqlParserPos.ZERO), dropIndex.getSourceSql(),
-                                SqlParserPos.ZERO);
+                            dropIndex.replaceIndexName(new SqlIdentifier(wrapped, SqlParserPos.ZERO));
                         assert 1 == query.getAlters().size();
                         query.getAlters().clear();
                         query.getAlters().add(newDropIndex);
@@ -1929,19 +2134,14 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                     final Set<String> existsNames = new TreeSet<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
-                    tableMeta.getSecondaryIndexes().forEach(meta -> existsNames.add(meta.getPhysicalIndexName()));
-                    if (tableMeta.getGsiTableMetaBean() != null && tableMeta.getGsiTableMetaBean().indexMap != null) {
-                        tableMeta.getGsiTableMetaBean().indexMap.forEach((k, v) -> existsNames.add(unwrapGsiName(k)));
-                    }
+                    collectIndexNames(tableMeta, existsNames);
 
                     String orgNewName = renameIndex.getNewIndexName().getLastName();
                     final String newIndexName = assignGsiName(query.getName(), existsNames, orgNewName);
 
                     // Add GSI suffix if rename GSI.
                     final String indexName = renameIndex.getIndexName().getLastName();
-                    final String wrapped = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                        .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                        .findFirst().orElse(null);
+                    final String wrapped = getWrappedIndexName(tableMeta, indexName);
                     if (wrapped != null) {
                         final SqlAlterTableRenameIndex newRenameIndex =
                             new SqlAlterTableRenameIndex((SqlIdentifier) renameIndex.getTableName(),
@@ -1960,9 +2160,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 if (alterTableAlterIndex.isAlterIndexVisibility()) {
                     if (DbInfoManager.getInstance().isNewPartitionDb(schemaName)) {
                         final String indexName = alterTableAlterIndex.getIndexName().getLastName();
-                        final String wrapped = tableMeta.getGsiTableMetaBean().indexMap.keySet().stream()
-                            .filter(idx -> TddlSqlToRelConverter.unwrapGsiName(idx).equalsIgnoreCase(indexName))
-                            .findFirst().orElse(null);
+                        final String wrapped = getWrappedIndexName(tableMeta, indexName);
                         if (wrapped != null) {
                             final SqlAlterTableAlterIndex newAlterTableAlterIndex =
                                 new SqlAlterTableAlterIndex(
@@ -1999,7 +2197,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                 if (DbInfoManager.getInstance().isNewPartitionDb(schemaName) && !schemaManager
                     .getTddlRuleManager().getPartitionInfoManager().isNewPartDbTable(tableName)) {
                     // Table not found. Try GSI name match.
-                    final Set<String> gsi = schemaManager.guessGsi(tableName);
+                    final Set<String> gsi = schemaManager.guessGsi(tableName, imb -> true);
                     if (1 == gsi.size()) {
                         // Do smart replace.
                         show = SqlShowCreateTable
@@ -2082,8 +2280,6 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
             final RelOptTable table = srcTables.get(tableIndex).getRefTable();
             final TableMeta tableMeta = CBOUtil.getTableMeta(table);
             final TableColumnMeta tableColumnMeta = tableMeta.getTableColumnMeta();
-            final Pair<String, String> columnMapping =
-                TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, plannerContext.getExecutionContext());
 
             final TreeSet<String> targetColumnSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             for (int i = 0; i < targetColumns.size(); i++) {
@@ -2104,8 +2300,7 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                     final Field field = columnMeta.getField();
 
                     // Add SET for column ON UPDATE CURRENT_TIMESTAMP
-                    if (TStringUtil.containsIgnoreCase(field.getExtra(), "on update") &&
-                        !(columnMapping != null && columnMeta.getName().equalsIgnoreCase(columnMapping.right))) {
+                    if (TStringUtil.containsIgnoreCase(field.getExtra(), "on update")) {
                         if (DataTypeUtil
                             .anyMatchSemantically(field.getDataType(), DataTypes.TimestampType,
                                 DataTypes.DatetimeType)) {
@@ -2113,7 +2308,9 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
                             outExtraTargetColumns.add(columnMeta.getName());
                             selectList
                                 .add(SqlValidatorUtil.addAlias(new SqlBasicCall(SqlStdOperatorTable.CURRENT_TIMESTAMP,
-                                    SqlNode.EMPTY_ARRAY,
+                                    new SqlNode[] {
+                                        SqlLiteral.createExactNumeric(String.valueOf(field.getDataType().getScale()),
+                                            SqlParserPos.ZERO)},
                                     SqlParserPos.ZERO), SqlUtil.deriveAliasFromOrdinal(ordinal.getAndIncrement())));
                         }
                     }

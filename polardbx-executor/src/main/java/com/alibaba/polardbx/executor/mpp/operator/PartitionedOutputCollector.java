@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.utils.MathUtils;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
@@ -34,8 +36,11 @@ import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
+import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
@@ -48,7 +53,10 @@ public class PartitionedOutputCollector extends OutputCollector {
 
     public PartitionedOutputCollector(
         int partitionCount,
+        List<Integer> prunePartitions,
+        int fullPartCount,
         List<DataType> sourceTypes,
+        boolean remotePairWise,
         List<DataType> outputType,
         List<Integer> partitionChannels,
         OutputBuffer outputBuffer,
@@ -56,10 +64,13 @@ public class PartitionedOutputCollector extends OutputCollector {
         int chunkLimit, ExecutionContext context) {
         this.partitionPartitioner = new PagePartitioner(
             partitionCount,
+            prunePartitions,
+            fullPartCount,
             partitionChannels,
             outputBuffer,
             serdeFactory,
             sourceTypes,
+            remotePairWise,
             outputType,
             chunkLimit,
             context);
@@ -109,7 +120,7 @@ public class PartitionedOutputCollector extends OutputCollector {
     private static class PagePartitioner {
         protected final OutputBuffer outputBuffer;
         protected final List<DataType> outputType;
-        protected final PartitionFunction partitionFunction;
+        protected final RemotePartitionFunction partitionFunction;
         protected final List<Integer> partitionChannels;  //shuffle字段下标
         protected final PagesSerde serde;
 
@@ -123,31 +134,63 @@ public class PartitionedOutputCollector extends OutputCollector {
         private List<Chunk>[] chunkArraylist;
         protected List<ChunkBuilder> pageBuilders;
 
+        /**
+         * There are int arrays with size = chunk_limit for each parallelism.
+         */
+        private final int[][] partitionSelections;
+        private final int[] selSizes;
+        private final int[] partitionPositions;
+
         public PagePartitioner(
             int partitionCount,
+            List<Integer> prunePartitions,
+            int fullPartCount,
             List<Integer> partitionChannels,
             OutputBuffer outputBuffer,
             PagesSerdeFactory serdeFactory,
             List<DataType> sourceTypes,
+            boolean remotePairWise,
             List<DataType> outputType,
             int chunkLimit,
             ExecutionContext context) {
             this.converter = Converters.createChunkConverter(sourceTypes, outputType, context);
             if (partitionCount == 1) {
-                this.partitionFunction = new SingleBucketFunction();
+                this.partitionFunction = new SinglePartitionFunction();
             } else if (partitionChannels.size() > 0) {
-                this.partitionFunction = new HashPartitionFunction(partitionCount, partitionChannels);
+                if (remotePairWise) {
+                    if (prunePartitions == null || prunePartitions.isEmpty()) {
+                        boolean enableCompatible =
+                            context.getParamManager().getBoolean(ConnectionParams.ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE);
+                        this.partitionFunction =
+                            new PairWisePartitionFunction(partitionCount, fullPartCount, partitionChannels,
+                                enableCompatible);
+                    } else {
+                        boolean enableCompatible =
+                            context.getParamManager().getBoolean(ConnectionParams.ENABLE_PAIRWISE_SHUFFLE_COMPATIBLE);
+                        this.partitionFunction =
+                            new PrunedPairWisePartitionFunction(partitionCount, fullPartCount,
+                                partitionChannels, new HashSet<>(prunePartitions), enableCompatible);
+                    }
+                } else {
+                    this.partitionFunction =
+                        new HashPartitionFunction(partitionCount, partitionChannels);
+                }
             } else {
-                this.partitionFunction = new RandomBucketFunction(partitionCount);
+                this.partitionFunction = new RandomPartitionFunction(partitionCount);
             }
             this.partitionChannels = requireNonNull(partitionChannels, "partitionChannels is null");
 
             this.outputBuffer = requireNonNull(outputBuffer, "outputBuffer is null");
             this.outputType = requireNonNull(outputType, "sourceTypes is null");
-            this.serde = requireNonNull(serdeFactory, "serdeFactory is null").createPagesSerde(outputType);
+            this.serde = requireNonNull(serdeFactory, "serdeFactory is null")
+                .createPagesSerde(outputType, context);
             this.chunkLimit = chunkLimit;
             this.context = context;
             this.partitionCount = partitionCount;
+
+            this.partitionSelections = new int[partitionCount][chunkLimit];
+            this.selSizes = new int[partitionCount];
+            this.partitionPositions = new int[chunkLimit];
         }
 
         public void init() {
@@ -168,18 +211,66 @@ public class PartitionedOutputCollector extends OutputCollector {
         }
 
         public ListenableFuture<?> partitionPage(Chunk chunk) {
-            requireNonNull(chunk, "chunk is null");
+            requireNonNull(chunk);
 
             boolean sendChunkArraylist = false;
             Chunk convertPage = converter.apply(chunk);
+
+            // clear selSize
+            Arrays.fill(selSizes, 0);
+
+            // collect partition -> selSize -> positions[]
             for (int position = 0; position < convertPage.getPositionCount(); position++) {
                 int partition = partitionFunction.getPartition(chunk, position);
-                ChunkBuilder pageBuilder = pageBuilders.get(partition);
-                pageBuilder.declarePosition();
-
-                for (int channel = 0; channel < outputType.size(); channel++) {
-                    pageBuilder.appendTo(convertPage.getBlock(channel), channel, position);
+                // partition == -1, means this function is pruned pairwise partition function
+                // and this record can be discard
+                if (partition == -1) {
+                    continue;
                 }
+                partitionSelections[partition][selSizes[partition]] = position;
+                selSizes[partition] = selSizes[partition] + 1;
+            }
+
+            for (int partition = 0; partition < selSizes.length; partition++) {
+                final int partitionSize = selSizes[partition];
+                int[] partitionSelection = partitionSelections[partition];
+                ChunkBuilder pageBuilder = pageBuilders.get(partition);
+
+                final int writablePositions = chunkLimit - pageBuilder.getDeclarePosition();
+                if (partitionSize > writablePositions) {
+                    // declarePosition -> chunkLimit -> declarePosition + partitionSize
+
+                    pageBuilder.updateDeclarePosition(writablePositions);
+                    for (int channel = 0; channel < outputType.size(); channel++) {
+                        pageBuilder.appendTo(convertPage.getBlock(channel), channel, partitionSelection, 0,
+                            writablePositions);
+                    }
+
+                    // check full
+                    if (pageBuilder.isFull()) {
+                        sendChunkArraylist = true;
+                        Chunk pageBucket = pageBuilder.build();
+                        this.chunkArraylist[partition].add(pageBucket);
+                        pageBuilder.reset();
+                    }
+
+                    pageBuilder.updateDeclarePosition(partitionSize - writablePositions);
+                    for (int channel = 0; channel < outputType.size(); channel++) {
+                        pageBuilder.appendTo(convertPage.getBlock(channel), channel, partitionSelection,
+                            writablePositions, partitionSize - writablePositions);
+                    }
+
+                } else {
+
+                    // declarePosition -> declarePosition + partitionSize -> chunkLimit
+                    pageBuilder.updateDeclarePosition(partitionSize);
+                    for (int channel = 0; channel < outputType.size(); channel++) {
+                        pageBuilder.appendTo(convertPage.getBlock(channel), channel, partitionSelection, 0,
+                            partitionSize);
+                    }
+                }
+
+                // check full
                 if (pageBuilder.isFull()) {
                     sendChunkArraylist = true;
                     Chunk pageBucket = pageBuilder.build();
@@ -187,6 +278,7 @@ public class PartitionedOutputCollector extends OutputCollector {
                     pageBuilder.reset();
                 }
             }
+
             if (sendChunkArraylist) {
                 return flush(chunkArraylist);
             } else {
@@ -250,42 +342,20 @@ public class PartitionedOutputCollector extends OutputCollector {
         }
     }
 
-    public static class HashPartitionFunction implements PartitionFunction {
-        private final int partitionCount;
-        private final List<Integer> partitionChannels;
-        private final boolean isPowerOfTwo;
+    public static class HashPartitionFunction implements RemotePartitionFunction {
+
+        protected final int partitionCount;
+        protected final int[] partitionChannelArray;
+        protected final boolean isPowerOfTwo;
 
         public HashPartitionFunction(int partitionCount, List<Integer> partitionChannels) {
             this.partitionCount = partitionCount;
-            this.partitionChannels = partitionChannels;
-            this.isPowerOfTwo = ExecUtils.isPowerOfTwo(partitionCount);
-        }
-
-        @Override
-        public int getPartitionCount() {
-            return partitionCount;
-        }
-
-        @Override
-        public int getPartition(Chunk page, int position) {
-            int hashCode = 0;
+            this.partitionChannelArray = new int[partitionChannels.size()];
             for (int i = 0; i < partitionChannels.size(); i++) {
-                hashCode = hashCode * 31 + page.getBlock(partitionChannels.get(i)).hashCode(position);
+                partitionChannelArray[i] = partitionChannels.get(i);
             }
 
-            int partition = ExecUtils.partition(hashCode, partitionCount, isPowerOfTwo);
-            checkState(partition >= 0 && partition < partitionCount);
-            return partition;
-        }
-    }
-
-    public static class HashBucketFunction implements PartitionFunction {
-        private final int partitionCount;
-        private final boolean isPowerOfTwo;
-
-        public HashBucketFunction(int partitionCount) {
-            this.partitionCount = partitionCount;
-            this.isPowerOfTwo = ExecUtils.isPowerOfTwo(partitionCount);
+            this.isPowerOfTwo = MathUtils.isPowerOfTwo(partitionCount);
         }
 
         @Override
@@ -295,13 +365,75 @@ public class PartitionedOutputCollector extends OutputCollector {
 
         @Override
         public int getPartition(Chunk page, int position) {
-            int partition = ExecUtils.partition(page.hashCode(position), partitionCount, isPowerOfTwo);
+            long hashCode = 0;
+            for (int i = 0; i < partitionChannelArray.length; i++) {
+                hashCode = hashCode * 31 + page.getBlock(partitionChannelArray[i]).hashCodeUseXxhash(position);
+            }
+
+            int partition = ExecUtils.directPartition(hashCode, partitionCount, isPowerOfTwo);
             checkState(partition >= 0 && partition < partitionCount);
             return partition;
         }
     }
 
-    private static class SingleBucketFunction implements PartitionFunction {
+    public static class PairWisePartitionFunction extends HashPartitionFunction {
+
+        protected final int fullPartCount;
+
+        protected final boolean isFullPartPowerOfTwo;
+
+        protected final boolean enableCompatible;
+
+        public PairWisePartitionFunction(int partitionCount, int fullPartCount, List<Integer> partitionChannels,
+                                         boolean enableCompatible) {
+            super(partitionCount, partitionChannels);
+            this.fullPartCount = fullPartCount;
+            this.isFullPartPowerOfTwo = MathUtils.isPowerOfTwo(fullPartCount);
+            this.enableCompatible = enableCompatible;
+        }
+
+        @Override
+        public int getPartition(Chunk page, int position) {
+            long hashCode = 0;
+            for (int i = 0; i < partitionChannelArray.length; i++) {
+                hashCode = hashCode * 31 + page.getBlock(partitionChannelArray[i])
+                    .hashCodeUnderPairWise(position, enableCompatible);
+            }
+
+            int partition =
+                ExecUtils.partitionUnderPairWise(hashCode, partitionCount, fullPartCount, isFullPartPowerOfTwo);
+            checkState(partition >= 0 && partition < partitionCount);
+            return partition;
+        }
+    }
+
+    public static class PrunedPairWisePartitionFunction extends PairWisePartitionFunction {
+        private final Set<Integer> prunePartitions;
+
+        public PrunedPairWisePartitionFunction(int partitionCount, int fullPartCount, List<Integer> partitionChannels,
+                                               Set<Integer> prunePartitions, boolean enableCompatible) {
+            super(partitionCount, fullPartCount, partitionChannels, enableCompatible);
+            this.prunePartitions = prunePartitions;
+        }
+
+        @Override
+        public int getPartition(Chunk page, int position) {
+            long hashCode = 0;
+            for (int i = 0; i < partitionChannelArray.length; i++) {
+                hashCode = hashCode * 31 + page.getBlock(partitionChannelArray[i])
+                    .hashCodeUnderPairWise(position, enableCompatible);
+            }
+
+            int storagePartNum = ExecUtils.calcStoragePartNum(hashCode, fullPartCount, isFullPartPowerOfTwo);
+            if (prunePartitions.contains(storagePartNum)) {
+                return -1;
+            } else {
+                return storagePartNum % partitionCount;
+            }
+        }
+    }
+
+    private static class SinglePartitionFunction implements RemotePartitionFunction {
 
         @Override
         public int getPartitionCount() {
@@ -314,11 +446,11 @@ public class PartitionedOutputCollector extends OutputCollector {
         }
     }
 
-    private static class RandomBucketFunction implements PartitionFunction {
+    private static class RandomPartitionFunction implements RemotePartitionFunction {
         private final int partitionCount;
         private final Random random;
 
-        public RandomBucketFunction(int partitionCount) {
+        public RandomPartitionFunction(int partitionCount) {
             this.random = new Random();
             this.partitionCount = partitionCount;
         }

@@ -311,7 +311,7 @@ public class AlterTableGroupMergePartitionTest extends AlterTableGroupTestBase {
     @Before
     public void setUpTables() {
         if (firstIn) {
-            setUp(true, partitionRuleInfo, true, false, false);
+            setUp(true, partitionRuleInfo, true, false, false, false);
             firstIn = false;
         }
         partitionRuleInfo.connection = getTddlConnection1();

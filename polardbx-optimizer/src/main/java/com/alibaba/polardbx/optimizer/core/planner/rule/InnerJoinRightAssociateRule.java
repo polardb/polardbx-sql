@@ -48,14 +48,16 @@ public class InnerJoinRightAssociateRule extends AbstractInnerJoinRightAssociate
     public static final InnerJoinRightAssociateRule INSTANCE =
         new InnerJoinRightAssociateRule(operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
             operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any()),
-            operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())), RelFactories.LOGICAL_BUILDER,
+            operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            RelFactories.LOGICAL_BUILDER,
             "InnerJoinRightAssociateRule");
 
     public static final InnerJoinRightAssociateRule PROJECT_INSTANCE =
         new InnerJoinRightAssociateRule(operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
             operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
                 operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
-            operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())), RelFactories.LOGICAL_BUILDER,
+            operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            RelFactories.LOGICAL_BUILDER,
             "InnerJoinRightAssociateRule:Project");
 
     public InnerJoinRightAssociateRule(RelOptRuleOperand operand, RelBuilderFactory relBuilderFactory,

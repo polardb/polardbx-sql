@@ -195,7 +195,8 @@ public class Corrector implements CheckerCallback {
     }
 
     @Override
-    public boolean batch(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext selectEc, Checker checker,
+    public boolean batch(String logTblOrIndexTbl, String dbIndex, String phyTable, ExecutionContext selectEc,
+                         Checker checker,
                          boolean primaryToGsi, List<List<Pair<ParameterContext, byte[]>>> baseRows,
                          List<List<Pair<ParameterContext, byte[]>>> checkRows) {
 
@@ -419,7 +420,8 @@ public class Corrector implements CheckerCallback {
                 "Corrector.")));
     }
 
-    private int doDelete(String logTblOrIdxTbl, String dbIndex, String phyTable, List<ParameterContext> pks, ExecutionContext newEc) {
+    private int doDelete(String logTblOrIdxTbl, String dbIndex, String phyTable, List<ParameterContext> pks,
+                         ExecutionContext newEc) {
         final Map<Integer, ParameterContext> planParams = new HashMap<>();
         // Physical table is 1st parameter
         planParams.put(1, PlannerUtils.buildParameterContextForTableName(phyTable, 1));
@@ -446,7 +448,8 @@ public class Corrector implements CheckerCallback {
         buildParams.setGroupName(dbIndex);
         buildParams.setPhyTables(ImmutableList.of(ImmutableList.of(phyTable)));
         buildParams.setDynamicParams(planParams);
-        PhyTableOperation plan = PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
+        PhyTableOperation plan =
+            PhyTableOperationFactory.getInstance().buildPhyTableOperationByPhyOp(targetPhyOp, buildParams);
 
         return applyDelete(plan, planParams, newEc);
     }

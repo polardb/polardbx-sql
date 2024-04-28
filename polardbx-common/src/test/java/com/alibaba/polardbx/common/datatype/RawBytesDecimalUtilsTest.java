@@ -19,6 +19,8 @@ package com.alibaba.polardbx.common.datatype;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.Random;
+
 public class RawBytesDecimalUtilsTest {
 
     private void doTestHash(int hashCode, String... decimalStrings) {
@@ -78,4 +80,22 @@ public class RawBytesDecimalUtilsTest {
         doTestCmp("10.00004000", "00010.00004", 0);
     }
 
+    @Test
+    public void testDecimal64() {
+        Random random = new Random(System.currentTimeMillis());
+        for (int i = 0; i < 1000; i++) {
+            long l = random.nextInt(100_000_000);
+            testDecimal64Hash(l, 0);
+            testDecimal64Hash(l, 2);
+            testDecimal64Hash(l, 5);
+            testDecimal64Hash(l, 8);
+        }
+    }
+
+    private void testDecimal64Hash(long decimal64, int scale) {
+        Decimal decimal = new Decimal(decimal64, scale);
+        int expectHash = RawBytesDecimalUtils.hashCode(decimal.getMemorySegment());
+        int actualHash = RawBytesDecimalUtils.hashCode(decimal64, scale);
+        Assert.assertEquals(expectHash, actualHash);
+    }
 }

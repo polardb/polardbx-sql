@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.common.datatype;
 
 public class DecimalTypeBase {
+    public static final int DEFAULT_SCALE = 0;
+
     // for divide precision.
     public final static int DEFAULT_DIV_PRECISION_INCREMENT = 4;
     public final static String DIV_PRECISION_INCREMENT = "div_precision_increment";
@@ -34,6 +36,9 @@ public class DecimalTypeBase {
     public static final int E_DEC_OOM = 16;
     public static final int E_DEC_ERROR = 31;
     public static final int E_DEC_FATAL_ERROR = 30;
+    // decimal sum result
+    public static final int E_DEC_DEC64 = 32;
+    public static final int E_DEC_DEC128 = 33;
 
     public static final int DIV_PRECISION_INCREMENT_DEFAULT = 4;
     public static final byte[] BUFF_OFFSETS = {
@@ -90,7 +95,7 @@ public class DecimalTypeBase {
     /**
      * Get the pow(10, position).
      */
-    protected static int[] POW_10 = {
+    public static int[] POW_10 = {
         1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
 
     /**

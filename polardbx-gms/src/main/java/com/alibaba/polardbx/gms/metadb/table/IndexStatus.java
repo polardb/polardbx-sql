@@ -46,7 +46,11 @@ public enum IndexStatus {
     /**
      * remove meta data
      */
-    ABSENT(7);
+    ABSENT(7),
+    /**
+     * changeset start
+     */
+    CHANGE_SET_START(8);
 
     private final int value;
 
@@ -72,6 +76,8 @@ public enum IndexStatus {
             return DROP_DELETE_ONLY;
         case 7:
             return ABSENT;
+        case 8:
+            return CHANGE_SET_START;
         default:
             return null;
         }
@@ -88,6 +94,8 @@ public enum IndexStatus {
 
     public static final EnumSet<IndexStatus> WRITABLE = EnumSet.of(WRITE_ONLY, WRITE_REORG, PUBLIC, DROP_WRITE_ONLY);
 
+    public static final EnumSet<IndexStatus> BACKFILL_IN_PROGRESS =
+        EnumSet.of(CREATING, DELETE_ONLY, WRITE_ONLY);
     public static final EnumSet<IndexStatus> READABLE = EnumSet.of(PUBLIC);
 
     public static final EnumSet<IndexStatus> INDEX_TABLE_CREATED = EnumSet
@@ -101,6 +109,10 @@ public enum IndexStatus {
         return WRITABLE.contains(this);
     }
 
+    public boolean isBackfillInProgress() {
+        return BACKFILL_IN_PROGRESS.contains(this);
+    }
+
     public boolean isBackfillStatus() {
         return WRITE_ONLY == this;
     }
@@ -111,6 +123,10 @@ public enum IndexStatus {
 
     public boolean isPublished() {
         return PUBLIC == this;
+    }
+
+    public boolean isWriteReorg() {
+        return WRITE_REORG == this;
     }
 
     public boolean belongsTo(EnumSet<IndexStatus> statuses) {
@@ -127,6 +143,10 @@ public enum IndexStatus {
 
     public static List<Pair<IndexStatus, IndexStatus>> dropGsiStatusChange() {
         return enumerateStatusChange(dropGsiStatusList());
+    }
+
+    public static List<Pair<IndexStatus, IndexStatus>> dropColumnarIndexStatusChange() {
+        return enumerateStatusChange(dropColumnarIndexStatusList());
     }
 
     private static List<Pair<IndexStatus, IndexStatus>> enumerateStatusChange(List<IndexStatus> statuses) {
@@ -149,4 +169,7 @@ public enum IndexStatus {
         return Arrays.asList(PUBLIC, WRITE_ONLY, DELETE_ONLY, ABSENT);
     }
 
+    private static List<IndexStatus> dropColumnarIndexStatusList() {
+        return Arrays.asList(PUBLIC, ABSENT);
+    }
 }

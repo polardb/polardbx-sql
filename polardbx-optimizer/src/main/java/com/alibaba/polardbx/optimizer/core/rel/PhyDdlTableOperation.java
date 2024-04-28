@@ -26,6 +26,7 @@ import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.rule.TableRule;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.plan.RelOptCluster;
+import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelWriter;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.GenericDdl;
@@ -78,6 +79,13 @@ public class PhyDdlTableOperation extends BaseTableOperation {
             this.ifNotExists = ifNotExists;
             sequence = ((SqlCreateTable) querySelNode).getAutoIncrement();
         }
+    }
+
+    /**
+     * for ut test only
+     */
+    public PhyDdlTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
     }
 
     public static PhyDdlTableOperation create(String schemaName,

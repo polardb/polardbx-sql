@@ -119,12 +119,13 @@ tb1,CREATE TABLE `tb1` (
 	`col11` varchar(20) DEFAULT NULL,
 	UNIQUE KEY `tb1_k1` (`col1`),
 	KEY `tb1_k2` (`col2`),
-	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 128,
-	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 128,
-	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 128,
-	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 128
+	UNIQUE CLUSTERED KEY `tb1_k3` (`col3`, `col4`) PARTITION BY KEY (`col4`) PARTITIONS 16,
+	CLUSTERED INDEX `tb1_k5`(`col5`) PARTITION BY KEY (`col5`) PARTITIONS 16,
+	UNIQUE GLOBAL KEY `tb1_k6` (`col6`) COVERING (`col7`, `col10`, `col11`) PARTITION BY KEY (`col6`) PARTITIONS 16,
+	GLOBAL INDEX `tb1_k8`(`col8`, `col9`) COVERING (`col10`, `col11`) PARTITION BY KEY (`col9`) PARTITIONS 16
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
-PARTITION BY KEY (`col10`) PARTITIONS 128
+PARTITION BY KEY (`col10`) PARTITIONS 16
+SUBPARTITION BY KEY (`col11`) SUBPARTITIONS 8
 tb2,CREATE TABLE `tb2` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
 	`col2` int(11) NOT NULL,
@@ -132,34 +133,35 @@ tb2,CREATE TABLE `tb2` (
 	PRIMARY KEY (`col1`),
 	KEY `auto_shard_key_col2` USING BTREE (`col2`),
 	KEY `auto_shard_key_col3` USING BTREE (`col3`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`col2`) tbpartition by hash(`col3`) tbpartitions 2,CREATE TABLE `tb2` (
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val  dbpartition by hash(`col2`) tbpartition by hash(`col3`) tbpartitions 2,CREATE TABLE `tb2` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT,
 	`col2` int(11) NOT NULL,
 	`col3` int(11) NOT NULL,
 	PRIMARY KEY (`col1`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
-PARTITION BY KEY (`col2`, `col1`) PARTITIONS 32
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val
+PARTITION BY KEY (`col2`, `col1`) PARTITIONS 16
+SUBPARTITION BY KEY (`col3`, `col1`) SUBPARTITIONS 2
 tb3,CREATE TABLE `tb3` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
 	`col2` int(11) NOT NULL,
 	PRIMARY KEY (`col1`),
 	KEY `auto_shard_key_col2` USING BTREE (`col2`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`col2`) tbpartition by hash(`col2`) tbpartitions 2,CREATE TABLE `tb3` (
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val  dbpartition by hash(`col2`) tbpartition by hash(`col2`) tbpartitions 2,CREATE TABLE `tb3` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT,
 	`col2` int(11) NOT NULL,
 	PRIMARY KEY (`col1`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val
 PARTITION BY KEY (`col2`, `col1`) PARTITIONS 32
 tb4,CREATE TABLE `tb4` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
 	`col2` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`col1`),
 	KEY `auto_shard_key_col2` USING BTREE (`col2`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`col2`),CREATE TABLE `tb4` (
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val  dbpartition by hash(`col2`),CREATE TABLE `tb4` (
 	`col1` int(11) NOT NULL AUTO_INCREMENT,
 	`col2` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`col1`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val
 PARTITION BY KEY (`col2`, `col1`) PARTITIONS 16
 tb5,CREATE TABLE `tb5` (
 	`col1` int(11) NOT NULL,
@@ -170,7 +172,7 @@ tb5,CREATE TABLE `tb5` (
 	`col2` varchar(20) NOT NULL,
 	PRIMARY KEY (`col2`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
-PARTITION BY KEY (`col2`) PARTITIONS 128
+PARTITION BY KEY (`col2`) PARTITIONS 8
 tb6,CREATE TABLE `tb6` (
 	`col0` int(11) NOT NULL AUTO_INCREMENT BY GROUP,
 	`col1` int(11) DEFAULT NULL,
@@ -189,7 +191,7 @@ tb6,CREATE TABLE `tb6` (
 	UNIQUE GLOBAL KEY `tb6_k4` (`col5`) COVERING (`col0`, `col1`, `col2`) DBPARTITION BY HASH(`col5`),
 	UNIQUE GLOBAL KEY `tb6_k5` (`col6`, `col7`) COVERING (`col0`, `col1`, `col2`, `col8`) DBPARTITION BY HASH(`col6`) TBPARTITION BY HASH(`col7`) TBPARTITIONS 4,
 	GLOBAL INDEX `tb6_k6`(`col8`) COVERING (`col0`, `col1`, `col2`, `col9`) DBPARTITION BY HASH(`col8`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4  dbpartition by hash(`col1`) tbpartition by hash(`col2`) tbpartitions 4,CREATE TABLE `tb6` (
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val  dbpartition by hash(`col1`) tbpartition by hash(`col2`) tbpartitions 4,CREATE TABLE `tb6` (
 	`col0` int(11) NOT NULL AUTO_INCREMENT,
 	`col1` int(11) DEFAULT NULL,
 	`col2` varchar(20) DEFAULT NULL,
@@ -201,11 +203,19 @@ tb6,CREATE TABLE `tb6` (
 	`col8` varchar(20) DEFAULT NULL,
 	`col9` varchar(20) DEFAULT NULL,
 	PRIMARY KEY (`col0`),
-	UNIQUE CLUSTERED KEY `tb6_k1` (`col1`) PARTITION BY KEY (`col1`) PARTITIONS 64,
-	CLUSTERED INDEX `tb6_k2`(`col2`, `col3`) PARTITION BY KEY (`col2`) PARTITIONS 64,
-	CLUSTERED INDEX `tb6_k3`(`col4`) PARTITION BY KEY (`col4`) PARTITIONS 64,
-	UNIQUE GLOBAL KEY `tb6_k4` (`col5`) COVERING (`col0`, `col1`, `col2`) PARTITION BY KEY (`col5`) PARTITIONS 64,
-	UNIQUE GLOBAL KEY `tb6_k5` (`col6`, `col7`) COVERING (`col0`, `col1`, `col2`, `col8`) PARTITION BY KEY (`col6`) PARTITIONS 64,
-	GLOBAL INDEX `tb6_k6`(`col8`) COVERING (`col0`, `col1`, `col2`, `col9`) PARTITION BY KEY (`col8`) PARTITIONS 64
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
-PARTITION BY KEY (`col1`, `col0`) PARTITIONS 64
+	UNIQUE CLUSTERED KEY `tb6_k1` (`col1`) PARTITION BY KEY (`col1`) PARTITIONS 16,
+	CLUSTERED INDEX `tb6_k2`(`col2`, `col3`) PARTITION BY KEY (`col2`) PARTITIONS 16
+	SUBPARTITION BY KEY (`col3`) SUBPARTITIONS 4,
+	CLUSTERED INDEX `tb6_k3`(`col4`) PARTITION BY KEY (`col4`) PARTITIONS 16,
+	UNIQUE GLOBAL KEY `tb6_k4` (`col5`) COVERING (`col0`, `col1`, `col2`) PARTITION BY KEY (`col5`) PARTITIONS 16,
+	UNIQUE GLOBAL KEY `tb6_k5` (`col6`, `col7`) COVERING (`col0`, `col1`, `col2`, `col8`) PARTITION BY KEY (`col6`) PARTITIONS 16
+	SUBPARTITION BY KEY (`col7`) SUBPARTITIONS 4,
+	GLOBAL INDEX `tb6_k6`(`col8`) COVERING (`col0`, `col1`, `col2`, `col9`) PARTITION BY KEY (`col8`) PARTITIONS 16
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 AUTO_INCREMENT = ignore_val
+PARTITION BY KEY (`col1`, `col0`) PARTITIONS 16
+SUBPARTITION BY KEY (`col2`, `col0`) SUBPARTITIONS 4
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
+drop database if exists `testConvertDbAuto2`;
+drop database if exists `testConvertDbAuto3`;

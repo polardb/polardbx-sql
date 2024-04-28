@@ -26,12 +26,16 @@ message IntegerStatistics  {
   optional sint64 minimum = 1;
   optional sint64 maximum = 2;
   optional sint64 sum = 3;
+  optional sint64 first = 4;
+  optional sint64 latest = 5;
 }
 
 message DoubleStatistics {
   optional double minimum = 1;
   optional double maximum = 2;
   optional double sum = 3;
+  optional double first = 4;
+  optional double latest = 5;
 }
 
 message StringStatistics {
@@ -43,6 +47,13 @@ message StringStatistics {
   // bound instead of the minimum or maximum values above.
   optional string lowerBound = 4;
   optional string upperBound = 5;
+
+  optional string first = 6;
+  optional string latest = 7;
+  // If the first or latest value was longer than 1024 bytes, store a lower or upper
+  // bound instead of the first or latest values above.
+  optional string firstBound = 8;
+  optional string latestBound = 9;
 }
 
 message BucketStatistics {
@@ -59,6 +70,8 @@ message DateStatistics {
   // min,max values saved as days since epoch
   optional sint32 minimum = 1;
   optional sint32 maximum = 2;
+  optional sint32 first = 3;
+  optional sint32 latest = 4;
 }
 
 message TimestampStatistics {
@@ -118,6 +131,15 @@ message BloomFilterIndex {
   repeated BloomFilter bloomFilter = 1;
 }
 
+message BitmapIndex{
+  repeated BitmapColumn bitMapIndex = 1;
+}
+
+message BitmapColumn{
+  optional bytes val = 1;
+  optional bytes bitmap = 2;
+}
+
 message Stream {
   // if you add new index stream kinds, you need to make sure to update
   // StreamName to ensure it is added to the stripe in the right area
@@ -134,6 +156,7 @@ message Stream {
     // Virtual stream kinds to allocate space for encrypted index and data.
     ENCRYPTED_INDEX = 9;
     ENCRYPTED_DATA = 10;
+    BITMAP_INDEX = 11;
 
     // stripe statistics streams
     STRIPE_STATISTICS = 100;

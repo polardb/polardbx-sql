@@ -1,0 +1,43 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `t1_k` (
+`id` bigint(20) NOT NULL AUTO_INCREMENT,
+`sid` varchar(32) DEFAULT NULL,
+`tid` varchar(32) DEFAULT NULL,
+`user_id` bigint(20) unsigned DEFAULT NULL,
+`order_id` bigint(20) unsigned DEFAULT NULL,
+`order_time` datetime DEFAULT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(id)
+PARTITIONS 16;
+show create table t1_k;
+
+create global index gsi_oid_uid on t1_k(order_id, user_id)
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+show create table t1_k;
+
+insert into t1_k(id, order_id, user_id) values (null, 123456,123456),(null,123458,123458),(null,123459,123459);
+trace /*TDDL:merge_union=false*/ select order_id,user_id from t1_k force index (gsi_oid_uid) where (order_id,user_id) in ((123456,123456),(123458,123458),(123459,123459)) order by order_id, user_id;
+select count(1) from information_schema.trace;
+
+## the result of substr(user_id,-4) and substr(order_id,-4) are not the same, so no part found ##
+## error_msg: $# no partition #$
+insert into t1_k(id, order_id, user_id) values (null, 123499,123458);
+
+alter table t1_k
+PARTITION BY CO_HASH(SUBSTR(`sid`,-4), SUBSTR(`tid`,-4))
+PARTITIONS 16;
+
+show create table t1_k;
+
+alter table t1_k
+PARTITION BY CO_HASH(SUBSTR(`order_id`,-4),SUBSTR(`user_id`,-4))
+PARTITIONS 16;
+
+show create table t1_k;
+
+insert into t1_k(id, order_id, user_id) values (null, 123456,123456),(null,123458,123458),(null,123459,123459);
+trace /*TDDL:merge_union=false*/ select order_id,user_id from t1_k force index (gsi_oid_uid) where (order_id,user_id) in ((123456,123456),(123458,123458),(123459,123459)) order by order_id, user_id;
+select count(1) from information_schema.trace;

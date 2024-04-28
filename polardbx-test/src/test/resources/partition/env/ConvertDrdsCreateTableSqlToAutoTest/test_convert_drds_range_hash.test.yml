@@ -2,8 +2,6 @@
 ## clear database
 drop database if exists `testConvertDrdsDb`;
 drop database if exists `testConvertDbAuto`;
-drop database if exists `testConvertDbAuto2`;
-drop database if exists `testConvertDbAuto3`;
 
 create database if not exists `testConvertDrdsDb` mode = drds;
 use testConvertDrdsDb;
@@ -58,8 +56,8 @@ primary key(`col1`)
   
 ## only tbpartition, pk is sharding key
 create table `tb5` (
-`col1` varchar(20),
-`col2` varchar(20),
+`col1` varchar(20) not null,
+`col2` varchar(20) not null,
 primary key(`col2`)
 ) tbpartition by range_hash(`col1`, `col2`, 4) tbpartitions 8;
   
@@ -85,12 +83,12 @@ global index `tb6_k6` (`col8`, `col9`) dbpartition by range_hash(`col8`, `col9`,
 ) dbpartition by range_hash(`col1`, `col2`, 4) tbpartition by range_hash(`col2`, `col3`, 4) tbpartitions 4;
   
 ## real run
-create database testConvertDbAuto like testConvertDrdsDb mode=auto;
-create database testConvertDbAuto as testConvertDrdsDb mode=auto create_tables=false;
-  
-## real run
-create database testConvertDbAuto2 as testConvertDrdsDb mode=auto dry_run=false;
+create database testConvertDbAuto as testConvertDrdsDb mode=auto;
   
 ## dry run
-create database testConvertDbAuto3 like testConvertDrdsDb mode=auto dry_run=true;
+create database testConvertDbAuto2 like testConvertDrdsDb mode=auto dry_run=true;
+
+use polardbx;
+drop database if exists `testConvertDrdsDb`;
+drop database if exists `testConvertDbAuto`;
 

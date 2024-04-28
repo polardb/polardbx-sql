@@ -41,16 +41,17 @@ import org.apache.orc.Reader;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.StripeStatistics;
 import org.apache.orc.TypeDescription;
+import org.apache.orc.UserMetadataUtil;
 import org.apache.orc.impl.OrcTail;
 
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -58,50 +59,36 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class OSSOrcFileMeta extends FileMeta {
+    private final static Configuration configuration = new Configuration();
+    /**
+     * The default function to fetch the orc tail meta from GMS.
+     */
+    protected static Function<String, OrcTail> DEFAULT_FETCH_FUNCTION = fileName -> fetchOrcTail(fileName);
+    private static Map<Engine, Cache<String, OrcTail>> ORC_TAIL_CACHE = new ConcurrentHashMap<>();
+    private final boolean enableDecimal64;
     protected TypeDescription typeDescription;
     protected Map<String, ColumnStatistics> statisticsMap;
-
     // <column name - <stripe index - meta>>
     protected volatile Map<String, Map<Long, StripeColumnMeta>> stripeColumnMetaMap;
-    protected String createTime;
-    protected String updateTime;
-    protected Engine engine;
-    protected Long removeTs;
-    protected Long fileHash;
-
     private Map<String, Integer> columnNameToIdx;
     private Map<Integer, String> idxToColumnName;
-
     // map id to idx of typeDescription
     private Map<String, Integer> fieldIdToIdx;
-    private final static Configuration configuration = new Configuration();
-
-    private static Map<Engine, Cache<String, OrcTail>> ORC_TAIL_CACHE = new ConcurrentHashMap<>();
+    /**
+     * The function to fetch the orc tail meta from GMS.
+     */
+    private Function<String, OrcTail> fetchFunction;
 
     public OSSOrcFileMeta(String logicalSchemaName, String logicalTableName, String physicalTableSchema,
-                          String physicalTableName, String fileName, long fileSize,
-                          long tableRows, ByteBuffer tailBuffer, String createTime, String updateTime, Engine engine,
-                          Long commitTs, Long removeTs, Long fileHash) {
-        super(logicalSchemaName, logicalTableName, physicalTableSchema, physicalTableName, fileName, fileSize,
-            tableRows, commitTs);
+                          String physicalTableName, String partitionName, String fileName,
+                          long fileSize, long tableRows, Function<String, OrcTail> fetchFunction,
+                          String createTime, String updateTime, Engine engine,
+                          Long commitTs, Long removeTs, Long schemaTs, Long fileHash) {
+        super(logicalSchemaName, logicalTableName, physicalTableSchema, physicalTableName, partitionName, fileName,
+            fileSize, tableRows, commitTs, removeTs, schemaTs, createTime, updateTime, engine, fileHash);
 
-        OrcTail orcTail = OrcMetaUtils.extractFileTail(tailBuffer);
-        Cache<String, OrcTail> cache =
-            ORC_TAIL_CACHE.computeIfAbsent(engine, new Function<Engine, Cache<String, OrcTail>>() {
-                @Override
-                public Cache apply(Engine engine) {
-                    return buildCache(TddlConstants.DEFAULT_ORC_TAIL_CACHE_SIZE);
-                }
-            });
-        if (cache.size() < TddlConstants.DEFAULT_ORC_TAIL_CACHE_SIZE) {
-            cache.put(fileName, orcTail);
-        }
-        this.typeDescription = orcTail.getSchema();
-        this.createTime = createTime;
-        this.updateTime = updateTime;
-        this.engine = engine;
-        this.removeTs = removeTs;
-        this.fileHash = fileHash;
+        this.fetchFunction = fetchFunction;
+        this.typeDescription = getOrcTailImpl(engine, fileName).getSchema();
 
         // invoke id assignment.
         this.typeDescription.getId();
@@ -126,10 +113,52 @@ public class OSSOrcFileMeta extends FileMeta {
             idxToColumnName.put(idx, fieldName);
             statisticsMap.put(fieldName, columnStatisticsArray[idx]);
         }
+
         fieldIdToIdx = new HashMap<>();
         List<String> fieldNames = this.typeDescription.getFieldNames();
         for (int i = 0; i < fieldNames.size(); i++) {
             fieldIdToIdx.put(fieldNames.get(i), i);
+        }
+
+        this.enableDecimal64 = UserMetadataUtil.extractBooleanValue(this.getOrcTail().getFooter().getMetadataList(),
+            UserMetadataUtil.ENABLE_DECIMAL_64,
+            false);
+    }
+
+    private static OrcTail fetchOrcTail(String fileName) {
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            FilesAccessor filesAccessor = new FilesAccessor();
+            filesAccessor.setConnection(connection);
+
+            // query meta db && filter table files.
+            List<FilesRecord> filesRecords = filesAccessor.queryByFileName(fileName);
+
+            if (filesRecords.isEmpty()) {
+                return null;
+            } else {
+                FilesRecord filesRecord = filesRecords.get(0);
+                ByteBuffer tailBuffer = ByteBuffer.wrap(filesRecord.getFileMeta());
+                return OrcMetaUtils.extractFileTail(tailBuffer);
+            }
+        } catch (SQLException e) {
+            throw GeneralUtil.nestedException(e);
+        }
+    }
+
+    public boolean isEnableDecimal64() {
+        return enableDecimal64;
+    }
+
+    @Override
+    public void initColumnMetas(TableMeta tableMeta) {
+        if (tableMeta.isOldFileStorage()) {
+            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(tableMeta);
+            this.columnMetas = new ArrayList<>();
+            this.columnMetas.addAll(orcSchema.getColumnMetas());
+            this.columnMetas.addAll(orcSchema.getRedundantColumnMetas());
+            for (ColumnMeta columnMeta : columnMetas) {
+                this.columnMetaMap.put(columnMeta.getName(), columnMeta);
+            }
         }
     }
 
@@ -145,23 +174,6 @@ public class OSSOrcFileMeta extends FileMeta {
         return getOrcTailImpl(engine, fileName);
     }
 
-    public Engine getEngine() {
-        return engine;
-    }
-
-    @Override
-    public void initColumnMetas(TableMeta tableMeta) {
-        if (tableMeta.isOldFileStorage()) {
-            PolarDBXOrcSchema orcSchema = OrcMetaUtils.buildPolarDBXOrcSchema(tableMeta);
-            for (ColumnMeta columnMeta : orcSchema.getColumnMetas()) {
-                this.columnMetaMap.put(columnMeta.getName(), columnMeta);
-            }
-            for (ColumnMeta columnMeta : orcSchema.getRedundantColumnMetas()) {
-                this.columnMetaMap.put(columnMeta.getName(), columnMeta);
-            }
-        }
-    }
-
     /**
      * Load stripe column meta from oss file meta.
      */
@@ -171,7 +183,6 @@ public class OSSOrcFileMeta extends FileMeta {
                 if (stripeColumnMetaMap == null) {
                     Map<String, Map<Long, StripeColumnMeta>> stripeColumnMetaMapTmp = TreeMaps.caseInsensitiveMap();
 
-                    long stamp = FileSystemManager.readLockWithTimeOut(engine);
                     // stripStatistic
                     List<StripeStatistics> stripeStatistics = null;
                     List<StripeInformation> stripeInformations = null;
@@ -188,8 +199,6 @@ public class OSSOrcFileMeta extends FileMeta {
                         }
                     } catch (Throwable t) {
                         throw GeneralUtil.nestedException(t);
-                    } finally {
-                        FileSystemManager.unlockRead(engine, stamp);
                     }
 
                     if (stripeStatistics != null && stripeInformations != null) {
@@ -259,10 +268,6 @@ public class OSSOrcFileMeta extends FileMeta {
         return updateTime;
     }
 
-    public Long getRemoveTs() {
-        return removeTs;
-    }
-
     public Long getFileHash() {
         return fileHash;
     }
@@ -292,46 +297,16 @@ public class OSSOrcFileMeta extends FileMeta {
     }
 
     private OrcTail getOrcTailImpl(Engine engine, String path) {
-        Cache<String, OrcTail> cache =
-            ORC_TAIL_CACHE.computeIfAbsent(engine, new Function<Engine, Cache<String, OrcTail>>() {
-                @Override
-                public Cache apply(Engine engine) {
-                    return buildCache(TddlConstants.DEFAULT_ORC_TAIL_CACHE_SIZE);
-                }
-            });
+        Cache<String, OrcTail> cache = ORC_TAIL_CACHE.computeIfAbsent(engine,
+            any -> buildCache(TddlConstants.DEFAULT_ORC_TAIL_CACHE_SIZE));
         try {
-            return cache.get(path, new Callable<OrcTail>() {
-                @Override
-                public OrcTail call() throws Exception {
-                    return fetchOrcTail(engine, path);
-                }
-            });
+            return cache.get(path, () -> fetchFunction.apply(path));
         } catch (ExecutionException executionException) {
-            return null;
+            throw GeneralUtil.nestedException(executionException);
         }
     }
 
     public Integer getColumnNameToIdx(String column) {
         return fieldIdToIdx.get(column);
-    }
-
-    private OrcTail fetchOrcTail(Engine engine, String fileName) {
-        try (Connection connection = MetaDbUtil.getConnection()) {
-            FilesAccessor filesAccessor = new FilesAccessor();
-            filesAccessor.setConnection(connection);
-
-            // query meta db && filter table files.
-            List<FilesRecord> filesRecords = filesAccessor.queryByFileName(fileName);
-
-            if (filesRecords.isEmpty()) {
-                return null;
-            } else {
-                FilesRecord filesRecord = filesRecords.get(0);
-                ByteBuffer tailBuffer = ByteBuffer.wrap(filesRecord.getFileMeta());
-                return OrcMetaUtils.extractFileTail(tailBuffer);
-            }
-        } catch (SQLException e) {
-            throw GeneralUtil.nestedException(e);
-        }
     }
 }

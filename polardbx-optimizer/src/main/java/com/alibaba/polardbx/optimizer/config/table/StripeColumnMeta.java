@@ -146,7 +146,8 @@ public class StripeColumnMeta {
         int offset = (int) record.bloomFilterOffset;
         int length = (int) record.bloomFilterLength;
         byte[] buffer = new byte[length];
-        FileSystemUtils.readFile(record.bloomFilterPath, offset, length, buffer, engine);
+        // TODO(siyun): this should be checked: columnar with old table scan
+        FileSystemUtils.readFile(record.bloomFilterPath, offset, length, buffer, engine, false);
 
         // parse bloom filter from oss file.
         try {
@@ -159,7 +160,7 @@ public class StripeColumnMeta {
     private static OrcBloomFilter doParseUnmerged(ColumnMetasRecord record) {
         // parse bloom filter from oss file.
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        FileSystemUtils.readFile(record.bloomFilterPath, byteArrayOutputStream, Engine.valueOf(record.engine));
+        FileSystemUtils.readFile(record.bloomFilterPath, byteArrayOutputStream, Engine.valueOf(record.engine), false);
         byte[] bytes = byteArrayOutputStream.toByteArray();
         try {
             return OrcBloomFilter.deserialize(new ByteArrayInputStream(bytes, 0, bytes.length));

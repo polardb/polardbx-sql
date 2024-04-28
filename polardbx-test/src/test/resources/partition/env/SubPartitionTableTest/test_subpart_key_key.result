@@ -488,9 +488,19 @@ k_k_ntp1,CREATE TABLE `k_k_ntp1` (
 	KEY `auto_shard_key_a_b` USING BTREE (`a`, `b`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 PARTITION BY KEY(`c`,`d`)
-PARTITIONS 3
 SUBPARTITION BY KEY(`a`,`b`)
-SUBPARTITIONS 3
+(PARTITION p0
+ (SUBPARTITION p0sp1 ENGINE = InnoDB,
+  SUBPARTITION p0sp2 ENGINE = InnoDB),
+ PARTITION p1
+ (SUBPARTITION p1sp1 ENGINE = InnoDB,
+  SUBPARTITION p1sp2 ENGINE = InnoDB,
+  SUBPARTITION p1sp3 ENGINE = InnoDB),
+ PARTITION p2
+ (SUBPARTITION p2sp1 ENGINE = InnoDB,
+  SUBPARTITION p2sp2 ENGINE = InnoDB,
+  SUBPARTITION p2sp3 ENGINE = InnoDB,
+  SUBPARTITION p2sp4 ENGINE = InnoDB))
 ## key-key-ntp2
 drop table if exists k_k_ntp2;
 create table if not exists k_k_ntp2 (

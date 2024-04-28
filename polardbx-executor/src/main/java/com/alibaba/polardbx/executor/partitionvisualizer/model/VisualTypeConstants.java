@@ -21,7 +21,6 @@ import java.util.List;
 
 /**
  * @author ximing.yd
- * @date 2021/12/23 上午10:58
  */
 public class VisualTypeConstants {
 

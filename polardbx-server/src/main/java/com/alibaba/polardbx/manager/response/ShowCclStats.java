@@ -114,15 +114,15 @@ public class ShowCclStats {
 
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
         String runningCountJsonStr = JSON.toJSONString(runningCountMap);
-        row.add(StringUtil.encode(runningCountJsonStr, c.getCharset()));
+        row.add(StringUtil.encode(runningCountJsonStr, c.getResultSetCharset()));
         String waitQueueJsonStr = JSON.toJSONString(waitQueueMap);
-        row.add(StringUtil.encode(waitQueueJsonStr, c.getCharset()));
+        row.add(StringUtil.encode(waitQueueJsonStr, c.getResultSetCharset()));
         String killedCountJsonStr = JSON.toJSONString(killedCountMap);
-        row.add(StringUtil.encode(killedCountJsonStr, c.getCharset()));
+        row.add(StringUtil.encode(killedCountJsonStr, c.getResultSetCharset()));
         String matchCclRulehitCountJsonStr = JSON.toJSONString(matchHitCache);
-        row.add(StringUtil.encode(matchCclRulehitCountJsonStr, c.getCharset()));
+        row.add(StringUtil.encode(matchCclRulehitCountJsonStr, c.getResultSetCharset()));
         String totalMatchCclRuleCount = JSON.toJSONString(totalMatchCount);
-        row.add(StringUtil.encode(totalMatchCclRuleCount, c.getCharset()));
+        row.add(StringUtil.encode(totalMatchCclRuleCount, c.getResultSetCharset()));
 
         ICclService cclService = CclManager.getService();
         List<Long> cclCacheStats = cclService.getCacheStats();

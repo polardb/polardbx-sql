@@ -33,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * Created by luoyanxin.
@@ -110,6 +111,18 @@ public class ComplexTaskPlanUtils {
         return complexTaskTableMetaBean.isReadyToPulic(partitionName);
     }
 
+    public static boolean isBackfillInProgress(TableMeta tableMeta) {
+        if (!ConfigDataMode.isPolarDbX()) {
+            return false;
+        }
+        ComplexTaskMetaManager.ComplexTaskTableMetaBean complexTaskTableMetaBean =
+            tableMeta.getComplexTaskTableMetaBean();
+        if (complexTaskTableMetaBean == null) {
+            return false;
+        }
+        return complexTaskTableMetaBean.isBackfillInProgress();
+    }
+
     public static boolean isScaleOutWriteDebugOpen(ExecutionContext executionContext) {
 
         final String scaleOutDebugInfo =
@@ -181,6 +194,15 @@ public class ComplexTaskPlanUtils {
 
             return replicateWritable;
         });
+    }
+
+    public static boolean isAnyUGsi(RelOptTable primary, ExecutionContext ec,
+                                    Function<TableMeta, Boolean> gsiChecker) {
+        final List<TableMeta> indexes = GlobalIndexMeta.getIndex(primary, ec);
+        return indexes.stream()
+            .anyMatch(
+                gsiMeta -> gsiMeta.getGsiTableMetaBean() != null && !gsiMeta.getGsiTableMetaBean().gsiMetaBean.nonUnique
+                    && gsiChecker.apply(gsiMeta));
     }
 
     public static String getPartNameFromGroupAndTable(TableMeta tableMeta, String groupName, String phyTableName) {

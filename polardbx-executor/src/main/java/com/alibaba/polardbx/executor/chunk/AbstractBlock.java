@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.executor.chunk;
 
+import com.alibaba.polardbx.executor.operator.util.DriverObjectPool;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.google.common.base.Preconditions;
 
@@ -24,7 +25,7 @@ import java.util.function.Consumer;
 /**
  * Abstract random accessible data block.
  */
-abstract class AbstractBlock implements Block, RandomAccessBlock {
+public abstract class AbstractBlock implements Block, RandomAccessBlock {
 
     final int arrayOffset;
     int positionCount;
@@ -44,10 +45,17 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     protected boolean hasNull;
     protected String digest;
 
+    protected DriverObjectPool.Recycler recycler;
+
     AbstractBlock(int arrayOffset, int positionCount, boolean[] valueIsNull) {
+        this(null, arrayOffset, positionCount, valueIsNull);
+    }
+
+    AbstractBlock(DataType dataType, int arrayOffset, int positionCount, boolean[] valueIsNull) {
         Preconditions.checkArgument(positionCount >= 0);
         Preconditions.checkArgument(arrayOffset >= 0);
 
+        this.dataType = dataType;
         this.positionCount = positionCount;
         this.arrayOffset = arrayOffset;
         this.isNull = valueIsNull;
@@ -64,6 +72,34 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
         this.isNull = isNull;
         this.hasNull = hasNull;
         this.arrayOffset = 0;
+    }
+
+    @Override
+    public void destroyNulls(boolean force) {
+        if (force) {
+            this.isNull = null;
+            this.hasNull = false;
+            return;
+        }
+
+        boolean hasNull = false;
+        for (int i = 0; i < positionCount; i++) {
+            hasNull |= isNull(i);
+        }
+        if (!hasNull) {
+            this.isNull = null;
+            this.hasNull = false;
+        }
+    }
+
+    @Override
+    public <T> void setRecycler(DriverObjectPool.Recycler<T> recycler) {
+        this.recycler = recycler;
+    }
+
+    @Override
+    public boolean isRecyclable() {
+        return recycler != null;
     }
 
     @Override
@@ -165,7 +201,7 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
     protected void digest() {
         this.digest = new StringBuilder()
             .append("{class = ").append(getClass().getSimpleName())
-            .append(", datatype = ").append(dataType.toString())
+            .append(", datatype = ").append(dataType == null ? "null" : dataType.toString())
             .append(", size = ").append(positionCount)
             .append("}")
             .toString();
@@ -211,5 +247,5 @@ abstract class AbstractBlock implements Block, RandomAccessBlock {
      * this method should be called to update block size info, including @estimatedSize and @elementUsedBytes
      * suggest adding sequence: [instantSize] + isNullSize + valueSize + [offsetSize]
      */
-    abstract void updateSizeInfo();
+    public abstract void updateSizeInfo();
 }

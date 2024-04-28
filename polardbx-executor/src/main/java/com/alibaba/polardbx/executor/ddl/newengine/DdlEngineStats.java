@@ -46,6 +46,15 @@ public class DdlEngineStats {
     public static Metric METRIC_CHECKER_ROWS_FINISHED = new Metric("CHECKER_ROWS_FINISHED");
     public static Metric METRIC_CHECKER_TIME_MILLIS = new Metric("CHECKER_TIME_MILLIS");
 
+    public static Metric METRIC_FASTCHECKER_TASK_RUNNING = new Metric("FASTCHECKER_TASK_RUNNING");
+    public static Metric METRIC_FASTCHECKER_TASK_WAITING = new Metric("FASTCHECKER_TASK_WAITING");
+
+    public static Metric METRIC_FASTCHECKER_THREAD_POOL_NOW_SIZE = new Metric("FASTCHECKER_THREAD_POOL_NOW_SIZE");
+
+    public static Metric METRIC_FASTCHECKER_THREAD_POOL_MAX_SIZE = new Metric("FASTCHECKER_THREAD_POOL_MAX_SIZE");
+
+    public static Metric METRIC_FASTCHECKER_THREAD_POOL_NUM = new Metric("FASTCHECKER_THREAD_POOL_NUM");
+
     public static Metric METRIC_BACKFILL_ROWS_FINISHED = new Metric("BACKFILL_ROWS_FINISHED");
     public static Metric METRIC_BACKFILL_ROWS_SPEED = new Metric("BACKFILL_ROWS_SPEED");
     public static Metric METRIC_BACKFILL_TIME_MILLIS = new Metric("BACKFILL_TIME_MILLIS");
@@ -57,6 +66,8 @@ public class DdlEngineStats {
     public static Metric METRIC_BACKFILL_PARALLELISM = new Metric("BACKFILL_PARALLELISM");
     public static Metric METRIC_CHANGESET_APPLY_PARALLELISM = new Metric("CHANGESET_APPLY_PARALLELISM");
     public static Metric METRIC_CHANGESET_APPLY_ROWS_SPEED = new Metric("CHANGESET_APPLY_ROWS_SPEED");
+
+    public static Metric METRIC_TWO_PHASE_DDL_PARALLISM = new Metric("TWO_PHASE_DDL_PARALLISM");
 
     public static Metric METRIC_THROTTLE_RATE =
         new Metric.DelegatorMetric("THROTTLE_RATE", (x) -> Throttle.getTotalThrottleRate());

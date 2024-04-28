@@ -110,6 +110,7 @@ import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.mapping.Mapping;
 import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.collections.ListUtils;
+import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -218,43 +219,30 @@ public class WriterFactory {
             throw new TddlRuntimeException(ERR_PK_WRITER_ON_TABLE_WITHOUT_PK, "Update", targetMeta.getTableName());
         }, false, withoutPk);
 
-        boolean isGsi = targetMeta.isGsi();
-        String primaryTableName =
-            isGsi ? targetMeta.getGsiTableMetaBean().gsiMetaBean.tableName : targetMeta.getTableName();
-        // GSI and primary table must be in the same schema
-        String primarySchemaName = targetMeta.getSchemaName();
-        TableMeta primaryTableMeta = ec.getSchemaManager(primarySchemaName).getTable(primaryTableName);
-
-        final TableColumnMeta tableColumnMeta = primaryTableMeta.getTableColumnMeta();
-        Pair<String, String> columnMultiWriteMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
-
-        boolean doColumnMultiWrite =
-            columnMultiWriteMapping != null && targetMeta.getColumn(columnMultiWriteMapping.right) != null;
-
-        if (doColumnMultiWrite && updateColumnList.stream()
-            .anyMatch(name -> name.equalsIgnoreCase(columnMultiWriteMapping.right))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Column multi-write target column should not appear in field list");
-        }
+        final TableColumnMeta tableColumnMeta = targetMeta.getTableColumnMeta();
+        Map<String, String> columnMultiWriteMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta);
+        boolean needColumnMapping = MapUtils.isNotEmpty(columnMultiWriteMapping);
 
         final AtomicInteger paramIndex = new AtomicInteger(0);
         final List<SqlIdentifier> targetColumns = new ArrayList<>();
         final List<SqlNode> sourceExpressions = new ArrayList<>();
         final List<RexNode> sourceExpressionList = new ArrayList<>();
 
-        updateColumnList.forEach(c -> {
+        List<String> updateColumnListLocal = updateColumnList.stream().map(c -> {
+            if (needColumnMapping && columnMultiWriteMapping.containsKey(c.toLowerCase())) {
+                return columnMultiWriteMapping.get(c.toLowerCase());
+            } else {
+                return c;
+            }
+        }).collect(Collectors.toList());
+
+        updateColumnListLocal.forEach(c -> {
             final int index = paramIndex.getAndIncrement();
             targetColumns.add(new SqlIdentifier(ImmutableList.of(c), SqlParserPos.ZERO));
             sourceExpressions.add(new SqlDynamicParam(index + 2, SqlParserPos.ZERO));
             sourceExpressionList.add(rexBuilder.makeDynamicParam(
                 getUpdateColumnType(parent, updateColumnList.get(index), updateSourceMapping.get(index)), index));
         });
-
-        if (doColumnMultiWrite) {
-            targetColumns.add(new SqlIdentifier(ImmutableList.of(columnMultiWriteMapping.right), SqlParserPos.ZERO));
-            sourceExpressions.add(new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-                new SqlNode[] {new SqlIdentifier(columnMultiWriteMapping.left, SqlParserPos.ZERO)}, SqlParserPos.ZERO));
-        }
 
         /**
          * <pre>
@@ -277,7 +265,7 @@ public class WriterFactory {
                 indexName,
                 new AtomicInteger(paramIndex.get() + 2), ec);
 
-        final TableInfo updateTableInfo = buildUpdateTableInfo(sqlUpdate, targetTable, updateColumnList);
+        final TableInfo updateTableInfo = buildUpdateTableInfo(sqlUpdate, targetTable, updateColumnListLocal);
 
         final LogicalModify update = new LogicalModify(parent.getCluster(),
             parent.getTraitSet(),
@@ -285,7 +273,7 @@ public class WriterFactory {
             parent.getCatalogReader(),
             input,
             Operation.UPDATE,
-            updateColumnList,
+            updateColumnListLocal,
             sourceExpressionList,
             false,
             parent.getKeywords(),
@@ -499,32 +487,29 @@ public class WriterFactory {
         }
 
         final TableColumnMeta tableColumnMeta = targetMeta.getTableColumnMeta();
-        Pair<String, String> columnMultiWriteMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
-        boolean doColumnMultiWrite = columnMultiWriteMapping != null;
-        if (doColumnMultiWrite && updateColumnList.stream()
-            .anyMatch(name -> name.equalsIgnoreCase(columnMultiWriteMapping.right))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Column multi-write target column should not appear in field list");
-        }
+        Map<String, String> columnMultiWriteMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta);
+        boolean needColumnMapping = MapUtils.isNotEmpty(columnMultiWriteMapping);
 
         final AtomicInteger paramIndex = new AtomicInteger(0);
         final List<SqlIdentifier> targetColumns = new ArrayList<>();
         final List<SqlNode> sourceExpressions = new ArrayList<>();
         final List<RexNode> sourceExpressionList = new ArrayList<>();
 
-        updateColumnList.forEach(c -> {
+        List<String> updateColumnListLocal = updateColumnList.stream().map(c -> {
+            if (needColumnMapping && columnMultiWriteMapping.containsKey(c.toLowerCase())) {
+                return columnMultiWriteMapping.get(c.toLowerCase());
+            } else {
+                return c;
+            }
+        }).collect(Collectors.toList());
+
+        updateColumnListLocal.forEach(c -> {
             final int index = paramIndex.getAndIncrement();
             targetColumns.add(new SqlIdentifier(ImmutableList.of(c), SqlParserPos.ZERO));
             sourceExpressions.add(new SqlDynamicParam(index + 2, SqlParserPos.ZERO));
             sourceExpressionList.add(rexBuilder.makeDynamicParam(
-                getUpdateColumnType(parent, updateColumnList.get(index), updateSourceMapping.get(index)), index));
+                getUpdateColumnType(parent, updateColumnListLocal.get(index), updateSourceMapping.get(index)), index));
         });
-
-        if (doColumnMultiWrite) {
-            targetColumns.add(new SqlIdentifier(ImmutableList.of(columnMultiWriteMapping.right), SqlParserPos.ZERO));
-            sourceExpressions.add(new SqlBasicCall(SqlStdOperatorTable.ALTER_TYPE,
-                new SqlNode[] {new SqlIdentifier(columnMultiWriteMapping.left, SqlParserPos.ZERO)}, SqlParserPos.ZERO));
-        }
 
         /**
          * <pre>
@@ -547,7 +532,7 @@ public class WriterFactory {
                 "PRIMARY",
                 new AtomicInteger(paramIndex.get() + 2), ec);
 
-        final TableInfo updateTableInfo = buildUpdateTableInfo(sqlUpdate, targetTable, updateColumnList);
+        final TableInfo updateTableInfo = buildUpdateTableInfo(sqlUpdate, targetTable, updateColumnListLocal);
 
         final LogicalModify update = new LogicalModify(parent.getCluster(),
             parent.getTraitSet(),
@@ -555,7 +540,7 @@ public class WriterFactory {
             parent.getCatalogReader(),
             input,
             Operation.UPDATE,
-            updateColumnList,
+            updateColumnListLocal,
             sourceExpressionList,
             false,
             parent.getKeywords(),
@@ -1038,15 +1023,12 @@ public class WriterFactory {
         final String targetSchema = targetSchemaTable.left;
         final String targetTableName = targetSchemaTable.right;
 
-        final OptimizerContext oc = OptimizerContext.getContext(targetSchema);
-
         /**
          * When dml is cross schema dml such as 
          * "insert into drds_polarx2_ddl_qatest_app.gxw_test_4 values(1, 'simiao_test');"
          * the targetSchema is different of the schema of ExecutionContext
          */
         final TableMeta targetMeta = ec.getSchemaManager(targetSchema).getTable(targetTableName);
-        //final TableMeta targetMeta = oc.getLatestSchemaManager().getTable(targetTableName);
 
         boolean isNeedGenReplicaPlan = ComplexTaskPlanUtils.canDelete(targetMeta);
         return isNeedGenReplicaPlan ? new ReplicationShardingModifyWriter(modify
@@ -1131,21 +1113,31 @@ public class WriterFactory {
         final List<RelDataTypeField> targetFields = targetRowType.getFieldList();
         final List<RelDataTypeField> sourceFields = input.getRowType().getFieldList();
 
-        TableMeta primaryTableMeta = ec.getSchemaManager(targetSchema).getTable(primaryTableName);
-        TableColumnMeta tableColumnMeta = primaryTableMeta.getTableColumnMeta();
-        Pair<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
+        TableColumnMeta tableColumnMeta = targetMeta.getTableColumnMeta();
+        Map<String, String> columnMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta);
+        boolean needColumnMapping = MapUtils.isNotEmpty(columnMapping);
 
+        TableMeta primaryTableMeta = ec.getSchemaManager(targetSchema).getTable(primaryTableName);
         // During drop column, we drop gsi column first, so it is possible that gsi contain column that does not exist
         // on primary table
         List<String> fieldNames =
             targetFields.stream().map(RelDataTypeField::getName)
-                .filter(name -> !(columnMapping != null && name.equalsIgnoreCase(columnMapping.right))
-                    && primaryTableMeta.getColumnIgnoreCase(name) != null)
+                .filter(name -> primaryTableMeta.getColumnIgnoreCase(name) != null
+                    || (needColumnMapping && columnMapping.containsValue(name.toLowerCase())))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Replace insert value reference, expressions in SET are at the end of row
         final int offset = sourceFields.size() - parent.getUpdateColumnList().size();
         Ord.zip(updateColumnList).forEach(ord -> columnIndexMap.put(ord.e, offset + updateColumnMapping.get(ord.i)));
+
+        final Map<String, Integer> columnIndexTmp = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        if (needColumnMapping) {
+            columnIndexMap.forEach((k, v) -> {
+                columnIndexTmp.put(columnMapping.getOrDefault(k, k), v);
+            });
+            columnIndexMap.clear();
+            columnIndexMap.putAll(columnIndexTmp);
+        }
 
         // Build mapping from insert columns to select result
         final List<Integer> valuePermute = fieldNames.stream()
@@ -1154,7 +1146,7 @@ public class WriterFactory {
 
         final LogicalInsert insert =
             buildInsertOrReplace(parent, targetTable, sourceFields, valuePermute, fieldNames, Operation.INSERT, null,
-                null, false, targetSchema, primaryTableName, ec);
+                null, false, targetSchema, primaryTableName, ec, false);
 
         if (!isBroadCast) {
             return ComplexTaskPlanUtils.canWrite(targetMeta) ?
@@ -1457,7 +1449,7 @@ public class WriterFactory {
         final LogicalInsert insertOrReplace =
             buildInsertOrReplace(parent, targetTable, sourceFields, valuePermute, fieldNames,
                 isReplace ? Operation.REPLACE : Operation.INSERT, keyWords, duplicateKeyUpdateList,
-                isValueSource, primarySchemaName, primaryTableName, ec);
+                isValueSource, primarySchemaName, primaryTableName, ec, true);
 
         boolean isNeedGenReplicaPlan = ComplexTaskPlanUtils.canWrite(tableMeta);
 
@@ -1506,29 +1498,17 @@ public class WriterFactory {
                                                       List<String> targetFieldNames, Operation operation,
                                                       List<String> keyWords, List<RexNode> duplicateKeyUpdateList,
                                                       boolean isValueSource, String primarySchemaName,
-                                                      String primaryTableName, ExecutionContext ec) {
+                                                      String primaryTableName, ExecutionContext ec, boolean rebuild) {
         final RexBuilder rexBuilder = parent.getCluster().getRexBuilder();
 
         ImmutableList<ImmutableList<RexNode>> values = null;
         RelDataType insertRowType = null;
 
-        TableMeta primaryTableMeta = ec.getSchemaManager(primarySchemaName).getTable(primaryTableName);
-        final TableColumnMeta tableColumnMeta = primaryTableMeta.getTableColumnMeta();
-        Pair<String, String> columnMultiWriteMapping = TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta, ec);
-
         final Pair<String, String> targetSchemaTable = RelUtils.getQualifiedTableName(targetTable);
         final String targetSchema = targetSchemaTable.left;
         final String targetTableName = targetSchemaTable.right;
-        TableMeta targetTableMeta = ec.getSchemaManager(targetSchema).getTable(targetTableName);
-
-        boolean doColumnMultiWrite =
-            columnMultiWriteMapping != null && targetTableMeta.getColumn(columnMultiWriteMapping.right) != null;
-
-        if (doColumnMultiWrite && targetFieldNames.stream()
-            .anyMatch(name -> name.equalsIgnoreCase(columnMultiWriteMapping.right))) {
-            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
-                "Column multi-write target column should not appear in field list");
-        }
+        final TableMeta targetMeta = ec.getSchemaManager(targetSchema).getTable(targetTableName);
+        final TableMeta primaryTableMeta = ec.getSchemaManager(primarySchemaName).getTable(primaryTableName);
 
         if (isValueSource) {
             targetFieldNames = valuePermute.stream().map(targetFieldNames::get).collect(Collectors.toList());
@@ -1539,7 +1519,8 @@ public class WriterFactory {
         // Filter out generated columns
         List<Integer> toRemove = new ArrayList<>();
         for (int i = 0; i < targetFieldNames.size(); i++) {
-            if (primaryTableMeta.getColumnIgnoreCase(targetFieldNames.get(i)).isGeneratedColumn()) {
+            if (primaryTableMeta.getColumnIgnoreCase(targetFieldNames.get(i)) != null
+                && primaryTableMeta.getColumnIgnoreCase(targetFieldNames.get(i)).isGeneratedColumn()) {
                 toRemove.add(i);
             }
         }
@@ -1610,10 +1591,17 @@ public class WriterFactory {
             null,
             insertTableInfo);
 
-        if (doColumnMultiWrite) {
-            // SqlTemplate will only be inited once
-            SqlInsert sqlInsert = (SqlInsert) result.getSqlTemplate();
-            TableColumnUtils.rewriteSqlTemplate(sqlInsert, columnMultiWriteMapping);
+        if (rebuild) {
+            final TableColumnMeta tableColumnMeta = targetMeta.getTableColumnMeta();
+            Map<String, String> columnMultiWriteMapping =
+                TableColumnUtils.getColumnMultiWriteMapping(tableColumnMeta);
+            boolean needColumnMapping = MapUtils.isNotEmpty(columnMultiWriteMapping);
+
+            if (needColumnMapping) {
+                // SqlTemplate will only be inited once
+                SqlInsert sqlInsert = (SqlInsert) result.getSqlTemplate();
+                TableColumnUtils.rewriteSqlTemplate(sqlInsert, columnMultiWriteMapping);
+            }
         }
 
         return result;

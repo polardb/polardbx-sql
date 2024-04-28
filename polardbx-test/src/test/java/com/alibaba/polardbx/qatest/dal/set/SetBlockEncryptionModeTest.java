@@ -94,7 +94,7 @@ public class SetBlockEncryptionModeTest extends DirectConnectionBaseTestCase {
     private void expectSetFail(String encryptionMode) {
         String sql = String.format(setEncryptionModePattern, encryptionMode);
         executeErrorAssert(tddlConnection, sql, null,
-            String.format("Variable 'block_encryption_mode' can't be set to the value of '%s'", encryptionMode));
+            String.format("VARIABLE BLOCK_ENCRYPTION_MODE CAN'T BE SET TO THE VALUE OF %s", encryptionMode));
     }
 
 }

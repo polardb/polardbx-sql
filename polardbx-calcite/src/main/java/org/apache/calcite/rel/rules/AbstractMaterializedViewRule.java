@@ -36,6 +36,8 @@ import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.core.TableScan;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
+import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -175,7 +177,11 @@ public abstract class AbstractMaterializedViewRule extends RelOptRule {
    */
   protected void perform(RelOptRuleCall call, Project topProject, RelNode node) {
     final RexBuilder rexBuilder = node.getCluster().getRexBuilder();
-    final RelMetadataQuery mq = RelMetadataQuery.instance();
+    final RelMetadataQuery mq;
+    RelMetadataProvider provider = node.getCluster().getMetadataProvider();
+    // provider in cluster cannot be a JaninoRelMetadataProvider,
+    // for it doesn't support RelMetadataProvider.apply method
+    mq = RelMetadataQuery.instance(JaninoRelMetadataProvider.of(provider));
     final RelOptPlanner planner = call.getPlanner();
     final RexExecutor executor =
         Util.first(planner.getExecutor(), RexUtil.EXECUTOR);

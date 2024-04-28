@@ -17,12 +17,9 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.CobarServer;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
-import com.alibaba.polardbx.net.FrontendConnection;
-import com.alibaba.polardbx.net.NIOProcessor;
-import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
+import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.LogicalShowProfileHandler;
@@ -30,6 +27,8 @@ import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.matrix.jdbc.TConnection;
+import com.alibaba.polardbx.net.FrontendConnection;
+import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.optimizer.ccl.common.CclContext;
 import com.alibaba.polardbx.optimizer.ccl.common.CclRuleInfo;
 import com.alibaba.polardbx.optimizer.ccl.common.RescheduleTask;
@@ -42,11 +41,15 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.utils.ExplainResult;
 import com.alibaba.polardbx.optimizer.workload.WorkloadType;
 import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
+import com.alibaba.polardbx.server.ServerConnection;
+import com.alibaba.polardbx.server.conn.InnerConnection;
+import com.alibaba.polardbx.server.conn.InnerConnectionManager;
 import com.alibaba.polardbx.server.handler.pl.RuntimeProcedureManager;
 import com.alibaba.polardbx.statistics.RuntimeStatistics;
 import org.apache.calcite.plan.RelOptCost;
 
 import java.text.DecimalFormat;
+import java.util.Map;
 import java.util.concurrent.locks.LockSupport;
 
 /**
@@ -120,6 +123,10 @@ public class ShowProcesslistSyncAction implements ISyncAction {
                     addRowByConnection(result, (ServerConnection) fc);
                 }
             }
+        }
+
+        for (Map.Entry<Long, InnerConnection> conn : InnerConnectionManager.getActiveConnections().entrySet()) {
+
         }
 
         return result;
@@ -200,7 +207,7 @@ public class ShowProcesslistSyncAction implements ISyncAction {
         String worker = null;
         if (info != null) {
             workloadType = WorkloadType.TP;
-            route = ConfigDataMode.isSlaveMode() ? "RO" : "RW";
+            route = ConfigDataMode.isReadOnlyMode() ? "RO" : "RW";
             worker = ServiceProvider.getInstance().getServer().getLocalNode().getHostMppPort();
         }
 
@@ -263,6 +270,104 @@ public class ShowProcesslistSyncAction implements ISyncAction {
             cost.getCpu(), cost.getMemory(), cost.getIo(), cost.getNet(),
             workloadType, route, worker, sc.getTraceId()});
 
+    }
+
+    private void addRowByInnerConnection(ArrayResultCursor result, InnerConnection innerConnection) {
+        String command = "INNER-SLEEP";
+        String info = null;
+        String sqlTid = null;
+        String sqlType = null;
+        boolean isStmtExecuting = innerConnection.isStatementExecuting();
+        if (isStmtExecuting) {
+            if (this.isFull()) {
+                info = innerConnection.getSqlSample();
+
+                TConnection tConnection = innerConnection.getTConnection();
+                if (tConnection != null) {
+                    ExecutionContext executionContext = tConnection.getExecutionContext();
+                    if (executionContext != null) {
+                        SqlType executionSqlType = executionContext.getSqlType();
+                        if (executionSqlType != null) {
+                            sqlType = executionSqlType.toString();
+                        }
+                        ExecutionPlan plan = executionContext.getFinalPlan();
+                        if (plan != null) {
+                            //use the first plan. consider their ther PlanWithContext is similar when InsertSplitter is applied.
+
+                            PlanCache.CacheKey cacheKey = plan.getCacheKey();
+                            if (cacheKey != null) {
+                                sqlTid = cacheKey.getTemplateId();
+                            }
+                        }
+                    }
+                }
+            } else {
+                info = TStringUtil.substring(innerConnection.getSqlSample(), 0, 30);
+            }
+        }
+
+        // in second.
+        long time = (System.nanoTime() - innerConnection.getLastActiveTime()) / 1_000_000_000;
+
+        long allTc = 0;
+        long mem = 0;
+        String allTcStr = LogicalShowProfileHandler.PROFILE_ZEOR_VALUE;
+        String memStr = LogicalShowProfileHandler.PROFILE_NO_VALUE;
+        String memPctStr = LogicalShowProfileHandler.PROFILE_NO_VALUE;
+        TConnection tConn = innerConnection.getTConnection();
+        RelOptCost cost = DrdsRelOptCostImpl.FACTORY.makeZeroCost();
+        WorkloadType workloadType = null;
+        String route = null;
+        String worker = null;
+        if (info != null) {
+            workloadType = WorkloadType.TP;
+            route = ConfigDataMode.isReadOnlyMode() ? "RO" : "RW";
+            worker = ServiceProvider.getInstance().getServer().getLocalNode().getHostMppPort();
+        }
+
+        if (tConn != null && isStmtExecuting) {
+            ExecutionContext ec = tConn.getExecutionContext();
+            if (ec != null) {
+                RuntimeStatistics runTimeStat = (RuntimeStatistics) ec.getRuntimeStatistics();
+                if (runTimeStat != null && ExecUtils.isOperatorMetricEnabled(ec)) {
+                    allTc = runTimeStat.getSqlCpuTime();
+                    allTcStr = NUM_FORMAT.format(allTc);
+                    mem = runTimeStat.getSqlMemoryMaxUsage();
+                    if (mem > 0) {
+                        memStr = NUM_FORMAT.format(mem);
+                    } else {
+                        memStr = LogicalShowProfileHandler.PROFILE_NO_VALUE;
+                    }
+                    double memPct = runTimeStat.getSqlMemoryMaxUsagePct();
+                    if (memPct > 0 && mem > 0) {
+                        memPctStr = String.format("%.4f%%", memPct);
+                    } else {
+                        memPctStr = LogicalShowProfileHandler.PROFILE_NO_VALUE;
+                    }
+                }
+                cost = CBOUtil.getCost(ec);
+                ExplainResult explainResult = ec.getExplain();
+                workloadType = WorkloadUtil.getWorkloadType(ec);
+                if (explainResult != null && !explainResult.explainMode.isAnalyze()) {
+                    workloadType = WorkloadType.TP;
+                }
+                if (ConfigDataMode.isMasterMode()) {
+                    route = !ExecUtils.isMppMode(ec) ? "RW" : "RO";
+                }
+
+                try {
+                    worker = String.join(",", ExecUtils.getQuerySchedulerHosts(ec));
+                } catch (Throwable t) {
+                    worker = null;
+                }
+            }
+        }
+
+        result.addRow(new Object[] {
+            innerConnection.getId(), innerConnection.getUser(), "127.0.0.1:1111",
+            innerConnection.getSchemaName(), command, time, allTcStr, memStr, memPctStr, "", info, sqlTid, sqlType,
+            cost.getCpu(), cost.getMemory(), cost.getIo(), cost.getNet(),
+            workloadType, route, worker, innerConnection.getTraceId()});
     }
 
     private boolean executingProcedure(long connId) {

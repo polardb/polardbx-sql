@@ -20,18 +20,18 @@ import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
-import com.alibaba.polardbx.druid.util.StringUtils;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.statis.PlanAccessStat;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaTableAccess;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,10 +97,10 @@ public class InformationSchemaTableAccessHandler extends BaseVirtualViewSubClass
         }
 
         List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(showTableAccessAction, executionContext.getSchemaName());
+            SyncManagerHelper.sync(showTableAccessAction, executionContext.getSchemaName(), SyncScope.ALL);
 
         List<List<Map<String, Object>>> joinClosureResults =
-            SyncManagerHelper.sync(showTableJoinClosureAction, executionContext.getSchemaName());
+            SyncManagerHelper.sync(showTableJoinClosureAction, executionContext.getSchemaName(), SyncScope.ALL);
         List<PlanAccessStat.PlanJoinClosureStatInfo> joinClosureStatInfos =
             PlanAccessStat.collectTableJoinClosureStat(joinClosureResults);
 
@@ -119,7 +119,16 @@ public class InformationSchemaTableAccessHandler extends BaseVirtualViewSubClass
 //        result.addColumn("OTHER_TABLE_NAME", DataTypes.StringType);
 //        result.addColumn("ACCESS_COUNT", DataTypes.LongType);
 //        result.addColumn("TEMPLATE_ID_SET", DataTypes.StringType);
+
         for (List<Map<String, Object>> rs : results) {
+            if (rs == null) {
+                /**
+                 * some cn maybe is not init,
+                 * so some results from SyncManagerHelper.sync(xxx) maybe null ,
+                 * so here filer the null result
+                 */
+                continue;
+            }
             for (int i = 0; i < rs.size(); i++) {
                 Map<String, Object> accessItem = rs.get(i);
                 String relKey = (String) accessItem.get("RELATION_KEY");

@@ -110,6 +110,7 @@ public class MySqlExprParser extends SQLExprParser {
             "VARIANCE",
             "JSON_ARRAYAGG",
             "JSON_OBJECTAGG",
+            "HYPERLOGLOG",
             "CHECK_SUM"
         };
 
@@ -1334,6 +1335,14 @@ public class MySqlExprParser extends SQLExprParser {
             return parseColumnRest(column);
         }
 
+        if (Token.COLUMN == this.lexer.token()) {
+            this.lexer.nextToken();
+            this.acceptIdentifier("SECURED");
+            accept(Token.WITH);
+            column.setSecuredWith(new SQLIdentifierExpr(this.lexer.stringVal()));
+            this.lexer.nextToken();
+        }
+
         super.parseColumnRest(column);
 
         return column;
@@ -2169,6 +2178,13 @@ public class MySqlExprParser extends SQLExprParser {
                         lexer.nextToken();
                     }
                     assignItem = new SQLAssignItem(new SQLIdentifierExpr("CHARACTER SET"), expr());
+                } else if (lexer.identifierEquals(FnvHash.Constants.CHARSET)) {
+                    // CHARSET [=] charset_name
+                    lexer.nextToken();
+                    if (lexer.token() == Token.EQ) {
+                        lexer.nextToken();
+                    }
+                    assignItem = new SQLAssignItem(new SQLIdentifierExpr("CHARSET"), expr());
                 } else if (lexer.identifierEquals(FnvHash.Constants.DATA) ||
                     lexer.token() == Token.INDEX) {
                     // {DATA|INDEX} DIRECTORY [=] 'absolute path to directory'

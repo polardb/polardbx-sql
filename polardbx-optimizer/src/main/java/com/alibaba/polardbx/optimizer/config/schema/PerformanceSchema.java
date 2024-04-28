@@ -17,13 +17,12 @@
 package com.alibaba.polardbx.optimizer.config.schema;
 
 import com.alibaba.polardbx.common.DefaultSchema;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.google.common.collect.ImmutableList;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.view.PerformanceSchemaViewManager;
 import com.alibaba.polardbx.optimizer.view.SystemTableView;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelProtoDataType;
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.schema.impl.ViewTable;

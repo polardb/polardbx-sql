@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.version.Version;
 import com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcVersionUtil;
+import com.alibaba.polardbx.executor.ddl.job.task.columnar.ColumnarVersionUtil;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
@@ -31,12 +32,15 @@ import com.alibaba.polardbx.net.packet.FieldPacket;
 import com.alibaba.polardbx.net.packet.MySQLPacket;
 import com.alibaba.polardbx.net.packet.ResultSetHeaderPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.server.ServerConnection;
 import com.alibaba.polardbx.server.util.PacketUtil;
 import com.alibaba.polardbx.server.util.StringUtil;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * 如果组件不存在，则不输出该行
+ * 如果组件存在但是版本号解析错误，则版本号返回NULL
+ */
 public class SelectPolardbVersion {
 
     private static final Logger logger = LoggerFactory.getLogger(SelectPolardbVersion.class);
@@ -51,13 +55,13 @@ public class SelectPolardbVersion {
         byte packetId = 0;
         header.packetId = ++packetId;
 
-        fields[i] = PacketUtil.getField("NODE_TYPE", Fields.FIELD_TYPE_VAR_STRING);
+        fields[i] = PacketUtil.getField("TYPE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
         fields[i] = PacketUtil.getField("VERSION", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
 
-        fields[i] = PacketUtil.getField("BUILD_NUMBER", Fields.FIELD_TYPE_VAR_STRING);
+        fields[i] = PacketUtil.getField("RELEASE_DATE", Fields.FIELD_TYPE_VAR_STRING);
         fields[i++].packetId = ++packetId;
     }
 
@@ -78,14 +82,17 @@ public class SelectPolardbVersion {
             eof.packetId = ++tmpPacketId;
             proxy = eof.write(proxy);
         }
-        String charset = c.getCharset();
-        addCnVersion(proxy, ++tmpPacketId, charset);
-        addDnVersion(proxy, ++tmpPacketId, charset);
-        addCdcVersion(proxy, ++tmpPacketId, charset);
-        addGmsVersion(proxy, ++tmpPacketId, charset);
+        String charset = c.getResultSetCharset();
+        ++tmpPacketId;
+        tmpPacketId = addProduct(proxy, tmpPacketId, charset);
+        tmpPacketId = addCnVersion(proxy, tmpPacketId, charset);
+        tmpPacketId = addDnVersion(proxy, tmpPacketId, charset);
+        tmpPacketId = addCdcVersion(proxy, tmpPacketId, charset);
+        tmpPacketId = addGmsVersion(proxy, tmpPacketId, charset);
+        tmpPacketId = addColumnarVersion(proxy, tmpPacketId, charset);
 
         EOFPacket lastEof = new EOFPacket();
-        lastEof.packetId = ++tmpPacketId;
+        lastEof.packetId = tmpPacketId;
         if (hasMore) {
             lastEof.status |= MySQLPacket.SERVER_MORE_RESULTS_EXISTS;
         }
@@ -95,52 +102,104 @@ public class SelectPolardbVersion {
         return true;
     }
 
-    private static void addGmsVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+    private static byte addProduct(IPacketOutputProxy proxy, byte packetId, String charset) {
+        final String type = "Product";
+        final String productVersion = "PolarDB V2.0";
+        final String productReleaseDate = "Distributed Edition";
+
+        RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+        addToRow(row, type, productVersion, productReleaseDate, charset);
+        row.packetId = packetId;
+        row.write(proxy);
+
+        return ++packetId;
+    }
+
+    private static byte addGmsVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
         final String nodeType = "GMS";
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithBuildNumber(row, nodeType, MetaDbUtil.getGmsPolardbVersion(), charset);
+        addVersionWithReleaseDate(row, nodeType, MetaDbUtil.getGmsPolardbVersion(), charset);
         row.packetId = packetId;
         row.write(proxy);
+
+        return ++packetId;
     }
 
-    private static void addCdcVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
-        final String nodeType = "CDC";
-        RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithBuildNumber(row, nodeType, CdcVersionUtil.getVersion(), charset);
-        row.packetId = packetId;
-        row.write(proxy);
+    private static byte addColumnarVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+        String version = null;
+        try {
+            version = ColumnarVersionUtil.getVersion();
+        } catch (Exception e) {
+            logger.warn("Failed to get Columnar version", e);
+        }
+        if (version != null) {
+            final String nodeType = "Columnar";
+            RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+            addVersionWithReleaseDate(row, nodeType, version, charset);
+            row.packetId = packetId;
+            row.write(proxy);
+            return ++packetId;
+        }
+        return packetId;
     }
 
-    private static void addDnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+    private static byte addCdcVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+        String version = null;
+        try {
+            version = CdcVersionUtil.getVersion();
+        } catch (Exception e) {
+            logger.warn("Failed to get CDC version", e);
+        }
+        if (version != null) {
+            final String nodeType = "CDC";
+            RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+            addVersionWithReleaseDate(row, nodeType, version, charset);
+            row.packetId = packetId;
+            row.write(proxy);
+            return ++packetId;
+        }
+        return packetId;
+    }
+
+    private static byte addDnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
         final String nodeType = "DN";
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithBuildNumber(row, nodeType, ExecUtils.getDnPolardbVersion(), charset);
+        addVersionWithReleaseDate(row, nodeType, ExecUtils.getDnPolardbVersion(), charset);
         row.packetId = packetId;
         row.write(proxy);
+        return ++packetId;
     }
 
-    private static void addCnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+    private static byte addCnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
         final String nodeType = "CN";
         RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithBuildNumber(row, nodeType, Version.getVersion(), charset);
+        addVersionWithReleaseDate(row, nodeType, Version.getVersion(), charset);
         row.packetId = packetId;
         row.write(proxy);
+        return ++packetId;
     }
 
     /**
-     * @param version format: {MajorVersion}-{BuildNumber}
+     * @param version format: {Version}-{ReleaseDate}
      */
-    private static void addVersionWithBuildNumber(RowDataPacket row, String nodeType,
-                                                  String version, String charset) {
+    static void addVersionWithReleaseDate(RowDataPacket row, String type,
+                                          String version, String charset) {
         String majorVersion = version;
-        String buildNumber = "";
+        String releaseDate = null;
         boolean isLegalVersionFormat = false;
         try {
             if (!StringUtils.isBlank(version)) {
                 String[] strs = StringUtils.split(version, "-");
                 if (strs != null && strs.length == 2) {
                     majorVersion = strs[0];
-                    buildNumber = strs[1];
+                    releaseDate = strs[1];
+                    if (releaseDate != null) {
+                        // might be {ReleaseDate}_{BuildNumber}
+                        int buildNumberIdx = releaseDate.indexOf("_");
+                        if (buildNumberIdx != -1) {
+                            releaseDate = releaseDate.substring(0, buildNumberIdx);
+                        }
+                    }
                     isLegalVersionFormat = true;
                 }
             }
@@ -149,10 +208,31 @@ public class SelectPolardbVersion {
         }
 
         if (!isLegalVersionFormat) {
-            logger.warn("Failed to parse " + nodeType + " version: " + version);
+            logger.warn("Failed to parse " + type + " version: " + version);
         }
-        row.add(StringUtil.encode(nodeType, charset));
-        row.add(StringUtil.encode(majorVersion, charset));
-        row.add(StringUtil.encode(buildNumber, charset));
+        addToRowWithProductVersion(row, type, majorVersion, releaseDate, charset);
+    }
+
+    private static void addToRow(RowDataPacket row, String type,
+                                 String version, String releaseDate,
+                                 String charset) {
+        row.add(StringUtil.encode(type, charset));
+        row.add(StringUtil.encode(version, charset));
+        row.add(StringUtil.encode(releaseDate, charset));
+    }
+
+    private static void addToRowWithProductVersion(RowDataPacket row, String type,
+                                                   String version, String releaseDate,
+                                                   String charset) {
+        row.add(StringUtil.encode(type, charset));
+        row.add(StringUtil.encode(getFullProductionVersion(version), charset));
+        row.add(StringUtil.encode(releaseDate, charset));
+    }
+
+    public static String getFullProductionVersion(String version) {
+        if (version == null) {
+            return null;
+        }
+        return Version.PRODUCT_VERSION + "." + version;
     }
 }

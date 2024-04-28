@@ -100,10 +100,6 @@ public class GenericPhyObjectRecorder {
             return false;
         }
 
-        if (!executionContext.needToRenamePhyTables()) {
-            return true;
-        }
-
         if (!ExecUtils.hasLeadership(schemaName)) {
             // The node doesn't have leadership any longer, so let's terminate current job.
             String nodeInfo = TddlNode.getNodeInfo();

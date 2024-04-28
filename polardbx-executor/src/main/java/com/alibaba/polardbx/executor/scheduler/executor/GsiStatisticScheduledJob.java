@@ -24,6 +24,7 @@ import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 
 import java.time.ZonedDateTime;
 
@@ -86,7 +87,8 @@ public class GsiStatisticScheduledJob extends SchedulerExecutor {
 
     protected void persistGsiStatistics() {
         SyncManagerHelper.sync(
-            new GsiStatisticsSyncAction(null, null, null, GsiStatisticsSyncAction.WRITE_BACK_ALL_SCHEMA));
+            new GsiStatisticsSyncAction(null, null, null, GsiStatisticsSyncAction.WRITE_BACK_ALL_SCHEMA),
+            SyncScope.ALL);
     }
 
 }

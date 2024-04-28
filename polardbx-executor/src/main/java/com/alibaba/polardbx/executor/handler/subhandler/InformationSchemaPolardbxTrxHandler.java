@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaPolardbxTrx;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
@@ -66,7 +67,7 @@ public class InformationSchemaPolardbxTrxHandler extends BaseVirtualViewSubClass
         }
 
         final String schema = executionContext.getSchemaName();
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction, schema);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction, schema, SyncScope.ALL);
 
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {

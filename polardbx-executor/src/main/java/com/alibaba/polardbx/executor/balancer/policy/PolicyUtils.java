@@ -158,7 +158,7 @@ public class PolicyUtils {
             TableGroupConfig tableGroupConfig = TableGroupUtils.getTableGroupInfoByGroupName(schema, tableGroup);
             TableInfoManager tableInfoManager = new TableInfoManager();
             List<String> tableNames =
-                tableGroupConfig.getTables().stream().map(table -> table.getTableName()).collect(Collectors.toList());
+                tableGroupConfig.getTables();
             PartitionInfoManager partitionInfoManager = OptimizerContext.getContext(schema).getPartitionInfoManager();
             tableInfoManager.setConnection(conn);
             List<TablesRecord> tableInfoList = tableInfoManager.queryTables(schema);

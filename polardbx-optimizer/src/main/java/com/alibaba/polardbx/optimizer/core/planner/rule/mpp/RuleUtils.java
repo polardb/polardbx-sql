@@ -17,18 +17,15 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.mpp;
 
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.optimizer.PlannerContext;
 import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.RelOptRule;
-import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelCollation;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelDistribution;
 import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelDistributions;
 import org.apache.calcite.rel.RelNode;
-import org.apache.calcite.rel.core.Join;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.logical.LogicalProject;
 import org.apache.calcite.rel.type.RelDataType;
@@ -40,62 +37,52 @@ import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.util.Pair;
+import org.apache.calcite.sql.type.SqlTypeUtil;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public abstract class RuleUtils {
-    /**
-     * Decides whether the join can convert to BroadcastHashJoin.
-     *
-     * @param join the original join node to convert
-     * @param leftSize size of join left child
-     * @param rightSize size of join right child
-     * @return an Tuple2 instance. The first element of tuple is true if join can convert to
-     * broadcast hash join, false else. The second element of tuple is true if left side used
-     * as broadcast side, false else.
-     */
-    public static Pair<Boolean, Boolean> canBroadcast(Join join, Double leftSize, Double rightSize) {
-        // if leftSize or rightSize is unknown, cannot use broadcast
-        if (leftSize == null || rightSize == null) {
-            return new Pair(false, false);
-        }
-        long broadcastNum = PlannerContext.getPlannerContext(join).getParamManager().getLong(
-            ConnectionParams.MPP_JOIN_BROADCAST_NUM);
-        Double totalSize = leftSize + rightSize;
-        switch (join.getJoinType()) {
-        case LEFT:
-            return new Pair<>(totalSize >= broadcastNum * rightSize, false);
-        case RIGHT:
-            return new Pair<>(totalSize >= broadcastNum * leftSize, true);
-        case FULL:
-            return new Pair<>(false, false);
-        case INNER:
-            if (leftSize < rightSize) {
-                return new Pair<>(totalSize >= broadcastNum * leftSize, true);
-            } else {
-                return new Pair<>(totalSize >= broadcastNum * rightSize, false);
-            }
-        case SEMI:
-        case ANTI:
-            return new Pair<>(totalSize >= broadcastNum * rightSize, false);
-        default:
-            throw new RuntimeException("Don't invoke here!!!");
-        }
-    }
-
-    public static boolean satisfy(RelTraitSet parentRequestTraitSet, RelNode childNode) {
-        return childNode.getTraitSet().satisfies(parentRequestTraitSet);
-    }
-
     public static boolean satisfyDistribution(RelDistribution requestTrait, RelNode childNode) {
         return childNode.getTraitSet().getTrait(RelDistributionTraitDef.INSTANCE).satisfies(requestTrait);
     }
 
     public static boolean satisfyCollation(RelCollation requestTrait, RelNode childNode) {
         return childNode.getTraitSet().getTrait(RelCollationTraitDef.INSTANCE).satisfies(requestTrait);
+    }
+
+    public static boolean sameDateType(RelNode input, RelDataType keyDataType, List<Integer> keys) {
+        List<RelDataTypeField> keyDataFieldList = keyDataType.getFieldList();
+
+        for (int i = 0; i < keyDataFieldList.size(); i++) {
+            RelDataType t1 = keyDataFieldList.get(i).getType();
+            RelDataTypeField t2Field = input.getRowType().getFieldList().get(keys.get(i));
+            RelDataType t2 = t2Field.getType();
+            if (!sameType(t1, t2)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean sameType(RelDataType t1, RelDataType t2) {
+        // both are character type(char and varchar), should consider collation here
+        if (SqlTypeUtil.isCharacter(t1) && SqlTypeUtil.isCharacter(t2)) {
+            // charset or collation is null, should not reach here
+            if (t1.getCharset() == null || t1.getCollation() == null) {
+                return false;
+            }
+            boolean collationEquals =
+                t1.getCharset().equals(t2.getCharset()) && t1.getCollation().equals(t2.getCollation());
+            if (!collationEquals) {
+                return false;
+            }
+        } else if (!t1.getSqlTypeName().equals(t2.getSqlTypeName())) {
+            // only compare sql type name
+            return false;
+        }
+        return true;
     }
 
     public static RelNode ensureKeyDataTypeDistribution(RelNode input, RelDataType keyDataType, List<Integer> keys) {

@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.datatype.DecimalRoundMod;
 import com.alibaba.polardbx.common.datatype.DecimalStructure;
 import com.alibaba.polardbx.common.datatype.DecimalTypeBase;
 import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
+import com.alibaba.polardbx.common.datatype.RawBytesDecimalUtils;
 import com.alibaba.polardbx.common.datatype.UInt64;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
@@ -423,5 +424,13 @@ public class DecimalField extends AbstractNumericField {
             return storeStat;
         }
         return stat;
+    }
+
+    @Override
+    public long xxHashCode() {
+        if (isNull()) {
+            return NULL_HASH_CODE;
+        }
+        return RawBytesDecimalUtils.hashCode(decimalValue().getMemorySegment());
     }
 }

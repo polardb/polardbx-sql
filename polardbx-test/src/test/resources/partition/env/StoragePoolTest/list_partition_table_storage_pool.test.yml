@@ -45,7 +45,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select count(1) from metadb.ddl_engine where state != 'success';###0"
-      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -92,7 +92,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select count(1) from metadb.ddl_engine where state != 'success';###0"
-      - "select count(1) from information_schema.ddl_plan where state != 'success';###0"
+      - "select count(1) from information_schema.ddl_plan where state != 'success' and state != 'terminated';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -138,8 +138,8 @@ testCases:
     cleanupDDls:
       - "use polardbx;"
     checkTriggers:
-      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'orders_comm1';###0"
-      - "select count(1) from metadb.ddl_plan where state != 'success' and table_schema = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_engine where state != 'success' and schema_name = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_plan where state != 'success' and state != 'terminated' and table_schema = 'orders_comm1';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -201,8 +201,8 @@ testCases:
     cleanupDDls:
       - "use polardbx;"
     checkTriggers:
-      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'orders_comm1';###0"
-      - "select count(1) from metadb.ddl_plan where state != 'success' and table_schema = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_engine where state != 'success' and schema_name = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_plan where state != 'success' and state != 'terminated' and table_schema = 'orders_comm1';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -246,8 +246,8 @@ testCases:
     cleanupDDls:
       - "use polardbx;"
     checkTriggers:
-      - "select count(1) from metadb.ddl_engine_task where state != 'success' and schema_name = 'orders_comm1';###0"
-      - "select count(1) from metadb.ddl_plan where state != 'success' and table_schema = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_engine where state != 'success' and schema_name = 'orders_comm1';###0"
+      - "select count(1) from metadb.ddl_plan where state != 'success' and state != 'terminated' and table_schema = 'orders_comm1';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"
@@ -288,8 +288,8 @@ testCases:
     cleanupDDls:
       - "use polardbx;"
     checkTriggers:
-      - "select count(1) from metadb.ddl_engine_task where state != 'success';###0"
-      - "select count(1) from metadb.ddl_plan where state != 'success' and table_schema = 'polardbx';###0"
+      - "select count(1) from metadb.ddl_engine where state != 'success';###0"
+      - "select count(1) from metadb.ddl_plan where state != 'success' and state != 'terminated' and table_schema = 'polardbx';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3" "$dn3"
@@ -331,7 +331,7 @@ testCases:
       - "use polardbx;"
     checkTriggers:
       - "select count(1) from metadb.ddl_engine where state != 'success';###0"
-      - "select count(1) from metadb.ddl_plan where state != 'success' and table_schema = 'polardbx';###0"
+      - "select count(1) from metadb.ddl_plan where state != 'success' and state != 'terminated' and table_schema = 'polardbx';###0"
     checkActions:
       storagePoolValueCheck:
         - sp1 "$dn3,$dn4" "$dn3"

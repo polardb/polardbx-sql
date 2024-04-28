@@ -18,7 +18,6 @@ package com.alibaba.polardbx.optimizer.view;
 
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TreeMaps;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.optimizer.config.schema.InformationSchema;
 
 import java.util.Arrays;

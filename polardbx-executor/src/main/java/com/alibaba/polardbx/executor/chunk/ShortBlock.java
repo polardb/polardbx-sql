@@ -17,6 +17,8 @@
 package com.alibaba.polardbx.executor.chunk;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.XxhashUtils;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -60,6 +62,13 @@ public class ShortBlock extends AbstractBlock {
         updateSizeInfo();
     }
 
+    public static ShortBlock from(ShortBlock other, int selSize, int[] selection) {
+        return new ShortBlock(0,
+            selSize,
+            BlockUtils.copyNullArray(other.isNull, selection, selSize),
+            BlockUtils.copyShortArray(other.values, selection, selSize));
+    }
+
     @Override
     public short getShort(int position) {
         checkReadablePosition(position);
@@ -98,6 +107,15 @@ public class ShortBlock extends AbstractBlock {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        if (isNull(pos)) {
+            return NULL_HASH_CODE;
+        } else {
+            return XxhashUtils.finalShuffle(values[pos + arrayOffset]);
+        }
+    }
+
+    @Override
     public int[] hashCodeVector() {
         if (mayHaveNull()) {
             return super.hashCodeVector();
@@ -108,6 +126,18 @@ public class ShortBlock extends AbstractBlock {
             hashes[position] = Short.hashCode(values[position + arrayOffset]);
         }
         return hashes;
+    }
+
+    @Override
+    public void hashCodeVector(int[] results, int positionCount) {
+        if (mayHaveNull()) {
+            super.hashCodeVector(results, positionCount);
+            return;
+        }
+
+        for (int position = 0; position < positionCount; position++) {
+            results[position] = Short.hashCode(values[position + arrayOffset]);
+        }
     }
 
     @Override
@@ -134,7 +164,7 @@ public class ShortBlock extends AbstractBlock {
     @Override
     public void copySelected(boolean selectedInUse, int[] sel, int size, RandomAccessBlock output) {
         if (output instanceof ShortBlock) {
-            ShortBlock outputVectorSlot = (ShortBlock) output;
+            ShortBlock outputVectorSlot = output.cast(ShortBlock.class);
             if (selectedInUse) {
                 for (int i = 0; i < size; i++) {
                     int j = sel[i];
@@ -155,7 +185,7 @@ public class ShortBlock extends AbstractBlock {
         if (!(another instanceof ShortBlock)) {
             GeneralUtil.nestedException("cannot shallow copy to " + another == null ? null : another.toString());
         }
-        ShortBlock vectorSlot = (ShortBlock) another;
+        ShortBlock vectorSlot = another.cast(ShortBlock.class);
         super.shallowCopyTo(vectorSlot);
         vectorSlot.values = values;
     }

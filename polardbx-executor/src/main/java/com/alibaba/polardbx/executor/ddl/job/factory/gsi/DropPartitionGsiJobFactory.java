@@ -141,9 +141,8 @@ public class DropPartitionGsiJobFactory extends DropGsiJobFactory {
             //mark gsi task
             TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(primaryTableName);
             if (!tableMeta.isAutoPartition()) {
-                CdcGsiDdlMarkTask cdcDdlMarkTask =
-                    new CdcGsiDdlMarkTask(schemaName, physicalPlanData,
-                        primaryTableName, executionContext.getOriginSql());
+                CdcGsiDdlMarkTask cdcDdlMarkTask = new CdcGsiDdlMarkTask(schemaName, physicalPlanData,
+                    primaryTableName, executionContext.getOriginSql());
                 taskList.add(cdcDdlMarkTask);
             }
         }

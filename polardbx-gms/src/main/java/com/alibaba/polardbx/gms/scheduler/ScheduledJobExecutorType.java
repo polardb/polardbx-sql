@@ -42,7 +42,9 @@ public enum ScheduledJobExecutorType {
     OPTIMIZER_ALERT(OPTIMIZER),
     AUTO_SPLIT_TABLE_GROUP(UNKNOWN),
     PERSIST_GSI_STATISTICS(UNKNOWN),
-    CLEAN_LOG_TABLE(TRX);
+    @Deprecated
+    CLEAN_LOG_TABLE(TRX),
+    CLEAN_LOG_TABLE_V2(TRX);
 
     ScheduledJobExecutorType(Module module) {
         m = module;

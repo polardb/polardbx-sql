@@ -2,7 +2,7 @@
     select * from lineitem where l_orderkey = 1;
 
   plan: |
-    LogicalView(tables="lineitem[p4]", sql="SELECT `l_orderkey`, `l_partkey`, `l_suppkey`, `l_linenumber`, `l_quantity`, `l_extendedprice`, `l_discount`, `l_tax`, `l_returnflag`, `l_linestatus`, `l_shipdate`, `l_commitdate`, `l_receiptdate`, `l_shipinstruct`, `l_shipmode`, `l_comment` FROM `lineitem` AS `lineitem` WHERE (`l_orderkey` = 1)")
+    phytableoperation(tables="lineitem[p4]", sql="select `lineitem`.`l_orderkey`, `lineitem`.`l_partkey`, `lineitem`.`l_suppkey`, `lineitem`.`l_linenumber`, `lineitem`.`l_quantity`, `lineitem`.`l_extendedprice`, `lineitem`.`l_discount`, `lineitem`.`l_tax`, `lineitem`.`l_returnflag`, `lineitem`.`l_linestatus`, `lineitem`.`l_shipdate`, `lineitem`.`l_commitdate`, `lineitem`.`l_receiptdate`, `lineitem`.`l_shipinstruct`, `lineitem`.`l_shipmode`, `lineitem`.`l_comment` from ? as `lineitem` where (`lineitem`.`l_orderkey` = 1)")
 
 - sql: |
     select * from lineitem where l_orderkey in (1,2,3);
@@ -22,14 +22,14 @@
     select * from t_ab_hash where a = 1 and b = 1
 
   plan: |
-    logicalview(tables="t_ab_hash[p4]", sql="select `a`, `b` from `t_ab_hash` as `t_ab_hash` where ((`a` = 1) and (`b` = 1))")
+    phytableoperation(tables="t_ab_hash[p4]", sql="select `t_ab_hash`.`a`, `t_ab_hash`.`b` from ? as `t_ab_hash` where ((`t_ab_hash`.`a` = 1) and (`t_ab_hash`.`b` = 1))")
 
 
 - sql: |
     select * from t_ab_range where a = 1 and b = 1
 
   plan: |
-    LogicalView(tables="t_ab_range[p0]", sql="SELECT `a`, `b` FROM `t_ab_range` AS `t_ab_range` WHERE ((`a` = 1) AND (`b` = 1))")
+    phytableoperation(tables="t_ab_range[p0]", sql="select `t_ab_range`.`a`, `t_ab_range`.`b` from ? as `t_ab_range` where ((`t_ab_range`.`a` = 1) and (`t_ab_range`.`b` = 1))")
 
 - sql: |
     select * from t_ab_list where a = 1 and b = 1
@@ -92,43 +92,43 @@
     select * from t_hash_varchar where varchar_test = 'k'
 
   plan: |
-    LogicalView(tables="t_hash_varchar[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_varchar` AS `t_hash_varchar` WHERE (`varchar_test` = 'k')")
+    phytableoperation(tables="t_hash_varchar[p2]", sql="select `t_hash_varchar`.`pk`, `t_hash_varchar`.`integer_test`, `t_hash_varchar`.`varchar_test`, `t_hash_varchar`.`char_test`, `t_hash_varchar`.`blob_test`, `t_hash_varchar`.`tinyint_test`, `t_hash_varchar`.`tinyint_1bit_test`, `t_hash_varchar`.`smallint_test`, `t_hash_varchar`.`mediumint_test`, `t_hash_varchar`.`bit_test`, `t_hash_varchar`.`bigint_test`, `t_hash_varchar`.`float_test`, `t_hash_varchar`.`double_test`, `t_hash_varchar`.`decimal_test`, `t_hash_varchar`.`date_test`, `t_hash_varchar`.`time_test`, `t_hash_varchar`.`datetime_test`, `t_hash_varchar`.`timestamp_test`, `t_hash_varchar`.`year_test`, `t_hash_varchar`.`mediumtext_test` from ? as `t_hash_varchar` where (`t_hash_varchar`.`varchar_test` = 'k')")
 
 - sql: |
     select * from t_hash_bigint where bigint_test = 10000000000
 
   plan: |
-    LogicalView(tables="t_hash_bigint[p4]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_bigint` AS `t_hash_bigint` WHERE (`bigint_test` = 10000000000)")
+    phytableoperation(tables="t_hash_bigint[p4]", sql="select `t_hash_bigint`.`pk`, `t_hash_bigint`.`integer_test`, `t_hash_bigint`.`varchar_test`, `t_hash_bigint`.`char_test`, `t_hash_bigint`.`blob_test`, `t_hash_bigint`.`tinyint_test`, `t_hash_bigint`.`tinyint_1bit_test`, `t_hash_bigint`.`smallint_test`, `t_hash_bigint`.`mediumint_test`, `t_hash_bigint`.`bit_test`, `t_hash_bigint`.`bigint_test`, `t_hash_bigint`.`float_test`, `t_hash_bigint`.`double_test`, `t_hash_bigint`.`decimal_test`, `t_hash_bigint`.`date_test`, `t_hash_bigint`.`time_test`, `t_hash_bigint`.`datetime_test`, `t_hash_bigint`.`timestamp_test`, `t_hash_bigint`.`year_test`, `t_hash_bigint`.`mediumtext_test` from ? as `t_hash_bigint` where (`t_hash_bigint`.`bigint_test` = 10000000000)")
 
 - sql: |
     select * from t_hash_date where date_test = '2013-04-05 06:34:12'
 
   plan: |
-    LogicalView(tables="t_hash_date[p1]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_date` AS `t_hash_date` WHERE (`date_test` = '2013-04-05 06:34:12')")
+    phytableoperation(tables="t_hash_date[p1]", sql="select `t_hash_date`.`pk`, `t_hash_date`.`integer_test`, `t_hash_date`.`varchar_test`, `t_hash_date`.`char_test`, `t_hash_date`.`blob_test`, `t_hash_date`.`tinyint_test`, `t_hash_date`.`tinyint_1bit_test`, `t_hash_date`.`smallint_test`, `t_hash_date`.`mediumint_test`, `t_hash_date`.`bit_test`, `t_hash_date`.`bigint_test`, `t_hash_date`.`float_test`, `t_hash_date`.`double_test`, `t_hash_date`.`decimal_test`, `t_hash_date`.`date_test`, `t_hash_date`.`time_test`, `t_hash_date`.`datetime_test`, `t_hash_date`.`timestamp_test`, `t_hash_date`.`year_test`, `t_hash_date`.`mediumtext_test` from ? as `t_hash_date` where (`t_hash_date`.`date_test` = '2013-04-05 06:34:12')")
 
 - sql: |
     select * from t_hash_timestamp where timestamp_test = '2013-04-04 22:34:12'
 
   plan: |
-    LogicalView(tables="t_hash_timestamp[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_hash_timestamp` AS `t_hash_timestamp` WHERE (`timestamp_test` = '2013-04-04 22:34:12')")
+    phytableoperation(tables="t_hash_timestamp[p2]", sql="select `t_hash_timestamp`.`pk`, `t_hash_timestamp`.`integer_test`, `t_hash_timestamp`.`varchar_test`, `t_hash_timestamp`.`char_test`, `t_hash_timestamp`.`blob_test`, `t_hash_timestamp`.`tinyint_test`, `t_hash_timestamp`.`tinyint_1bit_test`, `t_hash_timestamp`.`smallint_test`, `t_hash_timestamp`.`mediumint_test`, `t_hash_timestamp`.`bit_test`, `t_hash_timestamp`.`bigint_test`, `t_hash_timestamp`.`float_test`, `t_hash_timestamp`.`double_test`, `t_hash_timestamp`.`decimal_test`, `t_hash_timestamp`.`date_test`, `t_hash_timestamp`.`time_test`, `t_hash_timestamp`.`datetime_test`, `t_hash_timestamp`.`timestamp_test`, `t_hash_timestamp`.`year_test`, `t_hash_timestamp`.`mediumtext_test` from ? as `t_hash_timestamp` where (`t_hash_timestamp`.`timestamp_test` = '2013-04-04 22:34:12')")
 
 - sql: |
     select * from t_range_varchar where varchar_test = 'k'
 
   plan: |
-    LogicalView(tables="t_range_varchar[p2]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_varchar` AS `t_range_varchar` WHERE (`varchar_test` = 'k')")
+    phytableoperation(tables="t_range_varchar[p2]", sql="select `t_range_varchar`.`pk`, `t_range_varchar`.`integer_test`, `t_range_varchar`.`varchar_test`, `t_range_varchar`.`char_test`, `t_range_varchar`.`blob_test`, `t_range_varchar`.`tinyint_test`, `t_range_varchar`.`tinyint_1bit_test`, `t_range_varchar`.`smallint_test`, `t_range_varchar`.`mediumint_test`, `t_range_varchar`.`bit_test`, `t_range_varchar`.`bigint_test`, `t_range_varchar`.`float_test`, `t_range_varchar`.`double_test`, `t_range_varchar`.`decimal_test`, `t_range_varchar`.`date_test`, `t_range_varchar`.`time_test`, `t_range_varchar`.`datetime_test`, `t_range_varchar`.`timestamp_test`, `t_range_varchar`.`year_test`, `t_range_varchar`.`mediumtext_test` from ? as `t_range_varchar` where (`t_range_varchar`.`varchar_test` = 'k')")
 
 - sql: |
     select * from t_range_bigint where bigint_test = 200
 
   plan: |
-    LogicalView(tables="t_range_bigint[p1]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_bigint` AS `t_range_bigint` WHERE (`bigint_test` = 200)")
+    phytableoperation(tables="t_range_bigint[p1]", sql="select `t_range_bigint`.`pk`, `t_range_bigint`.`integer_test`, `t_range_bigint`.`varchar_test`, `t_range_bigint`.`char_test`, `t_range_bigint`.`blob_test`, `t_range_bigint`.`tinyint_test`, `t_range_bigint`.`tinyint_1bit_test`, `t_range_bigint`.`smallint_test`, `t_range_bigint`.`mediumint_test`, `t_range_bigint`.`bit_test`, `t_range_bigint`.`bigint_test`, `t_range_bigint`.`float_test`, `t_range_bigint`.`double_test`, `t_range_bigint`.`decimal_test`, `t_range_bigint`.`date_test`, `t_range_bigint`.`time_test`, `t_range_bigint`.`datetime_test`, `t_range_bigint`.`timestamp_test`, `t_range_bigint`.`year_test`, `t_range_bigint`.`mediumtext_test` from ? as `t_range_bigint` where (`t_range_bigint`.`bigint_test` = 200)")
 
 - sql: |
     select * from t_range_date where date_test = '2013-04-05 06:34:12'
 
   plan: |
-    LogicalView(tables="t_range_date[p0]", sql="SELECT `pk`, `integer_test`, `varchar_test`, `char_test`, `blob_test`, `tinyint_test`, `tinyint_1bit_test`, `smallint_test`, `mediumint_test`, `bit_test`, `bigint_test`, `float_test`, `double_test`, `decimal_test`, `date_test`, `time_test`, `datetime_test`, `timestamp_test`, `year_test`, `mediumtext_test` FROM `t_range_date` AS `t_range_date` WHERE (`date_test` = '2013-04-05 06:34:12')")
+    phytableoperation(tables="t_range_date[p0]", sql="select `t_range_date`.`pk`, `t_range_date`.`integer_test`, `t_range_date`.`varchar_test`, `t_range_date`.`char_test`, `t_range_date`.`blob_test`, `t_range_date`.`tinyint_test`, `t_range_date`.`tinyint_1bit_test`, `t_range_date`.`smallint_test`, `t_range_date`.`mediumint_test`, `t_range_date`.`bit_test`, `t_range_date`.`bigint_test`, `t_range_date`.`float_test`, `t_range_date`.`double_test`, `t_range_date`.`decimal_test`, `t_range_date`.`date_test`, `t_range_date`.`time_test`, `t_range_date`.`datetime_test`, `t_range_date`.`timestamp_test`, `t_range_date`.`year_test`, `t_range_date`.`mediumtext_test` from ? as `t_range_date` where (`t_range_date`.`date_test` = '2013-04-05 06:34:12')")
 
 #- sql: |
 #    select * from t_range_timestamp where timestamp_test = '2015-04-04 22:34:12'

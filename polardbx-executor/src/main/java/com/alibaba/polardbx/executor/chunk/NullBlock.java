@@ -71,6 +71,11 @@ public class NullBlock implements Block {
     }
 
     @Override
+    public long hashCodeUseXxhash(int pos) {
+        return NULL_HASH_CODE;
+    }
+
+    @Override
     public boolean mayHaveNull() {
         return true;
     }

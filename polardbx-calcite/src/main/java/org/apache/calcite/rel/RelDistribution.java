@@ -48,6 +48,10 @@ public interface RelDistribution extends RelMultipleTrait {
    */
   @Nonnull List<Integer> getKeys();
 
+  boolean isShardWise();
+
+  @Nonnull Integer getShardCnt();
+
   RelDistribution apply(Mappings.TargetMapping mapping);
 
   /** Type of distribution. */

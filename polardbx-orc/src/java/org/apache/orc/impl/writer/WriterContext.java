@@ -55,6 +55,12 @@ public interface WriterContext {
   boolean isCompressed();
 
   /**
+   * Is the ORC file using decimal64?
+   * @return are the streams compressed
+   */
+  boolean isDecimal64();
+
+  /**
    * Get the encoding strategy to use.
    * @return encoding strategy
    */
@@ -65,6 +71,12 @@ public interface WriterContext {
    * @return bloom filter columns
    */
   boolean[] getBloomFilterColumns();
+
+  /**
+   * Get forced dictionary columns
+   * @return dictionary columns
+   */
+  boolean[] getDictionaryColumns();
 
   /**
    * Get bloom filter false positive percentage.
@@ -91,6 +103,8 @@ public interface WriterContext {
   void writeBloomFilter(StreamName name,
                         OrcProto.BloomFilterIndex.Builder bloom
                         ) throws IOException;
+
+  void writeBitmap(StreamName name, OrcProto.BitmapIndex.Builder bitmap) throws IOException;
 
   /**
    * Get the mask for the unencrypted variant.
@@ -147,4 +161,6 @@ public interface WriterContext {
    * @return true if we should use the proleptic Gregorian calendar
    */
   boolean getProlepticGregorian();
+
+  boolean[] getRecordFirstAndLatest();
 }

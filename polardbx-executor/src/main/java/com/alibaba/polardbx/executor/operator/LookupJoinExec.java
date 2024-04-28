@@ -36,7 +36,6 @@ import org.apache.calcite.rel.core.JoinRelType;
 import java.util.Arrays;
 import java.util.List;
 
-import static com.alibaba.polardbx.executor.operator.AbstractHashJoinExec.LIST_END;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.buildOneChunk;
 
 /**
@@ -295,7 +294,7 @@ public class LookupJoinExec extends AbstractBufferedJoinExec implements ResumeEx
                 }
                 buildHashTable();
                 // Allocate memory for hash-table
-                bufferMemoryAllocator.allocateReservedMemory(hashTable.estimateSize());
+                bufferMemoryAllocator.allocateReservedMemory(hashTable.estimateSizeInBytes());
                 bufferMemoryAllocator.allocateReservedMemory(SizeOf.sizeOf(positionLinks));
                 Chunk ret = savePopChunk;
                 this.savePopChunk = null;

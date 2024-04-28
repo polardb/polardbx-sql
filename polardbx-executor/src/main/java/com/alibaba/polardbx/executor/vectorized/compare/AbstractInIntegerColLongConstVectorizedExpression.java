@@ -25,7 +25,6 @@ import com.alibaba.polardbx.executor.vectorized.EvaluationContext;
 import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import com.alibaba.polardbx.optimizer.core.datatype.SliceType;
 
 public abstract class AbstractInIntegerColLongConstVectorizedExpression extends AbstractVectorizedExpression {
     protected final boolean[] operandIsNulls;
@@ -85,7 +84,7 @@ public abstract class AbstractInIntegerColLongConstVectorizedExpression extends 
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = outputVectorSlot.cast(LongBlock.class).longArray();
 
         if (anyOperandsNull()) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -96,7 +95,7 @@ public abstract class AbstractInIntegerColLongConstVectorizedExpression extends 
             return;
         }
 
-        int[] intArray = ((IntegerBlock) leftInputVectorSlot).intArray();
+        int[] intArray = leftInputVectorSlot.cast(IntegerBlock.class).intArray();
 
         if (isSelectionInUse) {
             for (int i = 0; i < batchSize; i++) {

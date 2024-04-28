@@ -56,6 +56,8 @@ import org.apache.calcite.util.Util;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 
+import static org.apache.calcite.sql.type.SqlTypeName.INT_TYPES;
+
 /**
  * Constant value in a row-expression.
  * <p>
@@ -940,6 +942,20 @@ public class RexLiteral extends RexNode {
             return false;
         }
         return !booleanValue(this);
+    }
+
+    public boolean isAlwaysTrueIntOrBoolean() {
+        if (INT_TYPES.contains(typeName)) {
+            return longValue(this) != 0;
+        }
+        return isAlwaysTrue();
+    }
+
+    public boolean isAlwaysFalseIntOrBoolean() {
+        if (INT_TYPES.contains(typeName)) {
+            return longValue(this) == 0;
+        }
+        return isAlwaysFalse();
     }
 
     public boolean equals(Object obj) {

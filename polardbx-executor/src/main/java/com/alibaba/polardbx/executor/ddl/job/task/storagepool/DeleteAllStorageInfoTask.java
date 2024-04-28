@@ -21,20 +21,17 @@ import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.sync.AlterStoragePoolSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.StorageInfoAccessor;
 import com.alibaba.polardbx.gms.topology.StorageInfoExtraFieldJSON;
 import com.alibaba.polardbx.gms.topology.StorageInfoRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.locality.StoragePoolManager;
 import lombok.Getter;
-import org.apache.commons.lang.StringUtils;
 
 import java.sql.Connection;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
-
-import static com.alibaba.polardbx.executor.ddl.job.factory.storagepool.StoragePoolUtils.RECYCLE_STORAGE_POOL;
 
 @Getter
 @TaskName(name = "DeleteAllStorageInfoTask")
@@ -76,12 +73,13 @@ public class DeleteAllStorageInfoTask extends BaseDdlTask {
 
     @Override
     protected void onRollbackSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""), SyncScope.ALL);
     }
 
     @Override
     protected void onExecutionSuccess(ExecutionContext executionContext) {
-        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""));
+        SyncManagerHelper.sync(new AlterStoragePoolSyncAction("", ""),
+            SyncScope.ALL);
     }
 
 }

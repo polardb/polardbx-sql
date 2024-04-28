@@ -60,7 +60,7 @@
 
     Project(id0="id")
       BKAJoin(condition="id = id", type="inner")
-        SemiHashJoin(condition="id = purchase_times", type="semi")
+        SemiHashJoin(condition="id = purchase_times", type="semi", build="inner")
           LogicalView(tables="optest_0000.t", sql="SELECT `id` FROM `t` AS `t`")
           LogicalView(tables="optest_0001.t_buyer_day_2", sql="SELECT `purchase_times` FROM `t_buyer_day` AS `t_buyer_day` FORCE INDEX(SELLERID_DURING) WHERE (`sellerId` = 3234284498)")
         Gather(concurrent=true)

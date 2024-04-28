@@ -98,9 +98,10 @@ public class LogicalRelocateHandler extends HandlerCommon {
         checkUpdateDeleteLimitLimitation(relocate.getOriginalSqlNode(), executionContext);
 
         RelNode input = relocate.getInput();
-
+        TableMeta tableMeta =
+            executionContext.getSchemaManager(relocate.getSchemaName()).getTable(relocate.getLogicalTableName());
         final boolean checkForeignKey =
-            executionContext.foreignKeyChecks();
+            executionContext.foreignKeyChecks() && (tableMeta.hasForeignKey() || tableMeta.hasReferencedForeignKey());
         final boolean foreignKeyChecksForUpdateDelete =
             executionContext.getParamManager().getBoolean(ConnectionParams.FOREIGN_KEY_CHECKS_FOR_UPDATE_DELETE);
 
@@ -153,6 +154,8 @@ public class LogicalRelocateHandler extends HandlerCommon {
 
         final boolean skipUnchangedRow =
             executionContext.getParamManager().getBoolean(ConnectionParams.DML_RELOCATE_SKIP_UNCHANGED_ROW);
+        final boolean checkJsonByStringCompare =
+            executionContext.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
         try {
             // Do select
@@ -221,7 +224,7 @@ public class LogicalRelocateHandler extends HandlerCommon {
                             rowSet = buildChangedRowSet(distinctValues, returnColumns,
                                 relocate.getSetColumnTargetMappings().get(tableIndex),
                                 relocate.getSetColumnSourceMappings().get(tableIndex),
-                                relocate.getSetColumnMetas().get(tableIndex));
+                                relocate.getSetColumnMetas().get(tableIndex), checkJsonByStringCompare);
                             if (rowSet == null) {
                                 continue;
                             }
@@ -237,7 +240,8 @@ public class LogicalRelocateHandler extends HandlerCommon {
                             final Mapping sourceMap = relocate.getSetColumnSourceMappings().get(tableIndex);
                             final List<ColumnMeta> metas = relocate.getSetColumnMetas().get(tableIndex);
                             for (List<Object> row : (useRowSet ? rowSet.getRows() : distinctValues)) {
-                                affectRows += identicalRow(row, targetMap, sourceMap, metas) ? 0 : 1;
+                                affectRows +=
+                                    identicalRow(row, targetMap, sourceMap, metas, checkJsonByStringCompare) ? 0 : 1;
                             }
                         }
 
@@ -275,24 +279,25 @@ public class LogicalRelocateHandler extends HandlerCommon {
     }
 
     protected static boolean identicalRow(List<Object> row, Mapping setColumnTargetMapping,
-                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas) {
+                                          Mapping setColumnSourceMapping, List<ColumnMeta> setColumnMetas,
+                                          boolean checkJsonByStringCompare) {
         final List<Object> targets = Mappings.permute(row, setColumnTargetMapping);
         final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
         final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
         final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
-        return sourceKey.equalsForUpdate(targetKey);
+        return sourceKey.equalsForUpdate(targetKey, checkJsonByStringCompare);
     }
 
     public static RowSet buildChangedRowSet(List<List<Object>> values, List<ColumnMeta> returnColumns,
                                             Mapping setColumnTargetMapping, Mapping setColumnSourceMapping,
-                                            List<ColumnMeta> setColumnMetas) {
+                                            List<ColumnMeta> setColumnMetas, boolean checkJsonByStringCompare) {
         final List<List<Object>> changedValues = new ArrayList<>();
         for (List<Object> row : values) {
             final List<Object> targets = Mappings.permute(row, setColumnTargetMapping);
             final List<Object> sources = Mappings.permute(row, setColumnSourceMapping);
             final GroupKey targetKey = new GroupKey(targets.toArray(), setColumnMetas);
             final GroupKey sourceKey = new GroupKey(sources.toArray(), setColumnMetas);
-            if (!targetKey.equalsForUpdate(sourceKey)) {
+            if (!targetKey.equalsForUpdate(sourceKey, checkJsonByStringCompare)) {
                 changedValues.add(row);
             }
         }
@@ -461,16 +466,17 @@ public class LogicalRelocateHandler extends HandlerCommon {
             DistinctWriter writer = primaryRelocateWriter.containsKey(tableIndex) ?
                 primaryRelocateWriter.get(tableIndex).getModifyWriter() :
                 primaryDistinctWriter.get(tableIndex);
+            int columnCnt = tableMeta.getAllColumns().size();
 
             List<List<Object>> rows = new ArrayList<>();
             for (List<Object> value : values) {
                 List<Object> row = new ArrayList<>();
-                for (int i = 0; i < tableMeta.getAllColumns().size(); i++) {
+                for (int i = 0; i < columnCnt; i++) {
                     row.add(value.get(i + index));
                 }
                 rows.add(row);
             }
-            index += tableMeta.getAllColumns().size();
+            index += columnCnt;
 
             if (logicalRelocate.getOperation() == TableModify.Operation.DELETE) {
                 LogicalModify modify = null;

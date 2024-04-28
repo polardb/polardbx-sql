@@ -123,7 +123,7 @@ public class SqlParameterizeUtils {
             if (ErrorCode.match(t.getMessage())) {
                 throw t;
             } else {
-                throw new TddlRuntimeException(ErrorCode.ERR_PARSER, t.getMessage());
+                throw new TddlRuntimeException(ErrorCode.ERR_PARSER, t, t.getMessage());
             }
         }
     }

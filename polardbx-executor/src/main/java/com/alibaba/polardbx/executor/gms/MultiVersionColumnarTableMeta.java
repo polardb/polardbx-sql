@@ -1,0 +1,289 @@
+package com.alibaba.polardbx.executor.gms;
+
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.utils.logger.Logger;
+import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.executor.archive.schemaevolution.ColumnMetaWithTs;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarColumnEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionAccessor;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
+import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
+import com.alibaba.polardbx.gms.util.MetaDbUtil;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.Field;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import org.apache.calcite.sql.type.SqlTypeName;
+import org.eclipse.jetty.util.ConcurrentHashSet;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.SortedMap;
+import java.util.SortedSet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static com.alibaba.polardbx.optimizer.config.table.OrcMetaUtils.TYPE_FACTORY;
+
+public class MultiVersionColumnarTableMeta implements Purgeable {
+    private static final Logger LOGGER = LoggerFactory.getLogger("COLUMNAR_TRANS");
+    // this size is based on columnar schema compaction frequency
+    private static final int MAX_VERSION_SCHEMA_CACHE_SIZE = 16;
+
+    private final long tableId;
+    private final ColumnMeta TSO_COLUMN;
+    private final ColumnMeta POSITION_COLUMN;
+
+    // column_id -> columnMeta
+    // this column_id is the id of columnar_column_evolution, ranther than field_id
+    private final Map<Long, ColumnMetaWithTs> allColumnMetas = new ConcurrentHashMap<>();
+
+    private final Set<Long> primaryKeySet = ConcurrentHashMap.newKeySet();
+
+    // schema_ts -> version_id
+    // THE schema_ts COULD BE NULL, which means that the columnar has not processed with this version
+    // notice that only schema_ts is ordered, while version_id may be not
+    private final SortedMap<Long, Long> versionIdMap = new ConcurrentSkipListMap<>();
+
+    // version_id -> [column_id1 ...]
+    // notice that columnar_table_evolution stores id rather than field_id of columnar_column_evolution
+    private final Map<Long, List<Long>> multiVersionColumns = new ConcurrentHashMap<>();
+
+    // for columnar_column_evoluion: id -> field_id
+    private final Map<Long, Long> columnFieldIdMap = new ConcurrentHashMap<>();
+
+    // field -> [column_id for version 1, column_id for version 2, ...]
+    private final Map<Long, SortedSet<Long>> multiVersionColumnIds = new ConcurrentHashMap<>();
+
+    private final LoadingCache<Long, List<ColumnMeta>> columnMetaListByTso;
+    private final LoadingCache<Long, Map<Long, Integer>> fieldIdMapByTso;
+
+    private final Lock lock = new ReentrantLock();
+
+    public MultiVersionColumnarTableMeta(long tableId) {
+        this.tableId = tableId;
+
+        String tableName = String.valueOf(this.tableId);
+        TSO_COLUMN = new ColumnMeta(tableName, "tso", null,
+            new Field(TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT)));
+        POSITION_COLUMN = new ColumnMeta(tableName, "position", null,
+            new Field(TYPE_FACTORY.createSqlType(SqlTypeName.BIGINT)));
+
+        columnMetaListByTso = CacheBuilder.newBuilder()
+            .maximumSize(MAX_VERSION_SCHEMA_CACHE_SIZE)
+            .build(new CacheLoader<Long, List<ColumnMeta>>() {
+                @Override
+                public List<ColumnMeta> load(@NotNull Long schemaTso) {
+                    long versionId = versionIdMap.get(schemaTso);
+                    List<Long> columns = multiVersionColumns.get(versionId);
+
+                    List<ColumnMeta> columnMetas = new ArrayList<>();
+                    columnMetas.add(TSO_COLUMN);
+                    columnMetas.add(POSITION_COLUMN);
+                    columnMetas.addAll(
+                        columns.stream().map(columnId -> allColumnMetas.get(columnId).getMeta())
+                            .collect(Collectors.toList())
+                    );
+
+                    return columnMetas;
+                }
+            });
+
+        fieldIdMapByTso = CacheBuilder.newBuilder()
+            .maximumSize(MAX_VERSION_SCHEMA_CACHE_SIZE)
+            .build(new CacheLoader<Long, Map<Long, Integer>>() {
+                @Override
+                public Map<Long, Integer> load(@NotNull Long schemaTso) {
+                    long versionId = versionIdMap.get(schemaTso);
+                    List<Long> columns = multiVersionColumns.get(versionId);
+
+                    Map<Long, Integer> targetColumnIndex = new HashMap<>();
+
+                    for (int i = 0; i < columns.size(); i++) {
+                        targetColumnIndex.put(columnFieldIdMap.get(columns.get(i)),
+                            i + ColumnarStoreUtils.IMPLICIT_COLUMN_CNT);
+                    }
+
+                    return targetColumnIndex;
+                }
+            });
+    }
+
+    @Nullable
+    public List<Long> getColumnFieldIdList(long versionId) {
+        if (multiVersionColumns.isEmpty() || !multiVersionColumns.containsKey(versionId)) {
+            return null;
+        }
+
+        return multiVersionColumns.get(versionId).stream().map(columnFieldIdMap::get)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Get the map from field_id to the position of corresponding file for certain tso
+     *
+     * @param schemaTso schema tso
+     * @return Map: field_id -> column position in file
+     */
+    @Nullable
+    public Map<Long, Integer> getFieldIdMapByTso(long schemaTso) {
+        if (versionIdMap.isEmpty() || versionIdMap.lastKey() < schemaTso) {
+            return null;
+        }
+
+        try {
+            return fieldIdMapByTso.get(schemaTso);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(
+                String.format(
+                    "Failed to build field id map for CCI, table id: %d, schema tso: %d", tableId, schemaTso
+                ),
+                e
+            );
+        }
+    }
+
+    @Nullable
+    public List<ColumnMeta> getColumnMetaListByTso(long schemaTso) {
+        if (versionIdMap.isEmpty() || versionIdMap.lastKey() < schemaTso) {
+            return null;
+        }
+
+        try {
+            return columnMetaListByTso.get(schemaTso);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(
+                String.format(
+                    "Failed to build column meta for CCI, table id: %d, schema tso: %d", tableId, schemaTso
+                ),
+                e
+            );
+        }
+    }
+
+    public int @Nullable [] getPrimaryKeyColumns(long schemaTso) {
+        if (versionIdMap.isEmpty() || versionIdMap.lastKey() < schemaTso) {
+            return null;
+        }
+
+        long versionId = versionIdMap.get(schemaTso);
+        List<Long> columns = multiVersionColumns.get(versionId);
+
+        return IntStream.range(0, columns.size())
+            .filter(index -> primaryKeySet.contains(columns.get(index)))
+            .map(index -> index + ColumnarStoreUtils.IMPLICIT_COLUMN_CNT + 1)
+            .toArray();
+    }
+
+    @Nullable
+    public ColumnMetaWithTs getInitColumnMeta(long fieldId) {
+        if (multiVersionColumnIds.containsKey(fieldId)) {
+            return allColumnMetas.get(multiVersionColumnIds.get(fieldId).first());
+        } else {
+            return null;
+        }
+    }
+
+    public void loadUntilTso(long schemaTso) {
+        if (!versionIdMap.isEmpty() && versionIdMap.lastKey() >= schemaTso) {
+            return;
+        }
+
+        long latestTso = versionIdMap.isEmpty() ? Long.MIN_VALUE : versionIdMap.lastKey();
+        // this latest version id in current memory cache is nonsense, since version id may be out of order
+
+        List<ColumnarTableEvolutionRecord> tableEvolutionRecordList;
+        List<ColumnarColumnEvolutionRecord> columnEvolutionRecordList;
+
+        try (Connection connection = MetaDbUtil.getConnection()) {
+            ColumnarTableEvolutionAccessor accessor = new ColumnarTableEvolutionAccessor();
+            accessor.setConnection(connection);
+            tableEvolutionRecordList = accessor.queryTableIdAndGreaterThanTso(tableId, latestTso);
+
+            ColumnarColumnEvolutionAccessor columnAccessor = new ColumnarColumnEvolutionAccessor();
+            columnAccessor.setConnection(connection);
+            // TODO(siyun): greater than certain id and order by id
+            columnEvolutionRecordList = columnAccessor.queryTableIdAndVersionIdsOrderById(
+                tableId,
+                tableEvolutionRecordList.stream()
+                    // For those versions which have not been loaded
+                    .filter(r -> !multiVersionColumns.containsKey(r.versionId))
+                    .map(r -> r.versionId)
+                    .collect(Collectors.toList())
+            );
+
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_COLUMNAR_SNAPSHOT, e,
+                String.format("Failed to generate columnar schema of tso: %d", schemaTso));
+        }
+
+        for (ColumnarColumnEvolutionRecord columnEvolutionRecord : columnEvolutionRecordList) {
+            Long id = columnEvolutionRecord.id;
+            Long filedId = columnEvolutionRecord.fieldId;
+            ColumnsRecord columnsRecord = columnEvolutionRecord.columnsRecord;
+            ColumnMeta columnMeta = GmsTableMetaManager.buildColumnMeta(
+                columnsRecord,
+                tableEvolutionRecordList.get(0).indexName,
+                columnsRecord.collationName,
+                columnsRecord.characterSetName);
+            ColumnMetaWithTs columnMetaWithTs = new ColumnMetaWithTs(columnEvolutionRecord.create, columnMeta);
+            if ("PRI".equalsIgnoreCase(columnsRecord.columnKey)) {
+                primaryKeySet.add(id);
+            }
+            allColumnMetas.put(id, columnMetaWithTs);
+            columnFieldIdMap.put(id, filedId);
+            multiVersionColumnIds.compute(filedId, (k, v) -> {
+                if (v == null) {
+                    SortedSet<Long> newSet = new ConcurrentSkipListSet<>();
+                    newSet.add(id);
+                    return newSet;
+                } else {
+                    v.add(id);
+                    return v;
+                }
+            });
+        }
+
+        for (ColumnarTableEvolutionRecord tableRecord : tableEvolutionRecordList) {
+            long commitTs = tableRecord.commitTs;
+            long versionId = tableRecord.versionId;
+            multiVersionColumns.putIfAbsent(versionId, tableRecord.columns);
+            if (commitTs != Long.MAX_VALUE) {
+                versionIdMap.put(commitTs, versionId);
+            }
+        }
+    }
+
+    /**
+     * Purge schema for outdated columnar table schema
+     * Noted that this tso is different from low watermark,
+     * since those schemas which haven't been compacted should all be reserved.
+     */
+    @Override
+    public void purge(long schemaTso) {
+
+    }
+
+    public Lock getLock() {
+        return lock;
+    }
+}

@@ -18,12 +18,10 @@ package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.gms.module.LogLevel;
-import com.alibaba.polardbx.gms.module.LogPattern;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 
-import static com.alibaba.polardbx.gms.module.LogPattern.LOAD_DATA;
 import static com.alibaba.polardbx.gms.module.LogPattern.PROCESS_START;
 
 /**

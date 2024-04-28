@@ -86,7 +86,7 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         if (operand1IsNull || operand2IsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
@@ -98,7 +98,7 @@ public class BetweenDateColCharConstCharConstVectorizedExpression extends Abstra
         }
 
         if (leftInputVectorSlot instanceof DateBlock) {
-            long[] array1 = ((DateBlock) leftInputVectorSlot).getPacked();
+            long[] array1 = leftInputVectorSlot.cast(DateBlock.class).getPacked();
 
             if (isSelectionInUse) {
                 for (int i = 0; i < batchSize; i++) {

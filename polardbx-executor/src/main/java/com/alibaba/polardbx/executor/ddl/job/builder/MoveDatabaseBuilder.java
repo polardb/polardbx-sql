@@ -48,6 +48,8 @@ public class MoveDatabaseBuilder {
     protected Map<String, Map<String, Set<String>>> targetTablesTopology = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     protected Map<String, MoveDatabaseItemPreparedData> tablesPreparedData =
         new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    protected Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap =
+        new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public MoveDatabaseBuilder(DDL ddl, MoveDatabasePreparedData preparedData,
                                ExecutionContext executionContext) {
@@ -81,6 +83,11 @@ public class MoveDatabaseBuilder {
             targetTablesTopology.put(tableName, itemBuilder.getTargetPhyTables());
             logicalTablesPhysicalPlansMap.put(tableName, phyDdlTableOperations);
             tablesPreparedData.put(tableName, moveDatabaseItemPreparedData);
+
+            AlterTableDiscardTableSpaceBuilder discardTableSpaceBuilder =
+                AlterTableDiscardTableSpaceBuilder.createBuilder(
+                    preparedData.getSchemaName(), tableName, itemBuilder.getTableTopology(), executionContext);
+            discardTableSpacePhysicalPlansMap.put(tableName, discardTableSpaceBuilder.build().getPhysicalPlans());
         }
 
     }
@@ -99,6 +106,10 @@ public class MoveDatabaseBuilder {
 
     public Map<String, Map<String, Set<String>>> getTargetTablesTopology() {
         return targetTablesTopology;
+    }
+
+    public Map<String, List<PhyDdlTableOperation>> getDiscardTableSpacePhysicalPlansMap() {
+        return discardTableSpacePhysicalPlansMap;
     }
 
     public Map<String, MoveDatabaseItemPreparedData> getTablesPreparedData() {

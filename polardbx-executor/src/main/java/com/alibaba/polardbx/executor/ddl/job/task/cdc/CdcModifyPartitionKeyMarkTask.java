@@ -17,12 +17,13 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.cdc.ICdcManager;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.DdlContext;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
@@ -42,13 +43,18 @@ import static com.alibaba.polardbx.executor.ddl.job.task.cdc.CdcMarkUtil.buildEx
 @Setter
 public class CdcModifyPartitionKeyMarkTask extends BaseDdlTask {
     private String logicalTableName;
+    private String indexName;
     private SqlKind sqlKind;
+    private Map<String, String> exchangeNamesMapping;
 
     @JSONCreator
-    public CdcModifyPartitionKeyMarkTask(String schemaName, String logicalTableName, SqlKind sqlKind) {
+    public CdcModifyPartitionKeyMarkTask(String schemaName, String logicalTableName, String indexName,
+                                         SqlKind sqlKind, Map<String, String> exchangeNamesMapping) {
         super(schemaName);
         this.logicalTableName = logicalTableName;
+        this.indexName = indexName;
         this.sqlKind = sqlKind;
+        this.exchangeNamesMapping = exchangeNamesMapping;
     }
 
     @Override
@@ -58,16 +64,20 @@ public class CdcModifyPartitionKeyMarkTask extends BaseDdlTask {
     }
 
     private void mark4RepartitionTable(ExecutionContext executionContext) {
-        // 主表和目标表之间已经完成了物理表的Switch操作，目标表以GSI的形式存在，依靠分布式事务，双边数据是强一致的
-        // 需要在job结束前和Gsi被clean前，进行打标
+        // 主表和目标表之间未完成物理表的Switch操作，目标表以GSI的形式存在，依靠分布式事务，双边数据是强一致的
+        // 在交换前进行打标，保证最终一致性
         DdlContext ddlContext = executionContext.getDdlContext();
         Map<String, Object> param = buildExtendParameter(executionContext);
         param.put(ICdcManager.ALTER_TRIGGER_TOPOLOGY_CHANGE_FLAG, "");
         param.put(ICdcManager.REFRESH_CREATE_SQL_4_PHY_TABLE, "true");
+        param.put(ICdcManager.EXCHANGE_NAMES_MAPPING, exchangeNamesMapping);
         FailPoint.injectRandomExceptionFromHint(executionContext);
         FailPoint.injectRandomSuspendFromHint(executionContext);
+
+        TableMeta indexTableMeta = executionContext.getSchemaManager().getTable(indexName);
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, logicalTableName, sqlKind.name(), ddlContext.getDdlStmt(),
-                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), DdlVisibility.Public, param);
+                ddlContext.getDdlType(), ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Public, param,
+                true, indexTableMeta.getLatestTopology());
     }
 }

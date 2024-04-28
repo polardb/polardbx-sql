@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelTraitSet;
@@ -27,22 +28,29 @@ import org.apache.calcite.rel.convert.ConverterRule;
  * @author dylan
  */
 public class DrdsVirtualViewConvertRule extends ConverterRule {
-    public static final DrdsVirtualViewConvertRule INSTANCE = new DrdsVirtualViewConvertRule();
+    public static final DrdsVirtualViewConvertRule SMP_INSTANCE =
+        new DrdsVirtualViewConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsVirtualViewConvertRule() {
-        super(VirtualView.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsVirtualViewConvertRule");
+    public static final DrdsVirtualViewConvertRule COL_INSTANCE =
+        new DrdsVirtualViewConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsVirtualViewConvertRule(Convention outConvention) {
+        super(VirtualView.class, Convention.NONE, outConvention, "DrdsVirtualViewConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final VirtualView virtualView = (VirtualView) rel;
         RelTraitSet relTraitSet = virtualView.getTraitSet().simplify();
-        VirtualView newVirtualView = virtualView.copy(relTraitSet.replace(DrdsConvention.INSTANCE));
+        VirtualView newVirtualView = virtualView.copy(relTraitSet.replace(outConvention));
         return newVirtualView;
     }
 }

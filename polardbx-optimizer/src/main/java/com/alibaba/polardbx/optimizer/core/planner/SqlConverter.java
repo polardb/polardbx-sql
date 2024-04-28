@@ -54,6 +54,7 @@ import org.apache.calcite.prepare.CalciteCatalogReader;
 import org.apache.calcite.rel.RelCollationTraitDef;
 import org.apache.calcite.rel.RelDistributionTraitDef;
 import org.apache.calcite.rel.RelNode;
+import org.apache.calcite.rel.RelPartitionWiseTraitDef;
 import org.apache.calcite.rel.RelRoot;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
@@ -176,7 +177,7 @@ public class SqlConverter {
         if (!OptimizerUtils.supportedSqlKind(ast)) {
             throw new TddlRuntimeException(ErrorCode.ERR_NOT_SUPPORT, "Unsupported SQL kind: " + ast.getKind());
         }
-        if (ConfigDataMode.isSlaveMode() && SqlKind.DDL.contains(ast.getKind())) {
+        if (ConfigDataMode.isReadOnlyMode() && SqlKind.DDL.contains(ast.getKind())) {
             throw new TddlRuntimeException(ErrorCode.ERR_OPERATION_NOT_ALLOWED,
                 "DDL Operations are not allowed on a Read-Only Instance.");
         }
@@ -236,6 +237,7 @@ public class SqlConverter {
         planner.addRelTraitDef(ConventionTraitDef.INSTANCE);
         planner.addRelTraitDef(RelCollationTraitDef.INSTANCE);
         planner.addRelTraitDef(RelDistributionTraitDef.INSTANCE);
+        planner.addRelTraitDef(RelPartitionWiseTraitDef.INSTANCE);
         RelOptCluster relOptCluster = RelOptCluster.create(planner, rexBuilder);
         relOptCluster.setMetadataProvider(DrdsRelMetadataProvider.INSTANCE);
         return relOptCluster;

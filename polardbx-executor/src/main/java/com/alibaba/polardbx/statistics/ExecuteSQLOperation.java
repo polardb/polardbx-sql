@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.statistics;
 
+import com.alibaba.fastjson.annotation.JSONCreator;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.jdbc.Parameters;
@@ -27,6 +28,7 @@ public class ExecuteSQLOperation extends AbstractSQLOperation {
     private String sql;
     public final static MessageFormat message = new MessageFormat("Execute sql on {0}, sql is: {1}, params is: {2}");
 
+    @JSONCreator
     public ExecuteSQLOperation(String groupName, String dbKeyName, String sql, Long timestamp) {
         super(groupName, dbKeyName, timestamp);
         this.sql = sql;
@@ -59,6 +61,10 @@ public class ExecuteSQLOperation extends AbstractSQLOperation {
 
     public void setSql(String sql) {
         this.sql = sql;
+    }
+
+    public String getSql() {
+        return sql;
     }
 
     @Override

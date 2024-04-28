@@ -105,7 +105,7 @@ public class CreateFileStorageTask extends BaseGmsTask {
         try (FileSystem master = FileSystemManager.buildFileSystem(record1)) {
             future = executor.submit(() -> {
                 try {
-                    master.exists(FileSystemUtils.buildPath(master, "1.orc"));
+                    master.exists(FileSystemUtils.buildPath(master, "1.orc", false));
                 } catch (Exception e) {
                     unexpectedErrors.add(e.getMessage());
                 }

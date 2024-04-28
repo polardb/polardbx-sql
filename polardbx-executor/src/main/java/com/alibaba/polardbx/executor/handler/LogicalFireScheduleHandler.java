@@ -21,8 +21,11 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticHllScheduledJob;
+import com.alibaba.polardbx.executor.scheduler.executor.statistic.StatisticSampleCollectionScheduledJob;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.utils.PolarPrivilegeUtils;
+import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
@@ -44,6 +47,30 @@ public class LogicalFireScheduleHandler extends HandlerCommon {
         ScheduledJobsRecord record = ScheduledJobsManager.queryScheduledJobById(scheduleId);
         if (record == null) {
             return new AffectRowCursor(0);
+        }
+        if (record.getExecutorType().equalsIgnoreCase("STATISTIC_SAMPLE_SKETCH")) {
+            ExecutableScheduledJob executableScheduledJob = new ExecutableScheduledJob();
+            executableScheduledJob.setScheduleId(record.getScheduleId());
+            executableScheduledJob.setFireTime(System.currentTimeMillis());
+            executableScheduledJob.setTimeZone("SYSTEM");
+            StatisticSampleCollectionScheduledJob job =
+                new StatisticSampleCollectionScheduledJob(executableScheduledJob);
+            job.setFromScheduleJob(false);
+            job.execute();
+
+            logger.info(String.format("fire scheduled job:[%s]", scheduleId));
+            return new AffectRowCursor(1);
+        } else if (record.getExecutorType().equalsIgnoreCase("STATISTIC_HLL_SKETCH")) {
+            ExecutableScheduledJob executableScheduledJob = new ExecutableScheduledJob();
+            executableScheduledJob.setScheduleId(record.getScheduleId());
+            executableScheduledJob.setFireTime(System.currentTimeMillis());
+            executableScheduledJob.setTimeZone("SYSTEM");
+            StatisticHllScheduledJob job = new StatisticHllScheduledJob(executableScheduledJob);
+            job.setFromScheduleJob(false);
+            job.execute();
+
+            logger.info(String.format("fire scheduled job:[%s]", scheduleId));
+            return new AffectRowCursor(1);
         }
         PolarPrivilegeUtils.checkPrivilege(record.getTableSchema(), record.getTableName(), PrivilegePoint.ALTER,
             executionContext);

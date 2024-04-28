@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule;
 
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import org.apache.calcite.plan.Convention;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
@@ -25,25 +26,30 @@ import org.apache.calcite.rel.convert.ConverterRule;
 import org.apache.calcite.rel.logical.LogicalUnion;
 
 public class DrdsUnionConvertRule extends ConverterRule {
-    public static final DrdsUnionConvertRule INSTANCE = new DrdsUnionConvertRule();
+    public static final DrdsUnionConvertRule SMP_INSTANCE = new DrdsUnionConvertRule(DrdsConvention.INSTANCE);
 
-    DrdsUnionConvertRule() {
-        super(LogicalUnion.class, Convention.NONE, DrdsConvention.INSTANCE, "DrdsUnionConvertRule");
+    public static final DrdsUnionConvertRule COL_INSTANCE = new DrdsUnionConvertRule(CBOUtil.getColConvention());
+
+    private final Convention outConvention;
+
+    DrdsUnionConvertRule(Convention outConvention) {
+        super(LogicalUnion.class, Convention.NONE, outConvention, "DrdsUnionConvertRule");
+        this.outConvention = outConvention;
     }
 
     @Override
     public Convention getOutConvention() {
-        return DrdsConvention.INSTANCE;
+        return outConvention;
     }
 
     @Override
     public RelNode convert(RelNode rel) {
         final LogicalUnion union = (LogicalUnion) rel;
-        final RelTraitSet traitSet = union.getTraitSet().simplify().replace(DrdsConvention.INSTANCE);
+        final RelTraitSet traitSet = union.getTraitSet().simplify().replace(outConvention);
         if (!union.all) {
-            LogicalUnion newUnion = union.copy(traitSet, convertList(union.getInputs(), DrdsConvention.INSTANCE), true);
+            LogicalUnion newUnion = union.copy(traitSet, convertList(union.getInputs(), outConvention), true);
             return RelOptUtil.createDistinctRel(newUnion);
         }
-        return union.copy(traitSet, convertList(union.getInputs(), DrdsConvention.INSTANCE), union.all);
+        return union.copy(traitSet, convertList(union.getInputs(), outConvention), union.all);
     }
 }

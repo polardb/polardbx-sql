@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.executor.sync;
 
 import com.alibaba.polardbx.common.TddlNode;
-import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.druid.sql.parser.ByteString;
 import com.alibaba.polardbx.executor.cursor.ResultCursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;

@@ -56,6 +56,7 @@ public class VirtualStatistic extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("SAMPLE RATE", 8, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("LAST_MODIFY_TIME", 9, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("LAST_ACCESS_TIME", 10, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("IS_HOT_COLUMN", 11, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         return typeFactory.createStructType(columns);
     }

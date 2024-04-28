@@ -746,8 +746,20 @@ public interface CalciteResource {
     @BaseMessage("View ''{0}'' not found")
     ExInst<SqlValidatorException> viewNotFound(String name);
 
+    @BaseMessage("Index ''{0}'' not found")
+    ExInst<SqlValidatorException> indexNotFound(String name);
+
     @BaseMessage("Global Secondary Index ''{0}'' already exists")
     ExInst<SqlValidatorException> gsiExists(String name);
+
+    @BaseMessage("Clustered Columnar Index ''{0}'' already exists")
+    ExInst<SqlValidatorException> cciExists(String name);
+
+    @BaseMessage("Do not support create more than one Clustered Columnar Index on table ''{0}''")
+    ExInst<SqlValidatorException> cciMoreThanOne(String name);
+
+    @BaseMessage("Do not support create Clustered Columnar Index on table without primary key")
+    ExInst<SqlValidatorException> createCciOnTableWithoutPk();
 
     @BaseMessage("Duplicate column name ''{0}''")
     ExInst<SqlValidatorException> duplicateColumnNameInTable(String a0);
@@ -775,7 +787,7 @@ public interface CalciteResource {
 
     @BaseMessage("Recursive CTE not support {0}")
     ExInst<SqlValidatorException> validatorRecursiveCTENotSupport(String a0);
-    
+
     @BaseMessage("Cannot UPDATE generated column ''{0}''")
     ExInst<SqlValidatorException> updateAlwaysGenerated(String a0);
 }

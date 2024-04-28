@@ -91,6 +91,10 @@ public class TableGroupLocation {
         return new GroupAllocator(groups);
     }
 
+    public static GroupAllocator buildGroupAllocatorForNonDeletable(String schema) {
+        return buildGroupAllocatorByGroup(schema, getOrderedNonDeleteableGroupList(schema));
+    }
+
     /**
      * Get list of storage-group order by physical-table count on the group
      */
@@ -112,6 +116,21 @@ public class TableGroupLocation {
 
     public static List<GroupDetailInfoExRecord> getOrderedGroupList(String logicalDbName) {
         return getOrderedGroupList(logicalDbName, false);
+    }
+
+    public static List<String> getDNListByDB(String logicalDbName) {
+        List<String> dnList = null;
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            String instId = InstIdUtil.getInstId();
+            List<GroupDetailInfoExRecord> storageGroupList = queryMetaDbGroupList(conn, instId);
+            dnList = storageGroupList.stream().filter(o -> o.dbName.equalsIgnoreCase(logicalDbName))
+                .map(o -> o.storageInstId)
+                .collect(Collectors.toList());
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+        return dnList == null ? new ArrayList<>() : dnList;
     }
 
     public static List<Pair<GroupDetailInfoExRecord, TableGroupRecord>> getOrderedGroupListForSingleTable(
@@ -215,6 +234,21 @@ public class TableGroupLocation {
             .collect(Collectors.toList());
     }
 
+    private static List<GroupDetailInfoExRecord> getOrderedNonDeleteableGroupList(String logicalDbName) {
+        if (ConfigDataMode.isMock() || ConfigDataMode.isFastMock()) {
+            return TableGroupUtils.mockTheOrderedLocation(logicalDbName);
+        }
+
+        // query metadb for physical group and all partition-groups
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            String instId = InstIdUtil.getInstId();
+            return queryNonDeletableGroupList(conn, instId, logicalDbName);
+        } catch (Throwable ex) {
+            MetaDbLogUtil.META_DB_LOG.error(ex);
+            throw GeneralUtil.nestedException(ex);
+        }
+    }
+
     private static List<PartitionGroupExtRecord> queryMetaDbPartitionGroupList(String tableSchema, Connection conn) {
         PartitionGroupAccessor partitionGroupAccessor = new PartitionGroupAccessor();
         partitionGroupAccessor.setConnection(conn);
@@ -225,6 +259,16 @@ public class TableGroupLocation {
         GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
         groupDetailInfoAccessor.setConnection(conn);
         return groupDetailInfoAccessor.getCompletedGroupInfosByInstIdForPartitionTables(instId,
+            DbGroupInfoRecord.GROUP_TYPE_NORMAL);
+    }
+
+    private static List<GroupDetailInfoExRecord> queryNonDeletableGroupList(Connection conn,
+                                                                            String instId,
+                                                                            String schema) {
+        GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+        groupDetailInfoAccessor.setConnection(conn);
+        return groupDetailInfoAccessor.getCompletedGroupInfosBySchemaForNonDeletable(instId,
+            schema,
             DbGroupInfoRecord.GROUP_TYPE_NORMAL);
     }
 
@@ -250,7 +294,7 @@ public class TableGroupLocation {
             this.groupList = groupList;
             this.nextToAllocate = 0;
             this.partNum = partNum;
-            this.avgPartNum = partNum / groupList.size();
+            this.avgPartNum = Math.max(partNum / groupList.size(), 1);
             this.allocatedCount = 0;
         }
 

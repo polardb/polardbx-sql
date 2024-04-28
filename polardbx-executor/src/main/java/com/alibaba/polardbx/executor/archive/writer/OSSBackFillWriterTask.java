@@ -63,6 +63,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.orc.OrcConf;
 import org.apache.orc.OrcFile;
 import org.apache.orc.Reader;
 import org.apache.orc.StripeInformation;
@@ -228,7 +229,7 @@ public class OSSBackFillWriterTask {
         this.flushTaskList = new ArrayList<>();
 
         int indexStride = (int) conf.getLong("orc.row.index.stride", 1000);
-        this.batch = schema.createRowBatch(indexStride);
+        this.batch = schema.createRowBatch(getRowBatchVersion(conf), indexStride);
 
         this.fpp = conf.getDouble("orc.bloom.filter.fpp", 0.01D);
 
@@ -244,6 +245,12 @@ public class OSSBackFillWriterTask {
         this.lastPK = null;
         this.timeoutCheck = Optional.empty();
         this.fileChecksum = new ArrayList<>();
+    }
+
+    private TypeDescription.RowBatchVersion getRowBatchVersion(Configuration conf) {
+        boolean enableDecimal64 = OrcConf.ENABLE_DECIMAL_64.getBoolean(conf);
+        return enableDecimal64 ? TypeDescription.RowBatchVersion.USE_DECIMAL64 :
+            TypeDescription.RowBatchVersion.ORIGINAL;
     }
 
     public OSSBackFillWriterTask(String logicalSchema,
@@ -728,7 +735,7 @@ public class OSSBackFillWriterTask {
         }
 
         // upload to oss
-        FileSystemUtils.writeFile(localIndexFile, metaKey.toString(), this.engine);
+        FileSystemUtils.writeFile(localIndexFile, metaKey.toString(), this.engine, false);
 
         // change file size
         try (Connection metaDbConn = MetaDbUtil.getConnection()) {
@@ -779,7 +786,7 @@ public class OSSBackFillWriterTask {
             LOGGER.info("orc generation done: " + localFilePath);
             LOGGER.info("file size(in bytes): " + fileSize);
 
-            FileSystemUtils.writeFile(localFile, ossKey.toString(), this.engine);
+            FileSystemUtils.writeFile(localFile, ossKey.toString(), this.engine, false);
             LOGGER.info("file upload done: " + taskName);
         } catch (Exception e) {
             throw GeneralUtil.nestedException(e);

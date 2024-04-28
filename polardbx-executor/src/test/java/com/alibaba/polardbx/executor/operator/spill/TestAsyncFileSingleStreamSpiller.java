@@ -29,15 +29,14 @@
  */
 package com.alibaba.polardbx.executor.operator.spill;
 
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterators;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListeningExecutorService;
-import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.spill.QuerySpillSpaceMonitor;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterators;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -49,10 +48,9 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 
-import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static com.alibaba.polardbx.executor.operator.BaseExecTest.assertExecResultByRow;
-import static com.alibaba.polardbx.executor.operator.spill.AsyncFileSingleStreamSpillerFactory.getTemPath;
 import static com.alibaba.polardbx.executor.operator.util.RowChunkBuilder.rowChunkBuilder;
+import static com.google.common.util.concurrent.MoreExecutors.listeningDecorator;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static java.util.concurrent.Executors.newCachedThreadPool;
 import static junit.framework.TestCase.assertEquals;
@@ -65,8 +63,6 @@ public class TestAsyncFileSingleStreamSpiller {
 
     @Before
     public void setUp() throws Exception {
-        MppConfig.getInstance().getSpillPaths().clear();
-        MppConfig.getInstance().getSpillPaths().add(spillPath.toPath());
     }
 
     @After
@@ -85,7 +81,8 @@ public class TestAsyncFileSingleStreamSpiller {
             ImmutableList.of(spillPath.toPath()), 4);
 
         AsyncFileSingleStreamSpiller spiller = (AsyncFileSingleStreamSpiller) factory.create(
-            "testAsyncSpillerWriterWithTruncateMode", TYPES, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+            "testAsyncSpillerWriterWithTruncateMode", TYPES, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(),
+            null);
 
         for (int i = 0; i < 100; i++) {
             spiller.spill(buildPage()).get();
@@ -121,13 +118,13 @@ public class TestAsyncFileSingleStreamSpiller {
             new SyncFileCleaner(),
             ImmutableList.of(spillPath.toPath()), 4);
         AsyncFileSingleStreamSpiller spiller = (AsyncFileSingleStreamSpiller) factory.create(
-            "testSpill", TYPES, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+            "testSpill", TYPES, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(), null);
 
         Chunk page = buildPage();
 
         spiller.spill(page).get();
         spiller.spill(Iterators.forArray(page, page, page)).get();
-        assertEquals(1, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(1, FileUtils.listFiles(spillPath, null, false).size());
 
         spiller.flush();
         Iterator<Chunk> spilledPagesIterator = spiller.getSpilledChunks();
@@ -142,7 +139,7 @@ public class TestAsyncFileSingleStreamSpiller {
         }
 
         spiller.close();
-        assertEquals(0, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(0, FileUtils.listFiles(spillPath, null, false).size());
     }
 
     @Test
@@ -153,13 +150,13 @@ public class TestAsyncFileSingleStreamSpiller {
             ImmutableList.of(spillPath.toPath()), 4);
         AsyncFileSingleStreamSpiller spiller =
             (AsyncFileSingleStreamSpiller) factory.create(
-                "testGetAllSpilledPages", TYPES, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+                "testGetAllSpilledPages", TYPES, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(), null);
 
         Chunk page = buildPage();
 
         spiller.spill(page).get();
         spiller.spill(Iterators.forArray(page, page, page)).get();
-        assertEquals(1, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(1, FileUtils.listFiles(spillPath, null, false).size());
 
         spiller.flush();
         ListenableFuture<List<Chunk>> pagesFuture = spiller.getAllSpilledChunks();
@@ -174,7 +171,7 @@ public class TestAsyncFileSingleStreamSpiller {
         }
 
         spiller.close();
-        assertEquals(0, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(0, FileUtils.listFiles(spillPath, null, false).size());
     }
 
     @Test
@@ -185,18 +182,18 @@ public class TestAsyncFileSingleStreamSpiller {
             ImmutableList.of(spillPath.toPath()), 1);
         AsyncFileSingleStreamSpiller spiller =
             (AsyncFileSingleStreamSpiller) factory.create(
-                "testSpillReadClose", TYPES, new QuerySpillSpaceMonitor().newLocalSpillMonitor(), null);
+                "testSpillReadClose", TYPES, new QuerySpillSpaceMonitor("test").newLocalSpillMonitor(), null);
 
         Chunk page = buildPage();
 
         spiller.spill(page).get();
         spiller.spill(Iterators.forArray(page, page, page)).get();
-        assertEquals(1, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(1, FileUtils.listFiles(spillPath, null, false).size());
 
         spiller.flush();
         factory.getReadThread(0).getQueue().setBlocked(true);
         spiller.close();
-        assertEquals(0, FileUtils.listFiles(getTemPath(spillPath), null, false).size());
+        assertEquals(0, FileUtils.listFiles(spillPath, null, false).size());
     }
 
     private Chunk buildPage() {

@@ -31,6 +31,7 @@ import com.alibaba.polardbx.rule.MappingRule;
 import com.alibaba.polardbx.rule.TableRule;
 import com.alibaba.polardbx.rule.TddlRuleConfig;
 import com.alibaba.polardbx.rule.VirtualTableRoot;
+import com.alibaba.polardbx.rule.utils.RuleUtils;
 import com.google.common.collect.Maps;
 
 import java.sql.Connection;

@@ -83,7 +83,7 @@ public class AlterTableReorgPartitionSubTaskJobFactory extends AlterTableGroupSu
             curPartitionInfo = oc.getPartitionInfoManager().getPartitionInfo(tableName);
         } else if (TStringUtil.isNotEmpty(tableGroupName)) {
             TableGroupConfig tableGroupConfig = oc.getTableGroupInfoManager().getTableGroupConfigByName(tableGroupName);
-            String firstTableName = tableGroupConfig.getAllTables().get(0).getTableName();
+            String firstTableName = tableGroupConfig.getAllTables().get(0);
             curPartitionInfo = oc.getPartitionInfoManager().getPartitionInfo(firstTableName);
         } else {
             throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,

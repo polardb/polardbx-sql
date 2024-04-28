@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SystemTables>
+    <SystemTable name="columnar_checkpoints">
+        <Create><![CDATA[
+        create table if not exists `columnar_checkpoints` (
+            `id` bigint auto_increment,
+            `logical_schema` varchar(64) not null,
+            `logical_table` varchar(64) default null,
+            `partition_name` varchar(64) default null,
+            `checkpoint_tso` bigint not null,
+            `offset` json not null,
+            `checkpoint_type` varchar(255) not null,
+            `extra` longtext default null,
+            `create_time` datetime default current_timestamp,
+            `update_time` datetime default current_timestamp on update current_timestamp,
+            unique key `checkpoint_tso_index` (`checkpoint_tso`, `checkpoint_type`, `logical_schema`, `logical_table`, `partition_name`),
+            KEY `checkpoint_tso_table_index` (`checkpoint_tso`, `logical_schema`, `logical_table`),
+            primary key (`id`)
+         ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="columnar_appended_files">
+        <Create><![CDATA[
+        create table if not exists `columnar_appended_files` (
+            `id` bigint auto_increment,
+            `checkpoint_tso` bigint not null,
+            `logical_schema` varchar(64) not null,
+            `logical_table` varchar(64) not null,
+            `physical_schema` varchar(64) not null,
+            `physical_table` varchar(64) not null,
+            `part_name` varchar(64) not null,
+            `file_name` varchar(255) not null,
+            `file_type` enum('csv', 'del', 'set', 'pk_idx_log', 'pk_idx_log_meta') not null,
+            `file_length` bigint not null,
+            `engine` varchar(50) not null,
+            `append_offset` bigint not null,
+            `append_length` bigint not null,
+            `total_rows` bigint unsigned default null,
+            `create_time` datetime default current_timestamp,
+            `update_time` datetime default current_timestamp on update current_timestamp,
+            KEY `checkpoint_tso_index` (`checkpoint_tso`, `logical_schema`),
+            KEY `logical_schema_type_engine_index` (`logical_schema`, `logical_table`, `part_name`, `file_type`, `engine`),
+            KEY `physical_schema_index` (`physical_schema`, `physical_table`),
+            KEY `file_name_index` (`file_name`),
+            KEY `file_name_tso_index` (`file_name`, `checkpoint_tso`),
+            KEY `type_engine_index` (`file_type`, `engine`),
+            primary key (`id`)
+         ) charset=utf8
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` drop key `logical_schema_index`
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` add key `logical_schema_type_engine_index` (`logical_schema`, `logical_table`, `part_name`, `file_type`, `engine`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_appended_files` add key `type_engine_index` (`file_type`, `engine`)
+        ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="columnar_file_mapping">
+        <Create><![CDATA[
+        create table if not exists `columnar_file_mapping` (
+            `id` bigint auto_increment,
+            `columnar_file_id` int not null,
+            `file_name` varchar(255) not null,
+            `logical_schema` varchar(100) not null,
+            `logical_table` varchar(100) not null,
+            `logical_partition` varchar(100) not null,
+            `level` int default null,
+            `smallest_key` longblob default null,
+            `largest_key` longblob default null,
+            `create_time` datetime default current_timestamp,
+            `update_time` datetime default current_timestamp on update current_timestamp,
+            PRIMARY KEY (`id`),
+            KEY `file_partition_index` (`logical_schema`, `logical_table`, `logical_partition`),
+            KEY `file_id_index` (`logical_schema`, `logical_table`, `logical_partition`, `columnar_file_id`),
+            KEY `file_name_index` (`file_name`)
+         ) charset=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="columnar_data_consistency_lock">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_data_consistency_lock` (
+                `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                `entity_id` varchar(255) NOT NULL COMMENT 'schema.table.partition',
+                `owner_id` int(11) NOT NULL COMMENT '0:incremental data transfer, 1:full data transfer, 2:compaction',
+                `state` bigint(20) NOT NULL DEFAULT '0' COMMENT 'current lock holder count',
+                `last_owner` int(11) NOT NULL COMMENT 'last owner of lock',
+                `last_owner_change` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'timestamp of most recent owner change',
+                `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_entity_id` (`entity_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="columnar_file_id_info">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_file_id_info` (
+                `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                `type` varchar(63) NOT NULL DEFAULT '' COMMENT 'columnar type',
+                `max_id` bigint(20) NOT NULL DEFAULT '0' COMMENT 'current max id',
+                `step` int(11) DEFAULT '0' COMMENT 'step length',
+                `version` bigint(20) NOT NULL DEFAULT '0' COMMENT 'version number',
+                `create_time` timestamp NOT NULL default current_timestamp COMMENT 'create time',
+                `update_time` timestamp NOT NULL default current_timestamp on update current_timestamp COMMENT 'update time',
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uniq_type` (`type`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+        ]]></Create>
+    </SystemTable>
+
+    <!--
+    CREATE TABLE IF NOT EXISTS `columnar_table_mapping` (
+        `table_id` bigint unsigned NOT NULL AUTO_INCREMENT, # 列存表的 table_id，每张列存表唯一
+        `table_schema` varchar(64) NOT NULL, # 行存最新 table_schema
+        `table_name` varchar(64) NOT NULL, # 行存最新 table_name
+        `index_name` varchar(64) NOT NULL, # 行存最新 index_name
+        `latest_version_id` bigint(20) unsigned NOT NULL, # 列存最新 version_id，对应 columnar_table_evolution.version_id
+        `status` varchar(255) not null DEFAULT 'NONE',
+        `extra` longtext default null,
+        `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`table_id`),
+      	UNIQUE KEY idx_schema_table_index(`table_schema`, `table_name`, `index_name`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    -->
+    <SystemTable name="columnar_table_mapping">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_table_mapping` (
+                `table_id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT 'id of columnar table, immutable',
+                `table_schema` varchar(64) NOT NULL COMMENT 'latest schema name',
+                `table_name` varchar(64) NOT NULL COMMENT 'latest name of primary table of columnar index',
+                `index_name` varchar(64) NOT NULL COMMENT 'latest name of columnar index',
+                `latest_version_id` bigint unsigned NOT NULL COMMENT 'latest metadata version id',
+                `status` varchar(255) not null DEFAULT 'NONE',
+                `extra` longtext default null,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`table_id`),
+              	UNIQUE KEY (`table_schema`, `table_name`, `index_name`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+    </SystemTable>
+
+    <!--
+    CREATE TABLE `columnar_table_evolution` (
+        `version_id` bigint(11) unsigned NOT NULL, # 表的 version_id, CN 生成, 随 CDC 的 mark event 同步到 columnar, 放在 DDL 语句前的注释中
+        `table_id` bigint(11) NOT NULL, # 表的 table_id，对应 columnar_table_mapping.table_id
+        `table_schema` varchar(64) NOT NULL, # DDL 变更后的 table_schema
+        `table_name` varchar(64) NOT NULL, # DDL 变更后的 table_name
+        `index_name` varchar(64) NOT NULL, # DDL 变更后的 index_name
+        `ddl_job_id` bigint(20) unsigned NOT NULL, # DDL job_id, 生成该版本元数据的 DDL 的 job_id
+        `ddl_type` varchar(64) NOT NULL, # DDL 类型
+        `commit_ts` bigint(20) unsigned NOT NULL, # DDL 事件在 Binlog 中的 TSO, CDC 生成, 小于该 TS 的事务不应当读取这个元数据版本
+        `columns` json DEFAULT NULL, # DDL 变更后的列信息，记录的是 columnar_column_evolution 中的 **id**，按表中定义的顺序进行排列
+        `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP, # DDL 变更后的表信息，比如 CHARSET
+        `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`version_id`,`table_id`),
+        KEY `idx_ddl_job_id`(`ddl_job_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    -->
+    <SystemTable name="columnar_table_evolution">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_table_evolution` (
+                `version_id` bigint(11) unsigned NOT NULL COMMENT 'metadata version id',
+                `table_id` bigint(11) NOT NULL COMMENT 'id of columnar table, immutable',
+                `table_schema` varchar(64) NOT NULL COMMENT 'new schema name',
+                `table_name` varchar(64) NOT NULL COMMENT 'new name of primary table of columnar index',
+                `index_name` varchar(64) NOT NULL COMMENT 'new name of columnar index',
+                `ddl_job_id` bigint unsigned NOT NULL COMMENT 'id of ddl job that generated this metadata version',
+                `ddl_type` varchar(64) NOT NULL,
+                `commit_ts` bigint unsigned NOT NULL COMMENT 'TSO of ddl event in binary log, generated by cdc',
+                `columns` json DEFAULT NULL,
+                `options` json DEFAULT NULL COMMENT 'table options in key-value format',
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`version_id`,`table_id`),
+                KEY `idx_ddl_job_id`(`ddl_job_id`),
+                KEY `idx_table_id_commit_ts`(`table_id`, `commit_ts`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_table_evolution` drop primary key, add primary key(`version_id`,`table_id`)
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_table_evolution` add column `options` json DEFAULT NULL COMMENT 'table options in key-value format' after `columns`
+        ]]></Change>
+    </SystemTable>
+
+    <!--
+    CREATE TABLE `columnar_column_evolution` (
+        `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+        `field_id` bigint(20) unsigned NOT NULL, # 列的 field_id，初次添加该列时生成的的 columnar_column_evolution.id，创建后不会被修改
+        `table_id` bigint(11) NOT NULL, # 表的 table_id，对应 columnar_table_mapping.table_id
+        `version_id` bigint(20) unsigned NOT NULL, # 列的 version_id，对应 columnar_table_evolution.version_id
+        `ddl_job_id` bigint(20) unsigned NOT NULL, # DDL job_id, 生成该版本元数据的 DDL 的 job_id
+        `columns_record` json DEFAULT NULL, # 列的定义，包括列名、列定义等等
+        `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_field_id` (`field_id`),
+        KEY `idx_table_id` (`table_id`),
+        KEY `idx_version_id` (`version_id`)
+        KEY `idx_ddl_job_id` (`ddl_job_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    -->
+    <SystemTable name="columnar_column_evolution">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_column_evolution` (
+                `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+                `field_id` bigint unsigned NOT NULL COMMENT 'id of column, immutable',
+                `table_id` bigint unsigned NOT NULL,
+                `column_name` varchar(64) NOT NULL,
+                `version_id` bigint unsigned NOT NULL COMMENT 'metadata version id',
+                `ddl_job_id` bigint unsigned NOT NULL COMMENT 'id of ddl job that generated this metadata version',
+                `columns_record` json DEFAULT NULL,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_field_id` (`field_id`),
+                KEY `idx_table_id` (`table_id`),
+                KEY `idx_version_id` (`version_id`),
+                KEY `idx_ddl_job_id` (`ddl_job_id`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_column_evolution` add column `column_name` varchar(64) NOT NULL
+        ]]></Change>
+    </SystemTable>
+
+    <SystemTable name="columnar_config">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_config` (
+                `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+                `gmt_created` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `gmt_modified` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `table_id` bigint unsigned NOT NULL DEFAULT 0 COMMENT '0 means global conf',
+                `config_key` varchar(128) NOT NULL,
+                `config_value` mediumtext NOT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY (`table_id`, `config_key`),
+                KEY (`table_id`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+    </SystemTable>
+
+    <SystemTable name="columnar_lease">
+        <Create><![CDATA[
+            CREATE TABLE IF NOT EXISTS `columnar_lease` (
+                `id` bigint(20) NOT NULL AUTO_INCREMENT,
+                `owner` varchar(128) NOT NULL,
+                `lease` bigint(20) unsigned NOT NULL COMMENT 'the expiration time of this lease in UTC',
+                PRIMARY KEY (`id`),
+                UNIQUE KEY (`owner`)
+            ) DEFAULT CHARSET = utf8mb4
+        ]]></Create>
+        <Change><![CDATA[
+            alter table `columnar_lease` modify `id` bigint(20) auto_increment
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_lease` modify `owner` varchar(128) NOT NULL
+        ]]></Change>
+        <Change><![CDATA[
+            alter table `columnar_lease` add unique key (`owner`)
+        ]]></Change>
+    </SystemTable>
+</SystemTables>

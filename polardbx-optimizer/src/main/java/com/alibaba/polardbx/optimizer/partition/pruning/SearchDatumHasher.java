@@ -179,6 +179,39 @@ public class SearchDatumHasher {
         return hashVal;
     }
 
+    public Long[] calcHashCodeForCoHashStrategy(ExecutionContext ec, SearchDatumInfo searchValDatum) {
+
+        int partColCnt = searchValDatum.datumInfo.length;
+
+        Long[] hashCodeValArr = new Long[partColCnt];
+        for (int i = 0; i < partColCnt; i++) {
+            PartitionBoundVal oneFldBndVal = searchValDatum.datumInfo[i];
+            if (!oneFldBndVal.isNormalValue()) {
+                hashCodeValArr[i] = null;
+                continue;
+            }
+            /**
+             * Generate the hashcode according to original value
+             */
+            long[] seeds = new long[2];
+            /**
+             * reset seeds for each part col
+             */
+            seeds[0] = SearchDatumHasher.INIT_HASH_VALUE_1;
+            seeds[1] = SearchDatumHasher.INIT_HASH_VALUE_2;
+            long oneFiledHashCode = calcOneFiledHashCodeForKey(seeds, oneFldBndVal);
+
+            /**
+             * Use the hashcode generated above to build the hash value in search space
+             */
+            long finalHashVal = doMurmurHash(oneFiledHashCode);
+
+            hashCodeValArr[i] = new Long(finalHashVal);
+        }
+
+        return hashCodeValArr;
+    }
+
     protected long doMurmurHash(long multiFiledHashCode) {
         long finalHashVal = MurmurHashUtils.murmurHashWithZeroSeed(multiFiledHashCode);
 
@@ -232,7 +265,6 @@ public class SearchDatumHasher {
         } while (i < partCnt);
         long outputHashCode = seeds[0];
         return outputHashCode;
-
     }
 
     public RelDataType getHashBndValDataType() {

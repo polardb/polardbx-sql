@@ -30,6 +30,7 @@ import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.node.GmsNodeManager.GmsNode;
 import com.alibaba.polardbx.gms.sync.GmsSyncManagerHelper;
 import com.alibaba.polardbx.gms.sync.IGmsSyncAction;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalDal;
 import com.google.common.collect.ImmutableMap;
@@ -74,7 +75,7 @@ public class DdlEngineShowResultsHandler extends DdlEngineJobsHandler {
 
         //new engine
         IGmsSyncAction syncAction = new DdlResponseCollectSyncAction(schemaName, jobIds);
-        GmsSyncManagerHelper.sync(syncAction, schemaName, results -> {
+        GmsSyncManagerHelper.sync(syncAction, schemaName, SyncScope.MASTER_ONLY, results -> {
             if (results == null) {
                 return;
             }

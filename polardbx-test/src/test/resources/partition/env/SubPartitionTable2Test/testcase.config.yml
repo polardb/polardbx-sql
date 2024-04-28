@@ -1,2 +1,4 @@
 test_list_bound_order
 test_phy_part_cnt_limit
+test_create_ntp_sp_hash
+test_create_sp_invalid_syntax

@@ -93,6 +93,13 @@ public final class PhyTableOperation extends BaseTableOperation {
         super(cluster, traitSet, rowType, cursorMeta, logicalPlan);
     }
 
+    /**
+     * for ut test only
+     */
+    public PhyTableOperation(RelOptCluster cluster, RelTraitSet traitSet) {
+        super(cluster, traitSet);
+    }
+
     public void setRowType(RelDataType rowType) {
         this.rowType = rowType;
     }

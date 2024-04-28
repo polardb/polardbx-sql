@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.partition.boundspec.PartitionBoundVal;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 
 import java.util.Comparator;
@@ -43,6 +44,65 @@ public abstract class PartitionRouter {
         protected Set<Integer> partPosiSet = new TreeSet<>();
 
         public RouterResult() {
+        }
+
+        public PartitionStrategy getStrategy() {
+            return strategy;
+        }
+
+        public Integer getPartStartPosi() {
+            return partStartPosi;
+        }
+
+        public Integer getPasrEndPosi() {
+            return pasrEndPosi;
+        }
+
+        public Set<Integer> getPartPosiSet() {
+            return partPosiSet;
+        }
+
+        @Override
+        public int hashCode() {
+
+            int hashCodeVal = partStartPosi;
+            hashCodeVal ^= pasrEndPosi;
+            hashCodeVal ^= partPosiSet.hashCode();
+            hashCodeVal ^= strategy.hashCode();
+
+            return hashCodeVal;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+
+            if (this == obj) {
+                return true;
+            }
+
+            if (obj != null && obj.getClass() == this.getClass()) {
+
+                RouterResult otherRs = (RouterResult) obj;
+
+                if (!otherRs.strategy.equals(this.strategy)) {
+                    return false;
+                }
+
+                if (!otherRs.partStartPosi.equals(this.partStartPosi)) {
+                    return false;
+                }
+
+                if (!otherRs.pasrEndPosi.equals(this.pasrEndPosi)) {
+                    return false;
+                }
+
+                if (!otherRs.partPosiSet.equals(this.partPosiSet)) {
+                    return false;
+                }
+
+                return true;
+            }
+            return false;
         }
     }
 
@@ -79,6 +139,10 @@ public abstract class PartitionRouter {
 
     public abstract String getDigest();
 
+    public static PartitionRouter createByDirectHasher(int partitionCount) {
+        return new DirectHashPartRouter(partitionCount);
+    }
+
     // TODO(moyi) change type Object to SeaarchDatumInfo/PartitionField
     public static PartitionRouter createByHasher(PartitionStrategy strategy,
                                                  Object[] bounds,
@@ -91,6 +155,8 @@ public abstract class PartitionRouter {
             return new KeyPartRouter(bounds, hasher, comparator);
         case UDF_HASH:
             return new UdfHashPartRouter(bounds, hasher);
+        case CO_HASH:
+            return new CoHashPartRouter(bounds, hasher);
         default:
             throw new UnsupportedOperationException("partition strategy do not use hasher");
         }

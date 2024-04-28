@@ -29,10 +29,15 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
+import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
+import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
+import com.alibaba.polardbx.optimizer.index.TableScanFinder;
+import com.alibaba.polardbx.optimizer.index.IndexUtil;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.planmanager.LogicalViewFinder;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
@@ -106,6 +111,12 @@ public abstract class AccessPathRule extends RelOptRule {
         operand(LogicalView.class, null, LogicalView.NOT_SINGLE_GROUP, none()),
         "LOGICALVIEW");
 
+    enum IndexAbleType {
+        UNKNOWN,
+        YES,
+        NO
+    }
+
     static class AccessPathLogicalViewRule extends AccessPathRule {
 
         public AccessPathLogicalViewRule(RelOptRuleOperand operand, String description) {
@@ -168,6 +179,7 @@ public abstract class AccessPathRule extends RelOptRule {
             PlannerContext plannerContext = PlannerContext.getPlannerContext(logicalView);
 
             final RelMetadataQuery mq = logicalView.getCluster().getMetadataQuery();
+            IndexAbleType primaryCanUseIndex = canUseLocalIndex(logicalView, mq);
             for (String gsiName : gsiNameList) {
                 final RelOptSchema catalog = RelUtils.buildCatalogReader(schemaName, ec);
                 final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, gsiName));
@@ -181,6 +193,9 @@ public abstract class AccessPathRule extends RelOptRule {
 
                     logicalIndexScan.rebuildPartRoutingPlanInfo();
 
+                    if (shouldPruneGsi(logicalIndexScan, mq, primaryCanUseIndex, logicalView)) {
+                        continue;
+                    }
                     // use non convention for match CBO push join rule
                     final RelNode result = logicalIndexScan;
                     call.transformTo(result);
@@ -200,6 +215,9 @@ public abstract class AccessPathRule extends RelOptRule {
                         indexTable, lockMode);
                     RelNode node = plan.accept(indexTableLookupVisitor);
                     RelNode expandNode = optimizeByTableLookupRule(node, plannerContext);
+                    if (shouldPruneGsi(expandNode, mq, primaryCanUseIndex, logicalView)) {
+                        continue;
+                    }
                     RelNode convertNode = convert(expandNode,
                         expandNode.getTraitSet().simplify().replace(DrdsConvention.INSTANCE));
                     call.transformTo(convertNode);
@@ -229,6 +247,77 @@ public abstract class AccessPathRule extends RelOptRule {
                     call.transformTo(convertNode);
                 }
             }
+        }
+
+        /**
+         * check if the gsi can't use local index and primary can use local index
+         *
+         * @param node the root of transformed gsi
+         * @param mq the metadata query
+         * @param originCanUseIndex whether the primary table can use index
+         * @param origin origin logicalView
+         * @return true if the gsi can be pruned
+         */
+        private boolean shouldPruneGsi(RelNode node,
+                                       RelMetadataQuery mq,
+                                       IndexAbleType originCanUseIndex,
+                                       LogicalView origin) {
+            if (!PlannerContext.getPlannerContext(origin).isGsiPrune()) {
+                return false;
+            }
+            if (!IndexAbleType.YES.equals(originCanUseIndex)) {
+                // origin table can't use gsi
+                return false;
+            }
+            // multiple tables
+            if (origin.getTableNames().size() > 1) {
+                return false;
+            }
+
+            return IndexAbleType.NO.equals(canUseLocalIndex(node, mq));
+        }
+
+        /**
+         * check whether the relNode tree can use local index
+         *
+         * @param mq the metadata query
+         * @return YES if can use local index, NO if not, UNKNOWN otherwise
+         */
+        private static IndexAbleType canUseLocalIndex(RelNode root, RelMetadataQuery mq) {
+            if (!PlannerContext.getPlannerContext(root).isGsiPrune()) {
+                return IndexAbleType.UNKNOWN;
+            }
+            // get the logicalView of relNode
+            LogicalViewFinder finder = new LogicalViewFinder();
+            root.accept(finder);
+            List<LogicalView> lvs = finder.getResult();
+            if (CollectionUtils.isEmpty(lvs)) {
+                return IndexAbleType.UNKNOWN;
+            }
+            // get the first logicalView
+            LogicalView lv = lvs.get(0);
+
+            // get the mysqlTableScan of logicalView
+            TableScanFinder tableScanFinder = new TableScanFinder();
+            RelNode mysqlNode = lv.getMysqlNode();
+            if (mysqlNode == null) {
+                return IndexAbleType.UNKNOWN;
+            }
+            mysqlNode.accept(tableScanFinder);
+            List<TableScan> tables = tableScanFinder.getResult().stream().map(
+                com.alibaba.polardbx.common.utils.Pair::getValue).collect(Collectors.toList());
+            if (CollectionUtils.isEmpty(tables)) {
+                return IndexAbleType.UNKNOWN;
+            }
+            // get the first tableScan
+            TableScan ts = tables.get(0);
+            if (!(ts instanceof MysqlTableScan)) {
+                return IndexAbleType.UNKNOWN;
+            }
+            // get the getAccessIndex of mysqlTableScan
+            MysqlTableScan mysqlTableScan = (MysqlTableScan) ts;
+            return CollectionUtils.isEmpty(mysqlTableScan.getAccessIndexList(mq)) ?
+                IndexAbleType.NO : IndexAbleType.YES;
         }
 
         private boolean canBenefitFromIndex(LogicalView logicalView, String gsiName) {
@@ -338,7 +427,7 @@ public abstract class AccessPathRule extends RelOptRule {
         return gsiPublishedNameList;
     }
 
-    private static List<String> filterUseIgnoreIndex(String schemaName, List<String> gsiNameList, SqlNode indexNode) {
+    public static List<String> filterUseIgnoreIndex(String schemaName, List<String> gsiNameList, SqlNode indexNode) {
         Set<String> gsiNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
 
         if (gsiNameList == null) {
@@ -346,15 +435,15 @@ public abstract class AccessPathRule extends RelOptRule {
         }
 
         // force index(PRIMARY)
-        Set<String> gsiForceNameSet = getForceIndex(indexNode);
+        Set<String> gsiForceNameSet = IndexUtil.getForceIndex(indexNode);
         if (gsiForceNameSet.size() == 1 && gsiForceNameSet.iterator().next().equalsIgnoreCase("PRIMARY")) {
             return new ArrayList<>();
         }
 
         gsiNameSet.addAll(gsiNameList);
 
-        Set<String> gsiUseNameSet = getUseIndex(indexNode);
-        Set<String> gsiIgnoreNameSet = getIgnoreIndex(indexNode);
+        Set<String> gsiUseNameSet = IndexUtil.getUseIndex(indexNode);
+        Set<String> gsiIgnoreNameSet = IndexUtil.getIgnoreIndex(indexNode);
 
         final boolean needUnwrap = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
 
@@ -417,69 +506,6 @@ public abstract class AccessPathRule extends RelOptRule {
         logicalView.getPushedRelNode().accept(new NormalizedIndexHintVisitor());
     }
 
-    public static Set<String> getUseIndex(SqlNode indexNode) {
-        return getIndex(indexNode, IndexHintType.USE_INDEX);
-    }
-
-    public static Set<String> getIgnoreIndex(SqlNode indexNode) {
-        return getIndex(indexNode, IndexHintType.IGNORE_INDEX);
-    }
-
-    public static Set<String> getForceIndex(SqlNode indexNode) {
-        return getIndex(indexNode, IndexHintType.FORCE_INDEX);
-    }
-
-    enum IndexHintType {
-        USE_INDEX,
-        IGNORE_INDEX,
-        FORCE_INDEX,
-    }
-
-    private static Set<String> getIndex(SqlNode indexNode, IndexHintType indexHintType) {
-        Set<String> useNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        Set<String> ignoreNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        Set<String> forceNameSet = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-
-        if (indexNode != null && indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0) {
-            for (SqlNode subNode : ((SqlNodeList) indexNode).getList()) {
-                if (subNode instanceof SqlIndexHint) {
-                    SqlIndexHint indexHint = (SqlIndexHint) subNode;
-
-                    SqlNodeList indexList = indexHint.getIndexList();
-                    if (indexList != null) {
-                        for (int i = 0; i < indexList.size(); i++) {
-                            String indexName = RelUtils.lastStringValue(indexList.get(i));
-                            // Dealing with force index(`xxx`), `xxx` will decoded as string.
-                            if (indexName.startsWith("`") && indexName.endsWith("`")) {
-                                indexName = indexName.substring(1, indexName.length() - 1);
-                            }
-                            if (indexHint.ignoreIndex() && indexHintType == IndexHintType.IGNORE_INDEX) {
-                                // ignore index hint
-                                ignoreNameSet.add(indexName);
-                            } else if (indexHint.useIndex() && indexHintType == IndexHintType.USE_INDEX) {
-                                // use index hint
-                                useNameSet.add(indexName);
-                            } else if (indexHint.forceIndex() && indexHintType == IndexHintType.FORCE_INDEX) {
-                                // force index hint
-                                forceNameSet.add(indexName);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        switch (indexHintType) {
-        case USE_INDEX:
-            return useNameSet;
-        case IGNORE_INDEX:
-            return ignoreNameSet;
-        case FORCE_INDEX:
-            return forceNameSet;
-        default:
-            return new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-        }
-    }
-
     /**
      * preCondition: (satisfy 1 or 2)
      * 1. plan contains single table without any join
@@ -507,9 +533,9 @@ public abstract class AccessPathRule extends RelOptRule {
             final String tableName = Util.last(scan.getTable().getQualifiedName());
             final String schemaName = qualifiedName.size() == 2 ? qualifiedName.get(0) : null;
 
-            Set<String> useIndexNames = getUseIndex(scan.getIndexNode());
-            Set<String> ignoreIndexNames = getIgnoreIndex(scan.getIndexNode());
-            Set<String> forceIndexNames = getForceIndex(scan.getIndexNode());
+            Set<String> useIndexNames = IndexUtil.getUseIndex(scan.getIndexNode());
+            Set<String> ignoreIndexNames = IndexUtil.getIgnoreIndex(scan.getIndexNode());
+            Set<String> forceIndexNames = IndexUtil.getForceIndex(scan.getIndexNode());
 
             Set<String> normalizedUseIndexNames = normalizeIndexNames(useIndexNames, tableName, schemaName,
                 PlannerContext.getPlannerContext(scan).getExecutionContext());

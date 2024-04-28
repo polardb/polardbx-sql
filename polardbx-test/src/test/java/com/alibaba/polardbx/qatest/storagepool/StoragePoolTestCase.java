@@ -3,6 +3,12 @@ package com.alibaba.polardbx.qatest.storagepool;
 import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestBase;
 import com.alibaba.polardbx.qatest.ddl.auto.locality.LocalityTestCaseUtils.LocalityTestCaseTask;
 import com.alibaba.polardbx.qatest.storagepool.LegacyStoragePoolTestCase.StoragePoolTestCaseTask;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.AlterPartitionTest;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.CommonDdlTest;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.HintTest;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.ImportDatabaseRebalanceTest;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.ImportTableTest;
+import com.alibaba.polardbx.qatest.storagepool.importDatabase.RepartitionTest;
 import net.jcip.annotations.NotThreadSafe;
 import org.junit.FixMethodOrder;
 import org.junit.Test;
@@ -19,6 +25,48 @@ public class StoragePoolTestCase extends LocalityTestBase {
         StoragePoolTestCaseTask storagePoolTestCaseTask = new StoragePoolTestCaseTask(fileDir);
         storagePoolTestCaseTask.execute(tddlConnection);
     }
+
+    /**
+     * import database 的case，需要多个DN
+     * 因此测试case放在存储池目录下
+     */
+    @Test
+    public void testCase001ImportTable() {
+        ImportTableTest testcase = new ImportTableTest();
+        testcase.runTestCases();
+    }
+
+    @Test
+    public void testCase002ImportDatabaseRebalance() {
+        ImportDatabaseRebalanceTest testcase = new ImportDatabaseRebalanceTest();
+        testcase.runTestCases();
+    }
+
+    @Test
+    public void testCase003ImportDatabaseRepartition() {
+        RepartitionTest testcase = new RepartitionTest();
+        testcase.runTestCases();
+    }
+
+    @Test
+    public void testCase004ImportDatabaseAlterPartition() {
+        AlterPartitionTest testcase = new AlterPartitionTest();
+        testcase.runTestCases();
+    }
+
+    @Test
+    public void testCase005ImportDatabaseCommonDdl() {
+        CommonDdlTest testcase = new CommonDdlTest();
+        testcase.runTestCases();
+    }
+
+    @Test
+    public void testCase006ImportDatabaseHintTest() {
+        HintTest testcase = new HintTest();
+        testcase.runTestCases();
+    }
+
+
     /*
      * for create partition table.
      * (hash_partition, range_partition, list_partition)
@@ -44,7 +92,7 @@ public class StoragePoolTestCase extends LocalityTestBase {
 
     @Test
     public void testCase01StoragePoolDemo() throws FileNotFoundException, InterruptedException {
-        runTestCase("storage_pool_demo.test.yml");
+        runTestCase("storage_pool_init.test.yml");
     }
 
     @Test
@@ -62,4 +110,8 @@ public class StoragePoolTestCase extends LocalityTestBase {
         runTestCase("single_table_storage_pool.test.yml");
     }
 
+    @Test
+    public void testCase05ControlAdapter() throws FileNotFoundException, InterruptedException {
+        runTestCase("control_adapter.test.yml");
+    }
 }

@@ -1,0 +1,433 @@
+## DISABLE_FAST_SQL_PARSER
+
+## h_h_tp
+create tablegroup h_h_tp_tg
+partition by hash (int,bigint) partitions 4
+subpartition by hash (int, int) subpartitions 4;
+show create tablegroup h_h_tp_tg;
+
+  ## h_k_tp
+create tablegroup h_k_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by key (bigint, int) subpartitions 4;
+show create tablegroup h_k_tp_tg;
+
+  ## h_r_tp
+create tablegroup h_r_tp_tg partition by hash (int, bigint) partitions 4
+subpartition by range (int) (
+subpartition sp1 values less than ( 123 ),
+subpartition sp2 values less than ( maxvalue )
+);
+show create tablegroup h_r_tp_tg;
+
+  ## h_rc_tp
+create tablegroup h_rc_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by range columns (varchar(20), varchar(30)) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup h_rc_tp_tg;
+
+  ## h_l_tp
+create tablegroup h_l_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by list (int) (
+subpartition sp1 values in ( 123 ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup h_l_tp_tg;
+
+  ## h_lc_tp
+create tablegroup h_lc_tp_tg
+partition by hash (int, bigint) partitions 4
+subpartition by list columns (varchar(20), varchar(30)) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup h_lc_tp_tg;  
+  
+  #########
+
+  ## k_h_tp
+create tablegroup k_h_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4;
+show create tablegroup k_h_tp_tg;
+
+  ## k_k_tp
+create tablegroup k_k_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by key (varchar(20), varchar(30)) subpartitions 4;
+show create tablegroup k_k_tp_tg;
+
+  ## k_r_tp
+create tablegroup k_r_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by range (bigint) (
+subpartition sp1 values less than ( 123 ),
+subpartition sp2 values less than ( maxvalue )
+);
+show create tablegroup k_r_tp_tg;
+
+  ## k_rc_tp
+create tablegroup k_rc_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by range columns (varchar(20), varchar(30)) (
+subpartition sp1 values less than ( '2020-01-01', 'abc' ),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup k_rc_tp_tg;
+
+  ## k_l_tp
+create tablegroup k_l_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by list (int) (
+subpartition sp1 values in ( 123 ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup k_l_tp_tg;
+
+  ## k_lc_tp
+create tablegroup k_lc_tp_tg
+partition by key (varchar(20), varchar(30)) partitions 4
+subpartition by list columns (varchar(20), varchar(30)) (
+subpartition sp1 values in ( ('2020-01-01','abc') ),
+subpartition sp2 values in ( default )
+);
+show create tablegroup k_lc_tp_tg;
+  
+  #########
+
+  ## r_h_tp
+create tablegroup r_h_tp_tg
+partition by range (int)
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_h_tp_tg;
+
+  ## r_k_tp
+create tablegroup r_k_tp_tg
+partition by range (int)
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_k_tp_tg;
+
+  ## r_r_tp
+create tablegroup r_r_tp_tg
+partition by range (int)
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_r_tp_tg;
+
+  ## r_rc_tp
+create tablegroup r_rc_tp_tg
+partition by range (int)
+subpartition by range columns (varchar(20), varchar(30))
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_rc_tp_tg;
+
+  ## r_l_tp
+create tablegroup r_l_tp_tg
+partition by range (int)
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_l_tp_tg;
+
+  ## r_lc_tp
+create tablegroup r_lc_tp_tg
+partition by range (int)
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( 123 ),
+partition p2 values less than ( maxvalue )
+);
+show create tablegroup r_lc_tp_tg;
+  
+  #########
+
+  ## rc_h_tp
+create tablegroup rc_h_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_h_tp_tg;
+
+  ## rc_k_tp
+create tablegroup rc_k_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_k_tp_tg;
+
+  ## rc_r_tp
+create tablegroup rc_r_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_r_tp_tg;
+
+  ## rc_rc_tp
+create tablegroup rc_rc_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 2000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_rc_tp_tg;
+
+  ## rc_l_tp
+create tablegroup rc_l_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_l_tp_tg;
+
+  ## rc_lc_tp
+create tablegroup rc_lc_tp_tg
+partition by range columns (varchar(20), varchar(30))
+subpartition by list columns (int,int)
+(
+subpartition sp1 values in ( (1000, 2000)),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values less than ( '2020-01-01','abc' ),
+partition p2 values less than ( maxvalue, maxvalue )
+);
+show create tablegroup rc_lc_tp_tg;
+
+  #########
+
+  ## l_h_tp
+create tablegroup l_h_tp_tg
+partition by list (int)
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_h_tp_tg;
+
+  ## l_k_tp
+create tablegroup l_k_tp_tg
+partition by list (int)
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_k_tp_tg;
+
+  ## l_r_tp
+create tablegroup l_r_tp_tg
+partition by list (int)
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_r_tp_tg;
+
+  ## l_rc_tp
+create tablegroup l_rc_tp_tg
+partition by list (int)
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_rc_tp_tg;
+
+  ## l_l_tp
+create tablegroup l_l_tp_tg
+partition by list (int)
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_l_tp_tg;
+
+  ## l_lc_tp
+create tablegroup l_lc_tp_tg
+partition by list (int)
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( 123 ),
+partition p2 values in ( default )
+);
+show create tablegroup l_lc_tp_tg;
+  
+  #########
+
+  ## lc_h_tp
+create tablegroup lc_h_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by hash (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_h_tp_tg;
+
+  ## lc_k_tp
+create tablegroup lc_k_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by key (varchar(20), varchar(30)) subpartitions 4
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_k_tp_tg;
+
+  ## lc_r_tp
+create tablegroup lc_r_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by range (int)
+(
+subpartition sp1 values less than ( 1000),
+subpartition sp2 values less than ( maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_r_tp_tg;
+
+  ## lc_rc_tp
+create tablegroup lc_rc_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by range columns (int, int)
+(
+subpartition sp1 values less than ( 1000, 10000),
+subpartition sp2 values less than ( maxvalue, maxvalue )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_rc_tp_tg;
+
+  ## lc_l_tp
+create tablegroup lc_l_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by list (int)
+(
+subpartition sp1 values in ( 1000, 2000),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_l_tp_tg;
+
+  ## lc_lc_tp
+create tablegroup lc_lc_tp_tg
+partition by list columns (varchar(20), varchar(30))
+subpartition by list columns (int, int)
+(
+subpartition sp1 values in ( (1000, 2000) ),
+subpartition sp2 values in ( default )
+)
+(
+partition p1 values in ( ('2020-01-01', 'abc') ),
+partition p2 values in ( default )
+);
+show create tablegroup lc_lc_tp_tg;
+
+create tablegroup `---key_tg` partition by key(int, int) partitions 3;
+show create tablegroup `---key_tg`;
+
+create table key_t1 (a int) partition by key(a) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t1;
+
+create table key_t2 (a int, b int, c int) partition by key(a,b,c) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t2;
+
+alter tablegroup `---key_tg` split partition p2;
+
+create table key_t3 (a int, b int) partition by key(a,b) tablegroup=`---key_tg`;
+/*TDDL:SHOW_HASH_PARTITIONS_BY_RANGE=true*/show create table key_t3;
+
+show create tablegroup `---key_tg`;
+
+create tablegroup single_tg1 single;
+show create tablegroup single_tg1;
+create table single_t1(a int) tablegroup=single_tg1;
+create table single_t2(a varchar(20)) tablegroup=single_tg1;
+show full create table single_t1;
+show full create table single_t2;

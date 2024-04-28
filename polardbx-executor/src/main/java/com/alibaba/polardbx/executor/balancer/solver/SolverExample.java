@@ -16,11 +16,7 @@
 
 package com.alibaba.polardbx.executor.balancer.solver;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.InputStream;
-import java.util.Objects;
 import java.util.Scanner;
 
 public class SolverExample {

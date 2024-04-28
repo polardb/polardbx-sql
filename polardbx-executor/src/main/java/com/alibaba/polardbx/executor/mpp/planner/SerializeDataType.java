@@ -16,8 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.planner;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.alibaba.polardbx.common.charset.CharsetName;
 import com.alibaba.polardbx.common.charset.CollationName;
 import com.alibaba.polardbx.common.utils.time.MySQLTimeTypeUtil;
@@ -29,6 +27,8 @@ import com.alibaba.polardbx.optimizer.core.datatype.EnumType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimeType;
 import com.alibaba.polardbx.optimizer.core.datatype.TimestampType;
 import com.alibaba.polardbx.optimizer.core.datatype.VarcharType;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.SqlCollation;

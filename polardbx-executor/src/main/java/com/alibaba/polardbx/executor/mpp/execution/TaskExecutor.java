@@ -24,20 +24,27 @@ import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
 import com.alibaba.polardbx.executor.mpp.Threads;
+import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.alibaba.polardbx.executor.mpp.operator.LocalExecutionPlanner;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.memory.ApMemoryPool;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.concurrent.SetThreadName;
 import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 
+
 import javax.annotation.PostConstruct;
 import javax.annotation.PreDestroy;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import javax.inject.Inject;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -63,6 +70,7 @@ import static java.util.concurrent.Executors.newFixedThreadPool;
 public class TaskExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(TaskExecutor.class);
+    private static final Logger PIPELINE_LOG = LoggerFactory.getLogger(LocalExecutionPlanner.class);
 
     private static final AtomicLong NEXT_LOW_RUNNER_ID = new AtomicLong();
     private static final AtomicLong NEXT_HIGH_RUNNER_ID = new AtomicLong();
@@ -211,10 +219,15 @@ public class TaskExecutor {
 
     private void splitFinished(PrioritizedSplitRunner split) {
         split.destroy();
+        // time cost statistics
+        split.markFinishTimestamp();
     }
 
     private void startSplit(PrioritizedSplitRunner split, boolean highPriority) {
         try {
+            // time cost statistics
+            split.markStartTimestamp();
+            split.startPending();
             if (highPriority) {
                 highPendingSplits.put(split);
             } else {
@@ -345,6 +358,87 @@ public class TaskExecutor {
             this.split = split;
             this.workerId = NEXT_WORKER_ID.getAndIncrement();
             this.splitRunQuanta = MppConfig.getInstance().getSplitRunQuanta();
+            this.split.runtimeStatsSupplier(() -> dump());
+        }
+
+        private long startNanoTimestamp = 0L;
+        private long finishNanoTimestamp = 0L;
+        private long blockedNanoTimestamp = 0L;
+        private long pendingNanoTimestamp = 0L;
+        private long runningNanoTimestamp = 0L;
+
+        private long openCost = 0L;
+        private long blockedCost = 0L;
+        private long pendingCost = 0L;
+        private long runningCost = 0L;
+
+        private long blockedCount = 0L;
+        private long pendingCount = 0L;
+        private long runningCount = 0L;
+
+        public void markStartTimestamp() {
+            startNanoTimestamp = System.nanoTime();
+        }
+
+        public void markFinishTimestamp() {
+            if (finishNanoTimestamp == 0L) {
+                finishNanoTimestamp = System.nanoTime();
+                if (PIPELINE_LOG.isDebugEnabled()) {
+                    String info = MessageFormat.format(
+                        "taskId={0}, splitId={1}, splitInfo={2}",
+                        taskHandle.getTaskId(),
+                        splitId, split.getInfo());
+
+                    PIPELINE_LOG.debug(MessageFormat.format(
+                        "finish split: {0}, runningCost={1}, pendingCost={2}, blockedCost={3}, totalCost={4}, "
+                            + " runningCount={5},"
+                            + " pendingCount={6},"
+                            + " blockedCount={7},"
+                            + "startTs={8}, endTs={9}",
+                        info, runningCost, pendingCost, blockedCost, (finishNanoTimestamp - startNanoTimestamp),
+                        runningCount, pendingCount, blockedCount,
+                        startNanoTimestamp, finishNanoTimestamp));
+                }
+            }
+        }
+
+        public DriverContext.DriverRuntimeStatistics dump() {
+            return new DriverContext.DriverRuntimeStatistics(
+                runningCost, pendingCost, blockedCost, openCost,
+                (System.nanoTime() - startNanoTimestamp),
+                (int) runningCount, (int) pendingCount, (int) blockedCount);
+        }
+
+        public void startPending() {
+            pendingCount++;
+            pendingNanoTimestamp = System.nanoTime();
+        }
+
+        public void startBlocked() {
+            blockedCount++;
+            blockedNanoTimestamp = System.nanoTime();
+        }
+
+        public void startRunning() {
+            runningCount++;
+            runningNanoTimestamp = System.nanoTime();
+        }
+
+        public void finishPending() {
+            pendingCost += System.nanoTime() - pendingNanoTimestamp;
+        }
+
+        public void finishBlocked() {
+            if (blockedCount == 1) {
+                // The first blocked status is recognized as open cost.
+                openCost += System.nanoTime() - blockedNanoTimestamp;
+            } else {
+                blockedCost += System.nanoTime() - blockedNanoTimestamp;
+            }
+        }
+
+        public void finishRunning() {
+            runningCost += System.nanoTime() - runningNanoTimestamp;
         }
 
         public long getSplitCost() {
@@ -475,6 +569,7 @@ public class TaskExecutor {
                         logPriorityExecutorInfo(highPriorityExecutorInfo, lastHighRunnerProcessCount);
                         lastHighRunnerProcessCount = highPriorityExecutorInfo.getRunnerProcessCount();
                         ApMemoryPool apMemoryPool = MemoryManager.getInstance().getApMemoryPool();
+
                         log.info("Global Memory Pool: used " +
                             MemoryManager.getInstance().getGlobalMemoryPool().getMemoryUsage() +
                             " total " + MemoryManager.getInstance().getGlobalMemoryPool().getMaxLimit());
@@ -508,9 +603,6 @@ public class TaskExecutor {
 
         @Override
         public void run() {
-            //现在MPP在执行过程中都有可能使用DrdsRelMetadataProvider，所以这里在各个运行线程统一设置吧。
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
-
             runningCounted = true;
             runningLowSplits.incrementAndGet();
             try (SetThreadName runnerName = new SetThreadName("ApSplitRunner-%s", runnerId)) {
@@ -521,6 +613,8 @@ public class TaskExecutor {
                         runningCounted = false;
                         runningLowSplits.decrementAndGet();
                         split = lowPendingSplits.take();
+                        // time cost statistics
+                        split.finishPending();
                         split.buildMDC();
                         runningCounted = true;
                         runningLowSplits.incrementAndGet();
@@ -543,7 +637,10 @@ public class TaskExecutor {
                             if (log.isDebugEnabled()) {
                                 log.debug(String.format("%s is started", split.getInfo()));
                             }
+                            // time cost statistics
+                            split.startRunning();
                             blocked = split.process(start);
+                            split.finishRunning();
                             long cost = System.currentTimeMillis() - start;
                             try {
                                 split.spiltCostAdd(cost);
@@ -561,11 +658,15 @@ public class TaskExecutor {
                                 splitFinished(split);
                             } else {
                                 if (blocked.isDone()) {
+                                    // time cost statistics
+                                    split.startPending();
                                     lowPendingSplits.put(split);
                                 } else {
                                     if (log.isDebugEnabled()) {
                                         log.debug(String.format("%s is bloked", split.getInfo()));
                                     }
+                                    // time cost statistics
+                                    split.startBlocked();
                                     lowBlockedSplitNum.getAndIncrement();
                                     blockedSplits.put(split, blocked);
                                     split.recordBlocked();
@@ -574,9 +675,13 @@ public class TaskExecutor {
                                             log.debug(String.format("%s is pending", split.getInfo()));
                                         }
                                         split.recordBlockedFinished();
+                                        // time cost statistics
+                                        split.finishBlocked();
                                         lowBlockedSplitNum.getAndDecrement();
                                         blockedSplits.remove(split);
                                         try {
+                                            // time cost statistics
+                                            split.startPending();
                                             lowPendingSplits.put(split);
                                         } catch (Exception e) {
                                             log.error("error", e);
@@ -625,9 +730,6 @@ public class TaskExecutor {
 
         @Override
         public void run() {
-            //现在MPP在执行过程中都有可能使用DrdsRelMetadataProvider，所以这里在各个运行线程统一设置吧。
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(DrdsRelMetadataProvider.INSTANCE));
-
             runningCounted = true;
             runningHighSplits.incrementAndGet();
             try (SetThreadName runnerName = new SetThreadName("TpSplitRunner-%s", runnerId)) {

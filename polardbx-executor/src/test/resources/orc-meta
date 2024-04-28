@@ -1,0 +1,151 @@
+File Version: 0.12 with ORC_14 by ORC Java 1.8.2
+Rows: 1000000
+Compression: ZLIB
+Compression size: 131072
+Calendar: Julian/Gregorian
+Type: struct<pk:bigint,i0:bigint,order_id:string,v0:string>
+
+Stripe Statistics:
+  Stripe 1:
+    Column 0: count: 240000 hasNull: false
+    Column 1: count: 240000 hasNull: false bytesOnDisk: 629 min: 1000000 max: 1239999 sum: 268799880000
+    Column 2: count: 205400 hasNull: true bytesOnDisk: 1665071 min: -9223213568993426976 max: 9223369217886035543
+    Column 3: count: 200159 hasNull: true bytesOnDisk: 2335675 min: 000dg9rfd499hu5n max: zzzrjb4ic36eni6y sum: 3203204
+    Column 4: count: 199931 hasNull: true bytesOnDisk: 2332499 min: 0000n62diw807khj max: zzzn8mmkkaqb7ho6 sum: 3198966
+  Stripe 2:
+    Column 0: count: 240000 hasNull: false
+    Column 1: count: 240000 hasNull: false bytesOnDisk: 564 min: 1240000 max: 1479999 sum: 326399880000
+    Column 2: count: 205723 hasNull: true bytesOnDisk: 1667598 min: -9223286337123219541 max: 9223304258018769621
+    Column 3: count: 199960 hasNull: true bytesOnDisk: 2333231 min: 0008txyhc93302wz max: zzzaf4l7np3z3l8e sum: 3199555
+    Column 4: count: 200089 hasNull: true bytesOnDisk: 2333978 min: 000fbrm0ee76wdqqc max: zzzzvohahfmf17h1 sum: 3200767
+  Stripe 3:
+    Column 0: count: 240000 hasNull: false
+    Column 1: count: 240000 hasNull: false bytesOnDisk: 566 min: 1480000 max: 1719999 sum: 383999880000
+    Column 2: count: 205751 hasNull: true bytesOnDisk: 1667863 min: -9223192480253551581 max: 9223275332510073098
+    Column 3: count: 200204 hasNull: true bytesOnDisk: 2335465 min: 000b59lpxwjbvemy max: zzzzy40si136pgix3 sum: 3203183
+    Column 4: count: 200022 hasNull: true bytesOnDisk: 2333420 min: 00002rbozqmgvno max: zzzqknthye2kgel1 sum: 3200065
+  Stripe 4:
+    Column 0: count: 240000 hasNull: false
+    Column 1: count: 240000 hasNull: false bytesOnDisk: 564 min: 1720000 max: 1959999 sum: 441599880000
+    Column 2: count: 205861 hasNull: true bytesOnDisk: 1668659 min: -9223305798921762059 max: 9223279626217748882
+    Column 3: count: 199840 hasNull: true bytesOnDisk: 2331502 min: 000hjl50jro9bfn max: zzzvqqwcqghczd4 sum: 3197771
+    Column 4: count: 199845 hasNull: true bytesOnDisk: 2331542 min: 00003p8g21ct9rd5 max: zzzyjtekqse76mw9 sum: 3197661
+  Stripe 5:
+    Column 0: count: 40000 hasNull: false
+    Column 1: count: 40000 hasNull: false bytesOnDisk: 139 min: 1960000 max: 1999999 sum: 79199980000
+    Column 2: count: 34371 hasNull: true bytesOnDisk: 278558 min: -9223325712867210746 max: 9223312148219752426
+    Column 3: count: 33308 hasNull: true bytesOnDisk: 388659 min: 003r1mc2qwd5k6fq max: zzzf4b57l5ch2qk sum: 533105
+    Column 4: count: 33203 hasNull: true bytesOnDisk: 387287 min: 002ha8xdi66qh7vm9 max: zzxhs46d7xgpsobvt sum: 531283
+
+File Statistics:
+  Column 0: count: 1000000 hasNull: false
+  Column 1: count: 1000000 hasNull: false bytesOnDisk: 2462 min: 1000000 max: 1999999 sum: 1499999500000
+  Column 2: count: 857106 hasNull: true bytesOnDisk: 6947749 min: -9223325712867210746 max: 9223369217886035543
+  Column 3: count: 833471 hasNull: true bytesOnDisk: 9724532 min: 0008txyhc93302wz max: zzzzy40si136pgix3 sum: 13336818
+  Column 4: count: 833090 hasNull: true bytesOnDisk: 9718726 min: 00002rbozqmgvno max: zzzzvohahfmf17h1 sum: 13328742
+
+Stripes:
+  Stripe: offset: 3 data: 6333874 rows: 240000 tail: 111 index: 4025
+    Stream: column 0 section ROW_INDEX start: 3 length 17
+    Stream: column 1 section ROW_INDEX start: 20 length 514
+    Stream: column 2 section ROW_INDEX start: 534 length 871
+    Stream: column 3 section ROW_INDEX start: 1405 length 1320
+    Stream: column 4 section ROW_INDEX start: 2725 length 1303
+    Stream: column 1 section DATA start: 4028 length 629
+    Stream: column 2 section PRESENT start: 4657 length 21028
+    Stream: column 2 section DATA start: 25685 length 1644043
+    Stream: column 3 section PRESENT start: 1669728 length 22105
+    Stream: column 3 section DATA start: 1691833 length 2233904
+    Stream: column 3 section LENGTH start: 3925737 length 79666
+    Stream: column 4 section PRESENT start: 4005403 length 22148
+    Stream: column 4 section DATA start: 4027551 length 2230890
+    Stream: column 4 section LENGTH start: 6258441 length 79461
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+  Stripe: offset: 6338013 data: 6335371 rows: 240000 tail: 111 index: 4009
+    Stream: column 0 section ROW_INDEX start: 6338013 length 17
+    Stream: column 1 section ROW_INDEX start: 6338030 length 492
+    Stream: column 2 section ROW_INDEX start: 6338522 length 860
+    Stream: column 3 section ROW_INDEX start: 6339382 length 1310
+    Stream: column 4 section ROW_INDEX start: 6340692 length 1330
+    Stream: column 1 section DATA start: 6342022 length 564
+    Stream: column 2 section PRESENT start: 6342586 length 20971
+    Stream: column 2 section DATA start: 6363557 length 1646627
+    Stream: column 3 section PRESENT start: 8010184 length 22125
+    Stream: column 3 section DATA start: 8032309 length 2231518
+    Stream: column 3 section LENGTH start: 10263827 length 79588
+    Stream: column 4 section PRESENT start: 10343415 length 22138
+    Stream: column 4 section DATA start: 10365553 length 2232265
+    Stream: column 4 section LENGTH start: 12597818 length 79575
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+  Stripe: offset: 12677504 data: 6337314 rows: 240000 tail: 110 index: 4028
+    Stream: column 0 section ROW_INDEX start: 12677504 length 17
+    Stream: column 1 section ROW_INDEX start: 12677521 length 493
+    Stream: column 2 section ROW_INDEX start: 12678014 length 873
+    Stream: column 3 section ROW_INDEX start: 12678887 length 1323
+    Stream: column 4 section ROW_INDEX start: 12680210 length 1322
+    Stream: column 1 section DATA start: 12681532 length 566
+    Stream: column 2 section PRESENT start: 12682098 length 21012
+    Stream: column 2 section DATA start: 12703110 length 1646851
+    Stream: column 3 section PRESENT start: 14349961 length 22078
+    Stream: column 3 section DATA start: 14372039 length 2233754
+    Stream: column 3 section LENGTH start: 16605793 length 79633
+    Stream: column 4 section PRESENT start: 16685426 length 22115
+    Stream: column 4 section DATA start: 16707541 length 2231725
+    Stream: column 4 section LENGTH start: 18939266 length 79580
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+  Stripe: offset: 19018956 data: 6332267 rows: 240000 tail: 111 index: 4012
+    Stream: column 0 section ROW_INDEX start: 19018956 length 17
+    Stream: column 1 section ROW_INDEX start: 19018973 length 488
+    Stream: column 2 section ROW_INDEX start: 19019461 length 864
+    Stream: column 3 section ROW_INDEX start: 19020325 length 1324
+    Stream: column 4 section ROW_INDEX start: 19021649 length 1319
+    Stream: column 1 section DATA start: 19022968 length 564
+    Stream: column 2 section PRESENT start: 19023532 length 20926
+    Stream: column 2 section DATA start: 19044458 length 1647733
+    Stream: column 3 section PRESENT start: 20692191 length 22167
+    Stream: column 3 section DATA start: 20714358 length 2229938
+    Stream: column 3 section LENGTH start: 22944296 length 79397
+    Stream: column 4 section PRESENT start: 23023693 length 22142
+    Stream: column 4 section DATA start: 23045835 length 2229865
+    Stream: column 4 section LENGTH start: 25275700 length 79535
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+  Stripe: offset: 25355346 data: 1054643 rows: 40000 tail: 103 index: 794
+    Stream: column 0 section ROW_INDEX start: 25355346 length 17
+    Stream: column 1 section ROW_INDEX start: 25355363 length 113
+    Stream: column 2 section ROW_INDEX start: 25355476 length 165
+    Stream: column 3 section ROW_INDEX start: 25355641 length 244
+    Stream: column 4 section ROW_INDEX start: 25355885 length 255
+    Stream: column 1 section DATA start: 25356140 length 139
+    Stream: column 2 section PRESENT start: 25356279 length 3445
+    Stream: column 2 section DATA start: 25359724 length 275113
+    Stream: column 3 section PRESENT start: 25634837 length 3672
+    Stream: column 3 section DATA start: 25638509 length 371691
+    Stream: column 3 section LENGTH start: 26010200 length 13296
+    Stream: column 4 section PRESENT start: 26023496 length 3698
+    Stream: column 4 section DATA start: 26027194 length 370345
+    Stream: column 4 section LENGTH start: 26397539 length 13244
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+
+File length: 26411976 bytes
+Padding length: 0 bytes
+Padding ratio: 0%

@@ -31,7 +31,4 @@ PRIMARY KEY (`id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
 show create table `myds_db`.`t3`;
 
-select count(distinct rw_dn) dn_cnt from information_schema.partitions_meta
-  where table_schema='myds_db' and table_name in ('t1', 't2', 't3') order by table_name ;
-
 drop database if exists myds_db;

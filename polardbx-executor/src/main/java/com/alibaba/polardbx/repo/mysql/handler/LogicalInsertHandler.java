@@ -28,6 +28,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterMethod;
 import com.alibaba.polardbx.common.jdbc.Parameters;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -228,8 +229,9 @@ public class LogicalInsertHandler extends HandlerCommon {
         final boolean checkPrimaryKey = logicalInsert.isSimpleInsert() &&
             executionContext.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK)
             && !logicalInsert.isPushablePrimaryKeyCheck();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
         final boolean checkForeignKey = logicalInsert.isSimpleInsert() &&
-            executionContext.foreignKeyChecks();
+            executionContext.foreignKeyChecks() && tableMeta.hasForeignKey();
 
         if (null != logicalInsert.getPrimaryInsertWriter() && !logicalInsert.hasHint() && executionContext
             .getParamManager().getBoolean(ConnectionParams.GSI_CONCURRENT_WRITE_OPTIMIZE)) {
@@ -324,7 +326,7 @@ public class LogicalInsertHandler extends HandlerCommon {
         assert shardResults.size() == inputs.size();
         if (!logicalInsert.hasHint() && executionContext.getParams() != null
             && GlobalIndexMeta.hasIndex(tableName, schemaName, executionContext)) {
-            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 1);
+            executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
             return executeIndex(tableName,
                 insertSharder.getSqlTemplate(),
                 logicalInsert,
@@ -1064,7 +1066,7 @@ public class LogicalInsertHandler extends HandlerCommon {
             List<List<Object>> values = null;
             boolean firstBatch = true;
 
-            ExecutionContext insertEc = executionContext.copy();
+            ExecutionContext insertEc = executionContext.copy(new Parameters(executionContext.getParamMap()));
 
             // Update duplicate key update list if necessary
             final Map<Integer, Integer> duplicateKeyParamMapping = new HashMap<>();

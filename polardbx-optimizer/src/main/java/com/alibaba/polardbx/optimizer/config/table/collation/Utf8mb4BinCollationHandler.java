@@ -136,11 +136,6 @@ public class Utf8mb4BinCollationHandler extends AbstractCollationHandler {
     }
 
     @Override
-    public boolean wildCompare(Slice slice, Slice wildCard) {
-        return false;
-    }
-
-    @Override
     public int hashcode(Slice utf8Str) {
         long tmp1 = INIT_HASH_VALUE_1;
         long tmp2 = INIT_HASH_VALUE_2;

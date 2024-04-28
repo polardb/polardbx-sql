@@ -44,6 +44,7 @@ import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalDynamicValues;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalUpsert;
+import com.alibaba.polardbx.optimizer.core.rel.dml.DistinctWriter;
 import com.alibaba.polardbx.optimizer.core.rel.dml.Writer;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.DuplicateCheckResult;
 import com.alibaba.polardbx.optimizer.core.rel.dml.util.RowClassifier;
@@ -84,6 +85,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiPredicate;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -118,8 +120,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         final boolean checkPrimaryKey =
             executionContext.getParamManager().getBoolean(ConnectionParams.PRIMARY_KEY_CHECK)
                 && !upsert.isPushablePrimaryKeyCheck();
+        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
         final boolean checkForeignKey =
-            executionContext.foreignKeyChecks();
+            executionContext.foreignKeyChecks() && (tableMeta.hasForeignKey() || tableMeta.hasReferencedForeignKey());
 
         // For batch upsert, change params index.
         if (upsert.getBatchSize() > 0) {
@@ -166,8 +169,9 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
             final List<DuplicateCheckResult> classifiedRows =
                 new ArrayList<>(bindInsertRows(upsert, selectedRows, convertedValues, upsertEc, usePartFieldChecker));
 
-            if (checkPrimaryKey || checkForeignKey) {
-                // TODO(qianjing): support upsert Pk Fk check, now we just throw exception in OptimizeLogicalInsertRule
+            if (checkForeignKey) {
+                fkConstraintAndCascade(upsertEc, executionContext, upsert, schemaName, tableName, upsert.getInput(),
+                    classifiedRows);
             }
 
             upsertEc.setPhySqlId(upsertEc.getPhySqlId() + 1);
@@ -419,6 +423,8 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                 upsert.isHasJsonColumn() && upsertEc.getParamManager()
                     .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK))) && upsertEc.getParamManager()
                 .getBoolean(ConnectionParams.DML_SKIP_TRIVIAL_UPDATE);
+        final boolean checkJsonByStringCompare =
+            upsertEc.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
 
         final Map<String, RexNode> columnValueMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Ord.zip(insertColumns).forEach(o -> columnValueMap.put(o.getValue(), rexRow.get(o.getKey())));
@@ -570,7 +576,8 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                     }
 
                     if (skipTrivialUpdate && !rowResult.doInsert) {
-                        rowResult.trivial = identicalRow(row.before, row.after, rowColumnMeta);
+                        rowResult.trivial =
+                            identicalRow(row.before, row.after, rowColumnMeta, checkJsonByStringCompare);
                     }
 
                     // should deal affected rows inside update check
@@ -790,6 +797,37 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
         return ukCheckerMapList;
     }
 
+    void fkConstraintAndCascade(ExecutionContext fkEc, ExecutionContext ec, LogicalUpsert upsert, String schemaName,
+                                String tableName, RelNode input, List<DuplicateCheckResult> classifiedRows) {
+        // Do need to check Fk for replace
+        Map<String, Map<String, Map<String, Pair<Integer, RelNode>>>> fkPlans = upsert.getFkPlans();
+        List<String> insertColumns = input.getRowType().getFieldNames().stream().map(String::toUpperCase).collect(
+            Collectors.toList());
+        List<List<Object>> values =
+            getInputValues(RelUtils.getRelInput(upsert), ec.getParams().getBatchParameters(), ec);
+
+        // Constraint for insert
+        beforeInsertCheck(upsert, values, insertColumns, false, true, ec);
+
+        // Cascade for update
+        values.clear();
+        DistinctWriter writer;
+        if (!upsert.isModifyPartitionKey()) {
+            writer = (upsert).getPrimaryUpsertWriter().getUpdaterWriter();
+        } else {
+            writer = (upsert).getPrimaryRelocateWriter().getModifyWriter();
+        }
+        final Function<DistinctWriter, SourceRows> rowBuilder = (wr) -> SourceRows.createFromValues(classifiedRows);
+        if (writer != null) {
+            final SourceRows duplicatedRows = rowBuilder.apply(writer);
+            for (DuplicateCheckResult duplicateCheckResult : duplicatedRows.valueRows) {
+                values.add(duplicateCheckResult.updateSource);
+            }
+        }
+
+        beforeUpdateFkCascade(upsert, schemaName, tableName, fkEc, values, null, null, fkPlans, 1);
+    }
+
     private static class DuplicateCheckRow implements Comparable<DuplicateCheckRow> {
         /**
          * Origin row value from table, null if to-be-inserted row not duplicate with existing row in table
@@ -893,9 +931,12 @@ public class LogicalUpsertHandler extends LogicalInsertIgnoreHandler {
                 upsertEc.getParamManager().getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_ROW_CHECK) || (
                     upsert.isHasJsonColumn() && upsertEc.getParamManager()
                         .getBoolean(ConnectionParams.DML_SKIP_IDENTICAL_JSON_ROW_CHECK));
+            final boolean checkJsonByStringCompare =
+                upsertEc.getParamManager().getBoolean(ConnectionParams.DML_CHECK_JSON_BY_STRING_COMPARE);
             // Check identical row
             final boolean isIdenticalRow =
-                !skipIdenticalRowCheck && identicalRow(withoutAppended, this.after, rowColumnMeta);
+                !skipIdenticalRowCheck && identicalRow(withoutAppended, this.after, rowColumnMeta,
+                    checkJsonByStringCompare);
             final List<Object> updated = isIdenticalRow ? withoutAppended : withAppended;
             this.affectedRows += isIdenticalRow ? (upsertEc.isClientFoundRows() ? 1 : 0) : 2;
 

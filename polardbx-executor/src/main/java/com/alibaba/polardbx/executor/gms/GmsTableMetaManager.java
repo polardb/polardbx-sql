@@ -35,6 +35,8 @@ import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.archive.schemaevolution.OrcColumnManager;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.RecycleBin;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.mdl.MdlContext;
 import com.alibaba.polardbx.executor.mdl.MdlDuration;
@@ -48,6 +50,7 @@ import com.alibaba.polardbx.gms.metadb.evolution.ColumnMappingRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignColsRecord;
 import com.alibaba.polardbx.gms.metadb.foreign.ForeignRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnStatus;
+import com.alibaba.polardbx.gms.metadb.table.ColumnarTableMappingRecord;
 import com.alibaba.polardbx.gms.metadb.table.ColumnsRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
@@ -56,10 +59,8 @@ import com.alibaba.polardbx.gms.metadb.table.TableStatus;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
 import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
-import com.alibaba.polardbx.gms.partition.TablePartRecordInfoContext;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -75,6 +76,7 @@ import com.alibaba.polardbx.optimizer.config.table.Relationship;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.TruncateUtil;
 import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
@@ -86,7 +88,6 @@ import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionI
 import com.alibaba.polardbx.optimizer.planmanager.PlanManager;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
-import com.alibaba.polardbx.optimizer.tablegroup.TableGroupInfoManager;
 import com.alibaba.polardbx.optimizer.tablegroup.TableGroupVersionManager;
 import com.alibaba.polardbx.optimizer.utils.SchemaVersionManager;
 import com.alibaba.polardbx.rpc.client.XSession;
@@ -104,7 +105,6 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.SetUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 
 import javax.sql.DataSource;
@@ -130,9 +130,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.constants.SequenceAttribute.AUTO_SEQ_PREFIX;
@@ -256,11 +256,10 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                     meta.setSchemaName(schemaName);
                     DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+                    final boolean lowerCaseTableNames = storage.isLowerCaseTableNames();
                     final GsiMetaManager gsiMetaManager =
                         new GsiMetaManager(dataSource, schemaName);
-                    meta.setTableColumnMeta(new TableColumnMeta(schemaName, origTableName,
-                        meta.getColumnMultiWriteSourceColumnMeta(),
-                        meta.getColumnMultiWriteTargetColumnMeta()));
+                    meta.setTableColumnMeta(new TableColumnMeta(meta));
                     meta.setGsiTableMetaBean(
                         gsiMetaManager.getTableMeta(origTableName, IndexStatus.ALL));
                     meta.setComplexTaskTableMetaBean(
@@ -294,6 +293,28 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                         // Load lock flag.
                         locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
                     }
+
+                    if (meta.isColumnar()) {
+                        List<ColumnarTableMappingRecord> cciMappingRecord =
+                            tableInfoManager.queryColumnarTableMapping(schemaName, origTableName);
+
+                        if (!CollectionUtils.isEmpty(cciMappingRecord)) {
+                            long latestVersionId = cciMappingRecord.get(0).latestVersionId;
+                            long tableId = cciMappingRecord.get(0).tableId;
+                            List<ColumnsRecord> allColumnsIncludingInvisible =
+                                tableInfoManager.queryColumns(schemaName, origTableName);
+                            List<Long> allFieldIdList =
+                                ColumnarManager.getInstance().getColumnFieldIdList(latestVersionId, tableId);
+                            List<Long> visibleFieldIdList = new ArrayList<>();
+                            for (int i = 0; i < allColumnsIncludingInvisible.size(); i++) {
+                                ColumnsRecord columnsRecord = allColumnsIncludingInvisible.get(i);
+                                if (columnsRecord.getStatus() != ColumnStatus.ABSENT.getValue()) {
+                                    visibleFieldIdList.add(allFieldIdList.get(i));
+                                }
+                            }
+                            meta.setColumnarFieldIdList(visibleFieldIdList);
+                        }
+                    }
                 }
 
                 // fetch file metas for oss engine.
@@ -316,6 +337,151 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
         return metaMap;
     }
+
+    public static Map<String, TableMeta> fetchTableMeta(Connection metaDbConn,
+                                                        String schemaName,
+                                                        String appName,
+                                                        List<String> logicalTableNameList,
+                                                        TddlRuleManager rule,
+                                                        StorageInfoManager storage,
+                                                        boolean fetchPrimaryTableMetaOnly,
+                                                        boolean includeInvisiableInfo) {
+        TableInfoManager tableInfoManager = new TableInfoManager();
+        tableInfoManager.setConnection(metaDbConn);
+
+        boolean locked = false;
+        Map<String, TableMeta> metaMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (String logicalTableName : GeneralUtil.emptyIfNull(logicalTableNameList)) {
+
+            TableMeta meta = null;
+            String origTableName = logicalTableName;
+
+            TablesRecord tableRecord = tableInfoManager.queryTable(schemaName, logicalTableName, false);
+
+            if (tableRecord == null) {
+                // Check if there is an ongoing RENAME TABLE operation, so search with new table name.
+                tableRecord = tableInfoManager.queryTable(schemaName, logicalTableName, true);
+
+                // Use original table name to find column and index meta.
+                if (tableRecord != null) {
+                    origTableName = tableRecord.tableName;
+                }
+            }
+
+            if (tableRecord != null) {
+                List<ColumnsRecord> columnsRecords;
+                List<ColumnMappingRecord> columnMappingRecords;
+                List<IndexesRecord> indexesRecords;
+                if (includeInvisiableInfo) {
+                    columnsRecords =
+                        tableInfoManager.queryColumns(schemaName, origTableName);
+                    columnMappingRecords =
+                        tableInfoManager.queryColumnMappings(schemaName, origTableName);
+                    indexesRecords =
+                        tableInfoManager.queryIndexes(schemaName, origTableName);
+                } else {
+                    columnsRecords =
+                        tableInfoManager.queryVisibleColumns(schemaName, origTableName);
+                    columnMappingRecords =
+                        tableInfoManager.queryColumnMappings(schemaName, origTableName);
+                    indexesRecords =
+                        tableInfoManager.queryVisibleIndexes(schemaName, origTableName);
+                }
+                final List<ForeignRecord> referencedFkRecords =
+                    tableInfoManager.queryReferencedForeignKeys(schemaName, origTableName);
+                final List<ForeignRecord> fkRecords =
+                    tableInfoManager.queryForeignKeys(schemaName, origTableName);
+
+                meta = buildTableMeta(schemaName, tableRecord, columnsRecords, indexesRecords, columnMappingRecords,
+                    fkRecords, referencedFkRecords, tableInfoManager, logicalTableName);
+
+                if (meta != null && !fetchPrimaryTableMetaOnly) {
+
+                    meta.setSchemaName(schemaName);
+                    DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
+                    final boolean lowerCaseTableNames = storage.isLowerCaseTableNames();
+                    final GsiMetaManager gsiMetaManager =
+                        new GsiMetaManager(dataSource, schemaName);
+                    meta.setTableColumnMeta(new TableColumnMeta(meta));
+                    meta.setGsiTableMetaBean(
+                        gsiMetaManager.getTableMeta(origTableName, IndexStatus.ALL));
+                    meta.setComplexTaskTableMetaBean(
+                        ComplexTaskMetaManager.getComplexTaskTableMetaBean(metaDbConn, schemaName, origTableName));
+                    boolean isNewPartDb = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+                    if (isNewPartDb) {
+                        loadNewestPartitionInfo(metaDbConn,
+                            schemaName, logicalTableName, origTableName, rule,
+                            tableInfoManager, meta);
+                        if (meta.getPartitionInfo() != null) {
+                            meta.setTableGroupDigestList(TableGroupVersionManager.getTableGroupDigestList(
+                                meta.getPartitionInfo().getTableGroupId()));
+                        }
+                    } else {
+                        meta.setSchemaDigestList(SchemaVersionManager.getSchemaDigestList(schemaName));
+                    }
+                    // Get auto partition mark.
+                    final TablesExtRecord extRecord =
+                        tableInfoManager.queryTableExt(schemaName, origTableName, false);
+                    if (extRecord != null) {
+                        meta.setAutoPartition(extRecord.isAutoPartition());
+                        // Load lock flag.
+                        locked = extRecord.isLocked();
+                    }
+
+                    // Auto partition flag for new partition table.
+                    if (meta.getPartitionInfo() != null) {
+                        meta.setAutoPartition(
+                            (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_AUTO_PARTITION)
+                                != 0);
+                        // Load lock flag.
+                        locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
+                    }
+
+                    if (meta.isColumnar()) {
+                        List<ColumnarTableMappingRecord> cciMappingRecord =
+                            tableInfoManager.queryColumnarTableMapping(schemaName, origTableName);
+
+                        if (!CollectionUtils.isEmpty(cciMappingRecord)) {
+                            long latestVersionId = cciMappingRecord.get(0).latestVersionId;
+                            long tableId = cciMappingRecord.get(0).tableId;
+                            List<ColumnsRecord> allColumnsIncludingInvisible =
+                                tableInfoManager.queryColumns(schemaName, origTableName);
+                            List<Long> allFieldIdList =
+                                ColumnarManager.getInstance().getColumnFieldIdList(latestVersionId, tableId);
+                            List<Long> visibleFieldIdList = new ArrayList<>();
+                            for (int i = 0; i < allColumnsIncludingInvisible.size(); i++) {
+                                ColumnsRecord columnsRecord = allColumnsIncludingInvisible.get(i);
+                                if (columnsRecord.getStatus() != ColumnStatus.ABSENT.getValue()) {
+                                    visibleFieldIdList.add(allFieldIdList.get(i));
+                                }
+                            }
+                            meta.setColumnarFieldIdList(visibleFieldIdList);
+                        }
+                    }
+                }
+
+                // fetch file metas for oss engine.
+                if (meta != null && meta.getPartitionInfo() != null && Engine.isFileStore(meta.getEngine())) {
+                    Map<String, Map<String, List<FileMeta>>> fileMetaSet =
+                        FileManager.INSTANCE.getFiles(meta);
+                    meta.setFileMetaSet(fileMetaSet);
+                }
+            }
+
+            metaMap.put(logicalTableName, meta);
+
+            if (meta != null && Engine.isFileStore(meta.getEngine())) {
+                OrcColumnManager.getINSTANCE().rebuild(schemaName, logicalTableName);
+            }
+        }
+
+        if (locked) {
+            throw new RuntimeException("Table `" + logicalTableNameList + "` has been locked by logical meta lock.");
+        }
+        return metaMap;
+    }
+
 
     @Override
     protected void doInit() {
@@ -422,7 +588,6 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         if (!isPartDb) {
             tonewversion(tableName);
         } else {
-            final TableGroupInfoManager tgm = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
             final TableMeta tableMeta = gtm.getTableWithNull(tableName);
 
             if (tableMeta == null || tableMeta.getPartitionInfo() == null) {
@@ -430,16 +595,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                 return;
             }
 
-            long tableGroupId = tableMeta.getPartitionInfo().getTableGroupId();
-            TableGroupConfig tgConfig = tgm.getTableGroupConfigById(tableGroupId);
-            if (tgConfig != null) {
-                List<String> tableNames =
-                    GeneralUtil.emptyIfNull(tgConfig.getTables()).stream()
-                        .map(TablePartRecordInfoContext::getTableName)
-                        .collect(Collectors.toList());
-
-                toNewVersionInTrx(tableNames, -1, allowTwoVersion);
-            }
+            toNewVersionInTrx(Collections.singletonList(tableName), -1, allowTwoVersion);
         }
 
     }
@@ -660,7 +816,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         boolean nullable = "YES".equalsIgnoreCase(record.isNullable);
 
         String typeName = record.jdbcTypeName;
-        if (TStringUtil.startsWithIgnoreCase(record.columnType, "enum(")) {
+        if (TStringUtil.startsWithIgnoreCase(record.columnType, "enum(") ||
+            TStringUtil.startsWithIgnoreCase(record.columnType, "set(")) {
             typeName = record.columnType;
         }
 
@@ -693,7 +850,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             new Field(tableName, columnName, record.collationName, extra, columnDefault, calciteDataType,
                 autoIncrement, false);
 
-        return new ColumnMeta(tableName, columnName, null, field, ColumnStatus.convert(status), flag);
+        return new ColumnMeta(tableName, columnName, null, field, ColumnStatus.convert(status), flag,
+            record.getColumnMappingName());
 
     }
 
@@ -764,6 +922,39 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             throw new TableNotFoundException(ErrorCode.ERR_TABLE_NOT_EXIST, tableName);
         }
         return table;
+    }
+
+    @Override
+    public List<TableMeta> getAllUserTables() {
+        List<TableMeta> tableMetas = Lists.newArrayList();
+        for (TableMeta table : latestTables.values()) {
+            String tableName = table.getTableName();
+            // gsi
+            if (table.isGsi()) {
+                continue;
+            }
+            if (table.isColumnar()) {
+                continue;
+            }
+            // dual
+            if (tableName.equalsIgnoreCase(DUAL)) {
+                continue;
+            }
+            // recycle bin
+            if (RecycleBin.isRecyclebinTable(tableName)) {
+                continue;
+            }
+            // truncate tmp table
+            if (TruncateUtil.isTruncateTmpPrimaryTable(tableName)) {
+                continue;
+            }
+            //invisible
+            if (table.getStatus() != TableStatus.PUBLIC) {
+                continue;
+            }
+            tableMetas.add(table);
+        }
+        return tableMetas;
     }
 
     @Override
@@ -880,9 +1071,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
                 boolean locked = false;
                 if (meta != null) {
-                    meta.setTableColumnMeta(new TableColumnMeta(schemaName, origTableName,
-                        meta.getColumnMultiWriteSourceColumnMeta(),
-                        meta.getColumnMultiWriteTargetColumnMeta()));
+                    meta.setTableColumnMeta(new TableColumnMeta(meta));
 
                     meta.setGsiTableMetaBean(
                         gsiMetaManager.initTableMeta(origTableName, indexRecordsTableMap.get(origTableName),
@@ -935,6 +1124,28 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_AUTO_PARTITION) != 0);
                         // Load lock flag.
                         locked = (meta.getPartitionInfo().getPartFlags() & TablePartitionRecord.FLAG_LOCK) != 0;
+                    }
+
+                    if (meta.isColumnar()) {
+                        List<ColumnarTableMappingRecord> cciMappingRecord =
+                            tableInfoManager.queryColumnarTableMapping(schemaName, origTableName);
+
+                        if (!CollectionUtils.isEmpty(cciMappingRecord)) {
+                            long latestVersionId = cciMappingRecord.get(0).latestVersionId;
+                            long tableId = cciMappingRecord.get(0).tableId;
+                            List<ColumnsRecord> allColumnsIncludingInvisible =
+                                tableInfoManager.queryColumns(schemaName, origTableName);
+                            List<Long> allFieldIdList =
+                                ColumnarManager.getInstance().getColumnFieldIdList(latestVersionId, tableId);
+                            List<Long> visibleFieldIdList = new ArrayList<>();
+                            for (int i = 0; i < allColumnsIncludingInvisible.size(); i++) {
+                                ColumnsRecord columnsRecord = allColumnsIncludingInvisible.get(i);
+                                if (columnsRecord.getStatus() != ColumnStatus.ABSENT.getValue()) {
+                                    visibleFieldIdList.add(allFieldIdList.get(i));
+                                }
+                            }
+                            meta.setColumnarFieldIdList(visibleFieldIdList);
+                        }
                     }
 
                 } else {
@@ -1083,10 +1294,6 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             if (meta == null) {
                 latestTables.remove(tableName);
             } else {
-                boolean modifyPrimaryKey = false;
-                TreeSet<String> pkSet = new TreeSet<>(String::compareToIgnoreCase);
-                pkSet.addAll(meta.getPrimaryKeyMap().keySet());
-
                 //create/alter table
                 meta.setSchemaName(schemaName);
                 latestTables.put(tableName, meta);
@@ -1105,20 +1312,9 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                             if (!isNewPartition) {
                                 TableRuleManager.reload(schemaName, index.indexName);
                             }
-
-                            // for modify partition key
-                            if (!indexTableMeta.hasGsiImplicitPrimaryKey()) {
-                                TreeSet<String> gsiPkSet = new TreeSet<>(String::compareToIgnoreCase);
-                                gsiPkSet.addAll(indexTableMeta.getPrimaryKeyMap().keySet());
-                                if (!SetUtils.isEqualSet(pkSet, gsiPkSet)) {
-                                    modifyPrimaryKey = true;
-                                }
-                            }
                         }
                     }
                 }
-
-                meta.getTableColumnMeta().setModifyPartitionKey(modifyPrimaryKey);
             }
         }
     }
@@ -1191,7 +1387,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                                 metaDbConn);
                     } else {
                         newSchemaManager =
-                            new GmsTableMetaManager(oldSchemaManager, ImmutableList.of(tableName), rule, metaDbConn);
+                            new GmsTableMetaManager(oldSchemaManager, ImmutableList.of(tableName), rule,
+                                metaDbConn);
                     }
 
                     newSchemaManager.init();
@@ -1201,7 +1398,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
                     }
                     SQLRecorderLogger.ddlMetaLogger.info(MessageFormat.format(
                         "{0} reload table metas for [{1}]: since meta version of table {2} change from {3} to {4}",
-                        String.valueOf(System.identityHashCode(newSchemaManager)), tableNameList, tableName, oldVersion,
+                        String.valueOf(System.identityHashCode(newSchemaManager)), tableNameList, tableName,
+                        oldVersion,
                         newVersion));
 
                 } finally {
@@ -1424,7 +1622,7 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
     }
 
     @Override
-    public Set<String> guessGsi(String unwrappedName) {
+    public Set<String> guessGsi(String unwrappedName, Predicate<GsiMetaManager.GsiIndexMetaBean> filter) {
         DataSource dataSource = MetaDbDataSource.getInstance().getDataSource();
         final GsiMetaManager gsiMetaManager =
             new GsiMetaManager(dataSource, schemaName);
@@ -1432,8 +1630,9 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
 
         final Set<String> gsi = new HashSet<>();
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null && TddlSqlToRelConverter.unwrapGsiName(bean.gsiMetaBean.indexName)
-                .equalsIgnoreCase(unwrappedName)) {
+            if (bean.gsiMetaBean != null
+                && filter.test(bean.gsiMetaBean)
+                && TddlSqlToRelConverter.unwrapGsiName(bean.gsiMetaBean.indexName).equalsIgnoreCase(unwrappedName)) {
                 gsi.add(bean.gsiMetaBean.indexName);
             }
         }
@@ -1573,6 +1772,20 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
         }
 
         return specialType;
+    }
+
+    public static TableMeta fetchTableMeta(Connection metaDbConn,
+                                           String schemaName,
+                                           String appName,
+                                           String logicalTableName,
+                                           TddlRuleManager rule,
+                                           StorageInfoManager storage,
+                                           boolean fetchPrimaryTableMetaOnly,
+                                           boolean includeInvisiableInfo) {
+        return MetaDbUtil.queryMetaDbWrapper(metaDbConn, (conn) -> {
+            return fetchTableMeta(conn, schemaName, appName, Arrays.asList(logicalTableName), rule, storage,
+                fetchPrimaryTableMetaOnly, includeInvisiableInfo).get(logicalTableName);
+        });
     }
 
     private static TableMeta fetchTableMeta(String schemaName, Connection conn, String actualTableName,

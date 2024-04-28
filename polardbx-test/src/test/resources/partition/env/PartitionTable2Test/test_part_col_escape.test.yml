@@ -1,0 +1,28 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `t_escape_``chars_1` (
+`i``D` INT PRIMARY KEY,
+`i``D2` INT,
+`i``D3` INT,
+`nA``me` VARCHAR(50)
+)
+single;
+show create table `t_escape_``chars_1`;
+
+CREATE TABLE `t_escape_``chars_2` (
+`i``D` INT PRIMARY KEY,
+`i``D2` VARCHAR(32),
+`i``D3` VARCHAR(32),
+`ti``me` DATETIME
+)
+partition by hash(year(`ti``me`) ) partitions 5;
+show create table `t_escape_``chars_2`;
+
+CREATE TABLE `t_escape_``chars_3` (
+`i``D` INT PRIMARY KEY,
+`i``D2` VARCHAR(32),
+`i``D3` VARCHAR(32),
+`nAme` VARCHAR(50)
+)
+partition by co_hash(RIGHT(`i``D2`,4),RIGHT(`i``D3`,4) ) partitions 5;
+show create table `t_escape_``chars_3`;

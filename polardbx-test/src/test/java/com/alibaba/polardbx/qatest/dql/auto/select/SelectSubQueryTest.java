@@ -26,6 +26,7 @@ import com.alibaba.polardbx.qatest.data.ColumnDataGenerator;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.ConfigUtil;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
+import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -827,7 +828,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -842,7 +843,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -859,7 +860,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
                 baseTwoTableName,
                 baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -877,7 +878,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
         // do not support pushdown multi exists
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -895,7 +896,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
         // do not support pushdown multi exists
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -911,7 +912,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseTwoTableName,
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -928,7 +929,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseTwoTableName,
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -943,7 +944,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -958,7 +959,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -973,7 +974,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -990,7 +991,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseTwoTableName,
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -1024,7 +1025,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseTwoTableName,
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -1041,7 +1042,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseTwoTableName,
             baseThreeTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }
@@ -1077,7 +1078,7 @@ public class SelectSubQueryTest extends AutoReadBaseTestCase {
             baseOneTableName,
             baseTwoTableName);
         selectContentSameAssert(sql, null, mysqlConnection, tddlConnection);
-        if (ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
+        if (!PropertiesUtil.columnarMode() && ConfigUtil.isStrictSameTopology(baseOneTableName, baseTwoTableName)) {
             assertShardCount(tddlConnection, sql, 1);
         }
     }

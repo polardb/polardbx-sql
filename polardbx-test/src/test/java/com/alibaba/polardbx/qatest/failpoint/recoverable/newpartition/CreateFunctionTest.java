@@ -102,7 +102,7 @@ public class CreateFunctionTest extends BasePartitionedTableFailPointTestCase {
         JdbcUtil.executeSuccess(failPointConnection, String.format("select %s()", functionName));
 
         JdbcUtil.executeSuccess(failPointConnection, String.format(dropFunctionStmt, functionName));
-        JdbcUtil.executeFaied(failPointConnection, String.format(showCreateFunction, functionName),
+        JdbcUtil.executeFailed(failPointConnection, String.format(showCreateFunction, functionName),
             "ERR_UDF_NOT_FOUND");
     }
 

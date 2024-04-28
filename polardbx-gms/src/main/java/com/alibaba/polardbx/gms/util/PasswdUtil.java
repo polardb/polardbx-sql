@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.druid.util.StringUtils;
+
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
 
 import java.util.Base64;
 import java.util.Random;
@@ -26,6 +29,18 @@ import java.util.Random;
  * @author chenghui.lch
  */
 public class PasswdUtil {
+
+    /**
+     * Important Notice: The value of key can not be change!!
+     * It is used by AES for encrypt & decrypt
+     */
+    private static final String DN_PASSWORD_KEY = "dnPasswordKey";
+
+    public static final String OSS_ACCESS_KEY_ID = "oss_access_key_id";
+
+    public static final String OSS_ACCESS_KEY_SECRET = "oss_access_key_secret";
+
+    public static final String CIPHER_KEY = "cipher_key";
 
     /**
      * Important Notice: The value of key can not be change!!
@@ -69,6 +84,63 @@ public class PasswdUtil {
         } catch (Exception ex) {
             throw new RuntimeException("param error during decrypt", ex);
         }
+    }
+
+    // Encode, AES + Base64
+    public static String encrypt(String sSrc, String key) {
+        String sKey = key;
+        // Overwrite key with environment variable.
+        if (null != System.getenv(DN_PASSWORD_KEY)) {
+            sKey = System.getenv(DN_PASSWORD_KEY);
+        }
+        return encryptByKey(sSrc, sKey);
+    }
+
+    // Decode, AES + Base64
+    public static String decrypt(String sSrc, String key) {
+
+        String sKey = key;
+        // Overwrite key with environment variable.
+        if (null != System.getenv(DN_PASSWORD_KEY)) {
+            sKey = System.getenv(DN_PASSWORD_KEY);
+        }
+        return decryptByKey(sSrc, sKey);
+
+    }
+
+    public static String encryptByKey(String sSrc, String key) {
+        try {
+            byte[] raw = key.getBytes("utf-8");
+            SecretKeySpec skeySpec = new SecretKeySpec(raw, "AES");
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");//"算法/模式/补码方式"
+            cipher.init(Cipher.ENCRYPT_MODE, skeySpec);
+            byte[] encrypted = cipher.doFinal(sSrc.getBytes("utf-8"));
+            return Base64.getEncoder().encodeToString(encrypted);//此处使用BASE64做转码功能，同时能起到2次加密的作用。
+        } catch (Throwable ex) {
+            throw new RuntimeException("param error during encrypt", ex);
+        }
+    }
+
+    // Decode, AES + Base64
+    public static String decryptByKey(String sSrc, String key) {
+        try {
+            byte[] raw = key.getBytes("utf-8");
+            SecretKeySpec skeySpec = new SecretKeySpec(raw, "AES");
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            cipher.init(Cipher.DECRYPT_MODE, skeySpec);
+            byte[] encrypted1 = Base64.getDecoder().decode(sSrc);//先用base64解密
+            byte[] original = cipher.doFinal(encrypted1);
+            String originalString = new String(original, "utf-8");
+            return originalString;
+        } catch (Exception ex) {
+            throw new RuntimeException("param error during decrypt", ex);
+        }
+    }
+
+    public static boolean existsAkSkInEnv() {
+        return !StringUtils.isEmpty(System.getenv(OSS_ACCESS_KEY_ID))
+            && !StringUtils.isEmpty(System.getenv(OSS_ACCESS_KEY_SECRET))
+            && !StringUtils.isEmpty(System.getenv(CIPHER_KEY));
     }
 
     /**

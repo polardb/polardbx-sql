@@ -42,28 +42,18 @@ public class SyncManagerHelper {
         instance = ExtensionLoader.load(ISyncManager.class);
     }
 
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action) {
-        return sync(action, false);
+    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, SyncScope scope) {
+        return sync(action, scope, false);
     }
 
-    /**
-     * sync with default db(polardbx)
-     */
-    public static List<List<Map<String, Object>>> syncWithDefaultDB(IGmsSyncAction action) {
-        return sync(action, SystemDbHelper.DEFAULT_DB_NAME, false);
+    public static List<List<Map<String, Object>>> syncWithDefaultDB(IGmsSyncAction action, SyncScope scope) {
+        return sync(action, SystemDbHelper.DEFAULT_DB_NAME, scope, false);
     }
 
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, boolean throwExceptions) {
+    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, SyncScope scope,
+                                                       boolean throwExceptions) {
         DdlMetaLogUtil.DDL_META_LOG.info("sync. action:" + JSONObject.toJSONString(action));
-        return instance.sync(action, DefaultSchema.getSchemaName(), throwExceptions);
-    }
-
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema) {
-        return sync(action, schema, false);
-    }
-
-    public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema, boolean throwExceptions) {
-        return instance.sync(action, schema, throwExceptions);
+        return sync(action, DefaultSchema.getSchemaName(), scope, throwExceptions);
     }
 
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema, SyncScope scope) {
@@ -73,14 +63,6 @@ public class SyncManagerHelper {
     public static List<List<Map<String, Object>>> sync(IGmsSyncAction action, String schema, SyncScope scope,
                                                        boolean throwExceptions) {
         return instance.sync(action, schema, scope, throwExceptions);
-    }
-
-    public static void sync(IGmsSyncAction action, String schema, ISyncResultHandler handler) {
-        sync(action, schema, handler, false);
-    }
-
-    public static void sync(IGmsSyncAction action, String schema, ISyncResultHandler handler, boolean throwExceptions) {
-        instance.sync(action, schema, handler, throwExceptions);
     }
 
     public static void sync(IGmsSyncAction action, String schema, SyncScope scope, ISyncResultHandler handler) {

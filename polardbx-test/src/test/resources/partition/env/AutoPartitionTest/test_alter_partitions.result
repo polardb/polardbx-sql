@@ -158,7 +158,7 @@ tbl,CREATE PARTITION TABLE `tbl` (
 		PARTITIONS 4,
 	GLOBAL INDEX /* tbl_index_$ */ `tbl_index` (`a`, `b`, `c`)
 		PARTITION BY KEY(`a`,`b`,`c`)
-		PARTITIONS #@#,
+		PARTITIONS 4,
 	UNIQUE GLOBAL INDEX /* ugidx_$ */ `ugidx` (`c`, `d`)
 		PARTITION BY KEY(`c`,`d`)
 		PARTITIONS 4,

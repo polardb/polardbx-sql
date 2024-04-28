@@ -18,7 +18,6 @@ package com.alibaba.polardbx.executor.vectorized.metadata;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
-import com.alibaba.polardbx.executor.vectorized.build.Rex2VectorizedExpressionVisitor;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 
 import java.lang.reflect.Constructor;

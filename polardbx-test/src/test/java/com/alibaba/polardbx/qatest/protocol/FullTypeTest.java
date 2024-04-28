@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.qatest.constant.TableConstant.C_ID;
+import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_DBPARTITION_DEFINITION;
 import static com.alibaba.polardbx.qatest.data.ExecuteTableSelect.DEFAULT_PARTITIONING_DEFINITION;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 import static com.google.common.truth.Truth.assertWithMessage;
@@ -49,8 +50,7 @@ public class FullTypeTest extends ReadBaseTestCase {
     private static final String PRIMARY_TABLE_NAME = "XPlan_full_type";
 
     private static final String FULL_TYPE_TABLE =
-        ExecuteTableSelect.getFullTypeTableDef(PRIMARY_TABLE_NAME,
-            DEFAULT_PARTITIONING_DEFINITION);
+        ExecuteTableSelect.getFullTypeTableDef(PRIMARY_TABLE_NAME, DEFAULT_DBPARTITION_DEFINITION);
     private static final String FULL_TYPE_TABLE_MYSQL = ExecuteTableSelect.getFullTypeTableDef(PRIMARY_TABLE_NAME,
         "");
 
@@ -120,7 +120,8 @@ public class FullTypeTest extends ReadBaseTestCase {
             stmt.executeUpdate(sql);
 
             if (null != failed) {
-                assertWithMessage("DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
+                assertWithMessage(
+                    "DRDS 报错，MySQL 正常, Sql：\n " + failed.left + "\nCause: " + failed.right.getMessage())
                     .fail();
             }
         } catch (SQLSyntaxErrorException msee) {
@@ -162,7 +163,7 @@ public class FullTypeTest extends ReadBaseTestCase {
         final String sql = "insert into `" + tbName
             + "` values (1, 10.00, 100000000000000.0000000000), (2, 20.00, 20000000000000.0000000000)";
         Assert.assertTrue("must success", sameResult(tddlConnection, mysqlConnection, sql) > 0);
-        final String testSql = "select * from `" + tbName + "` limit 10";
+        final String testSql = "select * from `" + tbName + "` order by id limit 10";
         final ResultSet myResult = JdbcUtil.executeQuery(testSql, mysqlConnection);
         final String myStr =
             JdbcUtil.getStringResult(myResult, false).stream().map(l -> String.join(",", l)).collect(

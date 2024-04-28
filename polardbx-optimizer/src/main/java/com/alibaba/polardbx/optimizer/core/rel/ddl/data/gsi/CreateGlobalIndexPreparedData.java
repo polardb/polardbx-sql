@@ -26,50 +26,57 @@ import com.alibaba.polardbx.rule.TableRule;
 import com.clearspring.analytics.util.Lists;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlCreateIndex;
+import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlIndexColumnName;
 import org.apache.calcite.sql.SqlIndexDefinition;
 import org.apache.calcite.sql.SqlNode;
 
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
-    public CreateGlobalIndexPreparedData() {
-    }
-
     private CreateTablePreparedData indexTablePreparedData;
     private RepartitionPrepareData repartitionPrepareData;
-
     private String primaryTableName;
     private String indexType;
     private String indexComment;
     private boolean unique;
     private boolean clusteredIndex;
-
+    private boolean columnarIndex;
     private boolean single;
     private boolean broadcast;
     private boolean visible = true;
-
     private TableRule indexTableRule;
     private SqlNode newSqlDdl;
     private TableRule primaryTableRule;
     private String primaryTableDefinition;
     private SqlIndexDefinition indexDefinition;
     private SqlCreateIndex sqlCreateIndex;
-
+    private SqlCreateIndex originSqlCreateIndex;
     private PartitionInfo indexPartitionInfo;
     private PartitionInfo primaryPartitionInfo;
     private SqlNode partitioning;
     private SqlNode tableGroupName;
+    private boolean withImplicitTableGroup;
+
+    //if value=true, the no-exist tablegroup will be created before create table/gsi
+    private Map<String, Boolean> relatedTableGroupInfo = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
     private SqlNode joinGroupName;
     private Map<SqlNode, RexNode> partBoundExprInfo;
-    private boolean indexAlignWithPrimaryTableGroup;
+
+    //target table name, may be primary table or previous GSI in the same create statement
+    private String tableGroupAlignWithTargetTable;
     private boolean needToGetTableGroupLock = false;
-
+    private SqlNode engineName;
     private LocalityDesc locality = new LocalityDesc();
-
     private List<String> oldPrimaryKeys;
+    /**
+     * Should skip some subtask for create table with cci
+     */
+    private boolean createTableWithIndex;
 
     /**
      * Foreign key
@@ -78,6 +85,9 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
     private List<ForeignKeyData> addedForeignKeys;
 
     private boolean repartition;
+
+    public CreateGlobalIndexPreparedData() {
+    }
 
     /**************************************************************************/
 
@@ -149,6 +159,18 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         this.sqlCreateIndex = sqlCreateIndex;
     }
 
+    public SqlCreateIndex getOriginSqlCreateIndex() {
+        return originSqlCreateIndex;
+    }
+
+    public void setOriginSqlCreateIndex(SqlCreateIndex originSqlCreateIndex) {
+        this.originSqlCreateIndex = originSqlCreateIndex;
+    }
+
+    public SqlIdentifier getOriginIndexName() {
+        return this.sqlCreateIndex.getOriginIndexName();
+    }
+
     public List<SqlIndexColumnName> getColumns() {
         if (indexDefinition != null) {
             return indexDefinition.getColumns();
@@ -169,10 +191,6 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setNewSqlDdl(SqlNode newSqlDdl) {
         this.newSqlDdl = newSqlDdl;
-    }
-
-    public void setIndexType(final String indexType) {
-        this.indexType = indexType;
     }
 
     public String getIndexComment() {
@@ -215,6 +233,10 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         return indexType;
     }
 
+    public void setIndexType(final String indexType) {
+        this.indexType = indexType;
+    }
+
     public PartitionInfo getIndexPartitionInfo() {
         return indexPartitionInfo;
     }
@@ -247,12 +269,36 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         this.tableGroupName = tableGroupName;
     }
 
+    public boolean isWithImplicitTableGroup() {
+        return withImplicitTableGroup;
+    }
+
+    public void setWithImplicitTableGroup(boolean withImplicitTableGroup) {
+        this.withImplicitTableGroup = withImplicitTableGroup;
+    }
+
+    public Map<String, Boolean> getRelatedTableGroupInfo() {
+        return relatedTableGroupInfo;
+    }
+
+    public void setRelatedTableGroupInfo(Map<String, Boolean> relatedTableGroupInfo) {
+        this.relatedTableGroupInfo = relatedTableGroupInfo;
+    }
+
     public SqlNode getJoinGroupName() {
         return joinGroupName;
     }
 
     public void setJoinGroupName(SqlNode joinGroupName) {
         this.joinGroupName = joinGroupName;
+    }
+
+    public SqlNode getEngineName() {
+        return engineName;
+    }
+
+    public void setEngineName(SqlNode engineName) {
+        this.engineName = engineName;
     }
 
     public Map<SqlNode, RexNode> getPartBoundExprInfo() {
@@ -301,12 +347,20 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
         this.clusteredIndex = clusteredIndex;
     }
 
-    public boolean isIndexAlignWithPrimaryTableGroup() {
-        return indexAlignWithPrimaryTableGroup;
+    public boolean isColumnarIndex() {
+        return this.columnarIndex;
     }
 
-    public void setIndexAlignWithPrimaryTableGroup(boolean indexAlignWithPrimaryTableGroup) {
-        this.indexAlignWithPrimaryTableGroup = indexAlignWithPrimaryTableGroup;
+    public void setColumnarIndex(final boolean columnarIndex) {
+        this.columnarIndex = columnarIndex;
+    }
+
+    public String getTableGroupAlignWithTargetTable() {
+        return tableGroupAlignWithTargetTable;
+    }
+
+    public void setTableGroupAlignWithTargetTable(String tableGroupAlignWithTargetTable) {
+        this.tableGroupAlignWithTargetTable = tableGroupAlignWithTargetTable;
     }
 
     public LocalityDesc getLocality() {
@@ -355,5 +409,115 @@ public class CreateGlobalIndexPreparedData extends DdlPreparedData {
 
     public void setRepartition(boolean repartition) {
         this.repartition = repartition;
+    }
+
+    public boolean isCreateTableWithIndex() {
+        return createTableWithIndex;
+    }
+
+    public void setCreateTableWithIndex(boolean createTableWithIndex) {
+        this.createTableWithIndex = createTableWithIndex;
+    }
+
+    public SqlIndexDefinition getOrBuildIndexDefinition() {
+        if (null == indexDefinition && null == sqlCreateIndex) {
+            return null;
+        }
+        if (null != indexDefinition) {
+            return indexDefinition;
+        }
+        return createIndex2IndexDefinition(sqlCreateIndex);
+    }
+
+    public SqlCreateIndex getOrBuildCreateIndex() {
+        if (null == indexDefinition && null == sqlCreateIndex) {
+            return null;
+        }
+        if (null != sqlCreateIndex) {
+            return sqlCreateIndex;
+        }
+        return indexDefinition2CreateIndex(indexDefinition, null, null, null, null);
+    }
+
+    public SqlCreateIndex getOrBuildOriginCreateIndex() {
+        if (null == indexDefinition && null == originSqlCreateIndex) {
+            return null;
+        }
+        if (null != originSqlCreateIndex) {
+            return originSqlCreateIndex;
+        }
+        return indexDefinition2CreateIndex(indexDefinition, null, null, null, null);
+    }
+
+    public static SqlIndexDefinition createIndex2IndexDefinition(SqlCreateIndex sqlCreateIndex) {
+        return new SqlIndexDefinition(
+            sqlCreateIndex.getParserPosition(),
+            false,
+            null,
+            sqlCreateIndex.getIndexResiding(),
+            sqlCreateIndex.getConstraintType().name(),
+            sqlCreateIndex.getIndexType(),
+            sqlCreateIndex.getIndexName(),
+            sqlCreateIndex.getOriginIndexName(),
+            sqlCreateIndex.getOriginTableName(),
+            sqlCreateIndex.getColumns(),
+            sqlCreateIndex.getCovering(),
+            sqlCreateIndex.getOriginCovering(),
+            sqlCreateIndex.getDbPartitionBy(),
+            sqlCreateIndex.getTbPartitionBy(),
+            sqlCreateIndex.getTbPartitions(),
+            sqlCreateIndex.getPartitioning(),
+            sqlCreateIndex.getOriginPartitioning(),
+            sqlCreateIndex.getClusteredKeys(),
+            sqlCreateIndex.getOptions(),
+            sqlCreateIndex.createClusteredIndex(),
+            sqlCreateIndex.createCci(),
+            sqlCreateIndex.getTableGroupName(),
+            sqlCreateIndex.getEngineName(),
+            sqlCreateIndex.getDictColumns(),
+            sqlCreateIndex.isWithImplicitTableGroup(),
+            sqlCreateIndex.isVisible()
+        );
+    }
+
+    public static SqlCreateIndex indexDefinition2CreateIndex(SqlIndexDefinition sqlIndexDefinition,
+                                                             SqlCreateIndex.SqlIndexConstraintType constraintType,
+                                                             SqlCreateIndex.SqlIndexAlgorithmType algorithmType,
+                                                             SqlCreateIndex.SqlIndexLockType lockType,
+                                                             String sourceSql) {
+        return new SqlCreateIndex(
+            sqlIndexDefinition.getParserPosition(),
+            false,
+            false,
+            sqlIndexDefinition.getTable(),
+            sqlIndexDefinition.getTable(),
+            sqlIndexDefinition.getIndexName(),
+            sqlIndexDefinition.getOriginIndexName(),
+            sqlIndexDefinition.getColumns(),
+            constraintType,
+            sqlIndexDefinition.getIndexResiding(),
+            sqlIndexDefinition.getIndexType(),
+            sqlIndexDefinition.getOptions(),
+            algorithmType,
+            lockType,
+            sqlIndexDefinition.getCovering(),
+            sqlIndexDefinition.getOriginCovering(),
+            sqlIndexDefinition.getDbPartitionBy(),
+            sqlIndexDefinition.getTbPartitionBy(),
+            sqlIndexDefinition.getTbPartitions(),
+            sqlIndexDefinition.getPartitioning(),
+            sqlIndexDefinition.getOriginPartitioning(),
+            sqlIndexDefinition.getClusteredKeys(),
+            sourceSql,
+            null,
+            null,
+            sqlIndexDefinition.isClustered(),
+            sqlIndexDefinition.isColumnar(),
+            sqlIndexDefinition.getTableGroupName(),
+            sqlIndexDefinition.isWithImplicitTableGroup(),
+            sqlIndexDefinition.getEngineName(),
+            sqlIndexDefinition.getDictColumns(),
+            sqlIndexDefinition.isVisible()
+        );
     }
 }

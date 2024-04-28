@@ -29,15 +29,6 @@
  */
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
-import com.google.common.base.Preconditions;
-import com.google.common.base.Throwables;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.ImmutableSet;
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Multimap;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -60,10 +51,20 @@ import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.alibaba.polardbx.executor.mpp.planner.NodePartitioningManager;
 import com.alibaba.polardbx.executor.mpp.planner.PartitionHandle;
 import com.alibaba.polardbx.executor.mpp.planner.PartitionShuffleHandle;
+import com.alibaba.polardbx.executor.mpp.planner.PlanFragment;
 import com.alibaba.polardbx.executor.mpp.planner.StageExecutionPlan;
 import com.alibaba.polardbx.executor.mpp.util.Failures;
 import com.alibaba.polardbx.executor.mpp.util.ImmutableCollectors;
 import com.alibaba.polardbx.gms.node.Node;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.LinkedHashMultimap;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Multimap;
 import io.airlift.units.Duration;
 
 import java.util.ArrayList;
@@ -77,8 +78,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
-import static com.google.common.base.Preconditions.checkArgument;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.ABORTED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.CANCELED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.FAILED;
@@ -86,6 +88,7 @@ import static com.alibaba.polardbx.executor.mpp.execution.StageState.FINISHED;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.FLUSHING;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.RUNNING;
 import static com.alibaba.polardbx.executor.mpp.execution.StageState.SCHEDULED;
+import static com.google.common.base.Preconditions.checkArgument;
 import static io.airlift.concurrent.MoreFutures.firstCompletedFuture;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
 import static java.lang.String.format;
@@ -237,14 +240,14 @@ public class SqlQueryScheduler {
 
         if (initedStages.containsKey(stageId)) {
             StageLinkage linkage =
-                new StageLinkage(plan.getFragment().getId(), parent, stage2childStages.get(stageId), c2pLinkages
+                new StageLinkage(plan.getFragment(), parent, stage2childStages.get(stageId), c2pLinkages
                 );
             stageLinkages.put(stageId, linkage);
             stages.add(initedStages.get(stageId));
             return stages.build();
         }
         if (log.isDebugEnabled()) {
-            log.debug("create stage: " + stageId + " for flagment: " + plan.getFragment().getId());
+            log.debug("create stage: " + stageId + " for fragment: " + plan.getFragment().getId());
         }
         SqlStageExecution stage =
             new SqlStageExecution(stageId, locationFactory.createStageLocation(stageId), plan.getFragment(),
@@ -259,7 +262,10 @@ public class SqlQueryScheduler {
                     }
                 }
                 return false;
-            }, bloomFilterManager
+            }, bloomFilterManager,
+                plan.getFragment().isRemotePairWise() ?
+                    nodeSelector.getOrderedNode().stream().map(Node::getNodeIdentifier).collect(
+                        Collectors.toList()) : null
             );
 
         stages.add(stage);
@@ -276,7 +282,8 @@ public class SqlQueryScheduler {
             // only contain logicalView
             SplitPlacementPolicy placementPolicy = new DynamicSplitPlacementPolicy(nodeSelector, stage::getAllTasks);
             scheduler = new SourcePartitionedScheduler(
-                stage, placementPolicy, plan.getSplitInfo(), null, session.getClientContext());
+                stage, placementPolicy, plan.getSplitInfos(), null, session.getClientContext(),
+                nodeSelector.getOrderedNode());
         } else {
             if (plan.getFragment().getPartitionedSources().size() == plan.getFragment().getExpandSources().size()) {
                 Map<Integer, Node> partitionToNode = partitioningCache.apply(plan.getFragment().getPartitioning());
@@ -284,11 +291,16 @@ public class SqlQueryScheduler {
                     stage, partitionToNode, plan.getExpandInfo(),
                     session.getClientContext());
             } else {
+                if (plan.getFragment().isRemotePairWise()) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTOR,
+                        "not support bka join under partition wise now");
+                }
                 //contain logicalView&&expandView
                 SplitPlacementPolicy placementPolicy =
                     new DynamicSplitPlacementPolicy(nodeSelector, stage::getAllTasks);
                 scheduler = new SourcePartitionedScheduler(
-                    stage, placementPolicy, plan.getSplitInfo(), plan.getExpandInfo(), session.getClientContext());
+                    stage, placementPolicy, plan.getSplitInfos(), plan.getExpandInfo(), session.getClientContext(),
+                    nodeSelector.getOrderedNode());
             }
         }
 
@@ -300,12 +312,17 @@ public class SqlQueryScheduler {
         plan.getFragment().getPartitioning().setPartitionCount(taskNum);
         bloomFilterManager.updateTaskParallelism(stageId.getId(), taskNum);
 
-        Preconditions.checkArgument(taskNum > 0, "childPartitionCount must be greater than 0!");
+        Preconditions.checkArgument(taskNum > 0, "node count of this fragment must be greater than 0!");
 
         Set<StageId> childStageIds = new HashSet<>();
+
+        int requireChildOutputNum = scheduler.requireChildOutputNum();
+        Preconditions.checkArgument(requireChildOutputNum > 0, "node count of child fragment must be greater than 0!");
+
         ImmutableSet.Builder<SqlStageExecution> childStagesBuilder = ImmutableSet.builder();
         for (StageExecutionPlan subStagePlan : plan.getSubStages()) {
-            subStagePlan.getFragment().getPartitioningScheme().setPartitionCount(taskNum);
+            subStagePlan.getFragment().getPartitioningScheme().setPartitionCount(requireChildOutputNum);
+            subStagePlan.getFragment().getPartitioningScheme().setPrunePartitions(scheduler.getPrunePartitions());
             List<SqlStageExecution> subTree =
                 createStages(Optional.of(stage), stageIdMapping, initedStages, locationFactory, subStagePlan,
                     partitioningCache, remoteTaskFactory, session,
@@ -338,7 +355,7 @@ public class SqlQueryScheduler {
         });
 
         StageLinkage linkage =
-            new StageLinkage(plan.getFragment().getId(), parent, childStages, c2pLinkages);
+            new StageLinkage(plan.getFragment(), parent, childStages, c2pLinkages);
         stageLinkages.put(stageId, linkage);
         stage2childStages.put(stageId, childStages);
         initedStages.put(stageId, stage);
@@ -508,9 +525,9 @@ public class SqlQueryScheduler {
         private final Set<StageId> childStageIds;
         private final boolean childStageHasMultiParent;
 
-        public StageLinkage(Integer fragmentId, Optional<SqlStageExecution> parent, Set<SqlStageExecution> children,
+        public StageLinkage(PlanFragment fragment, Optional<SqlStageExecution> parent, Set<SqlStageExecution> children,
                             Multimap<StageId, StageId> linkages) {
-            this.currentStageFragmentId = fragmentId;
+            this.currentStageFragmentId = fragment.getId();
             this.parent = parent;
             this.childStageHasMultiParent =
                 children.stream().filter(childStage -> linkages.get(childStage.getStageId()).size() > 1).findAny()
@@ -528,8 +545,11 @@ public class SqlQueryScheduler {
                     ImmutableMap<Integer, Boolean> parentStageIds = childParents.stream()
                         .map(stageId -> stageId.getId()).collect(
                             ImmutableCollectors.toImmutableMap(stageId -> stageId, stageId -> false));
+                    // schedule under remote pairwise should rely on partition count not task's num
+                    int bufferCount = fragment.isRemotePairWise() ? partitioningHandle.getPartitionCount() : -1;
                     outputBufferManager =
-                        new BroadcastOutputBufferManager(new HashMap<>(parentStageIds), childStage::setOutputBuffers);
+                        new BroadcastOutputBufferManager(new HashMap<>(parentStageIds), bufferCount,
+                            childStage::setOutputBuffers);
                 } else {
                     int partitionCount = partitioningHandle.getPartitionCount();
                     outputBufferManager =
@@ -596,10 +616,29 @@ public class SqlQueryScheduler {
                         newTasks.stream().map(task -> new OutputBuffers.OutputBufferId(task.getTaskId().getId()))
                             .collect(ImmutableCollectors.toImmutableList());
                 }
+
                 for (OutputBufferManager child : childOutputBufferManagers) {
-                    child.addOutputBuffers(stageId, newOutputBuffers, noMoreTasks);
+                    List<OutputBuffers.OutputBufferId> tempBuffers = newOutputBuffers;
+                    // NOTE: here, buffer ids should have same stage id
+                    if (child instanceof BroadcastOutputBufferManager
+                        && ((BroadcastOutputBufferManager) child).getBufferCount() > 0
+                        && !newOutputBuffers.isEmpty()) {
+                        tempBuffers = getFullBuffer(newOutputBuffers.get(0).getStageId(),
+                            ((BroadcastOutputBufferManager) child).getBufferCount());
+                    }
+                    child.addOutputBuffers(stageId, tempBuffers, noMoreTasks);
                 }
             }
+        }
+
+        /**
+         * @param stageId stage id used to create output buffer
+         * @param bufferCount all buffers to create
+         */
+        private List<OutputBuffers.OutputBufferId> getFullBuffer(int stageId,
+                                                                 int bufferCount) {
+            return IntStream.range(0, bufferCount).boxed().map(idx -> new OutputBuffers.OutputBufferId(stageId, idx))
+                .collect(Collectors.toList());
         }
     }
 }

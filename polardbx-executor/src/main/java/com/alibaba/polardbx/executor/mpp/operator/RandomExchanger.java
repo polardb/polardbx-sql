@@ -20,24 +20,41 @@ import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.execution.buffer.OutputBufferMemoryManager;
 import com.alibaba.polardbx.executor.operator.ConsumerExecutor;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class RandomExchanger extends LocalExchanger {
     private final List<AtomicBoolean> consumings;
     private final Random random;
 
+    private int nextIndex;
+
+    private final boolean useRoundRobin;
+
+    private final List<Integer> randomOrderList;
+
     public RandomExchanger(OutputBufferMemoryManager bufferMemoryManager, List<ConsumerExecutor> executors,
-                           LocalExchangersStatus status, boolean asyncConsume) {
+                           LocalExchangersStatus status, boolean asyncConsume, int index, boolean roundRobin) {
         super(bufferMemoryManager, executors, status, asyncConsume);
         this.consumings = status.getConsumings();
         this.random = new Random(executors.size());
+        this.randomOrderList = IntStream.range(0, executors.size()).boxed().collect(Collectors.toList());
+        Collections.shuffle(randomOrderList);
+        this.nextIndex = index;
+        this.useRoundRobin = roundRobin;
     }
 
     @Override
     public void consumeChunk(Chunk chunk) {
-        int randomIndex = executors.size() > 1 ? random.nextInt(executors.size()) : 0;
+        int randomIndex = 0;
+        if (executors.size() > 1) {
+            randomIndex =
+                useRoundRobin ? randomOrderList.get(nextIndex++ % executors.size()) : random.nextInt(executors.size());
+        }
         if (asyncConsume) {
             executors.get(randomIndex).consumeChunk(chunk);
         } else {

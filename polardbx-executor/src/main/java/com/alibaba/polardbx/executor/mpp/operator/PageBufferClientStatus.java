@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
+import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.alibaba.polardbx.executor.mpp.metadata.TaskLocation;
 import org.joda.time.DateTime;
 
 import java.util.OptionalInt;

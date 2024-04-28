@@ -644,6 +644,8 @@ public class HintPlanner extends TddlSqlToRelConverter {
         final BitSet planProperties = logicalPlanPropertiesVisitor.appendPlanProperties(null, null, ec);
         final ExecutionPlan result = new ExecutionPlan(ast, wrapWithViewUnion(results), null, planProperties);
         result.setModifiedTables(tableModified);
+        // disable tp slow check in hint direct mode
+        result.disableCheckTpSlow();
         return result;
     }
 
@@ -1268,6 +1270,8 @@ public class HintPlanner extends TddlSqlToRelConverter {
                     result.setModifiedTables(modifiedTable);
                 }
             }
+            // disable tp slow check in hint pushdown mode
+            result.disableCheckTpSlow();
         } // end of if
 
         /**
@@ -1275,7 +1279,6 @@ public class HintPlanner extends TddlSqlToRelConverter {
          */
         result.setPlanProperties(executionPlan.getPlanProperties());
         result.setUsePostPlanner(false);
-
         return result;
     }
 
@@ -1291,12 +1294,16 @@ public class HintPlanner extends TddlSqlToRelConverter {
 
                 for (Map<Integer, ParameterContext> m : batchParams) {
                     for (Integer i : m.keySet()) {
-                        maxParamIndex.set(i > maxParamIndex.get() ? maxParamIndex.get() : i);
+                        if (i > maxParamIndex.get()) {
+                            maxParamIndex.set(i - 1);
+                        }
                     }
                 }
             } else {
                 for (Integer i : params.getCurrentParameter().keySet()) {
-                    maxParamIndex.set(i > maxParamIndex.get() ? maxParamIndex.get() : i);
+                    if (i > maxParamIndex.get()) {
+                        maxParamIndex.set(i - 1);
+                    }
                 }
             }
         }
@@ -1560,6 +1567,8 @@ public class HintPlanner extends TddlSqlToRelConverter {
         PhyTableOpBuildParams buildParams =
             new PhyTableOpBuildParams();
 
+        boolean containLogTbls = !logTables.isEmpty();
+
         for (int i = 0; i < finalGroups.size(); i++) {
             String targetDb = finalGroups.get(i);
 
@@ -1586,8 +1595,14 @@ public class HintPlanner extends TddlSqlToRelConverter {
             buildParams.setDynamicParams(param);
             buildParams.setBatchParameters(null);
 
-            PhyTableOperation phyTableOperation =
-                PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+            PhyTableOperation phyTableOperation = null;
+            if (containLogTbls) {
+                phyTableOperation = PhyTableOperationFactory.getInstance().buildPhyTblOpByParams(buildParams);
+            } else {
+                phyTableOperation =
+                    PhyTableOperationFactory.getInstance().buildPhyTblOpByParamsForSelectWithoutTable(buildParams);
+            }
+
             phyTbOps.add(phyTableOperation);
         }
         return phyTbOps;

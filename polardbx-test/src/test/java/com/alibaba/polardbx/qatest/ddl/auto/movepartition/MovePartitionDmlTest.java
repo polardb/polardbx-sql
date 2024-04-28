@@ -46,7 +46,7 @@ import java.util.stream.IntStream;
 import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
 
 public class MovePartitionDmlTest extends DDLBaseNewDBTestCase {
-    static private final String DATABASE_NAME = "MovePartitionDmlTest";
+    static private String DATABASE_NAME = "MovePartitionDmlTest";
 
     private static final String PRIMARY_TABLE_NAME = "move_partition_primary";
 
@@ -92,7 +92,7 @@ public class MovePartitionDmlTest extends DDLBaseNewDBTestCase {
 
     private final String primaryShardingDef;
 
-    private static final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    protected static final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 
     @Parameterized.Parameters(name = "{index}:primaryShardingDef={0}")
     public static List<String[]> prepareDate() {
@@ -170,7 +170,7 @@ public class MovePartitionDmlTest extends DDLBaseNewDBTestCase {
         // No check needed.
     }
 
-    private List<String> prepareAutoDbCommands(Boolean isGsi) throws SQLException {
+    public List<String> prepareAutoDbCommands(Boolean isGsi) throws SQLException {
         List<String> commands = new ArrayList<>();
         Set<String> instIds = new HashSet<>();
         String curInstId = null;
@@ -212,7 +212,7 @@ public class MovePartitionDmlTest extends DDLBaseNewDBTestCase {
         return true;
     }
 
-    private final ExecutorService dmlPool = Executors.newFixedThreadPool(10);
+    public final ExecutorService dmlPool = Executors.newFixedThreadPool(10);
 
     protected Future<?> launchDmlCheckThread(String sqlInsert, String sqlUpdate, String sqlDelete,
                                              String sqlSelectPrimary, String sqlSelectGSI,
@@ -326,11 +326,11 @@ public class MovePartitionDmlTest extends DDLBaseNewDBTestCase {
         }, throwException, 100));
     }
 
-    private static final Consumer<Exception> throwException = (e) -> {
+    protected static final Consumer<Exception> throwException = (e) -> {
         throw GeneralUtil.nestedException(e);
     };
 
-    private class InsertRunner implements Runnable {
+    protected class InsertRunner implements Runnable {
 
         private final AtomicBoolean stop;
         private final Function<Connection, Integer> call;

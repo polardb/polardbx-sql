@@ -51,7 +51,8 @@ public class InnerJoinLAsscomRule extends AbstractJoinLAsscomRule {
 
     public static final InnerJoinLAsscomRule PROJECT_INSTANCE = new InnerJoinLAsscomRule(
         operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
-            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
+            operand(LogicalProject.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION,
+                operand(LogicalJoin.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
             operand(RelSubset.class, null, RelOptUtil.NO_COLLATION_AND_DISTRIBUTION, any())),
         RelFactories.LOGICAL_BUILDER,
         "InnerJoinReorderRule:InnerJoinLAsscomRule:Project");

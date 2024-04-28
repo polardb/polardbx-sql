@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.ddl.job.builder.tablegroup;
 
+import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.executor.ddl.job.builder.AlterTableDiscardTableSpaceBuilder;
 import com.alibaba.polardbx.gms.tablegroup.PartitionGroupRecord;
 import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -28,9 +30,18 @@ import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuilder {
+
+    protected Map<String, List<PhyDdlTableOperation>> discardTableSpacePhysicalPlansMap =
+        new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+    Map<String, Map<String, Pair<String, String>>> tbPtbGroupMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
     public AlterTableGroupMovePartitionBuilder(DDL ddl, AlterTableGroupMovePartitionPreparedData preparedData,
                                                ExecutionContext executionContext) {
@@ -42,6 +53,7 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
         List<GroupDetailInfoExRecord> groupDetailInfoExRecords = preparedData.getTargetGroupDetailInfoExRecords();
         List<String> allTables = getAllTableNames();
         generateNewPhysicalTableNames(allTables);
+
         for (String tableName : allTables) {
             AlterTableGroupItemPreparedData alterTableGroupItemPreparedData =
                 createAlterTableGroupItemPreparedData(tableName, groupDetailInfoExRecords);
@@ -54,6 +66,35 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
             newPartitionsPhysicalPlansMap.put(tableName, phyDdlTableOperations);
             tablesPreparedData.put(tableName, alterTableGroupItemPreparedData);
             orderedTargetTablesLocations.put(tableName, itemBuilder.getOrderedTargetTableLocations());
+
+            Map<String, List<List<String>>> tablesTopology = itemBuilder.getTableTopology();
+            AlterTableDiscardTableSpaceBuilder discardTableSpaceBuilder =
+                AlterTableDiscardTableSpaceBuilder.createBuilder(
+                    preparedData.getSchemaName(), tableName, tablesTopology, executionContext);
+            discardTableSpacePhysicalPlansMap.put(tableName, discardTableSpaceBuilder.build().getPhysicalPlans());
+
+            if (preparedData.isUsePhysicalBackfill()) {
+                tbPtbGroupMap.put(tableName, new HashMap<>());
+                for (Map.Entry<String, Set<String>> srcPhyTbInfo : itemBuilder.getSourcePhyTables().entrySet()) {
+                    String srcGroupKey = srcPhyTbInfo.getKey();
+
+                    assert srcGroupKey != null;
+
+                    String tarGroupKey = null;
+                    for (String phyTbName : srcPhyTbInfo.getValue()) {
+                        if (tarGroupKey == null) {
+                            for (Map.Entry<String, Set<String>> tarPhyTbInfo : itemBuilder.getTargetPhyTables()
+                                .entrySet()) {
+                                if (tarPhyTbInfo.getValue().contains(phyTbName)) {
+                                    tarGroupKey = tarPhyTbInfo.getKey();
+                                    break;
+                                }
+                            }
+                        }
+                        tbPtbGroupMap.get(tableName).put(phyTbName, Pair.of(srcGroupKey, tarGroupKey));
+                    }
+                }
+            }
         }
     }
 
@@ -82,5 +123,13 @@ public class AlterTableGroupMovePartitionBuilder extends AlterTableGroupBaseBuil
             newPhyTables.add(partitionSpec.getLocation().getPhyTableName());
         }
         return newPhyTables;
+    }
+
+    public Map<String, List<PhyDdlTableOperation>> getDiscardTableSpacePhysicalPlansMap() {
+        return discardTableSpacePhysicalPlansMap;
+    }
+
+    public Map<String, Map<String, Pair<String, String>>> getTbPtbGroupMap() {
+        return tbPtbGroupMap;
     }
 }

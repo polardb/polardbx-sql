@@ -36,6 +36,7 @@ import org.apache.calcite.rel.core.Calc;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.metadata.ChainedRelMetadataProvider;
 import org.apache.calcite.rel.metadata.DefaultRelMetadataProvider;
+import org.apache.calcite.rel.metadata.JaninoRelMetadataProvider;
 import org.apache.calcite.rel.metadata.RelMetadataProvider;
 import org.apache.calcite.rel.rules.AggregateExpandDistinctAggregatesRule;
 import org.apache.calcite.rel.rules.AggregateReduceFunctionsRule;
@@ -205,8 +206,8 @@ public class Programs {
           list.add(metadataProvider);
         }
         hepPlanner.registerMetadataProviders(list);
-        RelMetadataProvider plannerChain =
-            ChainedRelMetadataProvider.of(list);
+        JaninoRelMetadataProvider plannerChain =
+            JaninoRelMetadataProvider.of(ChainedRelMetadataProvider.of(list));
         rel.getCluster().setMetadataProvider(plannerChain);
 
         hepPlanner.setRoot(rel);

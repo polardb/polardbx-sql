@@ -638,7 +638,21 @@ public class OssOrcFilePruner {
 
     public static PruningResult pruneDecimal(PredicateLeaf predicateLeaf, ColumnStatistics columnStatistics,
                                              Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
-        StringColumnStatistics stringColumnStatistics = ((StringColumnStatistics) columnStatistics);
+        if (columnStatistics instanceof IntegerColumnStatistics) {
+            return pruneDecimal64(predicateLeaf, (IntegerColumnStatistics) columnStatistics, stripeColumnMetaMap);
+        }
+        if (columnStatistics instanceof StringColumnStatistics) {
+            return pruneNormalDecimal(predicateLeaf, (StringColumnStatistics) columnStatistics, stripeColumnMetaMap);
+        }
+
+        // unsupported column statistics
+        LOGGER.warn("Unsupported orc decimal column statistics: " + columnStatistics.getClass().getName());
+        return OrcFilePruningResult.PASS;
+    }
+
+    private static PruningResult pruneNormalDecimal(PredicateLeaf predicateLeaf,
+                                                    StringColumnStatistics stringColumnStatistics,
+                                                    Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
         String statisticsMinimum = stringColumnStatistics.getMinimum();
         String statisticsMaximum = stringColumnStatistics.getMaximum();
 
@@ -702,7 +716,7 @@ public class OssOrcFilePruner {
             ).collect(Collectors.toList());
             return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
         } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IS_NULL) {
-            boolean test = columnStatistics.hasNull();
+            boolean test = stringColumnStatistics.hasNull();
             if (!test) {
                 return OrcFilePruningResult.SKIP;
             } else {
@@ -797,6 +811,127 @@ public class OssOrcFilePruner {
                     return !(value.compareTo(statistics.getMaximum()) > 0);
                 }).collect(Collectors.toList());
 
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else {
+            // TODO: support more predicate for pruning
+            return OrcFilePruningResult.PASS;
+        }
+    }
+
+    /**
+     * the literal of predicateLeaf should be unscaled decimal64
+     */
+    private static PruningResult pruneDecimal64(PredicateLeaf predicateLeaf,
+                                                IntegerColumnStatistics integerColumnStatistics,
+                                                Map<Long, StripeColumnMeta> stripeColumnMetaMap) {
+        if (predicateLeaf.getLiteralList() == null) {
+            if (!(predicateLeaf.getLiteral() instanceof Long)) {
+                LOGGER.warn("Unsupported decimal64 prune value: " + predicateLeaf.getLiteral() +
+                    ", type: " + predicateLeaf.getLiteral().getClass().getName());
+                return OrcFilePruningResult.PASS;
+            }
+        } else {
+            List<Object> literalList = predicateLeaf.getLiteralList();
+            for (Object literal : literalList) {
+                if (!(literal instanceof Long)) {
+                    LOGGER.warn("Unsupported decimal64 prune value in list: " + predicateLeaf.getLiteral() +
+                        ", type: " + predicateLeaf.getLiteral().getClass().getName());
+                    return OrcFilePruningResult.PASS;
+                }
+            }
+        }
+
+        long statisticsMinimum = integerColumnStatistics.getMinimum();
+        long statisticsMaximum = integerColumnStatistics.getMaximum();
+
+        if (predicateLeaf.getOperator() == PredicateLeaf.Operator.EQUALS) {
+            long predicateValue = (Long) predicateLeaf.getLiteral();
+
+            if (predicateValue > statisticsMaximum || predicateValue < statisticsMinimum) {
+                return OrcFilePruningResult.SKIP;
+            }
+
+            List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(predicateValue > statistics.getMaximum() || predicateValue < statistics.getMinimum());
+                }).filter(x -> x.getBloomFilter() == null || x.getBloomFilter().testLong(predicateValue))
+                .collect(Collectors.toList());
+            return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.IS_NULL) {
+            boolean test = integerColumnStatistics.hasNull();
+            if (!test) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList =
+                    stripeColumnMetaMap.values().stream()
+                        .filter(x -> x.getColumnStatistics().hasNull()).collect(Collectors.toList());
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.BETWEEN) {
+            List<Object> literalList = predicateLeaf.getLiteralList();
+            long min = (Long) literalList.get(0);
+            long max = (Long) literalList.get(1);
+
+            if (max < min) {
+                return OrcFilePruningResult.SKIP;
+            }
+
+            if (min > statisticsMaximum || max < statisticsMinimum) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(min > statistics.getMaximum() || max < statistics.getMinimum());
+                }).collect(Collectors.toList());
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.LESS_THAN) {
+            long value = (Long) predicateLeaf.getLiteral();
+
+            if (value <= statisticsMinimum) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(value <= statistics.getMinimum());
+                }).collect(Collectors.toList());
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.LESS_THAN_EQUALS) {
+            long value = (Long) predicateLeaf.getLiteral();
+
+            if (value < statisticsMinimum) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(value < statistics.getMinimum());
+                }).collect(Collectors.toList());
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.GREATER_THAN) {
+            long value = (Long) predicateLeaf.getLiteral();
+
+            if (value >= statisticsMaximum) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(value >= statistics.getMaximum());
+                }).collect(Collectors.toList());
+                return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
+            }
+        } else if (predicateLeaf.getOperator() == PredicateLeaf.Operator.GREATER_THAN_EQUALS) {
+            long value = (Long) predicateLeaf.getLiteral();
+
+            if (value > statisticsMaximum) {
+                return OrcFilePruningResult.SKIP;
+            } else {
+                List<StripeColumnMeta> stripeColumnMetaList = stripeColumnMetaMap.values().stream().filter(x -> {
+                    IntegerColumnStatistics statistics = (IntegerColumnStatistics) x.getColumnStatistics();
+                    return !(value > statistics.getMaximum());
+                }).collect(Collectors.toList());
                 return generatePruningResult(stripeColumnMetaList, stripeColumnMetaMap);
             }
         } else {

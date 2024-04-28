@@ -2,9 +2,11 @@ package com.alibaba.polardbx.qatest.ddl.auto.ddl;
 
 import com.alibaba.polardbx.druid.sql.repository.SchemaRepository;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
+import com.alibaba.polardbx.qatest.ReplicaIgnore;
 import com.alibaba.polardbx.qatest.ddl.auto.partition.PartitionTestBase;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -16,6 +18,8 @@ import java.sql.Statement;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+@ReplicaIgnore(
+    ignoreReason = "目前创建外键的时候会同步创建一个同名的索引，导致了Duplicate Key，导致下游复制中断，暂时忽略")
 public class ForeignKeyDdlTest extends PartitionTestBase {
     @Override
     public boolean usingNewPartDb() {
@@ -78,6 +82,16 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
         + "    c varchar(20) not null,\n"
         + "    d varchar(20) not null,\n"
         + "    foreign key (`b`) REFERENCES `charset_p` (`b`)\n"
+        + ") %s";
+
+    private static final String CREATE_DEVICE_SAME_NAME = "create table device_same\n"
+        + "(   a int primary key,\n"
+        + "    b int not null,\n"
+        + "    c int not null,\n"
+        + "    d int not null,\n"
+        + "    KEY `device_ibfk_1` (`b`),"
+        + "    KEY `device_ibfk_2` (`b`),"
+        + "    constraint `device_ibfk_1` foreign key (`b`) REFERENCES `user1` (`b`)\n"
         + ") %s";
 
     @Before
@@ -389,6 +403,39 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
                 + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n%s", partitionDef2), createTableString);
 
             JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table user1 change column b100 b int");
+
+            if (partitionDef2.contains("`b`")) {
+                // not allow change sharding key
+                continue;
+            }
+
+            // exchange b and c in user1
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table user1 change column b c int, change c b int");
+
+            createTableString = showCreateTable(tddlConnection, "device");
+
+            assertEquals(String.format("CREATE TABLE `device` (\n"
+                + "\t`a` int(11) NOT NULL AUTO_INCREMENT,\n"
+                + "\t`b` int(11) NOT NULL,\n"
+                + "\t`c` int(11) NOT NULL,\n"
+                + "\t`d` int(11) NOT NULL,\n"
+                + "\tPRIMARY KEY (`a`),\n"
+                + "\tCONSTRAINT `device_ibfk_1` FOREIGN KEY (`b`) REFERENCES `user1` (`c`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n%s", partitionDef2), createTableString);
+
+            // exchange b and c in device
+            JdbcUtil.executeUpdateSuccess(tddlConnection, "alter table device change column b c int, change c b int");
+
+            createTableString = showCreateTable(tddlConnection, "device");
+
+            assertEquals(String.format("CREATE TABLE `device` (\n"
+                + "\t`a` int(11) NOT NULL AUTO_INCREMENT,\n"
+                + "\t`c` int(11) DEFAULT NULL,\n"
+                + "\t`b` int(11) DEFAULT NULL,\n"
+                + "\t`d` int(11) NOT NULL,\n"
+                + "\tPRIMARY KEY (`a`),\n"
+                + "\tCONSTRAINT `device_ibfk_1` FOREIGN KEY (`c`) REFERENCES `user1` (`c`)\n"
+                + ") ENGINE = InnoDB DEFAULT CHARSET = utf8mb4\n%s", partitionDef2), createTableString);
         }
     }
 
@@ -502,6 +549,55 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
     }
 
     @Test
+    public void repartitionFkSameTableTest() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        String schemaName = dataBaseName;
+
+        for (String partitionDef1 : PART_DEFS) {
+            dropTableIfExists("device");
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format("create table device\n"
+                    + "(   a int primary key,\n"
+                    + "    b int not null,\n"
+                    + "    c int not null,\n"
+                    + "    d int not null,\n"
+                    + "    key (`c`),\n"
+                    + "    foreign key (`d`) REFERENCES `device` (`c`)\n"
+                    + ")%s", partitionDef1));
+
+            for (String partitionDef3 : PART_DEFS) {
+                if (partitionDef3.equals(partitionDef1)) {
+                    continue;
+                }
+                System.out.println(partitionDef1 + "|" + partitionDef3);
+
+                JdbcUtil.executeUpdateSuccess(tddlConnection,
+                    String.format("alter table device %s", partitionDef3));
+
+                long pushDown = 0L;
+                String sql = String.format(
+                    "select PUSH_DOWN from foreign_key where SCHEMA_NAME = '%s' and TABLE_NAME = '%s'", schemaName,
+                    "device");
+                try (Connection metaDbConn = getMetaConnection();
+                    Statement stmt = metaDbConn.createStatement();
+                    ResultSet rs = stmt.executeQuery(String.format(sql, schemaName, "device"))) {
+                    while (rs.next()) {
+                        pushDown = rs.getLong(1);
+                    }
+                }
+
+                if ((partitionDef3.equalsIgnoreCase("SINGLE")
+                    || partitionDef3.equalsIgnoreCase("BROADCAST"))) {
+                    assertEquals(1L, pushDown);
+                } else {
+                    assertTrue(pushDown == 2 || pushDown == 3);
+                }
+            }
+        }
+    }
+
+    @Test
     public void CreateTableDifferentCharsetWithFkReferred() throws SQLException {
         JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
 
@@ -552,5 +648,119 @@ public class ForeignKeyDdlTest extends PartitionTestBase {
 
         dropTableIfExists("charset_c");
         dropTableIfExists("charset_p");
+    }
+
+    @Test
+    public void FkRefIndexNameUpdateTest() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        dropTableIfExists("device");
+        dropTableIfExists("user1");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set foreign_key_checks = 0");
+
+        // create child table first
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_DEVICE, "PARTITION BY KEY(`a`) PARTITIONS 7"));
+
+        ResultSet rs =
+            JdbcUtil.executeQuerySuccess(tddlConnection, String.format(
+                "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '%s' AND TABLE_NAME = 'device'",
+                dataBaseName));
+        Assert.assertTrue(rs.next());
+        assertEquals(rs.getString(6), "");
+
+        // create parent table
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            String.format(CREATE_USER1, "PARTITION BY KEY(`a`) PARTITIONS 7"));
+
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format(
+            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '%s' AND TABLE_NAME = 'device'",
+            dataBaseName));
+        Assert.assertTrue(rs.next());
+        assertEquals(rs.getString(6), "b");
+
+        // change fk index
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "ALTER TABLE user1 ADD KEY(`b`, `c`, `d`)");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "ALTER TABLE user1 DROP KEY `b`");
+
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format(
+            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '%s' AND TABLE_NAME = 'device'",
+            dataBaseName));
+        Assert.assertTrue(rs.next());
+        assertEquals(rs.getString(6), "b_2");
+
+        // rename fk index
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "ALTER TABLE user1 RENAME INDEX `b_2` to `b_3`");
+
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format(
+            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '%s' AND TABLE_NAME = 'device'",
+            dataBaseName));
+        Assert.assertTrue(rs.next());
+        assertEquals(rs.getString(6), "b_3");
+
+        // drop parent table
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "DROP TABLE user1");
+
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, String.format(
+            "SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = '%s' AND TABLE_NAME = 'device'",
+            dataBaseName));
+        Assert.assertTrue(rs.next());
+        assertEquals(rs.getString(6), "");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "set foreign_key_checks = 1");
+    }
+
+    @Test
+    public void FkIndexNameSensitiveTest() throws SQLException {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        dropTableIfExists("device");
+        dropTableIfExists("user");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "create table user\n"
+                + "(   a int auto_increment primary key,\n"
+                + "    B int not null,\n"
+                + "    c int not null,\n"
+                + "    d int not null,\n"
+                + "    key (`B`)\n"
+                + ")");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection,
+            "create table device\n"
+                + "(   a int auto_increment primary key,\n"
+                + "    b int not null,\n"
+                + "    c int not null,\n"
+                + "    d int not null,\n"
+                + "    key (`c`),\n"
+                + "    foreign key (`b`) REFERENCES `user` (`b`) ON DELETE CASCADE ON UPDATE CASCADE\n"
+                + ")");
+
+        dropTableIfExists("device");
+        dropTableIfExists("user");
+    }
+
+    @Test
+    public void testCreateFkWithSameNameIndex() {
+        JdbcUtil.executeUpdateSuccess(tddlConnection, "SET ENABLE_FOREIGN_KEY = true");
+
+        dropTableIfExists("device");
+        dropTableIfExists("user1");
+
+        JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_USER1, "partition by hash(a)"));
+
+        for (String partitionDef2 : PART_DEFS) {
+
+            System.out.println(partitionDef2);
+            dropTableIfExists("device_same");
+            // create table with fk
+            JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(CREATE_DEVICE_SAME_NAME, partitionDef2));
+            // create table and create fk
+            JdbcUtil.executeUpdateSuccess(tddlConnection,
+                String.format(
+                    "alter table `device_same` add constraint `device_ibfk_2` foreign key (`b`) REFERENCES `user1` (`c`)",
+                    partitionDef2));
+        }
     }
 }

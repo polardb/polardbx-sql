@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.ISyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
@@ -52,6 +53,7 @@ public class ShowTransHandler extends HandlerCommon {
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
         final LogicalShow show = (LogicalShow) logicalPlan;
         final SqlShowTrans showTrans = (SqlShowTrans) show.getNativeSqlNode();
+        final boolean isColumnar = showTrans.isColumnar();
 
         ArrayResultCursor result = new ArrayResultCursor("TRANSACTIONS");
         result.addColumn("TRANS_ID", DataTypes.StringType);
@@ -59,16 +61,20 @@ public class ShowTransHandler extends HandlerCommon {
         result.addColumn("DURATION_MS", DataTypes.LongType);
         result.addColumn("STATE", DataTypes.StringType);
         result.addColumn("PROCESS_ID", DataTypes.LongType);
+        if (isColumnar) {
+            result.addColumn("TSO", DataTypes.LongType);
+        }
 
         ISyncAction syncAction;
         try {
-            syncAction = (ISyncAction) showTransSyncActionClass.getConstructor(String.class)
-                .newInstance(executionContext.getSchemaName());
+            syncAction = (ISyncAction) showTransSyncActionClass.getConstructor(String.class, boolean.class)
+                .newInstance(executionContext.getSchemaName(), isColumnar);
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
 
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction, executionContext.getSchemaName());
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(syncAction, executionContext.getSchemaName(),
+            SyncScope.ALL);
 
         for (List<Map<String, Object>> rs : results) {
             if (rs == null) {
@@ -80,7 +86,13 @@ public class ShowTransHandler extends HandlerCommon {
                 final long duration = (Long) row.get("DURATION_MS");
                 final String state = (String) row.get("STATE");
                 final long processId = (Long) row.get("PROCESS_ID");
-                result.addRow(new Object[] {transId, type, duration, state, processId});
+
+                if (isColumnar) {
+                    final long tso = (Long) row.get("TSO");
+                    result.addRow(new Object[] {transId, type, duration, state, processId, tso});
+                } else {
+                    result.addRow(new Object[] {transId, type, duration, state, processId});
+                }
             }
         }
 

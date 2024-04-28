@@ -16,9 +16,21 @@
 
 package com.alibaba.polardbx.planner.indexquery;
 
+import com.alibaba.polardbx.optimizer.OptimizerContext;
+import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
+import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticManager;
+import com.alibaba.polardbx.optimizer.core.datatype.DataType;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
+import org.apache.commons.lang.RandomStringUtils;
+import org.junit.Test;
 import org.junit.runners.Parameterized;
 
 import java.util.List;
+import java.util.Random;
+
+import static com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils.DATA_MAX_LEN;
+import static org.junit.Assert.assertEquals;
 
 /**
  * ${DESCRIPTION}
@@ -36,4 +48,26 @@ public class IndexQueryTest extends IndexTestCommon {
         return loadSqls(IndexQueryTest.class);
     }
 
+    @Test
+    public void testStatisticManagerTruncate() {
+        OptimizerContext context = getContextByAppName(appName);
+        for (TableMeta tableMeta : context.getLatestSchemaManager().getAllTables()) {
+            for (ColumnMeta columnMeta : tableMeta.getAllColumns()) {
+                StatisticManager statisticManager = StatisticManager.getInstance();
+                DataType columnRealType =
+                    statisticManager.getRealDataType(appName, tableMeta.getTableName(), columnMeta.getName());
+                Integer originalLen = new Random().nextInt(255);
+                String s = RandomStringUtils.random(originalLen);
+                int truncatedLen =
+                    statisticManager.truncateStringTypeValue(appName, tableMeta.getTableName(), columnMeta.getName(), s)
+                        .length();
+                if (DataTypeUtil.isStringType(columnRealType)) {
+                    assertEquals("targetLen should equals originalLen ", truncatedLen,
+                        Math.min((long) originalLen, DATA_MAX_LEN));
+                } else {
+                    assertEquals("targetLen should equals originalLen ", truncatedLen, (long) originalLen);
+                }
+            }
+        }
+    }
 }

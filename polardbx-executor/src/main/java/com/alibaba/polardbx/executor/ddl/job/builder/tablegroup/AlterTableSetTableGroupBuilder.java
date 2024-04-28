@@ -28,6 +28,7 @@ import com.alibaba.polardbx.gms.tablegroup.TableGroupRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
+import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTableSetTableGroupPreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
@@ -91,6 +92,10 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
             TableGroupConfig tableGroupInfo =
                 optimizerContext.getTableGroupInfoManager().getTableGroupConfigByName(tableGroupName);
 
+            if (tableGroupInfo == null && preparedData.isImplicit()) {
+                onlyChangeSchemaMeta = true;
+                return;
+            }
             if (tableGroupInfo == null) {
                 throw new TddlRuntimeException(ErrorCode.ERR_TABLE_GROUP_NOT_EXISTS,
                     "tablegroup:" + tableGroupName + " does not exist");
@@ -100,8 +105,7 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
                 onlyChangeSchemaMeta = true;
             } else {
                 TableGroupRecord tgRecord = tableGroupInfo.getTableGroupRecord();
-                TablePartRecordInfoContext tablePartRecordInfoContext = tableGroupInfo.getAllTables().get(0);
-                String tableInTbGrp = tablePartRecordInfoContext.getLogTbRec().tableName;
+                String tableInTbGrp = tableGroupInfo.getAllTables().get(0);
 
                 PartitionInfo targetPartInfo =
                     executionContext.getSchemaManager(schemaName).getTable(tableInTbGrp).getPartitionInfo();
@@ -195,6 +199,12 @@ public class AlterTableSetTableGroupBuilder extends DdlPhyPlanBuilder {
                                 "the subpartition strategy of tablegroup:" + tableGroupName
                                     + " is not match to table: "
                                     + logicTableName);
+                        }
+                        TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(logicTableName);
+                        if (tableMeta.isGsi()) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_PARTITION_MANAGEMENT,
+                                "it's not support to change the GSI's tablegroup to " + tableGroupName
+                                    + " due to need repartition");
                         }
                         repartition = true;
                     }

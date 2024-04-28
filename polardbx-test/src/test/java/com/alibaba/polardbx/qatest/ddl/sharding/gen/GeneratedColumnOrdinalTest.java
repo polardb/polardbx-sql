@@ -1,7 +1,7 @@
 package com.alibaba.polardbx.qatest.ddl.sharding.gen;
 
 import com.alibaba.fastjson.JSONObject;
-import com.alibaba.polardbx.cdc.entity.DDLExtInfo;
+import com.alibaba.polardbx.common.cdc.entity.DDLExtInfo;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLCreateTableStatement;
 import com.alibaba.polardbx.druid.sql.parser.SQLStatementParser;
@@ -23,9 +23,10 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static com.alibaba.polardbx.cdc.SysTableUtil.CDC_DDL_RECORD_TABLE;
+import static com.alibaba.polardbx.cdc.CdcTableUtil.CDC_DDL_RECORD_TABLE;
 import static com.alibaba.polardbx.druid.sql.SQLUtils.normalize;
 import static com.alibaba.polardbx.druid.sql.parser.SQLParserUtils.createSQLStatementParser;
 import static com.alibaba.polardbx.qatest.validator.DataOperator.executeOnMysqlAndTddl;
@@ -100,14 +101,15 @@ public class GeneratedColumnOrdinalTest extends DDLBaseNewDBTestCase {
         executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insert, insert, null, false);
 
         for (int i = 0; i < params.length; i++) {
-            String alterSql = String.format(params[i], tableName);
+            String tokenHints = "/*+TDDL:CMD_EXTRA(CDC_RANDOM_DDL_TOKEN=\"" + UUID.randomUUID() + "\")*/";
+            String alterSql = tokenHints + String.format(params[i], tableName);
             execDdlWithRetry(tddlDatabase1, tableName, alterSql, tddlConnection);
             JdbcUtil.executeUpdateSuccess(mysqlConnection, alterSql.replace("logical", ""));
             selectContentSameAssert("select * from " + tableName, null, mysqlConnection, tddlConnection);
 
             //cdc check
             repository.console(alterSql);
-            checkCdcDdlMark(alterSql, tableName, repository);
+            checkCdcDdlMark(tokenHints, alterSql, tableName, repository);
         }
 
         insert = String.format("insert into %s(%s) values (13,4,5,6,7)", tableName, columns);
@@ -145,7 +147,8 @@ public class GeneratedColumnOrdinalTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, String.format(sql, supported ? "on" : "off"));
     }
 
-    private void checkCdcDdlMark(String sql, String tableName, SchemaRepository repository) throws SQLException {
+    private void checkCdcDdlMark(String tokenHints, String sql, String tableName, SchemaRepository repository)
+        throws SQLException {
         //origin
         SchemaObject schemaObject = repository.findTable(tableName);
         SQLCreateTableStatement stmt1 = (SQLCreateTableStatement) schemaObject.getStatement();
@@ -155,7 +158,7 @@ public class GeneratedColumnOrdinalTest extends DDLBaseNewDBTestCase {
                     .toLowerCase()).collect(Collectors.toSet());
 
         //target
-        DDLExtInfo extInfo = getDdlExtInfo(sql);
+        DDLExtInfo extInfo = getDdlExtInfo(tokenHints);
         Assert.assertTrue(StringUtils.isNotBlank(extInfo.getCreateSql4PhyTable()));
         SQLStatementParser parser = createSQLStatementParser(extInfo.getCreateSql4PhyTable(), DbType.mysql);
         SQLCreateTableStatement stmt2 = (SQLCreateTableStatement) parser.parseStatementList().get(0);
@@ -167,11 +170,11 @@ public class GeneratedColumnOrdinalTest extends DDLBaseNewDBTestCase {
         Assert.assertEquals(originColumns, targetColumns);
     }
 
-    private DDLExtInfo getDdlExtInfo(String sql) throws SQLException {
+    private DDLExtInfo getDdlExtInfo(String tokenHints) throws SQLException {
         try (Statement stmt = tddlConnection.createStatement()) {
             try (ResultSet resultSet = stmt.executeQuery(
-                "select ext from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql = '" + sql
-                    + "' order by id desc limit 1")) {
+                "select ext from __cdc__." + CDC_DDL_RECORD_TABLE + " where ddl_sql like '%" + tokenHints
+                    + "%' order by id desc limit 1")) {
                 while (resultSet.next()) {
                     String extStr = resultSet.getString(1);
                     if (StringUtils.isNotBlank(extStr)) {

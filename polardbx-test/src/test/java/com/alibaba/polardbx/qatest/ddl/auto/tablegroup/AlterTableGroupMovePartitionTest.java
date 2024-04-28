@@ -332,6 +332,13 @@ public class AlterTableGroupMovePartitionTest extends AlterTableGroupTestBase {
                     pi.setTableStatus(c);
                     pi.setPhysicalTableBackfillParallel(true);
                     status.add(new PartitionRuleInfo[] {pi});
+                    pi =
+                        new PartitionRuleInfo(o.strategy, o.initDataType, o.partitionRule, o.alterTableGroupCommand,
+                            o.needGenDml, o.dmlType, o.rowCount, o.targetPart, o.minVal1, o.maxVal1, o.minVal2,
+                            o.maxVal2);
+                    pi.setTableStatus(c);
+                    pi.setUsePhysicalTableBackfill(true);
+                    status.add(new PartitionRuleInfo[] {pi});
                 });
             }
         });

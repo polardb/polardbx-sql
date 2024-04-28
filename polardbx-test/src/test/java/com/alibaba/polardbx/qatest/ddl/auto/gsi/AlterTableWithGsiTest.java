@@ -118,6 +118,47 @@ public class AlterTableWithGsiTest extends BaseAutoPartitionNewPartition {
         dropTableIfExists(primaryTable);
     }
 
+    @Test
+    public void testAddIndexFailed() {
+        final String primaryTable = tableName + "_4";
+
+        dropTableIfExists(primaryTable);
+        String sql = String.format(HINT_CREATE_GSI
+                + "create table "
+                + createOption
+                + "%s(a int primary key auto_increment,b varchar(30), c varchar(30), d varchar(30), e varchar(30)"
+                + ") partition by hash(b)",
+            primaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s add global index `n`(a) partition by key(a)", primaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s add index `N`(a)", primaryTable);
+        JdbcUtil.executeUpdateFailed(tddlConnection, sql, "Duplicated index name");
+
+        dropTableIfExists(primaryTable);
+    }
+
+    @Test
+    public void testAddUniqueIndexSuccess() {
+        final String primaryTable = tableName + "_5";
+
+        dropTableIfExists(primaryTable);
+        String sql = String.format(HINT_CREATE_GSI
+                + "create table "
+                + createOption
+                + "%s(a int primary key auto_increment,b varchar(30), c varchar(30), d varchar(30), e varchar(30)"
+                + ") partition by hash(b)",
+            primaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s add unique global index `1e1`(a,b,c) partition by key(a)", primaryTable);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        dropTableIfExists(primaryTable);
+    }
+
     public String showCreateTable(Connection conn, String tbName) {
         String sql = "show create table " + tbName;
 

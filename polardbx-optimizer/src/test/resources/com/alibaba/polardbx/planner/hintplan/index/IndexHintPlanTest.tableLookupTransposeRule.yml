@@ -390,7 +390,7 @@
 
   plan: |
 
-    IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `c1`, `c2` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+    phytableoperation(tables="optest_0000.[t1_i_b_1]", sql="select `t1`.`c1` as `c1`, `t1`.`c2` as `c2` from ? as `t1` where (`t1`.`c2` = ?)", params="1")
 
 - sql: |
 
@@ -398,5 +398,5 @@
 
   plan: |
 
-    IndexScan(tables="optest_0000.t1_i_b_1", sql="SELECT `c1`, `c2` FROM `t1_i_b` AS `t1_i_b` WHERE (`c2` = ?)")
+    phytableoperation(tables="optest_0000.[t1_i_b_1]", sql="select `a`.`c1` as `c1`, `a`.`c2` as `c2` from ? as `a` where (`a`.`c2` = ?)", params="1")
 

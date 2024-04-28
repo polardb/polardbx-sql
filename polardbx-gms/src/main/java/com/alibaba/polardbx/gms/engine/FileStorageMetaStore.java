@@ -71,11 +71,10 @@ public class FileStorageMetaStore {
 
     public List<OssFileMeta> queryFromFileStorage() {
         List<OssFileMeta> fileMetaList = new ArrayList<>();
-        long stamp = FileSystemManager.readLockWithTimeOut(engine);
         try {
             FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine);
-            Path path = new Path(MATA_STORE_FILE_PATH);
             FileSystem fileSystem = fileSystemGroup.getMaster();
+            Path path = FileSystemUtils.buildPath(fileSystem, MATA_STORE_FILE_PATH, false);
 
             boolean fileExists = false;
             FileStatus fileStatus;
@@ -131,8 +130,6 @@ public class FileStorageMetaStore {
             return fileMetaList;
         } catch (Throwable t) {
             throw new TddlNestableRuntimeException(t);
-        } finally {
-            FileSystemManager.unlockRead(engine, stamp);
         }
     }
 
@@ -171,7 +168,7 @@ public class FileStorageMetaStore {
 
             // upload to oss
             try {
-                FileSystemUtils.writeFile(file, MATA_STORE_FILE_PATH, engine);
+                FileSystemUtils.writeFile(file, MATA_STORE_FILE_PATH, engine, false);
             } catch (IOException e) {
                 throw new TddlNestableRuntimeException(e);
             }

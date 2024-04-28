@@ -1,0 +1,114 @@
+File Version: 0.12 with ORC_14 by ORC Java
+Rows: 491726
+Compression: LZ4
+Compression size: 262144
+Calendar: Julian/Gregorian
+Type: struct<132__id__:int,133__id__:int,134__id__:int,135__id__:int,136__id__:decimal(15,2),137__id__:decimal(15,2),138__id__:decimal(15,2),139__id__:decimal(15,2),140__id__:varchar(2147483647),141__id__:varchar(2147483647),142__id__:bigint,143__id__:bigint,144__id__:bigint,145__id__:varchar(2147483647),146__id__:varchar(2147483647),147__id__:varchar(2147483647)>
+
+Stripe Statistics:
+  Stripe 1:
+    Column 0: count: 491726 hasNull: false
+    Column 1: count: 491726 hasNull: false bytesOnDisk: 553225 min: 4030370 max: 5999973 sum: 2464788207827
+    Column 2: count: 491726 hasNull: false bytesOnDisk: 1477118 min: 1 max: 200000 sum: 49211520662
+    Column 3: count: 491726 hasNull: false bytesOnDisk: 985386 min: 1 max: 10000 sum: 2458058944
+    Column 4: count: 491726 hasNull: false bytesOnDisk: 134473 min: 1 max: 7 sum: 1475593
+    Column 5: count: 491726 hasNull: false bytesOnDisk: 955889 min: 100 max: 5000 sum: 1255081600
+    Column 6: count: 491726 hasNull: false bytesOnDisk: 1436122 min: 90700 max: 10464950 sum: 1882348202535
+    Column 7: count: 491726 hasNull: false bytesOnDisk: 483720 min: 0 max: 10 sum: 2458175
+    Column 8: count: 491726 hasNull: false bytesOnDisk: 454731 min: 0 max: 8 sum: 1969568
+    Column 9: count: 491726 hasNull: false bytesOnDisk: 169282 min: A max: R sum: 491726
+    Column 10: count: 491726 hasNull: false bytesOnDisk: 92949 min: F max: O sum: 491726
+    Column 11: count: 491726 hasNull: false bytesOnDisk: 1719331 min: 1822343766015475712 max: 1828604385224032256
+    Column 12: count: 491726 hasNull: false bytesOnDisk: 1704826 min: 1822411935736397824 max: 1828529618433343488
+    Column 13: count: 491726 hasNull: false bytesOnDisk: 1719732 min: 1822354761131753472 max: 1828663758851932160
+    Column 14: count: 491726 hasNull: false bytesOnDisk: 197104 min: COLLECT COD max: TAKE BACK RETURN sum: 5900983
+    Column 15: count: 491726 hasNull: false bytesOnDisk: 267799 min: AIR max: TRUCK sum: 2106319
+    Column 16: count: 491726 hasNull: false bytesOnDisk: 6031033 min:  Tiresias aga max: zzle. regular deposits are. furiously iron sum: 13011766
+
+File Statistics:
+  Column 0: count: 491726 hasNull: false
+  Column 1: count: 491726 hasNull: false bytesOnDisk: 553225 min: 4030370 max: 5999973 sum: 2464788207827
+  Column 2: count: 491726 hasNull: false bytesOnDisk: 1477118 min: 1 max: 200000 sum: 49211520662
+  Column 3: count: 491726 hasNull: false bytesOnDisk: 985386 min: 1 max: 10000 sum: 2458058944
+  Column 4: count: 491726 hasNull: false bytesOnDisk: 134473 min: 1 max: 7 sum: 1475593
+  Column 5: count: 491726 hasNull: false bytesOnDisk: 955889 min: 100 max: 5000 sum: 1255081600
+  Column 6: count: 491726 hasNull: false bytesOnDisk: 1436122 min: 90700 max: 10464950 sum: 1882348202535
+  Column 7: count: 491726 hasNull: false bytesOnDisk: 483720 min: 0 max: 10 sum: 2458175
+  Column 8: count: 491726 hasNull: false bytesOnDisk: 454731 min: 0 max: 8 sum: 1969568
+  Column 9: count: 491726 hasNull: false bytesOnDisk: 169282 min: A max: R sum: 491726
+  Column 10: count: 491726 hasNull: false bytesOnDisk: 92949 min: F max: O sum: 491726
+  Column 11: count: 491726 hasNull: false bytesOnDisk: 1719331 min: 1822343766015475712 max: 1828604385224032256
+  Column 12: count: 491726 hasNull: false bytesOnDisk: 1704826 min: 1822411935736397824 max: 1828529618433343488
+  Column 13: count: 491726 hasNull: false bytesOnDisk: 1719732 min: 1822354761131753472 max: 1828663758851932160
+  Column 14: count: 491726 hasNull: false bytesOnDisk: 197104 min: COLLECT COD max: TAKE BACK RETURN sum: 5900983
+  Column 15: count: 491726 hasNull: false bytesOnDisk: 267799 min: AIR max: TRUCK sum: 2106319
+  Column 16: count: 491726 hasNull: false bytesOnDisk: 6031033 min:  Tiresias aga max: zzle. regular deposits are. furiously iron sum: 13011766
+
+Stripes:
+  Stripe: offset: 3 data: 18382720 rows: 491726 tail: 363 index: 126597
+    Stream: column 0 section ROW_INDEX start: 3 length 39
+    Stream: column 1 section ROW_INDEX start: 42 length 11034
+    Stream: column 2 section ROW_INDEX start: 11076 length 9816
+    Stream: column 3 section ROW_INDEX start: 20892 length 8149
+    Stream: column 4 section ROW_INDEX start: 29041 length 5471
+    Stream: column 5 section ROW_INDEX start: 34512 length 6465
+    Stream: column 6 section ROW_INDEX start: 40977 length 11218
+    Stream: column 7 section ROW_INDEX start: 52195 length 5467
+    Stream: column 8 section ROW_INDEX start: 57662 length 5351
+    Stream: column 9 section ROW_INDEX start: 63013 length 3252
+    Stream: column 10 section ROW_INDEX start: 66265 length 3236
+    Stream: column 11 section ROW_INDEX start: 69501 length 7525
+    Stream: column 12 section ROW_INDEX start: 77026 length 7486
+    Stream: column 13 section ROW_INDEX start: 84512 length 7645
+    Stream: column 14 section ROW_INDEX start: 92157 length 5394
+    Stream: column 15 section ROW_INDEX start: 97551 length 5568
+    Stream: column 16 section ROW_INDEX start: 103119 length 23481
+    Stream: column 1 section DATA start: 126600 length 553225
+    Stream: column 2 section DATA start: 679825 length 1477118
+    Stream: column 3 section DATA start: 2156943 length 985386
+    Stream: column 4 section DATA start: 3142329 length 134473
+    Stream: column 5 section DATA start: 3276802 length 955889
+    Stream: column 6 section DATA start: 4232691 length 1436122
+    Stream: column 7 section DATA start: 5668813 length 483720
+    Stream: column 8 section DATA start: 6152533 length 454731
+    Stream: column 9 section DATA start: 6607264 length 169271
+    Stream: column 9 section LENGTH start: 6776535 length 5
+    Stream: column 9 section DICTIONARY_DATA start: 6776540 length 6
+    Stream: column 10 section DATA start: 6776546 length 92938
+    Stream: column 10 section LENGTH start: 6869484 length 6
+    Stream: column 10 section DICTIONARY_DATA start: 6869490 length 5
+    Stream: column 11 section DATA start: 6869495 length 1719331
+    Stream: column 12 section DATA start: 8588826 length 1704826
+    Stream: column 13 section DATA start: 10293652 length 1719732
+    Stream: column 14 section DATA start: 12013384 length 197044
+    Stream: column 14 section LENGTH start: 12210428 length 9
+    Stream: column 14 section DICTIONARY_DATA start: 12210437 length 51
+    Stream: column 15 section DATA start: 12210488 length 267757
+    Stream: column 15 section LENGTH start: 12478245 length 9
+    Stream: column 15 section DICTIONARY_DATA start: 12478254 length 33
+    Stream: column 16 section DATA start: 12478287 length 5537383
+    Stream: column 16 section LENGTH start: 18015670 length 493650
+    Encoding column 0: DIRECT
+    Encoding column 1: DIRECT_V2
+    Encoding column 2: DIRECT_V2
+    Encoding column 3: DIRECT_V2
+    Encoding column 4: DIRECT_V2
+    Encoding column 5: DIRECT_V2
+    Encoding column 6: DIRECT_V2
+    Encoding column 7: DIRECT_V2
+    Encoding column 8: DIRECT_V2
+    Encoding column 9: DICTIONARY_V2[3]
+    Encoding column 10: DICTIONARY_V2[2]
+    Encoding column 11: DIRECT_V2
+    Encoding column 12: DIRECT_V2
+    Encoding column 13: DIRECT_V2
+    Encoding column 14: DICTIONARY_V2[4]
+    Encoding column 15: DICTIONARY_V2[7]
+    Encoding column 16: DIRECT_V2
+
+File length: 18510816 bytes
+Padding length: 0 bytes
+Padding ratio: 0%
+
+User Metadata:
+  ENABLE_DECIMAL_64=true

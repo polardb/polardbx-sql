@@ -31,7 +31,6 @@ import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.Multimap;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -182,7 +181,8 @@ public class ReflectiveRelMetadataProvider
                   }
                   key1 = FlatLists.copyOf(args2);
                 }
-                if (mq.map.put(rel, key1, NullSentinel.INSTANCE) != null) {
+                Object o = mq.cache(rel, key1, NullSentinel.INSTANCE, 1);
+                if (o!= null) {
                   throw new CyclicMetadataException();
                 }
                 try {
@@ -192,7 +192,7 @@ public class ReflectiveRelMetadataProvider
                   Util.throwIfUnchecked(e.getCause());
                   throw new RuntimeException(e.getCause());
                 } finally {
-                  mq.map.remove(rel, key1);
+                  mq.clearCache(rel, key1);
                 }
               });
       methodsMap.put(key, function);
@@ -321,7 +321,7 @@ public class ReflectiveRelMetadataProvider
         }
         r = r.getSuperclass();
         if (r == null || !RelNode.class.isAssignableFrom(r)) {
-          throw new IllegalArgumentException("No handler for method [" + method
+           throw new IllegalArgumentException("No handler for method [" + method
               + "] applied to argument of type [" + relNodeClass
               + "]; we recommend you create a catch-all (RelNode) handler");
         }

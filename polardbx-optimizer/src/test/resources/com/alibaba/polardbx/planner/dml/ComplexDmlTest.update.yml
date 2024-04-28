@@ -307,3 +307,24 @@
   plan: |
 
     LogicalModifyView(tables="[0000-0003].self_join_t1", shardCount=4, sql="UPDATE `self_join_t1` AS `self_join_t1` INNER JOIN `self_join_t1` AS `self_join_t10` ON ((`self_join_t1`.`c1` = `self_join_t10`.`c1`) AND (`self_join_t1`.`pk` > `self_join_t10`.`pk`)) SET `self_join_t1`.`pk` = (`self_join_t1`.`pk` * ?) , `self_join_t10`.`pk` = (`self_join_t10`.`pk` * ?)")
+
+- sql: |
+    update deliver_task task join( select ot.deliver_task_id, count(1) outbound_quantity from deliver_task dt join outbound_transaction ot on dt.relation_bill= ot.relation_bill and dt.id= ot.deliver_task_id where dt.status= 'UN_EXECUTE' and dt.deliver_type= 'ALLOCATION' group by ot.deliver_task_id) org on task.id= org.deliver_task_id set task.actual_deliver_quantity= org.outbound_quantity where task.actual_deliver_quantity!= org.outbound_quantity
+
+  plan: |
+    logicalmodify(type="update", set="deliver_task.actual_deliver_quantity=$34")
+      project(id="id", approve_id="approve_id", status="status", relation_bill="relation_bill", deliver_date="deliver_date", material_type_code="material_type_code", material_type_name="material_type_name", unit="unit", deliver_type="deliver_type", deliver_site_code="deliver_site_code", deliver_site_name="deliver_site_name", deliver_site_type="deliver_site_type", to_site_code="to_site_code", to_site_name="to_site_name", to_site_type="to_site_type", execute_employee_no="execute_employee_no", execute_employee_name="execute_employee_name", execute_date="execute_date", deliver_quantity="deliver_quantity", actual_deliver_quantity="actual_deliver_quantity", deploy_employee_no="deploy_employee_no", deploy_employee_name="deploy_employee_name", deploy_date="deploy_date", remarks="remarks", creator="creator", gmt_create="gmt_create", modifier="modifier", gmt_modified="gmt_modified", requisition_no="requisition_no", display_flag="display_flag", operate_machine_type="operate_machine_type", operate_machine_serial="operate_machine_serial", cancel_remarks="cancel_remarks", deliver_task_id="deliver_task_id", outbound_quantity="outbound_quantity", gen$0="outbound_quantity")
+        bkajoin(condition="deliver_task_id = id and actual_deliver_quantity <> outbound_quantity", type="inner")
+          hashagg(group="deliver_task_id", outbound_quantity="count()")
+            bkajoin(condition="deliver_task_id = id and relation_bill = relation_bill", type="inner")
+              logicalview(tables="optest_0000.deliver_task", sql="select `id`, `relation_bill` from `deliver_task` as `deliver_task` where ((`status` = ?) and (`deliver_type` = ?)) for update")
+              gather(concurrent=true)
+                logicalview(tables="[0000-0003].outbound_transaction_[000-511]", shardcount=512, sql="select `relation_bill`, `deliver_task_id` from `outbound_transaction` as `outbound_transaction` where (((`deliver_task_id`, `relation_bill`)) in (...)) for update")
+          logicalview(tables="optest_0000.deliver_task", sql="select `id`, `approve_id`, `status`, `relation_bill`, `deliver_date`, `material_type_code`, `material_type_name`, `unit`, `deliver_type`, `deliver_site_code`, `deliver_site_name`, `deliver_site_type`, `to_site_code`, `to_site_name`, `to_site_type`, `execute_employee_no`, `execute_employee_name`, `execute_date`, `deliver_quantity`, `actual_deliver_quantity`, `deploy_employee_no`, `deploy_employee_name`, `deploy_date`, `remarks`, `creator`, `gmt_create`, `modifier`, `gmt_modified`, `requisition_no`, `display_flag`, `operate_machine_type`, `operate_machine_serial`, `cancel_remarks` from `deliver_task` as `deliver_task` where ((`id` is not null) and (`id` in (...))) for update")
+
+- sql: |
+    update `optest`.`img` set `optest`.`img`.`ding_count` = (`optest`.`img`.`ding_count` + 1), `optest`.`img`.`is_ding` = 1 where `optest`.`img`.`imgid` in (1618372744)
+
+  plan: |
+
+    LogicalModifyView(tables="optest_0003.img_40", sql="UPDATE `img` AS `img` SET `ding_count` = (`ding_count` + ?) , `is_ding` = ? WHERE (`imgid` IN(?))", isdynamicparam="true")

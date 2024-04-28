@@ -50,20 +50,24 @@ public class InformationSchemaInformationSchemaTables extends VirtualView {
         columns.add(new RelDataTypeFieldImpl("TABLE_NAME", 2, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_TYPE", 3, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("ENGINE", 4, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("VERSION", 5, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("VERSION", 5, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("ROW_FORMAT", 6, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("TABLE_ROWS", 7, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("AVG_ROW_LENGTH", 8, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("DATA_LENGTH", 9, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("MAX_DATA_LENGTH", 10, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("INDEX_LENGTH", 11, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("DATA_FREE", 12, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("AUTO_INCREMENT", 13, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("TABLE_ROWS", 7, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("AVG_ROW_LENGTH", 8, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(new RelDataTypeFieldImpl("DATA_LENGTH", 9, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("MAX_DATA_LENGTH", 10, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("INDEX_LENGTH", 11, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(new RelDataTypeFieldImpl("DATA_FREE", 12, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
+        columns.add(
+            new RelDataTypeFieldImpl("AUTO_INCREMENT", 13, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("CREATE_TIME", 14, typeFactory.createSqlType(SqlTypeName.DATETIME)));
         columns.add(new RelDataTypeFieldImpl("UPDATE_TIME", 15, typeFactory.createSqlType(SqlTypeName.DATETIME)));
         columns.add(new RelDataTypeFieldImpl("CHECK_TIME", 16, typeFactory.createSqlType(SqlTypeName.DATETIME)));
         columns.add(new RelDataTypeFieldImpl("TABLE_COLLATION", 17, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("CHECKSUM", 18, typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("CHECKSUM", 18, typeFactory.createSqlType(SqlTypeName.BIGINT_UNSIGNED)));
         columns.add(new RelDataTypeFieldImpl("CREATE_OPTIONS", 19, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("TABLE_COMMENT", 20, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 

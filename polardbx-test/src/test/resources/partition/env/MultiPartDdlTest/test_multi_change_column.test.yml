@@ -1,0 +1,40 @@
+drop database if exists d_multi_part_ddl;
+
+create database d_multi_part_ddl mode = "auto";
+
+use d_multi_part_ddl;
+
+drop table if exists test_multi_change_column1;
+
+create table test_multi_change_column1(c1 int, c2 double, c3 varchar(10), c4 varchar(40));
+
+alter table test_multi_change_column1 add local index i_c1c2(c1, c2), add local index i_c2c3(c2, c3), add local index i_c3c4(c3, c4);
+
+alter table test_multi_change_column1 change column c1 c2 int after c1, change column c2 c1 double;
+
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/ check table test_multi_change_column1;
+
+alter table test_multi_change_column1 change column c1 c3 int after c4, change column c3 c1 varchar(30) after c2, add column c5 varchar(50);
+
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/ check table test_multi_change_column1;
+
+ALTER TABLE `test_multi_change_column1`
+MODIFY COLUMN `c2` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+MODIFY COLUMN `c3` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+MODIFY COLUMN `c4` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`,
+MODIFY COLUMN `c1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c4`;
+
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/ check table test_multi_change_column1;
+
+ALTER TABLE `test_multi_change_column1`
+CHANGE COLUMN `c3` `c8` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL FIRST,
+CHANGE COLUMN `c5` `c2` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c8`,
+CHANGE COLUMN `c2` `c5` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c2`,
+CHANGE COLUMN `c4` `c3` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c5`,
+MODIFY COLUMN `c1` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL AFTER `c3`
+
+/*+TDDL:CMD_EXTRA(CHECK_LOGICAL_COLUMN_ORDER=true)*/ check table test_multi_change_column1;
+
+use polardbx; 
+
+drop database if exists d_multi_part_ddl;

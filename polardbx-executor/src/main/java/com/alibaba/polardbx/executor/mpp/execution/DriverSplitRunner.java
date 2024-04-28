@@ -16,13 +16,16 @@
 
 package com.alibaba.polardbx.executor.mpp.execution;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.alibaba.polardbx.common.DefaultSchema;
 import com.alibaba.polardbx.common.properties.MppConfig;
 import com.alibaba.polardbx.common.utils.logger.MDC;
 import com.alibaba.polardbx.executor.mpp.operator.Driver;
+import com.alibaba.polardbx.executor.mpp.operator.DriverContext;
+import com.google.common.util.concurrent.ListenableFuture;
 
 import javax.annotation.concurrent.GuardedBy;
+
+import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
@@ -107,5 +110,11 @@ public class DriverSplitRunner implements SplitRunner {
             }
         }
         return false;
+    }
+
+    @Override
+    public void runtimeStatsSupplier(Supplier<DriverContext.DriverRuntimeStatistics> supplier) {
+        DriverContext driverContext = driver.getDriverContext();
+        driverContext.setDriverRuntimeStatisticsSupplier(supplier);
     }
 }

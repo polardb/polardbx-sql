@@ -55,10 +55,8 @@ public class ExpandExecFactory extends ExecutorFactory {
 
         Executor input = getInputs().get(0).createExecutor(context, index);
         Executor exec = new ExpandExec(input, exprsList, outputColumns, context);
-        exec.setId(expand.getRelatedId());
-        if (context.getRuntimeStatistics() != null) {
-            RuntimeStatHelper.registerStatForExec(expand, exec, context);
-        }
+        registerRuntimeStat(exec, expand, context);
         return exec;
     }
+
 }

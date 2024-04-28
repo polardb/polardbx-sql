@@ -39,7 +39,9 @@ import com.alibaba.polardbx.optimizer.core.planner.ExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlaceHolderExecutionPlan;
 import com.alibaba.polardbx.optimizer.core.planner.PlanCache;
 import com.alibaba.polardbx.optimizer.core.rel.BaseQueryOperation;
+import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.CollectTableNameVisitor;
+import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.parse.bean.SqlParameterized;
 import com.alibaba.polardbx.optimizer.planmanager.feedback.PhyFeedBack;
@@ -95,7 +97,6 @@ import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MAX_TOLERAN
 import static com.alibaba.polardbx.optimizer.planmanager.PlanManager.MINOR_TOLERANCE_RATIO;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainAdvisor;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainCostTrace;
-import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainExecute;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainOptimizer;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainSharding;
 import static com.alibaba.polardbx.optimizer.utils.ExplainResult.isExplainStatistics;
@@ -335,7 +336,7 @@ public class PlanManagerUtil {
     }
 
     public static Set<Pair<String, String>> getTableSetFromAst(SqlNode ast) {
-        final Set<Pair<String, String>> schemaTables = new TreeSet<>(Comparator.comparing(Pair::getValue));
+        final Set<Pair<String, String>> schemaTables = new HashSet<>();
         ast.accept(new CollectTableNameVisitor() {
             @Override
             protected SqlNode buildSth(SqlNode sqlNode) {
@@ -522,9 +523,9 @@ public class PlanManagerUtil {
             return false;
         }
 
-        if (isExplainExecute(explain)) {
-            return false;
-        }
+//        if (isExplainExecute(explain)) {
+//            return false;
+//        }
 
         if (isExplainStatistics(explain)) {
             return false;
@@ -570,6 +571,20 @@ public class PlanManagerUtil {
             && ((SQLObjectImpl) (sqlParameterized.getAst())).getHint() != null) {
             if (((SQLObjectImpl) (sqlParameterized.getAst())).getHint() instanceof TDDLHint) {
                 return false;
+            }
+        }
+
+        // to avoid accessing information schema cache the plan
+        if (ec.getSchemaName() != null && ec.getSchemaName().equalsIgnoreCase(SystemDbHelper.INFO_SCHEMA_DB_NAME)) {
+            return false;
+        }
+        Set<Pair<String, String>> tbls = sqlParameterized.getTables();
+        if (tbls != null) {
+            for (Pair<String, String> tbl : tbls) {
+                if (tbl.getKey() != null &&
+                    tbl.getKey().equalsIgnoreCase(SystemDbHelper.INFO_SCHEMA_DB_NAME)) {
+                    return false;
+                }
             }
         }
 
@@ -752,5 +767,29 @@ public class PlanManagerUtil {
 
     public static boolean canOptByForcePrimary(ExecutionPlan plan, ExecutionContext ec) {
         return plan.isCanOptByForcePrimary() && ec.enableForcePrimaryForTso();
+    }
+
+    /**
+     * check if baseline support this relnode
+     * warning: this check will return true if relnode is null
+     */
+    public static boolean baselineSupported(RelNode plan) {
+        // don't support BaseTableOperation
+        if (plan instanceof BaseTableOperation) {
+            return false;
+        }
+        if (plan == null) {
+            return false;
+        }
+        // don't support any possible xplan
+        LogicalViewFinder logicalViewFinder = new LogicalViewFinder();
+        plan.accept(logicalViewFinder);
+        if (logicalViewFinder.getResult().size() == 1) {
+            LogicalView lv = logicalViewFinder.getResult().get(0);
+            if (lv != null && lv.getXPlanDirect() != null) {
+                return false;
+            }
+        }
+        return true;
     }
 }

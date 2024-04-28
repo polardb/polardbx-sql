@@ -42,6 +42,7 @@ import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsAccessorDelegate;
 import com.alibaba.polardbx.gms.scheduler.ScheduledJobsRecord;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.view.VirtualViewType;
 import com.cronutils.descriptor.CronDescriptor;
 import com.cronutils.model.Cron;
@@ -300,6 +301,10 @@ public final class ScheduledJobsManager implements ModuleInfo {
 
                             SchedulerExecutor esj = SchedulerExecutor.createSchedulerExecutor(job);
 
+                            // might be an expired tasks
+                            if (esj == null) {
+                                continue;
+                            }
                             if (!esj.needInterrupted().getKey()) {
                                 continue;
                             }
@@ -345,7 +350,7 @@ public final class ScheduledJobsManager implements ModuleInfo {
                         // TODO timeout control?
                         List<List<Map<String, Object>>> results =
                             SyncManagerHelper.sync(new FetchRunningScheduleJobsSyncAction(),
-                                TddlConstants.INFORMATION_SCHEMA);
+                                TddlConstants.INFORMATION_SCHEMA, SyncScope.ALL);
                         Map<Long, Set<Long>> executingJobs = merge(results);
                         if (!hasLeadership()) {
                             return -1;
@@ -369,6 +374,10 @@ public final class ScheduledJobsManager implements ModuleInfo {
                              * try safe exit
                              */
                             SchedulerExecutor esj = SchedulerExecutor.createSchedulerExecutor(job);
+                            // might be an expired tasks
+                            if (esj == null) {
+                                continue;
+                            }
                             if (esj.needInterrupted().getKey() && esj.safeExit()) {
                                 //mark as fail
                                 ScheduledJobsManager.updateState(scheduleId, fireTime, INTERRUPTED,

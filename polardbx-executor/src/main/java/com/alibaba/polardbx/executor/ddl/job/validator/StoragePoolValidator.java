@@ -36,22 +36,33 @@ import static com.alibaba.polardbx.gms.topology.SystemDbHelper.CDC_DB_NAME;
 
 public class StoragePoolValidator {
 
+    public static void validateStoragePool(String instId, List<String> involvedStorageInsts, Boolean checkAttached,
+                                           Boolean checkIdle) {
+        validateStoragePool(instId, involvedStorageInsts, false, checkAttached, checkIdle);
+    }
+
     /**
      * check if storage inst is ready and idle.
      * WHEN CreateStoragePool, DropStoragePool, AlterStoragePoolAddNode
      */
-    public static void validateStoragePool(String instId, List<String> involvedStorageInsts, Boolean checkAttached,
+    public static void validateStoragePool(String instId, List<String> involvedStorageInsts, Boolean checkAlive,
+                                           Boolean checkAttached,
                                            Boolean checkIdle) {
-        Connection conn = MetaDbDataSource.getInstance().getConnection();
-        StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
-        storageInfoAccessor.setConnection(conn);
-        List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
-        checkIfStorageInstReady(instId, conn, storageInfoRecords, involvedStorageInsts);
-        if (checkIdle) {
-            checkIfStorageInstIdle(instId, conn, storageInfoRecords, involvedStorageInsts);
-        }
-        if (checkAttached) {
-            checkIfStorageInstNotAttached(instId, conn, storageInfoRecords, involvedStorageInsts);
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
+            storageInfoAccessor.setConnection(conn);
+            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
+            if (checkAlive) {
+                checkIfStorageInstReady(instId, conn, storageInfoRecords, involvedStorageInsts);
+            }
+            if (checkIdle) {
+                checkIfStorageInstIdle(instId, conn, storageInfoRecords, involvedStorageInsts);
+            }
+            if (checkAttached) {
+                checkIfStorageInstNotAttached(instId, conn, storageInfoRecords, involvedStorageInsts);
+            }
+        } catch (Exception exception) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_FAILED, exception.getMessage());
         }
     }
 
@@ -63,11 +74,14 @@ public class StoragePoolValidator {
      * check if storage inst is ready.
      */
     public static void validateStoragePoolReady(String instId, List<String> toCheckReadyStorageInsts) {
-        Connection conn = MetaDbDataSource.getInstance().getConnection();
-        StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
-        storageInfoAccessor.setConnection(conn);
-        List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
-        checkIfStorageInstReady(instId, conn, storageInfoRecords, toCheckReadyStorageInsts);
+        try (Connection conn = MetaDbDataSource.getInstance().getConnection()) {
+            StorageInfoAccessor storageInfoAccessor = new StorageInfoAccessor();
+            storageInfoAccessor.setConnection(conn);
+            List<StorageInfoRecord> storageInfoRecords = storageInfoAccessor.getStorageInfosByInstId(instId);
+            checkIfStorageInstReady(instId, conn, storageInfoRecords, toCheckReadyStorageInsts);
+        } catch (Exception exception) {
+            throw new TddlRuntimeException(ErrorCode.ERR_DDL_JOB_FAILED, exception.getMessage());
+        }
     }
 
     /**

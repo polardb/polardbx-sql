@@ -16,9 +16,6 @@
 
 package com.alibaba.polardbx.executor.mpp.operator;
 
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -30,13 +27,16 @@ import com.alibaba.polardbx.executor.operator.spill.SpillerFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 
 import java.util.Iterator;
 import java.util.List;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.checkException;
-import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 import static com.alibaba.polardbx.executor.utils.ExecUtils.tryAndCheckException;
+import static com.google.common.util.concurrent.MoreExecutors.directExecutor;
 
 public class LocalAllBufferExec extends LocalBufferExec {
 

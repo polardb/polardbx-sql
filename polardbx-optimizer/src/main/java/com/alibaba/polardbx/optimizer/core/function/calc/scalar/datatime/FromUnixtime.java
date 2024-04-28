@@ -25,6 +25,7 @@ import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
 import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTemporalValue;
 import com.alibaba.polardbx.common.utils.time.core.OriginalTimestamp;
+import com.alibaba.polardbx.common.utils.version.InstanceVersion;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
@@ -71,6 +72,8 @@ public class FromUnixtime extends AbstractScalarFunction {
     public FromUnixtime(List<DataType> operandTypes, DataType resultType) {
         super(operandTypes, resultType);
     }
+
+    private static final long MAX_TIME_VALUE_IN_MYSQL80 = 32536771199L;
 
     private static final String[] ORDER_SUFFIX = {"th", "st", "nd", "rd"};
 
@@ -366,6 +369,8 @@ public class FromUnixtime extends AbstractScalarFunction {
             hasFractional = true;
         }
 
+        long upperBound = InstanceVersion.isMYSQL80() ? MAX_TIME_VALUE_IN_MYSQL80 : Integer.MAX_VALUE;
+
         DivStructure divStructure;
         if (hasFractional) {
             // convert to decimal structure and get div structure
@@ -386,7 +391,7 @@ public class FromUnixtime extends AbstractScalarFunction {
         }
 
         // check boundary of div structure.
-        if (divStructure.getQuot() > Integer.MAX_VALUE
+        if (divStructure.getQuot() > upperBound
             || divStructure.getQuot() < 0
             || divStructure.getRem() < 0) {
             return null;

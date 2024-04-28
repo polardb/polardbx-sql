@@ -55,6 +55,8 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String WHERE_ENGINE = " where `engine` = ?";
 
+    private static final String WHERE_ENGINE_AND_TABLE_TYPE = WHERE_ENGINE + " and `table_type` = ?";
+
     private static final String WHERE_SCHEMA_TABLE = WHERE_SCHEMA + " and `table_name` = ?";
 
     private static final String WHERE_SCHEMA_NEW_TABLE = WHERE_SCHEMA + " and `new_table_name` = ?";
@@ -76,7 +78,13 @@ public class TablesAccessor extends AbstractAccessor {
 
     private static final String SELECT_TABLES_ALL = SELECT_TABLES + WHERE_SCHEMA;
 
+    private static final String SELECT_VISIABLE_TABLENAMES_ALL =
+        "select table_name from " + TABLES_TABLE + " where table_schema=? and status = "
+            + TableStatus.PUBLIC.getValue();
+
     private static final String SELECT_TABLES_BY_ENGINE = SELECT_TABLES + WHERE_ENGINE;
+
+    private static final String SELECT_TABLES_BY_ENGINE_AND_TABLE_TYPE = SELECT_TABLES + WHERE_ENGINE_AND_TABLE_TYPE;
 
     private static final String SELECT_TABLES_ONE = SELECT_TABLES + WHERE_SCHEMA_TABLE;
 
@@ -166,8 +174,16 @@ public class TablesAccessor extends AbstractAccessor {
         return query(SELECT_TABLES_ALL, TABLES_TABLE, TablesRecord.class, tableSchema);
     }
 
+    public List<TableNamesRecord> queryVisibleTableNames(String tableSchema) {
+        return query(SELECT_VISIABLE_TABLENAMES_ALL, TABLES_TABLE, TableNamesRecord.class, tableSchema);
+    }
+
     public List<TablesRecord> queryByEngine(String engine) {
         return query(SELECT_TABLES_BY_ENGINE, TABLES_TABLE, TablesRecord.class, engine);
+    }
+
+    public List<TablesRecord> queryByEngineAndTableType(String engine, String tableType) {
+        return query(SELECT_TABLES_BY_ENGINE_AND_TABLE_TYPE, TABLES_TABLE, TablesRecord.class, engine, tableType);
     }
 
     public long getTableMetaVersionForUpdate(String tableSchema, String tableName) {

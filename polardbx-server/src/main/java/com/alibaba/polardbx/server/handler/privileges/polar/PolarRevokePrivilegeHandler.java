@@ -28,6 +28,7 @@ import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.privilege.PrivilegeKind;
 import com.alibaba.polardbx.optimizer.parse.FastsqlUtils;
+import org.apache.calcite.sql.SqlKind;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,5 +95,10 @@ public class PolarRevokePrivilegeHandler extends AbstractPrivilegeCommandHandler
         PolarPrivManager.getInstance().revokePrivileges(granter, c.getActiveRoles(), grantees);
         polarAudit(getServerConn().getConnectionInfo(), getSql().toString(), AuditAction.REVOKE);
         logger.info(String.format("REVOKE succeed, sql: %s, granter: %s", sql, granter.getIdentifier()));
+    }
+
+    @Override
+    protected SqlKind getSqlKind() {
+        return SqlKind.REVOKE_PRIVILEGE;
     }
 }

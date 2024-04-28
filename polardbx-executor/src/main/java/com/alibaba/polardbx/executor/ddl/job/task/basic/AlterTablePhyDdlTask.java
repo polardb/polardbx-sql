@@ -63,6 +63,12 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
 
     private String rollbackSqlTemplate;
 
+    private Long shadowTableId;
+
+    private String shadowTableName;
+
+    private Boolean shadowTableAltered;
+
     public void setSourceSql(String sourceSql) {
         this.sourceSql = sourceSql;
     }
@@ -86,9 +92,13 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
         if (!executionContext.getParamManager().getBoolean(PHYSICAL_DDL_TASK_RETRY)) {
             onExceptionTryRollback();
         }
+        String origSql = StringUtils.isNotEmpty(sourceSql) ? sourceSql : executionContext.getDdlContext().getDdlStmt();
 
         try {
             super.executeImpl(executionContext);
+            if (!AlterTableRollbacker.checkIfRollbackable(origSql)) {
+                updateSupportedCommands(true, false, null);
+            }
         } catch (PhysicalDdlException e) {
             int successCount = e.getSuccessCount();
             if (successCount == 0) {
@@ -96,7 +106,7 @@ public class AlterTablePhyDdlTask extends BasePhyDdlTask {
             } else {
                 // Some physical DDLs failed && they do not support rollback,
                 // so we forbid CANCEL DDL command here.
-                if (!AlterTableRollbacker.checkIfRollbackable(executionContext.getDdlContext().getDdlStmt())) {
+                if (!AlterTableRollbacker.checkIfRollbackable(origSql)) {
                     updateSupportedCommands(true, false, null);
                 }
             }

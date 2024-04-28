@@ -121,6 +121,8 @@ public final class ExportParameterVisitorUtils {
                 } else if (listItem instanceof SQLHexExpr) {
                     Object listValue = ((SQLHexExpr) listItem).toBytes();
                     listValues.add(listValue);
+                } else if (listItem instanceof SQLNullExpr) {
+                    listValues.add(null);
                 }
             }
 

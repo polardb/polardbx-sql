@@ -26,7 +26,7 @@ import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import lombok.Data;
 
 /**
- * plain drop GSI
+ * plan drop GSI
  */
 @Data
 public class ExecutableDdlJob4DropGsi extends ExecutableDdlJob {

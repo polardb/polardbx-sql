@@ -1,0 +1,95 @@
+DROP TABLE IF EXISTS `t_order_0`;
+DROP TABLE IF EXISTS `t_order_1`;
+DROP TABLE IF EXISTS `t_order_2`;
+DROP TABLE IF EXISTS `t_order_3`;
+# explicit clustered columnar
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `t_order_0` (
+	`x` int NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (x),
+	CLUSTERED COLUMNAR INDEX(`seller_id`)
+);
+SHOW FULL CREATE TABLE `t_order_0`;
+Table,Create Table
+t_order_0,CREATE PARTITION TABLE `t_order_0` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	CLUSTERED COLUMNAR INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY HASH(`x`)
+		PARTITIONS 16
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+# explicit clustered columnar and partition
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask")*/CREATE TABLE `t_order_1` (
+	`x` int NOT NULL PRIMARY KEY AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	CLUSTERED COLUMNAR INDEX(`seller_id`) PARTITION BY KEY (`seller_id`) PARTITIONS 2
+);
+SHOW FULL CREATE TABLE `t_order_1`;
+Table,Create Table
+t_order_1,CREATE PARTITION TABLE `t_order_1` (
+	`x` int(11) NOT NULL AUTO_INCREMENT,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	PRIMARY KEY (`x`),
+	CLUSTERED COLUMNAR INDEX /* seller_id_$ */ `seller_id` (`seller_id`)
+		PARTITION BY KEY(`seller_id`)
+		PARTITIONS 2
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`x`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+# explicit clustered columnar and name
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask",ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK=true)*/CREATE TABLE `t_order_2` (
+	`x` int NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	CLUSTERED COLUMNAR INDEX i_0(`seller_id`)
+);
+SHOW FULL CREATE TABLE `t_order_2`;
+Table,Create Table
+t_order_2,CREATE PARTITION TABLE `t_order_2` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CLUSTERED COLUMNAR INDEX /* i_0_$ */ `i_0` (`seller_id`)
+		PARTITION BY HASH(`_drds_implicit_id_`)
+		PARTITIONS 16
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+# explicit clustered columnar and name
+/*+TDDL:CMD_EXTRA(SKIP_DDL_TASKS="WaitColumnarTableCreationTask",ENABLE_CCI_ON_TABLE_WITH_IMPLICIT_PK=true)*/CREATE TABLE `t_order_3` (
+	`x` int NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	CLUSTERED COLUMNAR INDEX i_0(`seller_id`)
+);
+SHOW FULL CREATE TABLE `t_order_3`;
+Table,Create Table
+t_order_3,CREATE PARTITION TABLE `t_order_3` (
+	`x` int(11) NOT NULL,
+	`order_id` varchar(20) DEFAULT NULL,
+	`seller_id` varchar(20) DEFAULT NULL,
+	`_drds_implicit_id_` bigint(20) NOT NULL AUTO_INCREMENT,
+	PRIMARY KEY (`_drds_implicit_id_`),
+	CLUSTERED COLUMNAR INDEX /* i_0_$ */ `i_0` (`seller_id`)
+		PARTITION BY HASH(`_drds_implicit_id_`)
+		PARTITIONS 16
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+PARTITION BY KEY(`_drds_implicit_id_`)
+PARTITIONS #@#
+/* tablegroup = `tg` */
+DROP TABLE IF EXISTS `t_order_0`;
+DROP TABLE IF EXISTS `t_order_1`;
+DROP TABLE IF EXISTS `t_order_2`;
+DROP TABLE IF EXISTS `t_order_3`;

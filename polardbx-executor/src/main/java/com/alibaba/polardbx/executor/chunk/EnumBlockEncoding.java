@@ -59,7 +59,7 @@ public class EnumBlockEncoding implements BlockEncoding {
         int nullsCnt = encodeNullsAsBits(sliceOutput, block);
         sliceOutput.writeBoolean(positionCount > nullsCnt);
         if (positionCount > nullsCnt) {
-            EnumBlock EnumBlock = (EnumBlock) block;
+            EnumBlock EnumBlock = block.cast(EnumBlock.class);
             int[] offset = EnumBlock.getOffsets();
             for (int position = 0; position < positionCount; position++) {
                 sliceOutput.writeInt(offset[position]);

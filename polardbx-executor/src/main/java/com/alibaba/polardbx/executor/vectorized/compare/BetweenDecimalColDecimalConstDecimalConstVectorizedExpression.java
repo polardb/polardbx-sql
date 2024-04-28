@@ -29,15 +29,13 @@ import com.alibaba.polardbx.executor.vectorized.LiteralVectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpression;
 import com.alibaba.polardbx.executor.vectorized.VectorizedExpressionUtils;
 import com.alibaba.polardbx.executor.vectorized.metadata.ExpressionSignatures;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-import io.airlift.slice.Slice;
 
-import static com.alibaba.polardbx.common.datatype.DecimalTypeBase.DECIMAL_MEMORY_SIZE;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Const;
 import static com.alibaba.polardbx.executor.vectorized.metadata.ArgumentKind.Variable;
 
-@ExpressionSignatures(names = {"BETWEEN ASYMMETRIC"}, argumentTypes = {"Decimal", "Decimal", "Decimal"}, argumentKinds = {Variable, Const, Const})
+@ExpressionSignatures(names = {"BETWEEN ASYMMETRIC"}, argumentTypes = {"Decimal", "Decimal", "Decimal"},
+    argumentKinds = {Variable, Const, Const})
 public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression extends AbstractVectorizedExpression {
     private final boolean operand1IsNull;
     private final Decimal operand1;
@@ -51,7 +49,7 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
         super(DataTypes.LongType, outputIndex, children);
 
         Object operand1Value = ((LiteralVectorizedExpression) children[1]).getConvertedValue();
-        if (operand1Value  == null) {
+        if (operand1Value == null) {
             operand1IsNull = true;
             operand1 = Decimal.ZERO;
         } else {
@@ -60,7 +58,7 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
         }
 
         Object operand2Value = ((LiteralVectorizedExpression) children[2]).getConvertedValue();
-        if (operand2Value  == null) {
+        if (operand2Value == null) {
             operand2IsNull = true;
             operand2 = Decimal.ZERO;
         } else {
@@ -81,7 +79,7 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
         RandomAccessBlock leftInputVectorSlot =
             chunk.slotIn(children[0].getOutputIndex(), children[0].getOutputDataType());
 
-        long[] output = ((LongBlock) outputVectorSlot).longArray();
+        long[] output = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         DecimalStructure leftDec;
         DecimalStructure operand1Dec = operand1.getDecimalStructure();
@@ -94,7 +92,7 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
                 int j = sel[i];
 
                 // fetch left decimal value
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(j));
+                leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(j));
 
                 boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0;
                 boolean b2 = FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;
@@ -104,7 +102,7 @@ public class BetweenDecimalColDecimalConstDecimalConstVectorizedExpression exten
         } else {
             for (int i = 0; i < batchSize; i++) {
                 // fetch left decimal value
-                leftDec = new DecimalStructure(((DecimalBlock) leftInputVectorSlot).getRegion(i));
+                leftDec = new DecimalStructure((leftInputVectorSlot.cast(DecimalBlock.class)).getRegion(i));
 
                 boolean b1 = FastDecimalUtils.compare(leftDec, operand1Dec) >= 0;
                 boolean b2 = FastDecimalUtils.compare(leftDec, operand2Dec) <= 0;

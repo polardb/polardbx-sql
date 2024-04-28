@@ -20,7 +20,7 @@ import com.alibaba.polardbx.common.eventlogger.EventLogger;
 import com.alibaba.polardbx.common.eventlogger.EventType;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.IConnection;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -33,7 +33,7 @@ import com.alibaba.polardbx.executor.utils.transaction.GroupConnPair;
 import com.alibaba.polardbx.executor.utils.transaction.LocalTransaction;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLock;
 import com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet;
-import com.alibaba.polardbx.gms.topology.DbTopologyManager;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.transaction.TransactionExecutor;
@@ -59,6 +59,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.executor.utils.transaction.TrxLookupSet.Transaction.FAKE_GROUP_FOR_DDL;
@@ -81,6 +83,8 @@ import static java.lang.Math.min;
 public class MdlDeadlockDetectionTask implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(MdlDeadlockDetectionTask.class);
+
+    private static final Map<String, AtomicLong> runningCountByDb = new ConcurrentHashMap<>();
 
     private final String db;
 
@@ -313,7 +317,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
     public TrxLookupSet fetchTransInfo(String db) {
         final TrxLookupSet lookupSet = new TrxLookupSet();
         final List<List<Map<String, Object>>> results =
-            SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(db), db);
+            SyncManagerHelper.sync(new FetchTransForDeadlockDetectionSyncAction(db), db, SyncScope.NOT_COLUMNAR_SLAVE);
         for (List<Map<String, Object>> result : results) {
             if (result == null) {
                 continue;
@@ -343,7 +347,7 @@ public class MdlDeadlockDetectionTask implements Runnable {
         } catch (Exception e) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, e, e.getMessage());
         }
-        SyncManagerHelper.sync(killSyncAction, DEFAULT_DB_NAME);
+        SyncManagerHelper.sync(killSyncAction, DEFAULT_DB_NAME, SyncScope.NOT_COLUMNAR_SLAVE);
     }
 
     private void killByBackendConnId(final Long backendConnId, final TGroupDataSource dataSource) {
@@ -369,6 +373,38 @@ public class MdlDeadlockDetectionTask implements Runnable {
             TransactionLogger.debug("Skip MDL deadlock detection task since I am not the leader");
             return;
         }
+
+        if (!runningCountByDb.containsKey(db)) {
+            runningCountByDb.put(db, new AtomicLong(0));
+        }
+
+        int phyiscalMdlWaitTimeout = DynamicConfig.getInstance().getPhyiscalMdlWaitTimeout();
+        if (phyiscalMdlWaitTimeout <= 0) {
+            if (runningCountByDb.get(db).get() > 0L) {
+                EventLogger.log(EventType.DEAD_LOCK_DETECTION,
+                    String.format("mdl detection has been shutdown for db %s!", db));
+                runningCountByDb.get(db).set(-1L);
+            }
+            TransactionLogger.debug("Skip MDL deadlock detection task since dn mdl wait timeout is negative or zero");
+            return;
+        } else {
+            MDL_WAIT_TIMEOUT = Math.max(phyiscalMdlWaitTimeout, 5);
+            long runningCount = runningCountByDb.get(db).get();
+            if (runningCount < 0L) {
+                EventLogger.log(EventType.DEAD_LOCK_DETECTION,
+                    String.format("mdl detection has been launched for db %s, wait timeout %s s!", db,
+                        MDL_WAIT_TIMEOUT));
+                runningCountByDb.get(db).set(1L);
+            } else {
+                if (runningCount % 100L == 0) {
+                    EventLogger.log(EventType.DEAD_LOCK_DETECTION,
+                        String.format("mdl detection has been running for db %s, running count %d, wait timeout %s s!",
+                            db, runningCount, MDL_WAIT_TIMEOUT));
+                }
+                runningCountByDb.get(db).incrementAndGet();
+            }
+        }
+
         logger.debug("MDL Deadlock detection task starts.");
         try {
             detectMetaDataDeadLock();

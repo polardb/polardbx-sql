@@ -30,9 +30,6 @@
 package com.alibaba.polardbx.executor.operator.spill;
 
 import com.alibaba.polardbx.common.datatype.UInt64;
-import com.google.common.primitives.Bytes;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
@@ -44,6 +41,9 @@ import com.alibaba.polardbx.optimizer.core.datatype.NumberType;
 import com.alibaba.polardbx.optimizer.core.expression.bean.EnumValue;
 import com.alibaba.polardbx.optimizer.core.row.Row;
 import com.alibaba.polardbx.optimizer.spill.SpillMonitor;
+import com.google.common.primitives.Bytes;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 import io.airlift.slice.Slice;
 import org.apache.calcite.sql.OutFileParams;
 
@@ -62,8 +62,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
-import static com.google.common.base.Preconditions.checkState;
 import static com.alibaba.polardbx.executor.operator.spill.SingleStreamSpiller.NOT_BLOCKED;
+import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
 public class AsyncFileBufferWriter {

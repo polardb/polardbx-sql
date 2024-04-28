@@ -45,6 +45,12 @@ final class Preconditions {
         }
     }
 
+    public static void checkArgument(boolean expression) {
+        if (!expression) {
+            throw new IllegalArgumentException();
+        }
+    }
+
     public static int checkPositionIndex(int index, int size) {
         return checkPositionIndex(index, size, "index");
     }

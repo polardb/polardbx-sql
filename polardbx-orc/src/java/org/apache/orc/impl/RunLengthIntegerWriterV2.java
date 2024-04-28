@@ -152,7 +152,7 @@ public class RunLengthIntegerWriterV2 implements IntegerWriter {
   private SerializationUtils utils;
   private boolean alignedBitpacking;
 
-  RunLengthIntegerWriterV2(PositionedOutputStream output, boolean signed) {
+  public RunLengthIntegerWriterV2(PositionedOutputStream output, boolean signed) {
     this(output, signed, true);
   }
 

@@ -30,7 +30,6 @@ import com.alibaba.polardbx.gms.sync.GmsSyncDataSource;
 import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.gms.topology.ServerInfoAccessor;
 import com.alibaba.polardbx.gms.topology.ServerInfoRecord;
-import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 
@@ -61,8 +60,6 @@ public class GmsNodeManager extends AbstractLifecycle {
 
     private static final Map<String, GmsSyncDataSource> dataSources = new ConcurrentHashMap<>();
 
-    private final ServerInfoAccessor serverInfoAccessor;
-
     /**
      * Current node.
      */
@@ -71,41 +68,46 @@ public class GmsNodeManager extends AbstractLifecycle {
     /**
      * Remote nodes only in current instance.
      */
-    private final List<GmsNode> remoteNodes = new ArrayList<>();
-
+    private List<GmsNode> remoteNodes = new ArrayList<>();
     /**
      * All master nodes
      */
-    private final List<GmsNode> masterNodes = new ArrayList<>();
+    private List<GmsNode> masterNodes = new ArrayList<>();
 
     /**
      * All standby nodes
      */
-    private final List<GmsNode> standbyNodes = new ArrayList<>();
-
-    /**
-     * All read-only nodes by instance id.
-     */
-    private final Map<String, List<GmsNode>> readOnlyNodesByInstId = new ConcurrentHashMap<>();
+    private List<GmsNode> standbyNodes = new ArrayList<>();
 
     /**
      * All read-ony nodes.
      */
-    private final List<GmsNode> readOnlyNodes = new ArrayList<>();
+    private List<GmsNode> readOnlyNodes = new ArrayList<>();
+
+    /**
+     * All row read-ony nodes.
+     */
+    private List<GmsNode> rowReadOnlyNodes = new ArrayList<>();
+
+    /**
+     * All row read-ony nodes and master nodes.
+     */
+    private List<GmsNode> noColumnarReadNodes = new ArrayList<>();
+
+    /**
+     * All columnar row read-ony nodes.
+     */
+    private List<GmsNode> columnarReadOnlyNodes = new ArrayList<>();
 
     /**
      * All the nodes including master and read-only, it is sorted by node index.
      */
-    private final List<GmsNode> allNodes = new ArrayList<>();
+    private List<GmsNode> allNodes = new ArrayList<>();
 
     private int currentIndex = -1;
-    /**
-     * FIXME 暂时先认为只读实例的cpu cores都是一样的
-     */
-    private volatile int readOnlyNodeCpuCore = -1;
+    private int readOnlyNodeCpuCore = -1;
 
     private GmsNodeManager() {
-        this.serverInfoAccessor = new ServerInfoAccessor();
     }
 
     public static GmsNodeManager getInstance() {
@@ -134,12 +136,20 @@ public class GmsNodeManager extends AbstractLifecycle {
         return masterNodes;
     }
 
-    public Map<String, List<GmsNode>> getReadOnlyNodesByInstId() {
-        return readOnlyNodesByInstId;
-    }
-
     public List<GmsNode> getReadOnlyNodes() {
         return readOnlyNodes;
+    }
+
+    public List<GmsNode> getRowReadOnlyNodes() {
+        return rowReadOnlyNodes;
+    }
+
+    public List<GmsNode> getColumnarReadOnlyNodes() {
+        return columnarReadOnlyNodes;
+    }
+
+    public List<GmsNode> getNoColumnarReadNodes() {
+        return noColumnarReadNodes;
     }
 
     public List<GmsNode> getAllNodes() {
@@ -165,30 +175,24 @@ public class GmsNodeManager extends AbstractLifecycle {
             return getMasterNodes();
         case SLAVE_ONLY:
             return getReadOnlyNodes();
+        case ROW_SLAVE_ONLY:
+            return getRowReadOnlyNodes();
+        case COLUMNAR_SLAVE_ONLY:
+            return getColumnarReadOnlyNodes();
+        case NOT_COLUMNAR_SLAVE:
+            return getNoColumnarReadNodes();
         case CURRENT_ONLY:
         default:
             return remoteNodes;
         }
     }
 
-    public boolean isCurrentNodeMaster() {
-        return ServerInstIdManager.getInstance().isMasterInst();
-    }
-
-    public boolean isCurrentNodeReadOnly() {
-        return !ServerInstIdManager.getInstance().isMasterInst();
-    }
-
     public void reloadNodes(int localServerPort) {
         // Clean up sync data sources.
         clearDataSources();
 
-        // Load various types of nodes.
-        loadNodesForCurrentInstance(localServerPort);
-        loadMasterNodes();
-        loadReadOnlyNodes();
-        loadStandbyNodes();
-        loadRedundantNodes();
+        loadAllNodes();
+        reloadDifferentNodes(localServerPort);
 
         // Refresh node info which relies on node change.
         refreshNodeIdList();
@@ -208,154 +212,96 @@ public class GmsNodeManager extends AbstractLifecycle {
         dataSources.clear();
     }
 
-    private void loadNodesForCurrentInstance(int localServerPort) {
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            serverInfoAccessor.setConnection(metaDbConn);
+    private void reloadDifferentNodes(int localServerPort) {
 
-            // Fetch the latest server info for current instance.
-            List<ServerInfoRecord> records = serverInfoAccessor.getServerInfoByInstId(InstIdUtil.getInstId());
+        GmsNode localNode = null;
+        final List<GmsNode> remoteNodes = new ArrayList<>();
+        final List<GmsNode> masterNodes = new ArrayList<>();
+        final List<GmsNode> standbyNodes = new ArrayList<>();
+        final List<GmsNode> readOnlyNodes = new ArrayList<>();
+        final List<GmsNode> rowReadOnlyNodes = new ArrayList<>();
+        final List<GmsNode> columnarReadOnlyNodes = new ArrayList<>();
+        final List<GmsNode> noColumnarReadNodes = new ArrayList<>();
 
-            // Clear loaded nodes.
-            localNode = null;
-            remoteNodes.clear();
-
-            // Reload new ones.
-            Set<Integer> assignedUniqueIds = new HashSet<>();
-            for (ServerInfoRecord record : records) {
-                if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
-                    int uniqueId = assignUniqueId(record, assignedUniqueIds);
-                    if (TStringUtil.equalsIgnoreCase(record.ip, AddressUtils.getHostIp())
-                        && record.port == localServerPort) {
-                        localNode = buildNode(record, uniqueId);
-                    } else {
-                        remoteNodes.add(buildNode(record, uniqueId));
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-        } finally {
-            serverInfoAccessor.setConnection(null);
-        }
-    }
-
-    private void loadMasterNodes() {
-        if (isCurrentNodeReadOnly()) {
-            // Only read-only node maintains master node list for authentication.
-            try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-                serverInfoAccessor.setConnection(metaDbConn);
-
-                // Fetch the latest master node info.
-                List<ServerInfoRecord> records = serverInfoAccessor.getServerInfoForMaster();
-
-                // Clear loaded master nodes.
-                masterNodes.clear();
-
-                // Reload new ones.
-                Set<Integer> assignedUniqueIds = new HashSet<>();
-                for (ServerInfoRecord record : records) {
-                    if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
-                        int uniqueId = assignUniqueId(record, assignedUniqueIds);
-                        masterNodes.add(buildNode(record, uniqueId));
-                    }
-                }
-            } catch (SQLException e) {
-                throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-            } finally {
-                serverInfoAccessor.setConnection(null);
-            }
-        } else {
-            masterNodes.clear();
-            if (localNode != null) {
-                masterNodes.add(localNode);
-            }
-            masterNodes.addAll(remoteNodes);
-        }
-    }
-
-    private void loadReadOnlyNodes() {
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            serverInfoAccessor.setConnection(metaDbConn);
-
-            // Only master node maintains read-only node list for sync.
-            List<ServerInfoRecord> records = serverInfoAccessor.getServerInfoForReadOnly();
-
-            // Clear loaded read-only nodes.
-            readOnlyNodesByInstId.clear();
-
-            // Reload new ones.
-            Set<Integer> assignedUniqueIds = new HashSet<>();
-            for (ServerInfoRecord record : records) {
-                if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
-                    List<GmsNode> readOnlyNodes =
-                        readOnlyNodesByInstId.computeIfAbsent(record.instId, k -> new ArrayList<>());
-                    int uniqueId = assignUniqueId(record, assignedUniqueIds);
-                    readOnlyNodes.add(buildNode(record, uniqueId));
-                    this.readOnlyNodeCpuCore = record.cpuCore;
-                }
-            }
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-        } finally {
-            serverInfoAccessor.setConnection(null);
-        }
-    }
-
-    private void loadStandbyNodes() {
-        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
-            serverInfoAccessor.setConnection(metaDbConn);
-
-            // Fetch the latest standby node info.
-            List<ServerInfoRecord> records = serverInfoAccessor.getServerInfoForStandby();
-
-            // Clear loaded standby nodes.
-            standbyNodes.clear();
-
-            // Reload new ones.
-            Set<Integer> assignedUniqueIds = new HashSet<>();
-            for (ServerInfoRecord record : records) {
-                if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
-                    int uniqueId = assignUniqueId(record, assignedUniqueIds);
-                    standbyNodes.add(buildNode(record, uniqueId));
-                }
-            }
-        } catch (SQLException e) {
-            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-        } finally {
-            serverInfoAccessor.setConnection(null);
-        }
-    }
-
-    private void loadRedundantNodes() {
-        // All read-only nodes.
-        readOnlyNodes.clear();
-        for (List<GmsNode> nodes : readOnlyNodesByInstId.values()) {
-            readOnlyNodes.addAll(nodes);
-        }
-
-        // All the nodes.
-        allNodes.clear();
-        allNodes.addAll(masterNodes);
-        allNodes.addAll(readOnlyNodes);
-        allNodes.addAll(standbyNodes);
-        if (allNodes.isEmpty()) {
-            // Need one node at least for local test even if it's null.
-            allNodes.add(localNode);
-        }
         allNodes.sort((gmsNode1, gmsNode2) -> {
             if (gmsNode1.instId.equals(gmsNode2.instId)) {
                 return Integer.compare(gmsNode1.uniqueId, gmsNode2.uniqueId);
             }
             return gmsNode1.instId.compareTo(gmsNode2.instId);
         });
-        this.currentIndex = allNodes.indexOf(GmsNodeManager.getInstance().getLocalNode());
-        if (currentIndex == -1) {
-            LOGGER.error(String.format(
-                "local node not found from allNodes, local node is %s, while all node is %s",
-                GmsNodeManager.getInstance().getLocalNode(),
-                allNodes.stream().map(node -> node.toString()).collect(Collectors.joining(",")))
-            );
+
+        for (GmsNode gmsNode : allNodes) {
+            String instId = gmsNode.instId;
+            int instType = gmsNode.instType;
+            if (instType == ServerInfoRecord.INST_TYPE_MASTER) {
+                masterNodes.add(gmsNode);
+                noColumnarReadNodes.add(gmsNode);
+            } else if (instType == ServerInfoRecord.INST_TYPE_STANDBY) {
+                masterNodes.add(gmsNode);
+                standbyNodes.add(gmsNode);
+                noColumnarReadNodes.add(gmsNode);
+            } else if (instType == ServerInfoRecord.INST_TYPE_ROW_SLAVE) {
+                readOnlyNodes.add(gmsNode);
+                rowReadOnlyNodes.add(gmsNode);
+                noColumnarReadNodes.add(gmsNode);
+            } else if (instType == ServerInfoRecord.INST_TYPE_HTAP_SLAVE) {
+                readOnlyNodes.add(gmsNode);
+                rowReadOnlyNodes.add(gmsNode);
+                noColumnarReadNodes.add(gmsNode);
+                this.readOnlyNodeCpuCore = gmsNode.cpuCore;
+            } else if (instType == ServerInfoRecord.INST_TYPE_COLUMNAR_SLAVE) {
+                readOnlyNodes.add(gmsNode);
+                columnarReadOnlyNodes.add(gmsNode);
+            }
+
+            if (instId.equalsIgnoreCase(InstIdUtil.getInstId())) {
+                if (TStringUtil.equalsIgnoreCase(gmsNode.host, AddressUtils.getHostIp())
+                    && gmsNode.serverPort == localServerPort) {
+                    localNode = gmsNode;
+                } else {
+                    remoteNodes.add(gmsNode);
+                }
+            }
         }
+
+        this.localNode = localNode;
+
+        if (allNodes.isEmpty()) {
+            // Need one node at least for local test even if it's null.
+            allNodes.add(localNode);
+        }
+
+        this.remoteNodes = remoteNodes;
+        this.masterNodes = masterNodes;
+        this.standbyNodes = standbyNodes;
+        this.readOnlyNodes = readOnlyNodes;
+        this.rowReadOnlyNodes = rowReadOnlyNodes;
+        this.columnarReadOnlyNodes = columnarReadOnlyNodes;
+        this.noColumnarReadNodes = noColumnarReadNodes;
+        this.currentIndex = allNodes.indexOf(this.localNode);
+    }
+
+    private void loadAllNodes() {
+        List<GmsNode> allNodes = new ArrayList<>();
+        try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+
+            ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
+            serverInfoAccessor.setConnection(metaDbConn);
+
+            List<ServerInfoRecord> records = serverInfoAccessor.getAllServerInfo();
+
+            // Reload new ones.
+            Set<Integer> assignedUniqueIds = new HashSet<>();
+            for (ServerInfoRecord record : records) {
+                if (record.status == ServerInfoRecord.SERVER_STATUS_READY) {
+                    int uniqueId = assignUniqueId(record, assignedUniqueIds);
+                    allNodes.add(buildNode(record, uniqueId));
+                }
+            }
+        } catch (SQLException e) {
+            throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
+        }
+        this.allNodes = allNodes;
     }
 
     private GmsNode buildNode(ServerInfoRecord record, int uniqueId) {
@@ -381,6 +327,7 @@ public class GmsNodeManager extends AbstractLifecycle {
 
         if (assignedUniqueIds.contains(uniqueId)) {
             try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+                ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
                 serverInfoAccessor.setConnection(metaDbConn);
                 // The unique id conflicts with existing one.
                 List<NextIdRecord> records = serverInfoAccessor.getNextId();
@@ -394,8 +341,6 @@ public class GmsNodeManager extends AbstractLifecycle {
                 }
             } catch (SQLException e) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-            } finally {
-                serverInfoAccessor.setConnection(null);
             }
         }
 
@@ -407,6 +352,7 @@ public class GmsNodeManager extends AbstractLifecycle {
 
         if (renewId) {
             try (Connection metaDbConn = MetaDbUtil.getConnection()) {
+                ServerInfoAccessor serverInfoAccessor = new ServerInfoAccessor();
                 serverInfoAccessor.setConnection(metaDbConn);
                 // Update new id for current record.
                 long newId = serverInfoAccessor.updateCurrentId(record.id, nextId, record.ip, record.port);
@@ -416,8 +362,6 @@ public class GmsNodeManager extends AbstractLifecycle {
                 }
             } catch (SQLException e) {
                 throw new TddlRuntimeException(ErrorCode.ERR_GMS_GET_CONNECTION, e, e.getMessage());
-            } finally {
-                serverInfoAccessor.setConnection(null);
             }
         }
 
@@ -585,16 +529,7 @@ public class GmsNodeManager extends AbstractLifecycle {
             nodeInfo.append("Remote Nodes:").append(SEPARATOR_LINE);
             for (GmsNode node : remoteNodes) {
                 if (node != null) {
-                    nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
-                }
-            }
-        }
-
-        if (standbyNodes != null && standbyNodes.size() > 0) {
-            nodeInfo.append("Standby Nodes:").append(SEPARATOR_LINE);
-            for (GmsNode node : standbyNodes) {
-                if (node != null) {
-                    nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
+                    nodeInfo.append(node).append(SEPARATOR_LINE);
                 }
             }
         }
@@ -603,18 +538,34 @@ public class GmsNodeManager extends AbstractLifecycle {
             nodeInfo.append("Master Nodes:").append(SEPARATOR_LINE);
             for (GmsNode node : masterNodes) {
                 if (node != null) {
-                    nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
+                    nodeInfo.append(node).append(SEPARATOR_LINE);
                 }
             }
         }
 
-        if (readOnlyNodesByInstId != null && readOnlyNodesByInstId.size() > 0) {
-            for (String instId : readOnlyNodesByInstId.keySet()) {
-                nodeInfo.append("Read-Only Nodes in ").append(instId).append(": ").append(SEPARATOR_LINE);
-                for (GmsNode node : readOnlyNodesByInstId.get(instId)) {
-                    if (node != null) {
-                        nodeInfo.append(node.toString()).append(SEPARATOR_LINE);
-                    }
+        if (standbyNodes != null && standbyNodes.size() > 0) {
+            nodeInfo.append("Standby Nodes:").append(SEPARATOR_LINE);
+            for (GmsNode node : standbyNodes) {
+                if (node != null) {
+                    nodeInfo.append(node).append(SEPARATOR_LINE);
+                }
+            }
+        }
+
+        if (readOnlyNodes != null && readOnlyNodes.size() > 0) {
+            nodeInfo.append("readOnly Nodes:").append(SEPARATOR_LINE);
+            for (GmsNode node : readOnlyNodes) {
+                if (node != null) {
+                    nodeInfo.append(node).append(SEPARATOR_LINE);
+                }
+            }
+        }
+
+        if (columnarReadOnlyNodes != null && columnarReadOnlyNodes.size() > 0) {
+            nodeInfo.append("columnar readOnly Nodes:").append(SEPARATOR_LINE);
+            for (GmsNode node : columnarReadOnlyNodes) {
+                if (node != null) {
+                    nodeInfo.append(node).append(SEPARATOR_LINE);
                 }
             }
         }
@@ -622,6 +573,7 @@ public class GmsNodeManager extends AbstractLifecycle {
         LOGGER.info(nodeInfo.toString());
     }
 
+    //FIXME estimate
     public int getReadOnlyNodeCpuCore() {
         return readOnlyNodeCpuCore;
     }

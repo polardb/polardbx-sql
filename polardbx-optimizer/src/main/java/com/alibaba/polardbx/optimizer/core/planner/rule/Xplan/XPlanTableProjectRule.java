@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.optimizer.core.planner.rule.Xplan;
 
 import com.alibaba.polardbx.optimizer.core.planner.Xplanner.XPlanUtil;
-import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import com.alibaba.polardbx.optimizer.core.rel.Xplan.XPlanTableScan;
+import com.alibaba.polardbx.optimizer.utils.RelUtils;
 import org.apache.calcite.plan.RelOptRule;
 import org.apache.calcite.plan.RelOptRuleCall;
 import org.apache.calcite.plan.RelOptRuleOperand;

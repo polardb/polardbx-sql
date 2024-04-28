@@ -18,11 +18,17 @@ package com.alibaba.polardbx.optimizer.core.datatype;
 
 import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.datatype.UInt64;
+import com.alibaba.polardbx.common.utils.time.MySQLTimeConverter;
+import com.alibaba.polardbx.common.utils.time.core.MySQLTimeVal;
+import com.alibaba.polardbx.common.utils.time.core.MysqlDateTime;
+import com.alibaba.polardbx.rpc.result.XResultUtil;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.Random;
+import java.util.TimeZone;
 
 public class DataTypeTest {
     @Test
@@ -168,5 +174,24 @@ public class DataTypeTest {
         Assert.assertEquals(Decimal.fromString("1E66"), bdType.getMaxValue());
         Assert.assertTrue(bdType.getMaxValueToDecimal().compareTo(new BigDecimal("1E66")) == 0);
         Assert.assertTrue(bdType.getMinValueToDecimal().compareTo(new BigDecimal("-1E66")) == 0);
+    }
+
+    @Test
+    public void testTimestampFsp() {
+        Random random = new Random();
+        for (int i = 0; i < 1000; i++) {
+            MysqlDateTime mysqlDateTime = new MysqlDateTime(2024, 1, 31, 0, 0, 0, random.nextInt(1000 * 1000) * 1000);
+
+            MySQLTimeVal timeVal = MySQLTimeConverter.convertDatetimeToTimestampWithoutCheck(
+                mysqlDateTime,
+                null,
+                TimeZone.getDefault().toZoneId()
+            );
+            long timeValLong = XResultUtil.timeValToLong(timeVal);
+
+            MySQLTimeVal newTimeVal = XResultUtil.longToTimeValue(timeValLong);
+            Assert.assertEquals(timeVal.getSeconds(), newTimeVal.getSeconds());
+            Assert.assertEquals(timeVal.getNano(), newTimeVal.getNano());
+        }
     }
 }

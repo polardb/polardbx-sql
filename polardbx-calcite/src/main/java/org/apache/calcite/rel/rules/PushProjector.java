@@ -21,7 +21,6 @@ import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.Strong;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Join;
-import org.apache.calcite.rel.core.JoinRelType;
 import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.SemiJoin;
 import org.apache.calcite.rel.core.SetOp;
@@ -33,10 +32,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.rex.RexVisitorImpl;
 import org.apache.calcite.runtime.PredicateImpl;
-import org.apache.calcite.sql.SqlBasicCall;
 import org.apache.calcite.sql.SqlOperator;
-import org.apache.calcite.sql.fun.SqlCastFunction;
-import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.BitSets;
 import org.apache.calcite.util.ImmutableBitSet;
@@ -47,11 +43,11 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -886,6 +882,26 @@ public class PushProjector {
           && operatorSet.contains(((RexCall) expr).getOperator());
     }
   }
+
+  public static class InputRefExprCondition extends ExprConditionImpl {
+
+    private final int inputRefThreshold;
+
+    public InputRefExprCondition(int inputRefThreshold) {
+      this.inputRefThreshold = inputRefThreshold;
+    }
+
+    @Override
+    public boolean test(@Nullable RexNode rexNode) {
+      if (rexNode instanceof RexInputRef) {
+        return true;
+      } else if (rexNode instanceof RexCall) {
+        return RexUtil.getInputRefCount(rexNode) >= inputRefThreshold;
+      }
+      return false;
+    }
+  }
+
 }
 
 // End PushProjector.java

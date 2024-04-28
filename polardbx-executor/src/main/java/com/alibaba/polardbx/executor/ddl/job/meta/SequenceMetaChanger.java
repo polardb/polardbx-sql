@@ -50,6 +50,50 @@ import static com.alibaba.polardbx.common.constants.SequenceAttribute.UPPER_LIMI
 
 public class SequenceMetaChanger {
 
+    public static void createSequenceWithoutCheckExists(String schemaName, String logicalTableName,
+                                                        SequenceBean sequence, TablesExtRecord tablesExtRecord,
+                                                        boolean isPartitioned,
+                                                        ExecutionContext executionContext) {
+        if (sequence == null || !sequence.isNew()) {
+            return;
+        }
+
+        boolean isNewPartitionTable = DbInfoManager.getInstance().isNewPartitionDb(schemaName);
+
+        // Check if it needs default sequence type.
+        if (sequence.getType() == Type.NA) {
+            if (!isNewPartitionTable) {
+                TableRule tableRule;
+                if (tablesExtRecord != null) {
+                    tableRule = DdlJobDataConverter.buildTableRule(tablesExtRecord);
+                } else {
+                    tableRule = OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(logicalTableName);
+                }
+                if (tableRule != null && (isPartitioned || tableRule.isBroadcast())) {
+                    sequence.setType(AutoIncrementType.GROUP);
+                } else {
+                    return;
+                }
+            } else {
+                sequence.setType(AutoIncrementType.NEW);
+            }
+        }
+
+        String seqName = AUTO_SEQ_PREFIX + logicalTableName;
+
+        // Use START WITH 1 by default when there is no table option
+        // AUTO_INCREMENT = xx specified.
+        if (sequence.getStart() == null) {
+            sequence.setStart(DEFAULT_START_WITH);
+        }
+
+        sequence.setKind(SqlKind.CREATE_SEQUENCE);
+
+        sequence.setName(seqName);
+
+        SequenceValidator.validate(sequence, executionContext, false);
+    }
+
     public static boolean createSequenceIfExists(String schemaName, String logicalTableName,
                                                  SequenceBean sequence, TablesExtRecord tablesExtRecord,
                                                  boolean isPartitioned, boolean ifNotExists, SqlKind sqlKind,
@@ -112,7 +156,7 @@ public class SequenceMetaChanger {
 
         sequence.setName(seqName);
 
-        SequenceValidator.validate(sequence, executionContext);
+        SequenceValidator.validate(sequence, executionContext, true);
 
         return true;
     }
@@ -235,7 +279,7 @@ public class SequenceMetaChanger {
 
                 sequence.setKind(SqlKind.ALTER_SEQUENCE);
 
-                SequenceValidator.validate(sequence, executionContext);
+                SequenceValidator.validate(sequence, executionContext, true);
 
                 return sequence;
             }

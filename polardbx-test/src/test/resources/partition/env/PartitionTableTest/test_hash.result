@@ -129,7 +129,7 @@ WHERE a = 10
 	AND c = '2020-12-12'
 ORDER BY a;
 Logical ExecutionPlan
-LogicalView(tables="tbl[p2]", sql="SELECT `a`, `b`, `c` FROM `tbl` AS `tbl` WHERE ((`a` = ?) AND (`b` = ?) AND (`c` = ?)) ORDER BY `a`")
+PhyTableOperation(tables="tbl[p2]", sql="SELECT `tbl`.`a`, `tbl`.`b`, `tbl`.`c` FROM ? AS `tbl` WHERE ((`tbl`.`a` = ?) AND (`tbl`.`b` = ?) AND (`tbl`.`c` = ?)) ORDER BY `a`", params="a,10,2020-12-12")
 EXPLAIN SELECT *
 FROM tbl
 WHERE a = 10

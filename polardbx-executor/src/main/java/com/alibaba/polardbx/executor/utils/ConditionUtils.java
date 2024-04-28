@@ -17,9 +17,6 @@
 package com.alibaba.polardbx.executor.utils;
 
 import com.alibaba.polardbx.common.utils.GeneralUtil;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
-
-import java.math.BigInteger;
 
 /**
  * Created by chuanqin on 18/3/27.

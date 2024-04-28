@@ -12,22 +12,22 @@ EXPLAIN SELECT *
 FROM tbl_key_str
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_key_str
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="ABC")
 EXPLAIN SELECT *
 FROM tbl_key_str2
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str2[p2]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str2[p2]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_key_str2
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str2[p6]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str2[p6]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="ABC")
 DROP TABLE IF EXISTS tbl_key_str3;
 CREATE TABLE IF NOT EXISTS tbl_key_str3 (
 	a varchar(64) COLLATE utf8mb4_general_ci NOT NULL
@@ -37,32 +37,32 @@ EXPLAIN SELECT *
 FROM tbl_key_str
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_key_str
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str[p3]", sql="SELECT `a` FROM `tbl_key_str` AS `tbl_key_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str[p3]", sql="SELECT `tbl_key_str`.`a` FROM ? AS `tbl_key_str` WHERE (`tbl_key_str`.`a` = ?)", params="ABC")
 EXPLAIN SELECT *
 FROM tbl_key_str2
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str2[p2]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str2[p2]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_key_str2
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str2[p6]", sql="SELECT `a` FROM `tbl_key_str2` AS `tbl_key_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str2[p6]", sql="SELECT `tbl_key_str2`.`a` FROM ? AS `tbl_key_str2` WHERE (`tbl_key_str2`.`a` = ?)", params="ABC")
 EXPLAIN SELECT *
 FROM tbl_key_str3
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str3[p3]", sql="SELECT `a` FROM `tbl_key_str3` AS `tbl_key_str3` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str3[p3]", sql="SELECT `tbl_key_str3`.`a` FROM ? AS `tbl_key_str3` WHERE (`tbl_key_str3`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_key_str3
 WHERE a = 'abc   ';
 Logical ExecutionPlan
-LogicalView(tables="tbl_key_str3[p3]", sql="SELECT `a` FROM `tbl_key_str3` AS `tbl_key_str3` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_key_str3[p3]", sql="SELECT `tbl_key_str3`.`a` FROM ? AS `tbl_key_str3` WHERE (`tbl_key_str3`.`a` = ?)", params="abc   ")
 DROP TABLE IF EXISTS tbl_rc_str;
 CREATE TABLE IF NOT EXISTS tbl_rc_str (
 	a varchar(64) COLLATE utf8_general_ci NOT NULL
@@ -87,19 +87,19 @@ EXPLAIN SELECT *
 FROM tbl_rc_str
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_rc_str[p1]", sql="SELECT `a` FROM `tbl_rc_str` AS `tbl_rc_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_rc_str[p1]", sql="SELECT `tbl_rc_str`.`a` FROM ? AS `tbl_rc_str` WHERE (`tbl_rc_str`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_rc_str
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_rc_str[p1]", sql="SELECT `a` FROM `tbl_rc_str` AS `tbl_rc_str` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_rc_str[p1]", sql="SELECT `tbl_rc_str`.`a` FROM ? AS `tbl_rc_str` WHERE (`tbl_rc_str`.`a` = ?)", params="ABC")
 EXPLAIN SELECT *
 FROM tbl_rc_str2
 WHERE a = 'abc';
 Logical ExecutionPlan
-LogicalView(tables="tbl_rc_str2[p1]", sql="SELECT `a` FROM `tbl_rc_str2` AS `tbl_rc_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_rc_str2[p1]", sql="SELECT `tbl_rc_str2`.`a` FROM ? AS `tbl_rc_str2` WHERE (`tbl_rc_str2`.`a` = ?)", params="abc")
 EXPLAIN SELECT *
 FROM tbl_rc_str2
 WHERE a = 'ABC';
 Logical ExecutionPlan
-LogicalView(tables="tbl_rc_str2[p0]", sql="SELECT `a` FROM `tbl_rc_str2` AS `tbl_rc_str2` WHERE (`a` = ?)")
+PhyTableOperation(tables="tbl_rc_str2[p0]", sql="SELECT `tbl_rc_str2`.`a` FROM ? AS `tbl_rc_str2` WHERE (`tbl_rc_str2`.`a` = ?)", params="ABC")

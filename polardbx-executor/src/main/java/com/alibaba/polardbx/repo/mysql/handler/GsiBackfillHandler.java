@@ -18,6 +18,7 @@ package com.alibaba.polardbx.repo.mysql.handler;
 
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.MetricLevel;
 import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -35,7 +36,6 @@ import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlSelect;
-import org.apache.commons.collections.MapUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -64,6 +64,11 @@ public class GsiBackfillHandler extends HandlerCommon {
         List<String> indexNames = backfill.getIndexNames();
         List<String> columnsName = backfill.getColumns();
         Map<String, String> virtualColumnMap = backfill.getVirtualColumnMap();
+        Map<String, String> backfillColumnMap = backfill.getBackfillColumnMap();
+        List<String> modifyStringColumns = backfill.getModifyStringColumns();
+        boolean useChangeSet = backfill.isUseChangeSet();
+        boolean modifyColumn = backfill.isModifyColumn();
+        boolean mirrorCopy = backfill.isMirrorCopy();
 
         BackfillExecutor backfillExecutor = new BackfillExecutor((List<RelNode> inputs,
                                                                   ExecutionContext executionContext1) -> {
@@ -73,14 +78,31 @@ public class GsiBackfillHandler extends HandlerCommon {
             return inputCursors;
         });
 
-        // modify partition key column type, do not clear sql_mode
-        if (MapUtils.isEmpty(virtualColumnMap)) {
+        boolean useBinary = executionContext.getParamManager().getBoolean(ConnectionParams.BACKFILL_USING_BINARY);
+        boolean omcForce = executionContext.getParamManager().getBoolean(ConnectionParams.OMC_FORCE_TYPE_CONVERSION);
+
+        // online modify column, does not clear sql_mode
+        if (modifyColumn) {
+            if (mirrorCopy) {
+                if (useChangeSet) {
+                    // insert select
+                    executionContext = setChangeSetApplySqlMode(executionContext.copy());
+                } else {
+                    // insert ignore select
+                    executionContext = clearSqlMode(executionContext.copy());
+                }
+            } else if (!useBinary && !omcForce) {
+                // select + insert, need encoding
+                upgradeEncoding(executionContext, schemaName, baseTableName);
+            }
+        } else {
             executionContext = clearSqlMode(executionContext.copy());
+            if (!useBinary) {
+                upgradeEncoding(executionContext, schemaName, baseTableName);
+            }
         }
 
-        upgradeEncoding(executionContext, schemaName, baseTableName);
-
-        executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, 1);
+        executionContext.getExtraCmds().put(ConnectionProperties.MPP_METRIC_LEVEL, MetricLevel.SQL.metricLevel);
 
         PhyTableOperationUtil.disableIntraGroupParallelism(schemaName, executionContext);
 
@@ -92,15 +114,23 @@ public class GsiBackfillHandler extends HandlerCommon {
             assert indexNames.size() > 0;
             affectRows = backfillExecutor
                 .addColumnsBackfill(schemaName, baseTableName, indexNames, columnsName, executionContext);
+        } else if (backfill.isMirrorCopy()) {
+            // Normal creating GSI.
+            assert 1 == indexNames.size();
+            affectRows =
+                backfillExecutor.mirrorCopyGsiBackfill(schemaName, baseTableName, indexNames.get(0), useChangeSet,
+                    useBinary, executionContext);
         } else {
             // Normal creating GSI.
             assert 1 == indexNames.size();
-            affectRows = backfillExecutor.backfill(schemaName, baseTableName, indexNames.get(0), executionContext);
+            affectRows =
+                backfillExecutor.backfill(schemaName, baseTableName, indexNames.get(0), useBinary, useChangeSet,
+                    modifyStringColumns, executionContext);
         }
 
         // Check GSI immediately after creation by default.
         final ParamManager pm = executionContext.getParamManager();
-        boolean check = pm.getBoolean(ConnectionParams.GSI_CHECK_AFTER_CREATION);
+        boolean check = pm.getBoolean(ConnectionParams.GSI_CHECK_AFTER_CREATION) && !useChangeSet;
         if (!check) {
             return new AffectRowCursor(affectRows);
         }
@@ -116,7 +146,7 @@ public class GsiBackfillHandler extends HandlerCommon {
 
             CheckGsiTask checkTask =
                 new CheckGsiTask(schemaName, baseTableName, indexName, lockMode, lockMode, params, false, "",
-                    isPrimaryBroadCast, isGsiBroadCast, virtualColumnMap);
+                    isPrimaryBroadCast, isGsiBroadCast, virtualColumnMap, backfillColumnMap);
 
             checkTask.checkInBackfill(executionContext);
         }

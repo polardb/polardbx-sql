@@ -38,7 +38,8 @@ public class DdlEngineRemoteTaskExecutor {
 
     private static final Logger LOGGER = SQLRecorderLogger.ddlEngineLogger;
 
-    public static void executeRemoteTask(String schemaName, Long jobId, Long taskId, ExecutionContext executionContext){
+    public static void executeRemoteTask(String schemaName, Long jobId, Long taskId,
+                                         ExecutionContext executionContext) {
         LoggerUtil.buildMDC(schemaName);
         LOGGER.info(String.format("start execute/rollback remote DDL TASK, jobId:%s, taskId:%s", jobId, taskId));
 
@@ -46,10 +47,10 @@ public class DdlEngineRemoteTaskExecutor {
         Optional<LeaseRecord> leaseRecordOptional = new LeaseManagerImpl().acquire(
             schemaName, String.valueOf(taskId), DDL_LEADER_TTL_IN_MILLIS);
         final DdlEngineDagExecutor dagExecutor;
-        if(leaseRecordOptional.isPresent()){
+        if (leaseRecordOptional.isPresent()) {
             dagExecutor = DdlEngineDagExecutor.create(jobId, executionContext);
             dagExecutor.getJobLease().set(leaseRecordOptional.get());
-        }else {
+        } else {
             final String errMsg = "failed to acquire DDL TASK lease. task_id:" + taskId;
             LOGGER.error(errMsg);
             throw new TddlNestableRuntimeException(errMsg);
@@ -61,11 +62,11 @@ public class DdlEngineRemoteTaskExecutor {
 
         try {
             jobLeaseSchedulerThread.scheduleAtFixedRate(
-                AsyncTask.build(()->{
+                AsyncTask.build(() -> {
                     Optional<LeaseRecord> optional = new LeaseManagerImpl().extend(String.valueOf(taskId));
-                    if(optional.isPresent()){
+                    if (optional.isPresent()) {
                         dagExecutor.getJobLease().compareAndSet(dagExecutor.getJobLease().get(), optional.get());
-                    }else {
+                    } else {
                         //extend job lease failed, so shutdown the scheduler thread
                         jobLeaseSchedulerThread.shutdown();
                     }
@@ -78,7 +79,7 @@ public class DdlEngineRemoteTaskExecutor {
             //execute task
             dagExecutor.executeSingleTask(taskId);
             LOGGER.info(String.format("execute/rollback remote DDL TASK success, jobId:%s, taskId:%s", jobId, taskId));
-        }finally {
+        } finally {
             new LeaseManagerImpl().release(String.valueOf(taskId));
             jobLeaseSchedulerThread.shutdown();
         }

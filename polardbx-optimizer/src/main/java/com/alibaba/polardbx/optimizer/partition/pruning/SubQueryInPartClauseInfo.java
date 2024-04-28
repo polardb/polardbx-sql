@@ -28,13 +28,18 @@ import java.util.List;
  */
 public class SubQueryInPartClauseInfo extends PartClauseInfo {
     /**
-     *  (p1,p2) in (dynamicScalarSubQuery) will be converted to
+     * <pre>
+     * (p1,p2) in (dynamicScalarSubQuery) will be converted to
      *      foreach val of dynamicScalarSubQuery
      *          1. set the values for tmpDynamicParams1, tmpDynamicParams2 by val of dynamicScalarSubQuery;
      *          2. perform pruning by p1=tmpDynamicParams1 and p2=tmpDynamicParams2
      * , which the tmpDynamicParams1,tmpDynamicParams2,tmpDynamicParams3 is the list of the following partColDynamicParams
+     * </pre>
      */
     protected List<RexDynamicParam> partColDynamicParams = new ArrayList<>();
+    /**
+     * The n-th of eqExprClauseItems save the condition of  pn=tmpDynamicParams_n
+     */
     protected List<PartClauseItem> eqExprClauseItems = new ArrayList<>();
     protected RexDynamicParam subQueryDynamicParam;
 

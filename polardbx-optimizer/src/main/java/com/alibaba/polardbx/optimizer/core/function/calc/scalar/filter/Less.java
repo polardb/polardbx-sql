@@ -19,6 +19,7 @@ package com.alibaba.polardbx.optimizer.core.function.calc.scalar.filter;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
 import com.alibaba.polardbx.optimizer.core.function.calc.AbstractCollationScalarFunction;
+import com.alibaba.polardbx.optimizer.core.datatype.RowType;
 import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 
 import java.util.List;

@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.partition.pruning;
 
+import com.alibaba.polardbx.common.utils.CaseInsensitive;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.partition.PartitionByDefinition;
+import com.alibaba.polardbx.optimizer.partition.common.PartKeyLevel;
 import com.alibaba.polardbx.optimizer.partition.common.PartitionStrategy;
 import com.alibaba.polardbx.optimizer.utils.PlannerUtils;
 import com.alibaba.polardbx.optimizer.utils.SubQueryDynamicParamUtils;
@@ -36,6 +38,8 @@ import org.apache.calcite.sql.SqlOperator;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static org.apache.calcite.sql.SqlKind.GREATER_THAN;
 import static org.apache.calcite.sql.SqlKind.IS_NULL;
@@ -49,7 +53,18 @@ public class PartClauseInfoPreProcessor {
     public static PartClauseItem convertToPartClauseItem(PartitionByDefinition partByDef,
                                                          RelDataType relRowType,
                                                          RexNode partPred,
+                                                         RexNode partPredParent,
                                                          PartPruneStepBuildingContext stepContext) {
+        PartClauseItem item =
+            convertToPartClauseItemInner(partByDef, relRowType, partPred, partPredParent, stepContext);
+        return item;
+    }
+
+    protected static PartClauseItem convertToPartClauseItemInner(PartitionByDefinition partByDef,
+                                                                 RelDataType relRowType,
+                                                                 RexNode partPred,
+                                                                 RexNode partPredParent,
+                                                                 PartPruneStepBuildingContext stepContext) {
 
         if (partPred == null) {
             return null;
@@ -64,11 +79,14 @@ public class PartClauseInfoPreProcessor {
         PartClauseItem clauseItem;
         SqlKind kind = partPred.getKind();
         if (kind == SqlKind.OR) {
-            clauseItem = convertOrExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
+            clauseItem =
+                convertOrExprToPartClauseItem(partByDef, relRowType, partPredInfo, partPredParent, stepContext);
         } else if (kind == SqlKind.AND) {
-            clauseItem = convertAndExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
+            clauseItem =
+                convertAndExprToPartClauseItem(partByDef, relRowType, partPredInfo, partPredParent, stepContext);
         } else {
-            clauseItem = convertBoolExprToPartClauseItem(partByDef, relRowType, partPredInfo, stepContext);
+            clauseItem =
+                convertBoolExprToPartClauseItem(partByDef, relRowType, partPredInfo, partPredParent, stepContext);
         }
 
         return clauseItem;
@@ -77,6 +95,7 @@ public class PartClauseInfoPreProcessor {
     private static PartClauseItem convertOrExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                 RelDataType relRowType,
                                                                 RexCall partPred,
+                                                                RexNode partPredParent,
                                                                 PartPruneStepBuildingContext stepContext) {
         List<PartClauseItem> subOpItemList = new ArrayList<>();
         PartPruneStepType finalStepType = null;
@@ -103,7 +122,8 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partByDef, relRowType, op, stepContext);
+            PartClauseItem item = convertToPartClauseItemInner(partByDef, relRowType, op, partPred, stepContext);
+            item = rewritePartClauseInfoItemIfNeed(partByDef, relRowType, op, partPred, stepContext, item);
             if (item == null) {
                 /**
                  * In OR-Expr, 
@@ -139,8 +159,17 @@ public class PartClauseInfoPreProcessor {
              */
             if (item.getType() == PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY) {
                 if (item.getClauseInfo().getPartKeyIndex() > 0) {
-                    misMatchPartClauseItemCnt++;
-                    break;
+                    if (item.getClauseInfo().getOpKind() == SqlKind.IN
+                        && item.getClauseInfo().getStrategy() == PartitionStrategy.CO_HASH) {
+                        /**
+                         * In co-hash, all part_cols are equivalent, so the partKeyIndex is not start with 0,
+                         * its col In(SubQuery) Pruning should also be effective,
+                         * so here ignore the count of misMatchPartClauseItemCnt
+                         */
+                    } else {
+                        misMatchPartClauseItemCnt++;
+                        break;
+                    }
                 }
             }
 
@@ -193,16 +222,19 @@ public class PartClauseInfoPreProcessor {
 
         PartClauseItem item = PartClauseItem.buildPartClauseItem(finalStepType, null, subOpItemList, partPred);
         return item;
+
     }
 
     private static PartClauseItem convertAndExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                  RelDataType relRowType,
                                                                  RexCall partPred,
+                                                                 RexNode partPredParent,
                                                                  PartPruneStepBuildingContext stepContext) {
         List<PartClauseItem> subOpItemList = new ArrayList<>();
         PartPruneStepType finalStepType = PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT;
         List<PartClauseItem> opItemList = new ArrayList<>();
         List<PartClauseItem> otherItemList = new ArrayList<>();
+
         for (RexNode op : partPred.getOperands()) {
 
             /**
@@ -223,7 +255,7 @@ public class PartClauseInfoPreProcessor {
              *       .
              * </pre>
              */
-            PartClauseItem item = convertToPartClauseItem(partByDef, relRowType, op, stepContext);
+            PartClauseItem item = convertToPartClauseItemInner(partByDef, relRowType, op, partPred, stepContext);
             if (item == null) {
                 /**
                  * if item is null, then it is the predicate without any partition column
@@ -315,16 +347,22 @@ public class PartClauseInfoPreProcessor {
         if (subOpItemList.size() == 0) {
             return null;
         }
+
         if (subOpItemList.size() == 1) {
             return subOpItemList.get(0);
         }
+
         PartClauseItem item = PartClauseItem.buildPartClauseItem(finalStepType, null, subOpItemList, partPred);
-        return item;
+
+        PartClauseItem finalItem =
+            rewritePartClauseInfoItemIfNeed(partByDef, relRowType, partPred, partPredParent, stepContext, item);
+        return finalItem;
     }
 
     private static PartClauseItem convertBoolExprToPartClauseItem(PartitionByDefinition partByDef,
                                                                   RelDataType relRowType,
                                                                   RexCall partPred,
+                                                                  RexNode partPredParent,
                                                                   PartPruneStepBuildingContext stepContext) {
 
         PartClauseItem item = null;
@@ -380,7 +418,10 @@ public class PartClauseInfoPreProcessor {
                 return item.getItemList().get(0);
             }
         }
-        return item;
+
+        PartClauseItem finalItem =
+            rewritePartClauseInfoItemIfNeed(partByDef, relRowType, partPred, partPredParent, stepContext, item);
+        return finalItem;
     }
 
     private static PartClauseItem convertScalarQueryInExprToPartClauseItem(PartitionByDefinition partByDef,
@@ -415,8 +456,17 @@ public class PartClauseInfoPreProcessor {
                 break;
             }
         }
-        if (!findInPartNameList || partKeyIdx != 0) {
+        if (!findInPartNameList) {
             return null;
+        }
+
+        if (partKeyIdx != 0) {
+            /**
+             * the partCol index of InSubQuery is not the first col of partition col
+             */
+            if (strategy != PartitionStrategy.CO_HASH) {
+                return null;
+            }
         }
 
         /**
@@ -463,7 +513,20 @@ public class PartClauseInfoPreProcessor {
             .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, eqExprClauseInfo,
                 null,
                 eqExprOfInPred);
-        sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+
+        if (strategy == PartitionStrategy.CO_HASH) {
+            PartClauseItem newPartClauseItem =
+                rewriteDnfPartClauseInfoItemIfNeed(partByDef, relRowType, eqExprOfInPred, stepContext,
+                    eqExprClauseInfoItem, null);
+            if (newPartClauseItem.getType() == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
+                sbInPartClauseInfo.getEqExprClauseItems().addAll(newPartClauseItem.getItemList());
+            } else {
+                sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+            }
+            sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+        } else {
+            sbInPartClauseInfo.getEqExprClauseItems().add(eqExprClauseInfoItem);
+        }
         sbInPartClauseInfo.getPartColDynamicParams().add(eqValDynamicParam);
 
         PartClauseItem inSubQueryItem = PartClauseItem
@@ -551,6 +614,32 @@ public class PartClauseInfoPreProcessor {
         }
         PartClauseItem clauseItem = PartClauseItem
             .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, clauseInfo, null, partPred);
+        return clauseItem;
+    }
+
+    private static PartClauseItem buildPartClauseItemByUsingAnyValueExpr(PartitionByDefinition partByDef,
+                                                                         RelDataType relRowType,
+                                                                         int rexInputRefIndex,
+                                                                         PartPruneStepBuildingContext stepContext) {
+
+        RexInputRef partColInput = RexInputRef.of(rexInputRefIndex, relRowType);
+        RexNode nullExpr = PartitionPrunerUtils.getRexBuilder().makeNullLiteral(relRowType);
+        List<RexNode> opList = new ArrayList<>();
+        opList.add(partColInput);
+        opList.add(nullExpr);
+        SqlOperator isNullOp = RexUtil.op(SqlKind.IS_NULL);
+
+        RexNode newPartColPred = PartitionPrunerUtils.getRexBuilder().makeCall(isNullOp, opList);
+
+        PartClauseInfo clauseInfo =
+            matchPartPredToPartKey(partByDef, relRowType, newPartColPred, partColInput, null, true,
+                TddlOperatorTable.EQUALS,
+                stepContext);
+        clauseInfo.setAnyValueEqCond(true);
+
+        PartClauseItem clauseItem = PartClauseItem
+            .buildPartClauseItem(PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY, clauseInfo, null, newPartColPred);
+
         return clauseItem;
     }
 
@@ -694,4 +783,365 @@ public class PartClauseInfoPreProcessor {
         return alwaysTrueOrFalseItem;
     }
 
+    private static PartClauseItem rewriteDnfPartClauseInfoItemIfNeed(
+        PartitionByDefinition partByDef,
+        RelDataType relRowType,
+        RexNode partPred,
+        PartPruneStepBuildingContext stepContext,
+        PartClauseItem targetPartItem,
+        PartClauseItem targetPartItemParent) {
+
+        PartKeyLevel partKeyLevel = stepContext.getPartLevel();
+        PartitionByDefinition targetPartByDef = partByDef;
+        if (partKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
+            targetPartByDef = partByDef.getSubPartitionBy();
+        }
+        PartitionStrategy partStrategy = targetPartByDef.getStrategy();
+        if (partStrategy != PartitionStrategy.CO_HASH) {
+            return targetPartItem;
+        }
+
+        PartPruneStepType stepType = targetPartItem.getType();
+
+        boolean singleEqOpItemWithoutParent = false;
+        boolean singleEqOpItemUnderOrItem = false;
+        boolean opItemUnderUnderAndItem = false;
+
+//        RexCall partPredParentCall = null;
+//        if (partPredParent == null) {
+//            hasParent = false;
+//        }
+//
+//        if (!hasParent) {
+//            if (kind == SqlKind.EQUALS) {
+//                singleEqOpItemWithoutParent = true;
+//            }
+//        } else {
+//            if (partPredParent instanceof RexCall) {
+//                partPredParentCall = (RexCall) partPredParent;
+//            }
+//            if (partPredParentCall == null) {
+//                return targetPartClauseItem;
+//            }
+//
+//            parentKind = partPredParentCall.getKind();
+//            if (parentKind == SqlKind.OR) {
+//                if (kind == SqlKind.EQUALS) {
+//                    singleEqOpItemUnderOrItem = true;
+//                }
+//            } else {
+//                opItemUnderUnderAndItem = true;
+//            }
+//        }
+
+        if (stepType == PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY && targetPartItemParent == null) {
+            if (targetPartItem.getClauseInfo().getOpKind() == SqlKind.EQUALS) {
+                singleEqOpItemWithoutParent = true;
+            }
+        } else if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
+            opItemUnderUnderAndItem = true;
+        } else if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_UNION) {
+            List<PartClauseItem> newSubItems = new ArrayList<>();
+            List<PartClauseItem> curSubItems = targetPartItem.getItemList();
+            for (int i = 0; i < curSubItems.size(); i++) {
+                PartClauseItem item = curSubItems.get(i);
+                PartClauseItem newItem =
+                    rewriteDnfPartClauseInfoItemIfNeed(partByDef, relRowType, partPred, stepContext, item,
+                        targetPartItem);
+                newSubItems.add(newItem);
+            }
+            targetPartItem.setItemList(newSubItems);
+            return targetPartItem;
+        }
+
+        List<String> partCols = targetPartByDef.getPartitionColumnNameList();
+        Map<String, Integer> partCol2PartKeyIdxMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        int[] partColEqConditionStats = new int[partCols.size()];
+        for (int i = 0; i < partColEqConditionStats.length; i++) {
+            partColEqConditionStats[i] = 0;
+            partCol2PartKeyIdxMapping.put(partCols.get(i), i);
+        }
+
+        int[] partKeyIdx2RexInputIdxMapping = new int[partCols.size()];
+        List<RelDataTypeField> relFlds = relRowType.getFieldList();
+        for (int i = 0; i < relFlds.size(); i++) {
+            RelDataTypeField fld = relFlds.get(i);
+            String fldName = fld.getName();
+            Integer partKeyIdx = partCol2PartKeyIdxMapping.get(fldName);
+            if (partKeyIdx != null) {
+                partKeyIdx2RexInputIdxMapping[partKeyIdx] = i;
+            }
+        }
+
+        List<PartClauseItem> itemList = new ArrayList<>();
+        if (singleEqOpItemWithoutParent) {
+            itemList.add(targetPartItem);
+        } else if (singleEqOpItemUnderOrItem) {
+
+        } else if (opItemUnderUnderAndItem) {
+            itemList.addAll(targetPartItem.getItemList());
+        } else {
+            return targetPartItem;
+        }
+
+        for (int i = 0; i < itemList.size(); i++) {
+            PartClauseItem item = itemList.get(i);
+            PartPruneStepType itemStepType = item.getType();
+            if (itemStepType != PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY) {
+                return targetPartItem;
+            }
+            PartClauseInfo clauseInfo = item.getClauseInfo();
+            SqlKind opKind = clauseInfo.getOpKind();
+            int partKeyIdx = clauseInfo.getPartKeyIndex();
+            if (opKind == SqlKind.EQUALS) {
+                partColEqConditionStats[partKeyIdx]++;
+            }
+        }
+
+        boolean foundPartColEqConds = false;
+        for (int i = 0; i < partColEqConditionStats.length; i++) {
+            if (partColEqConditionStats[i] > 0) {
+                foundPartColEqConds = true;
+                break;
+            }
+        }
+
+        if (foundPartColEqConds) {
+            List<PartClauseItem> partColItemsWithAnyValue = new ArrayList<>();
+            for (int i = 0; i < partColEqConditionStats.length; i++) {
+                int eqCondCount = partColEqConditionStats[i];
+                if (eqCondCount == 0) {
+
+                    /**
+                     * Auto Fill eq conds for other part cols by use ANY_VALUES
+                     */
+                    int relInputIdx = partKeyIdx2RexInputIdxMapping[i];
+                    PartClauseItem newPartItem =
+                        buildPartClauseItemByUsingAnyValueExpr(partByDef, relRowType, relInputIdx, stepContext);
+                    partColItemsWithAnyValue.add(newPartItem);
+                }
+            }
+
+            if (singleEqOpItemWithoutParent) {
+                /**
+                 * c1=expr
+                 *
+                 * ==>
+                 *
+                 * And
+                 *  c1=expr
+                 *  c2=any
+                 *  c3=any
+                 *  ...
+                 */
+                List<PartClauseItem> allItems = new ArrayList<>();
+                allItems.add(targetPartItem);
+                allItems.addAll(partColItemsWithAnyValue);
+                PartClauseItem andItem =
+                    PartClauseItem.buildPartClauseItem(PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT, null, allItems,
+                        null);
+                return andItem;
+            } else if (opItemUnderUnderAndItem) {
+                /**
+                 * And
+                 *  c2=expr1
+                 *  c3=expr2
+                 *  ...
+                 *
+                 * ==>
+                 *
+                 * and
+                 *  c1=any
+                 *  c2=expr1
+                 *  c3=expr2
+                 *  ...
+                 */
+                targetPartItem.getItemList().addAll(partColItemsWithAnyValue);
+            } else {
+                /**
+                 * Do nothing
+                 */
+            }
+
+        }
+
+        return targetPartItem;
+
+    }
+
+    private static PartClauseItem rewritePartClauseInfoItemIfNeed(
+        PartitionByDefinition partByDef,
+        RelDataType relRowType,
+        RexNode partPred,
+        RexNode partPredParent,
+        PartPruneStepBuildingContext stepContext,
+        PartClauseItem targetPartItem
+    ) {
+
+        PartKeyLevel partKeyLevel = stepContext.getPartLevel();
+        PartitionByDefinition targetPartByDef = partByDef;
+        PartitionStrategy partStrategy = targetPartByDef.getStrategy();
+        if (partStrategy != PartitionStrategy.CO_HASH) {
+            return targetPartItem;
+        }
+
+        if (targetPartItem == null) {
+            return targetPartItem;
+        }
+
+        PartPruneStepType stepType = targetPartItem.getType();
+        SqlKind kind = null;
+
+        boolean containPredParent = false;
+        boolean singleEqOpItemWithoutParent = false;
+        boolean singleEqOpItemUnderOrItem = false;
+        boolean opItemUnderUnderAndItem = false;
+
+        if (partPredParent != null) {
+            containPredParent = true;
+        }
+
+        if (stepType == PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY) {
+
+            if (targetPartItem.getClauseInfo().getOpKind() == SqlKind.IN) {
+                /**
+                 * all expr of "part_col in (const1,const2)" has been rewrote as
+                 * (part_col = const1) or (part_col = const2)
+                 * in PartPredRewriter.rewritePartPredicate,
+                 *
+                 * only allow part_col in (scalarSubQuery) come here,
+                 *
+                 * so the ClauseInfo of targetPartItem must be the SubQueryInPartClauseInfo
+                 */
+                return targetPartItem;
+            }
+            if (!containPredParent) {
+                if (targetPartItem.getClauseInfo().getOpKind() == SqlKind.EQUALS) {
+                    singleEqOpItemWithoutParent = true;
+                }
+            } else {
+                if (partPredParent.getKind() == SqlKind.OR) {
+                    singleEqOpItemUnderOrItem = true;
+                }
+            }
+        } else if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT) {
+            opItemUnderUnderAndItem = true;
+        } else if (stepType == PartPruneStepType.PARTPRUNE_COMBINE_UNION) {
+            return targetPartItem;
+        }
+
+        List<String> partCols = targetPartByDef.getPartitionColumnNameList();
+        Map<String, Integer> partCol2PartKeyIdxMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+        int[] partColEqConditionStats = new int[partCols.size()];
+        for (int i = 0; i < partColEqConditionStats.length; i++) {
+            partColEqConditionStats[i] = 0;
+            partCol2PartKeyIdxMapping.put(partCols.get(i), i);
+        }
+
+        int[] partKeyIdx2RexInputIdxMapping = new int[partCols.size()];
+        List<RelDataTypeField> relFlds = relRowType.getFieldList();
+        for (int i = 0; i < relFlds.size(); i++) {
+            RelDataTypeField fld = relFlds.get(i);
+            String fldName = fld.getName();
+            Integer partKeyIdx = partCol2PartKeyIdxMapping.get(fldName);
+            if (partKeyIdx != null) {
+                partKeyIdx2RexInputIdxMapping[partKeyIdx] = i;
+            }
+        }
+
+        List<PartClauseItem> itemList = new ArrayList<>();
+        if (singleEqOpItemWithoutParent) {
+            itemList.add(targetPartItem);
+        } else if (singleEqOpItemUnderOrItem) {
+            itemList.add(targetPartItem);
+        } else if (opItemUnderUnderAndItem) {
+            itemList.addAll(targetPartItem.getItemList());
+        } else {
+            return targetPartItem;
+        }
+
+        for (int i = 0; i < itemList.size(); i++) {
+            PartClauseItem item = itemList.get(i);
+            PartPruneStepType itemStepType = item.getType();
+            if (itemStepType != PartPruneStepType.PARTPRUNE_OP_MATCHED_PART_KEY) {
+                return targetPartItem;
+            }
+            PartClauseInfo clauseInfo = item.getClauseInfo();
+            SqlKind opKind = clauseInfo.getOpKind();
+            int partKeyIdx = clauseInfo.getPartKeyIndex();
+            if (opKind == SqlKind.EQUALS) {
+                partColEqConditionStats[partKeyIdx]++;
+            }
+        }
+
+        boolean foundPartColEqConds = false;
+        for (int i = 0; i < partColEqConditionStats.length; i++) {
+            if (partColEqConditionStats[i] > 0) {
+                foundPartColEqConds = true;
+                break;
+            }
+        }
+
+        if (foundPartColEqConds) {
+            List<PartClauseItem> partColItemsWithAnyValue = new ArrayList<>();
+            for (int i = 0; i < partColEqConditionStats.length; i++) {
+                int eqCondCount = partColEqConditionStats[i];
+                if (eqCondCount == 0) {
+
+                    /**
+                     * Auto Fill eq conds for other part cols by use ANY_VALUES
+                     */
+                    int relInputIdx = partKeyIdx2RexInputIdxMapping[i];
+                    PartClauseItem newPartItem =
+                        buildPartClauseItemByUsingAnyValueExpr(partByDef, relRowType, relInputIdx, stepContext);
+                    partColItemsWithAnyValue.add(newPartItem);
+                }
+            }
+
+            if (singleEqOpItemWithoutParent || singleEqOpItemUnderOrItem) {
+                /**
+                 * c1=expr
+                 *
+                 * ==>
+                 *
+                 * And
+                 *  c1=expr
+                 *  c2=any
+                 *  c3=any
+                 *  ...
+                 */
+                List<PartClauseItem> allItems = new ArrayList<>();
+                allItems.add(targetPartItem);
+                allItems.addAll(partColItemsWithAnyValue);
+                PartClauseItem andItem =
+                    PartClauseItem.buildPartClauseItem(PartPruneStepType.PARTPRUNE_COMBINE_INTERSECT, null, allItems,
+                        null);
+                return andItem;
+            } else if (opItemUnderUnderAndItem) {
+                /**
+                 * And
+                 *  c2=expr1
+                 *  c3=expr2
+                 *  ...
+                 *
+                 * ==>
+                 *
+                 * and
+                 *  c1=any
+                 *  c2=expr1
+                 *  c3=expr2
+                 *  ...
+                 */
+                targetPartItem.getItemList().addAll(partColItemsWithAnyValue);
+            } else {
+                /**
+                 * Do nothing
+                 */
+            }
+
+        }
+
+        return targetPartItem;
+
+    }
 }

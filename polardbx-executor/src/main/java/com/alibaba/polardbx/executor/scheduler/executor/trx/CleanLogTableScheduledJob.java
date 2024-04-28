@@ -16,23 +16,11 @@
 
 package com.alibaba.polardbx.executor.scheduler.executor.trx;
 
-import com.alibaba.polardbx.common.IdGenerator;
-import com.alibaba.polardbx.common.async.AsyncTask;
-import com.alibaba.polardbx.common.constants.SystemTables;
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.logger.MDC;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.scheduler.ScheduledJobsManager;
 import com.alibaba.polardbx.executor.scheduler.executor.SchedulerExecutor;
-import com.alibaba.polardbx.executor.spi.ITopologyExecutor;
-import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import com.alibaba.polardbx.gms.ha.impl.StorageHaManager;
-import com.alibaba.polardbx.gms.ha.impl.StorageInstHaContext;
 import com.alibaba.polardbx.gms.module.Module;
 import com.alibaba.polardbx.gms.module.ModuleLogInfo;
 import com.alibaba.polardbx.gms.scheduler.ExecutableScheduledJob;
@@ -43,13 +31,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.FAILED;
 import static com.alibaba.polardbx.common.scheduler.FiredScheduledJobState.QUEUED;
@@ -59,7 +41,7 @@ import static com.alibaba.polardbx.gms.module.LogLevel.CRITICAL;
 import static com.alibaba.polardbx.gms.module.LogLevel.WARNING;
 import static com.alibaba.polardbx.gms.module.LogPattern.STATE_CHANGE_FAIL;
 import static com.alibaba.polardbx.gms.module.LogPattern.UNEXPECTED;
-import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.CLEAN_LOG_TABLE;
+import static com.alibaba.polardbx.gms.scheduler.ScheduledJobExecutorType.CLEAN_LOG_TABLE_V2;
 import static com.alibaba.polardbx.gms.topology.SystemDbHelper.DEFAULT_DB_NAME;
 
 /**
@@ -80,9 +62,8 @@ public class CleanLogTableScheduledJob extends SchedulerExecutor {
         long fireTime = executableScheduledJob.getFireTime();
         long startTime = ZonedDateTime.now().toEpochSecond();
 
-        final Map savedMdcContext = MDC.getCopyOfContextMap();
+        StringBuilder remark = new StringBuilder();
         try {
-            MDC.put(MDC.MDC_KEY_APP, DEFAULT_DB_NAME);
             // Mark as RUNNING.
             boolean casSuccess =
                 ScheduledJobsManager.casStateWithStartTime(scheduleId, fireTime, QUEUED, RUNNING, startTime);
@@ -91,39 +72,45 @@ public class CleanLogTableScheduledJob extends SchedulerExecutor {
                     .logRecord(
                         Module.SCHEDULE_JOB,
                         STATE_CHANGE_FAIL,
-                        new String[] {CLEAN_LOG_TABLE + "," + fireTime, QUEUED.name(), RUNNING.name()},
+                        new String[] {CLEAN_LOG_TABLE_V2 + "," + fireTime, QUEUED.name(), RUNNING.name()},
                         WARNING);
                 return false;
             }
 
-            final int purgeInterval = InstConfUtil.getInt(ConnectionParams.PURGE_TRANS_INTERVAL);
-            final int purgeBefore = InstConfUtil.getInt(ConnectionParams.PURGE_TRANS_BEFORE);
-
-            int purgeCount = CleanLogTableTask.run(purgeBefore, purgeInterval * 2);
+            final Map savedMdcContext = MDC.getCopyOfContextMap();
+            long purge = 0;
+            try {
+                MDC.put(MDC.MDC_KEY_APP, DEFAULT_DB_NAME);
+                purge = CleanLogTableTask.run(false, remark);
+            } finally {
+                MDC.setContextMap(savedMdcContext);
+            }
 
             long finishTime = System.currentTimeMillis() / 1000;
-            // Mark as SUCCESS.
-            String remark = "Log clean task done. Before: " + purgeBefore + ", Next: " + purgeInterval * 2
-                + ", Purge trans: " + purgeCount;
+            remark.append("Cost time ")
+                .append(finishTime - startTime)
+                .append("s. ")
+                .append("Purged rows ")
+                .append(purge)
+                .append(".");
             return ScheduledJobsManager
-                .casStateWithFinishTime(scheduleId, fireTime, RUNNING, SUCCESS, finishTime, remark);
+                .casStateWithFinishTime(scheduleId, fireTime, RUNNING, SUCCESS, finishTime, remark.toString());
         } catch (Throwable t) {
             ModuleLogInfo.getInstance()
                 .logRecord(
                     Module.TRX,
                     UNEXPECTED,
                     new String[] {
-                        CLEAN_LOG_TABLE + "," + fireTime,
+                        CLEAN_LOG_TABLE_V2 + "," + fireTime,
                         t.getMessage()
                     },
                     CRITICAL,
                     t
                 );
-            String remark = "Clean log table task error: " + t.getMessage();
-            ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, remark, t.getMessage());
+            remark.append("Clean log table task error: ")
+                .append(t.getMessage());
+            ScheduledJobsManager.updateState(scheduleId, fireTime, FAILED, remark.toString(), t.getMessage());
             return false;
-        } finally {
-            MDC.setContextMap(savedMdcContext);
         }
     }
 

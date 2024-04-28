@@ -761,7 +761,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             cmdPacket.packetId = serverConnection.getNewPacketId();
             cmdPacket.command = FIELD_COUNT;
             try {
-                cmdPacket.arg = ServerConnection.encodeString(fileName, serverConnection.getCharset());
+                cmdPacket.arg = ServerConnection.encodeString(fileName, serverConnection.getResultSetCharset());
             } catch (Exception e) {
                 handleError(e, strSql, false);
                 return;
@@ -785,7 +785,7 @@ public final class ServerLoadDataHandler implements LoadDataHandler {
             }
             ok.warningCount = serverConnection.getTddlConnection().getWarningCount();
             ok.message = ServerConnection.encodeString(
-                "skipped lines: " + skippedEmptyLines, serverConnection.getCharset());
+                "skipped lines: " + skippedEmptyLines, serverConnection.getResultSetCharset());
         }
 
         @Override

@@ -16,96 +16,58 @@
 
 package com.alibaba.polardbx.config;
 
-import com.alibaba.fastjson.parser.ParserConfig;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.InstanceRole;
-import org.apache.commons.lang.BooleanUtils;
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.commons.lang.StringUtils;
 
 public class ConfigDataMode {
 
-    public static final String CONFIG_MODE = "tddl.config.mode";
+    public static final String INSTANCE_ROLE_VARIABLE = "POLARDBX_INSTANCE_ROLE";
+
+    private static InstanceRole instanceRole = InstanceRole.MASTER;
 
     private static Mode mode;
 
-    private static Mode configServerMode;
-
-    private static boolean isQuotaEscape = true;
-    private static volatile long refreshConfigTimestamp = 0;
-    private static boolean supportRuleParameterNullValue = false;
-    private static String atomAddressMode = null;
-    private static boolean zeroDataTimeToString = false;
-
-    private static boolean supportSingleDbMultiTbs = false;
-    private static boolean supportRemoveDdl = false;
-    private static boolean supportDropAutoSeq = false;
-    private static boolean allowSimpleSequence = false;
-
-    // Default isolation level be set in `ServerLoader.configSystem`
-    private static int txIsolation;
-    private static String cluster;
-
-    static {
-        enableFastJsonAutoType();
-        loadConfigDataMode();
+    public static InstanceRole getInstanceRole() {
+        return instanceRole;
     }
 
-    protected static void enableFastJsonAutoType() {
-
-        try {
-            ParserConfig.getGlobalInstance().addAccept("com.alibaba.polardbx.");
-            ParserConfig.getGlobalInstance().addAccept("org.apache.calcite.");
-        } catch (Throwable e) {
-
-        }
-
-    }
-
-    protected static void loadConfigDataMode() {
-        if (isFastMock()) {
-            return;
-        }
-        String m = System.getProperty(CONFIG_MODE, "auto");
-        mode = Mode.nameOf(m);
-        if (mode == null) {
-            mode = Mode.AUTO;
-        }
-
-        configServerMode = Mode.nameOf(m);
-        if (configServerMode == null) {
-            configServerMode = Mode.AUTO;
-        }
-
-        if (mode != Mode.FAST_MOCK && System.getProperty("metaDbAddr") != null) {
-            if (!String.valueOf(System.getProperty("metaDbAddr")).isEmpty()) {
-                mode = Mode.GMS;
-                configServerMode = Mode.GMS;
+    public static void setInstanceRole(int instType) {
+        String fastMode = StringUtils.isNotEmpty(System.getProperty("tddl.config.mode")) ?
+            System.getProperty("tddl.config.mode") : System.getProperty("configMode");
+        if (StringUtils.isNotEmpty(fastMode)) {
+            //set the instance role by env.
+            if (fastMode.equalsIgnoreCase("FAST_MOCK")) {
+                //keep compatible with fast mode.
+                ConfigDataMode.instanceRole = InstanceRole.FAST_MOCK;
+                return;
+            } else if (fastMode.equalsIgnoreCase("COLUMNAR_SLAVE")) {
+                ConfigDataMode.instanceRole = InstanceRole.COLUMNAR_SLAVE;
+                return;
             }
         }
 
-        String singleDbMultiTbsSupported = System.getProperty("supportSingleDbMultiTbs");
-        supportSingleDbMultiTbs = BooleanUtils.toBoolean(singleDbMultiTbsSupported);
-
-        String removeDdlSupported = System.getProperty("supportRemoveDdl");
-        supportRemoveDdl = BooleanUtils.toBoolean(removeDdlSupported);
-
-        String dropAutoSeqSupported = System.getProperty("supportDropAutoSeq");
-        supportDropAutoSeq = BooleanUtils.toBoolean(dropAutoSeqSupported);
-
-        String simpleSequenceAllowed = System.getProperty("allowSimpleSequence");
-        allowSimpleSequence = BooleanUtils.toBoolean(simpleSequenceAllowed);
+        if (instType == 0 || instType == 3) {
+            ConfigDataMode.instanceRole = InstanceRole.MASTER;
+        } else if (instType == 4) {
+            ConfigDataMode.instanceRole = InstanceRole.COLUMNAR_SLAVE;
+        } else {
+            ConfigDataMode.instanceRole = InstanceRole.ROW_SLAVE;
+        }
     }
 
-    public static void reload() {
-        loadConfigDataMode();
+    @VisibleForTesting
+    public static void setInstanceRole(InstanceRole instanceRole) {
+        ConfigDataMode.instanceRole = instanceRole;
     }
 
+    /**
+     * the default mode is GMS, and the MOCK is visible for the Planner UT.
+     */
     public enum Mode {
-        AUTO(null),
         MOCK("mock"),
-        MANAGER("manager"),
-        GMS("gms"),
-        FAST_MOCK("diamond");
+        GMS("gms");
 
         private String extensionName;
 
@@ -163,143 +125,66 @@ public class ConfigDataMode {
         return mode;
     }
 
+    @VisibleForTesting
     public static void setMode(Mode mode) {
         ConfigDataMode.mode = mode;
     }
 
-    public static Mode getConfigServerMode() {
-        return configServerMode;
-    }
-
-    public static void setConfigServerMode(Mode mode) {
-        configServerMode = mode;
-    }
-
+    /**
+     * 是否为mock模式，主要用于测试
+     */
     public static boolean isMock() {
         return mode != null && mode == Mode.MOCK;
     }
 
-    public static boolean isFastMock() {
-        return mode != null && mode == Mode.FAST_MOCK;
-    }
-
     // ========= The DB type of Server =========
     public static boolean isPolarDbX() {
-        if (isFastMock()) {
+        if (isFastMock() || isMock()) {
             return false;
+        } else {
+            return mode == Mode.GMS;
         }
-        // PolarDbX load configs by GMS/MetaDB
-        return configServerMode == Mode.GMS;
-    }
-
-    public static boolean isDRDS() {
-        return !isPolarDbX();
     }
 
     // ========= The instance role of Server =========
     // Check master for all DB type
     public static boolean isMasterMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
-            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+        return getInstanceRole() == InstanceRole.MASTER || (
+            getInstanceRole() == InstanceRole.ROW_SLAVE &&
                 DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_INIT_DML) > 0);
     }
 
-    public static boolean isSlaveMode() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE && (
+    public static boolean isRowSlaveMode() {
+        return getInstanceRole() == InstanceRole.ROW_SLAVE && (
             DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ALLOW_USE_DML) < 0);
     }
 
+    public static boolean isColumnarMode() {
+        return getInstanceRole() == InstanceRole.COLUMNAR_SLAVE;
+    }
+
+    public static boolean isFastMock() {
+        return getInstanceRole() == InstanceRole.FAST_MOCK;
+    }
+
     public static boolean needInitMasterModeResource() {
-        return InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.MASTER || (
-            InstanceRoleManager.INSTANCE.getInstanceRole() == InstanceRole.SLAVE &&
+        return getInstanceRole() == InstanceRole.MASTER || (
+            getInstanceRole() == InstanceRole.ROW_SLAVE &&
                 DynamicConfig.getInstance().learnerMode().compareTo(LearnerMode.ONLY_READ) > 0);
     }
 
-    public static long getRefreshConfigTimestamp() {
-        return refreshConfigTimestamp;
+    public static boolean needDNResource() {
+        return getInstanceRole() == InstanceRole.MASTER ||
+            getInstanceRole() == InstanceRole.ROW_SLAVE;
     }
 
-    public static void setRefreshConfigTimestamp(long refreshConfigTimestamp) {
-        ConfigDataMode.refreshConfigTimestamp = refreshConfigTimestamp;
+    public static boolean needGMSResource() {
+        return getInstanceRole() != InstanceRole.FAST_MOCK;
     }
 
-    public static boolean isSupportRuleParameterNullValue() {
-        return supportRuleParameterNullValue;
+    public static boolean isReadOnlyMode() {
+        return getInstanceRole() == InstanceRole.COLUMNAR_SLAVE ||
+            getInstanceRole() == InstanceRole.ROW_SLAVE;
     }
 
-    public static void setSupportRuleParameterNullValue(boolean supportRuleParameterNullValue) {
-        ConfigDataMode.supportRuleParameterNullValue = supportRuleParameterNullValue;
-    }
-
-    public static boolean isQuotaEscape() {
-        return isQuotaEscape;
-    }
-
-    public static void setQuotaEscape(boolean isQuotaEscape) {
-        ConfigDataMode.isQuotaEscape = isQuotaEscape;
-    }
-
-    public static boolean isZeroDataTimeToString() {
-        return zeroDataTimeToString;
-    }
-
-    public static void setZeroDataTimeToString(boolean zeroDataTimeToString) {
-        ConfigDataMode.zeroDataTimeToString = zeroDataTimeToString;
-    }
-
-    public static String getAtomAddressMode() {
-        return atomAddressMode;
-    }
-
-    public static void setAtomAddressMode(String atomAddressMode) {
-        ConfigDataMode.atomAddressMode = atomAddressMode;
-    }
-
-    public static String getCluster() {
-        return cluster;
-    }
-
-    public static void setCluster(String cluster) {
-        ConfigDataMode.cluster = cluster;
-    }
-
-    public static boolean isSupportSingleDbMultiTbs() {
-        return supportSingleDbMultiTbs;
-    }
-
-    public static void setSupportSingleDbMultiTbs(boolean supportSingleDbMultiTbs) {
-        ConfigDataMode.supportSingleDbMultiTbs = supportSingleDbMultiTbs;
-    }
-
-    public static boolean isSupportRemoveDdl() {
-        return supportRemoveDdl;
-    }
-
-    public static void setSupportRemoveDdl(boolean supportRemoveDdl) {
-        ConfigDataMode.supportRemoveDdl = supportRemoveDdl;
-    }
-
-    public static boolean isSupportDropAutoSeq() {
-        return supportDropAutoSeq;
-    }
-
-    public static void setSupportDropAutoSeq(boolean supportDropAutoSeq) {
-        ConfigDataMode.supportDropAutoSeq = supportDropAutoSeq;
-    }
-
-    public static boolean isAllowSimpleSequence() {
-        return allowSimpleSequence;
-    }
-
-    public static void setAllowSimpleSequence(boolean allowSimpleSequence) {
-        ConfigDataMode.allowSimpleSequence = allowSimpleSequence;
-    }
-
-    public static int getTxIsolation() {
-        return txIsolation;
-    }
-
-    public static void setTxIsolation(int txIsolation) {
-        ConfigDataMode.txIsolation = txIsolation;
-    }
 }

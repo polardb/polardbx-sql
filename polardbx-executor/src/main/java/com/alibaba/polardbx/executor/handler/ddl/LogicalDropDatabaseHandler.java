@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.handler.ddl;
 
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.foreignkey.ForeignKeyData;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
@@ -31,22 +31,19 @@ import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.PlParameterAccessor;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.pl.accessor.ProcedureAccessor;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
+import com.alibaba.polardbx.executor.handler.DropDatabaseHandlerCommon;
 import com.alibaba.polardbx.executor.handler.HandlerCommon;
 import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.BaselineInvalidateSchemaSyncAction;
 import com.alibaba.polardbx.executor.sync.DropDbRelatedProcedureSyncAction;
 import com.alibaba.polardbx.executor.sync.GsiStatisticsSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.sync.SyncScope;
-import com.alibaba.polardbx.gms.topology.DbInfoAccessor;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import com.alibaba.polardbx.gms.topology.DropDbInfo;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
-import com.alibaba.polardbx.optimizer.OptimizerContext;
-import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalDropDatabase;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
@@ -75,6 +72,10 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
 
     @Override
     public Cursor handle(RelNode logicalPlan, ExecutionContext executionContext) {
+        return handleByGms(logicalPlan, executionContext);
+    }
+
+    public Cursor handleByGms(RelNode logicalPlan, ExecutionContext executionContext) {
         final LogicalDropDatabase dropDatabase = (LogicalDropDatabase) logicalPlan;
         final SqlDropDatabase sqlDropDatabase = (SqlDropDatabase) dropDatabase.getNativeSqlNode();
         final LocalityManager localityManager = LocalityManager.getInstance();
@@ -82,34 +83,21 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         final String dbName = sqlDropDatabase.getDbName().getSimple();
         final DbInfoRecord dbInfo = DbInfoManager.getInstance().getDbInfo(dbName);
 
-        validateChangeSetExists(dbName, executionContext);
+        // validateChangeSetExists(dbName, executionContext);
 
         final ITimestampOracle timestampOracle =
             executionContext.getTransaction().getTransactionManagerUtil().getTimestampOracle();
         long ts = timestampOracle.nextTimestamp();
 
-        // not allow to drop ref database first even check_foreign_key is off
-        DbInfoAccessor dbInfoAccessor = new DbInfoAccessor();
-        dbInfoAccessor.setConnection(MetaDbDataSource.getInstance().getConnection());
-        if (dbInfoAccessor.getDbInfoByDbNameForUpdate(dbName) != null
-            && OptimizerContext.getContext(dbName) != null) {
-            for (TableMeta tableMeta : OptimizerContext.getContext(dbName).getLatestSchemaManager().getAllTables()) {
-                for (Map.Entry<String, ForeignKeyData> e : tableMeta.getReferencedForeignKeys().entrySet()) {
-                    String referredSchemaName = e.getValue().schema;
-                    if (OptimizerContext.getContext(referredSchemaName) != null &&
-                        !referredSchemaName.equalsIgnoreCase(dbName)) {
-                        String referencedSchemaName = e.getValue().schema;
-                        String referencedTableName = e.getValue().tableName;
-                        String constraint = e.getValue().constraint;
-                        throw new TddlRuntimeException(ErrorCode.ERR_DROP_TABLE_FK_CONSTRAINT, tableMeta.getTableName(),
-                            constraint, referencedSchemaName, referencedTableName);
-                    }
-                }
-            }
-        }
+        DbTopologyManager.checkRefForeignKeyWhenDropDatabase(dbName);
 
         boolean isDropIfExists = sqlDropDatabase.isIfExists();
         DropDbInfo dropDbInfo = new DropDbInfo();
+        boolean isImportDatabase = executionContext.getParamManager().getBoolean(ConnectionParams.IMPORT_DATABASE);
+        if (isImportDatabase) {
+            dropDbInfo.setReservePhyDb(true);
+        }
+
         dropDbInfo.setDbName(dbName);
         dropDbInfo.setDropIfExists(isDropIfExists);
         dropDbInfo.setAllowDropForce(
@@ -121,9 +109,9 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         DbTopologyManager.dropLogicalDb(dropDbInfo);
         CdcManagerHelper.getInstance()
             .notifyDdl(dbName, null, sqlDropDatabase.getKind().name(), executionContext.getOriginSql(),
-                DdlVisibility.Public, buildExtendParameter(executionContext));
+                null, CdcDdlMarkVisibility.Public, buildExtendParameter(executionContext));
 
-        SyncManagerHelper.syncWithDefaultDB(new BaselineInvalidateSchemaSyncAction(dbName));
+        SyncManagerHelper.syncWithDefaultDB(new BaselineInvalidateSchemaSyncAction(dbName), SyncScope.ALL);
 
         if (dbInfo != null) {
             localityManager.deleteLocalityOfDb(dbInfo.id);
@@ -137,7 +125,8 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
     }
 
     private void dropGsiStatistic(String dbName) {
-        SyncManagerHelper.sync(new GsiStatisticsSyncAction(dbName, null, null, GsiStatisticsSyncAction.DELETE_SCHEMA));
+        SyncManagerHelper.sync(new GsiStatisticsSyncAction(dbName, null, null, GsiStatisticsSyncAction.DELETE_SCHEMA),
+            SyncScope.ALL);
     }
 
     private void dropRelatedProcedures(String dbName) {

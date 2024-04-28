@@ -75,11 +75,11 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
     public void testPartition() throws SQLException {
         String currentTime = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
         final List<String> testSqlList = ImmutableList.of(
-            "/*+TDDL:plancache=false*/ select * from FlashbackQueryTest partition(p1) as of timestamp '"
+            "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest partition(p1) as of timestamp '"
                 + currentTime + "'",
-            "/*+TDDL:plancache=false*/ select * from FlashbackQueryTest tt partition(p1) as of timestamp '"
+            "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest tt partition(p1) as of timestamp '"
                 + currentTime + "'",
-            "/*+TDDL:plancache=false*/ select * from FlashbackQueryTest as of timestamp '"
+            "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of timestamp '"
                 + currentTime + "' as tt partition(p1)"
         );
         final List<String> explainResult = ImmutableList.of(

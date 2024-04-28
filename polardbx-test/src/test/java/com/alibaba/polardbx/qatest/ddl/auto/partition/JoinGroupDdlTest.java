@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.qatest.ddl.auto.partition;
 
+import com.alibaba.polardbx.qatest.CdcIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.RandomUtils;
 import org.junit.Assert;
@@ -29,6 +30,8 @@ import java.sql.SQLException;
  *
  * @author luoyanxin
  */
+@CdcIgnore(ignoreReason = "join group没有用起来，CDC不再进行测试；"
+    + "alter join group会触发表所属表组的变更，目前也没有透传表组到下游的能力，会导致上下游表组无法对齐")
 public class JoinGroupDdlTest extends PartitionTestBase {
 
     private static String CREATE_JOIN_GTOUP = "create joingroup %s";

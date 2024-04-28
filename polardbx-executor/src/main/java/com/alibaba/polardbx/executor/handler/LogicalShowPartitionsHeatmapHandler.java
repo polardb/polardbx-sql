@@ -16,11 +16,6 @@
 
 package com.alibaba.polardbx.executor.handler;
 
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-
 import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
@@ -33,20 +28,24 @@ import com.alibaba.polardbx.executor.spi.IRepository;
 import com.alibaba.polardbx.executor.sync.FetchPartitionHeatmapSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
 import com.alibaba.polardbx.executor.utils.ExecUtils;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.rel.dal.LogicalShow;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
-
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlShowPartitionsHeatmap;
 import org.apache.commons.collections.CollectionUtils;
 
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+
 /**
  * @author ximing.yd
- * @date 2022/1/5 7:15 下午
  */
 public class LogicalShowPartitionsHeatmapHandler extends HandlerCommon {
 
@@ -80,7 +79,7 @@ public class LogicalShowPartitionsHeatmapHandler extends HandlerCommon {
         } else {
             // Otherwise, get information from leader
             results = SyncManagerHelper.sync(new FetchPartitionHeatmapSyncAction(schemaName, timeRange, type),
-                schemaName);
+                schemaName, SyncScope.MASTER_ONLY);
         }
 
         if (CollectionUtils.isNotEmpty(results)) {
@@ -89,7 +88,7 @@ public class LogicalShowPartitionsHeatmapHandler extends HandlerCommon {
                     continue;
                 }
                 for (Map<String, Object> row : info) {
-                    final String heatmap = (String)row.get("HEATMAP");
+                    final String heatmap = (String) row.get("HEATMAP");
                     result.addRow(new Object[] {heatmap});
                 }
             }
@@ -99,8 +98,8 @@ public class LogicalShowPartitionsHeatmapHandler extends HandlerCommon {
     }
 
     private Map<String, String> getParamMap(RelNode logicalPlan) {
-        final LogicalShow show = (LogicalShow)logicalPlan;
-        final SqlShowPartitionsHeatmap showPartitionsHeatmap = (SqlShowPartitionsHeatmap)show.getNativeSqlNode();
+        final LogicalShow show = (LogicalShow) logicalPlan;
+        final SqlShowPartitionsHeatmap showPartitionsHeatmap = (SqlShowPartitionsHeatmap) show.getNativeSqlNode();
         String originTimeRange = RelUtils.lastStringValue(showPartitionsHeatmap.getOperandList().get(0));
         String originType = RelUtils.lastStringValue(showPartitionsHeatmap.getOperandList().get(1));
         String timeRange = VisualConstants.LAST_ONE_HOURS;

@@ -43,17 +43,17 @@ public class ${className} extends AbstractVectorizedExpression {
         RandomAccessBlock outputVectorSlot = chunk.slotIn(outputIndex, outputDataType);
         RandomAccessBlock rightInputVectorSlot = chunk.slotIn(children[1].getOutputIndex(), children[1].getOutputDataType());
 
-        ${type.inputType2}[] array2 = ((${type.inputVectorType2}) rightInputVectorSlot).${type.inputType2}Array();
-        long[] res = ((LongBlock) outputVectorSlot).longArray();
+        ${type.inputType2}[] array2 = (rightInputVectorSlot.cast(${type.inputVectorType2}.class)).${type.inputType2}Array();
+        long[] res = (outputVectorSlot.cast(LongBlock.class)).longArray();
 
         <#if operator.classHeader != "SEQ">
-        if (leftIsNull) {
+            if (leftIsNull) {
             boolean[] outputNulls = outputVectorSlot.nulls();
             if (isSelectionInUse) {
-                for (int i=0; i < batchSize; i++) {
-                    int j = sel[i];
-                    outputNulls[j] = true;
-                }
+            for (int i=0; i < batchSize; i++) {
+            int j = sel[i];
+            outputNulls[j] = true;
+            }
             } else {
                 for (int i=0; i < batchSize; i++) {
                     outputNulls[i] = true;

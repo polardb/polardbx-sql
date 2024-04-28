@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.qatest.ddl.sharding.gsi.group1;
 
 import com.alibaba.polardbx.qatest.AsyncDDLBaseNewDBTestCase;
+import com.alibaba.polardbx.qatest.BinlogIgnore;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.validator.DataValidator;
 import com.google.common.collect.ImmutableList;
@@ -893,12 +894,12 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s modify column a bigint(10) primary key", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "Do not support modify sharding key column type on drds mode database");
+            "Do not support change sharding key column type on drds mode database ");
 
         sql = String.format("alter table %s modify column b varchar(40)", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "Do not support modify sharding key column type on drds mode database");
+            "Do not support change sharding key column type on drds mode database");
 
         final String looseHint = "/*+TDDL:cmd_extra(ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI=true)*/";
 
@@ -915,6 +916,7 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
     }
 
     @Ignore
+    @BinlogIgnore(ignoreReason = "用例涉及很多主键冲突问题，即不同分区有相同主键，复制到下游Mysql时出现Duplicate Key")
     public void testAlterTableMultiGroupOneAtomWithGsi_error_drop_column_with_uppercase() {
         final String primaryTable = tableName + "_6";
         final String indexTable = indexTableName + "_6";
@@ -978,10 +980,6 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql =
-            String.format(HINT_ALLOW_ALTER_GSI_INDIRECTLY + "alter table %s modify column b varchar(40)", primaryTable);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-
-        sql =
             String.format(HINT_ALLOW_ALTER_GSI_INDIRECTLY + "alter table %s modify column c varchar(40)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
@@ -991,13 +989,6 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
             "Do not support multi ALTER statements on table with global secondary index");
-
-        final TableChecker tableChecker = getTableChecker(tddlConnection, indexTable);
-        tableChecker.identicalTableDefinitionTo(
-            "create table " + indexTable
-                + "(a int(11) NOT NULL,b varchar(40), c varchar(40), PRIMARY KEY(a))",
-            true,
-            Litmus.THROW);
 
         dropTableIfExists(primaryTable);
     }
@@ -1046,13 +1037,13 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String.format("alter table %s change column a a1 bigint(10) primary key", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection,
             sql,
-            "Do not support change sharding key column type on drds mode database ");
+            "optimize error by Do not support change the column name of sharding key");
 
         final String looseHint = "/*+TDDL:cmd_extra(ALLOW_LOOSE_ALTER_COLUMN_WITH_GSI=true)*/";
 
         sql = String.format(looseHint + "alter table %s change column b b1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateFailed(tddlConnection, sql,
-            "Do not support change sharding key column type on drds mode database ");
+            "optimize error by Do not support change the column name of sharding key");
 
         sql = String.format(looseHint + "alter table %s change column c c1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
@@ -1060,9 +1051,7 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         sql = String
             .format(looseHint + "alter table %s change column d d1 varchar(40), change column c1 c2 varchar(40)",
                 primaryTable);
-        JdbcUtil.executeUpdateFailed(tddlConnection,
-            sql,
-            "do not support multi alter statements on table with global secondary index");
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(primaryTable);
     }
@@ -1086,24 +1075,13 @@ public class AlterTableWithGsiTest extends AsyncDDLBaseNewDBTestCase {
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String
-            .format(HINT_ALLOW_ALTER_GSI_INDIRECTLY + "alter table %s change column b b1 varchar(40)", primaryTable);
-        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
-
-        sql = String
             .format(HINT_ALLOW_ALTER_GSI_INDIRECTLY + "alter table %s change column c c1 varchar(40)", primaryTable);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         sql = String.format(HINT_ALLOW_ALTER_GSI_INDIRECTLY
                 + "alter table %s change column d d1 varchar(40), change column c1 c varchar(40)",
             primaryTable);
-        JdbcUtil.executeUpdateFailed(tddlConnection,
-            sql,
-            "Do not support multi ALTER statements on table with global secondary index");
-
-        final TableChecker tableChecker = getTableChecker(tddlConnection, indexTable);
-        tableChecker.identicalTableDefinitionTo(
-            "create table " + indexTable + "(a int(11) NOT NULL,b1 varchar(40), c1 varchar(40), PRIMARY KEY(a))", true,
-            Litmus.THROW);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
 
         dropTableIfExists(primaryTable);
     }

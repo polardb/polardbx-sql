@@ -43,7 +43,7 @@ public class StorePartitionGroupLocalityTask extends BaseDdlTask {
     @JSONCreator
     public StorePartitionGroupLocalityTask(String schemaName, String tableGroupName,
                                            Long tableGroupId, List<Long> outDatedPartitionGroupIds,
-                                           List<String> newPartitionGroupNames, List<String> localities){
+                                           List<String> newPartitionGroupNames, List<String> localities) {
         super(schemaName);
         this.tableGroupName = tableGroupName;
         this.tableGroupId = tableGroupId;
@@ -54,10 +54,11 @@ public class StorePartitionGroupLocalityTask extends BaseDdlTask {
 
     public void executeImpl(Connection metaDbConnection, ExecutionContext executionContext) {
         LocalityManager localityManager = LocalityManager.getInstance();
-        TableGroupInfoManager tableGroupInfoManager = OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
-        outDatedPartitionGroupIds.forEach(id->localityManager.deleteLocalityOfPartitionGroup(id));
+        TableGroupInfoManager tableGroupInfoManager =
+            OptimizerContext.getContext(schemaName).getTableGroupInfoManager();
+        outDatedPartitionGroupIds.forEach(id -> localityManager.deleteLocalityOfPartitionGroup(id));
         TableGroupConfig tableGroupConfig = tableGroupInfoManager.getTableGroupConfigByName(tableGroupName);
-        for(int i = 0; i < newPartitionGroupNames.size(); i++){
+        for (int i = 0; i < newPartitionGroupNames.size(); i++) {
             Long pgId = tableGroupConfig.getPartitionGroupByName(newPartitionGroupNames.get(i)).getId();
             localityManager.setLocalityOfPartitionGroup(schemaName, pgId, localities.get(i));
         }
@@ -90,6 +91,5 @@ public class StorePartitionGroupLocalityTask extends BaseDdlTask {
     protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
         rollbackImpl(metaDbConnection, executionContext);
     }
-
 
 }

@@ -28,7 +28,7 @@
     <parent>
         <groupId>com.alibaba.polardbx</groupId>
         <artifactId>polardbx</artifactId>
-        <version>5.4.18-SNAPSHOT</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
     <groupId>com.alibaba.polardbx</groupId>
@@ -71,6 +71,21 @@
 <!--            <artifactId>stream</artifactId>-->
 <!--            <version>${stream.version}</version>-->
 <!--        </dependency>-->
+        <dependency>
+            <groupId>cglib</groupId>
+            <artifactId>cglib-nodep</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.clearspring.analytics</groupId>
+            <artifactId>stream</artifactId>
+            <version>${stream.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>${mockito.verison}</version>
+            <scope>test</scope>
+        </dependency>
         <!--<dependency>-->
         <!--<groupId>com.github.luben</groupId>-->
         <!--<artifactId>zstd-jni</artifactId>-->
@@ -90,7 +105,6 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>polardbx-calcite</artifactId>
-            <version>${project.version}</version>
             <exclusions>
                 <exclusion>
                     <artifactId>commons-logging</artifactId>

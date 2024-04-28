@@ -5,7 +5,7 @@ create table tb1(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -33,14 +33,14 @@ select b from tb1 partition(pdsp3) order by b;
 select b from tb1 partition(pdspd) order by b;
 show create table tb1;
   
-# template: list columns
+  # template: list columns
 create tablegroup tg2;
 create table tb2(
 a int,
 b varchar(20),
 c int
 )partition by list(c) subpartition by list columns(a, b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in((1, "1"),(2, "2")),
 subpartition sp2 values in((3, "3"),(4, "4")),
 subpartition spd values in(default)
@@ -60,14 +60,14 @@ select b from tb2 partition(p2sp2) order by b;
 select b from tb2 partition(p2sp3) order by b;
 select b from tb2 partition(p2spd) order by b;
 show create table tb2;
-
-# template: list columns(single)
+  
+  # template: list columns(single)
 create tablegroup tg3;
 create table tb3(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list columns(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -94,8 +94,8 @@ select b from tb3 partition(pdsp2) order by b;
 select b from tb3 partition(pdsp3) order by b;
 select b from tb3 partition(pdspd) order by b;
 show create table tb3;
-
-# non-template: list
+  
+  # non-template: list
 create tablegroup tg4;
 create table tb4(
 a int,
@@ -127,8 +127,8 @@ select b from tb4 partition(p2sp2) order by b;
 select b from tb4 partition(p2sp3) order by b;
 select b from tb4 partition(p2spd) order by b;
 show create table tb4;
-
-# non-template: list columns
+  
+  # non-template: list columns
 create tablegroup tg5;
 create table tb5(
 a int,
@@ -157,7 +157,7 @@ select b from tb5 partition(p2sp3) order by b;
 select b from tb5 partition(p2spd) order by b;
 show create table tb5;
   
-# non-template: list columns(single)
+  # non-template: list columns(single)
 create tablegroup tg6;
 create table tb6(
 a int,
@@ -189,14 +189,14 @@ select b from tb6 partition(p2sp2) order by b;
 select b from tb6 partition(p2sp3) order by b;
 select b from tb6 partition(p2spd) order by b;
 show create table tb6;
-
-# logical partition
+  
+  # logical partition
 create tablegroup tg7;
 create table tb7(
 a int,
 b varchar(20)
 )partition by list(a) subpartition by list(b)
-subpartitions template(
+subpartition template(
 subpartition sp1 values in("1","2"),
 subpartition sp2 values in("3","4"),
 subpartition spd values in(default)
@@ -218,7 +218,7 @@ select b from tb7 partition(p3sp2) order by b;
 select b from tb7 partition(p3spd) order by b;
 show create table tb7;
   
-# logical partition
+  # logical partition
 create tablegroup tg8;
 create table tb8(
 a int,
@@ -249,7 +249,7 @@ alter tablegroup tg8 extract to partition p3 by value(3);
 select b from tb8 partition(p3) order by b;
 select b from tb8 partition(pd) order by b;
 show create table tb8;
-
+  
 # test hash partition
 # template
 create tablegroup tg9;
@@ -266,8 +266,8 @@ alter tablegroup tg9 extract to subpartition sphot by hot value((3,3));
 select a from tb9 order by a;
 select a from tb9 partition(p1sphot1) order by a;
 /*+TDDL:CMD_EXTRA(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show create table tb9;
-
-# non-template
+  
+  # non-template
 create tablegroup tg10;
 create table tb10(
 a int,
@@ -287,7 +287,7 @@ select a from tb10 order by a;
 select a from tb10 partition(sphot1) order by a;
 /*+TDDL:CMD_EXTRA(SHOW_HASH_PARTITIONS_BY_RANGE=TRUE)*/show create table tb10;
   
-# logical template
+  # logical template
 create tablegroup tg11;
 create table tb11(
 a int,

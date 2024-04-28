@@ -83,6 +83,8 @@ public interface SystemTableColumnStatistic {
          */
         private long unixTime;
 
+        private String extendField;
+
         public Row(String schemaName, String tableName, String columnName, long unixTime) {
             this.schema = schemaName;
             this.tableName = tableName;
@@ -92,7 +94,8 @@ public interface SystemTableColumnStatistic {
         }
 
         public Row(String schema, String tableName, String columnName, long cardinality,
-                   Histogram histogram, TopN topN, long nullCount, float sampleRate, long unixTime) {
+                   Histogram histogram, TopN topN, long nullCount, float sampleRate, long unixTime,
+                   String extendField) {
             this.schema = schema;
             this.tableName = tableName;
             this.columnName = columnName;
@@ -102,6 +105,7 @@ public interface SystemTableColumnStatistic {
             this.nullCount = nullCount;
             this.sampleRate = sampleRate;
             this.unixTime = unixTime;
+            this.extendField = extendField;
         }
 
         public String getTableName() {
@@ -176,6 +180,14 @@ public interface SystemTableColumnStatistic {
 
         public void setSchema(String schema) {
             this.schema = schema;
+        }
+
+        public String getExtendField() {
+            return extendField;
+        }
+
+        public void setExtendField(String extendField) {
+            this.extendField = extendField;
         }
     }
 }

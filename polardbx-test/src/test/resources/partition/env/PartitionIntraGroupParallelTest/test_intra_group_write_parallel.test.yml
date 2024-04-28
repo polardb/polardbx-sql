@@ -1,0 +1,82 @@
+## DISABLE_FAST_SQL_PARSER
+create table tb1 (
+id int primary key
+) partition by key(id);
+  
+  # TSO + RR should use parallel write
+set TRANSACTION_POLICY='TSO';
+set TX_ISOLATION='REPEATABLE-READ';
+set TRANSACTION_ISOLATION='REPEATABLE-READ';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+  
+  # TSO + RC should not use parallel write
+set TRANSACTION_POLICY='TSO';
+set TX_ISOLATION='READ-COMMITTED';
+set TRANSACTION_ISOLATION='READ-COMMITTED';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+  
+  # XA + RR should use parallel write
+set TRANSACTION_POLICY='XA';
+set enable_xa_tso = false;
+set TX_ISOLATION='REPEATABLE-READ';
+set TRANSACTION_ISOLATION='REPEATABLE-READ';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+  
+  # XA + RC should not use parallel write
+set TRANSACTION_POLICY='XA';
+set enable_xa_tso = false;
+set TX_ISOLATION='READ-COMMITTED';
+set TRANSACTION_ISOLATION='READ-COMMITTED';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+  
+  # XA_TSO + RR should use parallel write
+set TRANSACTION_POLICY='XA';
+set enable_xa_tso = true;
+set TX_ISOLATION='REPEATABLE-READ';
+set TRANSACTION_ISOLATION='REPEATABLE-READ';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+  
+  # XA_TSO + RC should not use parallel write
+set TRANSACTION_POLICY='XA';
+set enable_xa_tso = true;
+set TX_ISOLATION='READ-COMMITTED';
+set TRANSACTION_ISOLATION='READ-COMMITTED';
+delete from tb1;
+begin;
+trace insert into tb1 values (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+select count(0) > 0 from information_schema.trace where GROUP_CONN_ID > 0;
+show variables like 'trx_class';
+show variables like 'transaction_isolation';
+rollback;
+
+drop table tb1;

@@ -79,6 +79,9 @@ public class IntegerTreeWriter extends TreeWriterBase {
         for (int i = 0; i < length; ++i) {
           writer.write(value);
         }
+      } else {
+        //有null值更新
+        indexStatistics.updateNull();
       }
     } else {
       for (int i = 0; i < length; ++i) {
@@ -92,6 +95,9 @@ public class IntegerTreeWriter extends TreeWriterBase {
             }
             bloomFilterUtf8.addLong(value);
           }
+        } else if (i == 0 || i == length - 1) {
+          //只用更新第一行和最后一行为null的情况
+          indexStatistics.updateNull();
         }
       }
     }

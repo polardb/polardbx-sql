@@ -1,107 +1,41 @@
-/*
- * Copyright [2013-2021], Alibaba Group Holding Limited
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.common.datatype.Decimal;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
-import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.executor.accumulator.CheckSumAccumulator;
-import com.alibaba.polardbx.executor.accumulator.CheckSumMergeAccumulator;
-import com.alibaba.polardbx.executor.calc.Aggregator;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Avg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2ByteMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2ByteMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Byte2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Count;
-import com.alibaba.polardbx.executor.calc.aggfunctions.CountRow;
-import com.alibaba.polardbx.executor.calc.aggfunctions.CumeDist;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2DecimalMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2DecimalMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Decimal2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.DenseRank;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Double2DoubleAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Double2DoubleMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Double2DoubleMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Double2DoubleSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.FirstValue;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Float2DoubleAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Float2DoubleSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Float2FloatMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Float2FloatMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.GroupConcat;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2IntMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2IntMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Int2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.InternalFirstValue;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Lag;
-import com.alibaba.polardbx.executor.calc.aggfunctions.LastValue;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Lead;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2LongMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2LongMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2LongSum0;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Long2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Max;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Min;
-import com.alibaba.polardbx.executor.calc.aggfunctions.NThValue;
-import com.alibaba.polardbx.executor.calc.aggfunctions.NTile;
-import com.alibaba.polardbx.executor.calc.aggfunctions.OtherType2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.OtherType2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.OtherType2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.PercentRank;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Rank;
-import com.alibaba.polardbx.executor.calc.aggfunctions.RowNumber;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2DecimalSum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2ShortMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2ShortMin;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2UInt64BitAnd;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2UInt64BitOr;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Short2UInt64BitXor;
-import com.alibaba.polardbx.executor.calc.aggfunctions.SingleValue;
-import com.alibaba.polardbx.executor.calc.aggfunctions.SpecificType2DecimalAvg;
-import com.alibaba.polardbx.executor.calc.aggfunctions.SpecificType2DoubleAvgV2;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum;
-import com.alibaba.polardbx.executor.calc.aggfunctions.Sum0;
-import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMax;
-import com.alibaba.polardbx.executor.calc.aggfunctions.WrapedLong2WarpedLongMin;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.expression.calc.Aggregator;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.AvgV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitAnd;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitOr;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.BitXor;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CheckSum;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CheckSumMerge;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CheckSumV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CheckSumV2Merge;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CountV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.CumeDist;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.DenseRank;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.FinalHyperLoglog;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.FirstValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.GroupConcat;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.HyperLoglog;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.InternalFirstValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Lag;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.LastValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Lead;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.MaxV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.MinV2;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.NThValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.NTile;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.PartialHyperLoglog;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.PercentRank;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Rank;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.RowNumber;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SingleValue;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.Sum0;
+import com.alibaba.polardbx.optimizer.core.expression.calc.aggfunctions.SumV2;
 import com.alibaba.polardbx.optimizer.memory.MemoryAllocatorCtx;
+import com.alibaba.polardbx.optimizer.memory.MemoryManager;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.GroupConcatAggregateCall;
 import org.apache.calcite.rel.core.WindowAggregateCall;
@@ -109,116 +43,56 @@ import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.commons.lang3.ArrayUtils;
 
-import java.sql.Date;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * Abstract AggHandler
+ *
+ * @author <a href="mailto:eric.fy@alibaba-inc.com">Eric Fu</a>
  */
 public abstract class AggregateUtils {
 
     public static final int MAX_HASH_TABLE_SIZE = 131064;
     public static final int MIN_HASH_TABLE_SIZE = 1024;
 
-    public static List<Aggregator> convertAggregators(List<DataType> inputTypes,
-                                                      List<DataType> aggOutputTypes,
-                                                      List<AggregateCall> aggCallList,
+    public static List<Aggregator> convertAggregators(List<AggregateCall> aggCallList,
                                                       ExecutionContext executionContext,
                                                       MemoryAllocatorCtx memoryAllocator) {
         List<Aggregator> aggList = new ArrayList<>(aggCallList.size());
         for (int i = 0, n = aggCallList.size(); i < n; i++) {
             AggregateCall call = aggCallList.get(i);
-            SqlKind function = call.getAggregation().getKind();
-            if (SqlKind.WINDOW_FUNCTION.contains(function)) {
-                aggList.add(convertWindowFunction(call));
-                continue;
-            }
             boolean isDistinct = call.isDistinct();
+            // int precision = call.getType().getPrecision();
+            // int scale = call.getType().getScale();
+            // check is call.isDistinct()
+            SqlKind function = call.getAggregation().getKind();
             int filterArg = call.filterArg;
 
             Integer index = -1;
             if (call.getArgList() != null && call.getArgList().size() > 0) {
                 index = call.getArgList().get(0);
             }
-
-            DataType inputType = index >= 0 ? inputTypes.get(index) : null;
-            Class inputTypeClass = inputType == null ? null : inputType.getDataClass();
-            DataType outputType = aggOutputTypes.get(i);
-            Class outputTypeClass = outputType == null ? null : outputType.getDataClass();
-
             switch (function) {
             case AVG: {
-                if (outputTypeClass == Decimal.class) {
-                    if (inputTypeClass == Decimal.class) {
-                        aggList.add(new Decimal2DecimalAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Byte.class) {
-                        aggList.add(new Byte2DecimalAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Short.class) {
-                        aggList.add(new Short2DecimalAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Integer.class) {
-                        aggList.add(new Int2DecimalAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Long.class) {
-                        aggList.add(new Long2DecimalAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else {
-                        aggList.add(new Avg(index, isDistinct, outputType, filterArg));
-                    }
-                } else if (outputTypeClass == Double.class) {
-                    if (inputTypeClass == Double.class) {
-                        aggList.add(new Double2DoubleAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Float.class) {
-                        aggList.add(new Float2DoubleAvg(index, isDistinct, inputType, outputType, filterArg));
-                    } else {
-                        aggList.add(new Avg(index, isDistinct, outputType, filterArg));
-                    }
-                } else {
-                    aggList.add(new Avg(index, isDistinct, outputType, filterArg));
-                }
+                aggList.add(new AvgV2(index, isDistinct, memoryAllocator, filterArg));
                 break;
             }
             case SUM: {
-                if (outputTypeClass == Decimal.class) {
-                    if (inputTypeClass == Decimal.class) {
-                        aggList.add(new Decimal2DecimalSum(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Byte.class) {
-                        aggList.add(new Byte2DecimalSum(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Short.class) {
-                        aggList.add(new Short2DecimalSum(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Integer.class) {
-                        aggList.add(new Int2DecimalSum(index, isDistinct, inputType, outputType, filterArg));
-                    } else if (inputTypeClass == Long.class) {
-                        aggList.add(new Long2DecimalSum(index, isDistinct, inputType, outputType, filterArg));
-                    } else {
-                        aggList.add(new Sum(index, isDistinct, outputType, filterArg));
-                    }
-                } else if (outputTypeClass == Double.class && inputTypeClass == Double.class) {
-                    aggList.add(new Double2DoubleSum(index, isDistinct, inputType, outputType, filterArg));
-                } else if (outputTypeClass == Double.class && inputTypeClass == Float.class) {
-                    aggList.add(new Float2DoubleSum(index, isDistinct, inputType, outputType, filterArg));
-                } else {
-                    aggList.add(new Sum(index, isDistinct, outputType, filterArg));
-                }
+                aggList.add(new SumV2(index, isDistinct, memoryAllocator, filterArg));
                 break;
             }
             case SUM0: {
-                if (inputTypeClass == Long.class && outputTypeClass == Long.class) {
-                    aggList.add(new Long2LongSum0(index, isDistinct, inputType, outputType, filterArg));
-                } else {
-                    aggList.add(new Sum0(index, isDistinct, outputType, filterArg));
-                }
+                aggList.add(new Sum0(index, isDistinct, memoryAllocator, filterArg));
                 break;
             }
             case COUNT: {
                 int[] countIdx = call.getArgList().isEmpty() ? ArrayUtils.EMPTY_INT_ARRAY : Arrays
-                    .stream(call.getArgList().toArray(new Integer[0])).mapToInt(Integer::valueOf).toArray();
-                if (countIdx.length == 0 || (countIdx[0] >= inputTypes.size())) {
-                    aggList.add(new CountRow(new int[0], isDistinct, filterArg));
-                } else {
-                    aggList.add(new Count(countIdx, isDistinct, filterArg));
-                }
+                    .stream(call.getArgList().toArray(new Integer[0]))
+                    .mapToInt(Integer::valueOf)
+                    .toArray();
+                aggList.add(new CountV2(countIdx, isDistinct, memoryAllocator, filterArg));
                 break;
             }
             case SINGLE_VALUE: {
@@ -226,109 +100,23 @@ public abstract class AggregateUtils {
                 break;
             }
             case MAX: {
-                if (inputTypeClass == Byte.class && outputTypeClass == Byte.class) {
-                    aggList.add(new Byte2ByteMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Short.class && outputTypeClass == Short.class) {
-                    aggList.add(new Short2ShortMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Integer.class && outputTypeClass == Integer.class) {
-                    aggList.add(new Int2IntMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Long.class && outputTypeClass == Long.class) {
-                    aggList.add(new Long2LongMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Decimal.class && outputTypeClass == Decimal.class) {
-                    aggList.add(new Decimal2DecimalMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Float.class && outputTypeClass == Float.class) {
-                    aggList.add(new Float2FloatMax(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Double.class && outputTypeClass == Double.class) {
-                    aggList.add(new Double2DoubleMax(index, inputType, outputType, filterArg));
-                } else if ((inputTypeClass == outputTypeClass) && (inputTypeClass == Date.class
-                    || inputTypeClass == Time.class || inputTypeClass == Timestamp.class)) {
-                    aggList.add(new WrapedLong2WarpedLongMax(index, inputType, outputType, filterArg));
-                } else {
-                    aggList.add(new Max(index, inputType, outputType, filterArg));
-                }
+                aggList.add(new MaxV2(index, filterArg));
                 break;
             }
             case MIN: {
-                if (inputTypeClass == Byte.class && outputTypeClass == Byte.class) {
-                    aggList.add(new Byte2ByteMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Short.class && outputTypeClass == Short.class) {
-                    aggList.add(new Short2ShortMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Integer.class && outputTypeClass == Integer.class) {
-                    aggList.add(new Int2IntMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Long.class && outputTypeClass == Long.class) {
-                    aggList.add(new Long2LongMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Decimal.class && outputTypeClass == Decimal.class) {
-                    aggList.add(new Decimal2DecimalMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Float.class && outputTypeClass == Float.class) {
-                    aggList.add(new Float2FloatMin(index, inputType, outputType, filterArg));
-                } else if (inputTypeClass == Double.class && outputTypeClass == Double.class) {
-                    aggList.add(new Double2DoubleMin(index, inputType, outputType, filterArg));
-                } else if ((inputTypeClass == outputTypeClass) && (inputTypeClass == Date.class
-                    || inputTypeClass == Time.class || inputTypeClass == Timestamp.class)) {
-                    aggList.add(new WrapedLong2WarpedLongMin(index, inputType, outputType, filterArg));
-                } else {
-                    aggList.add(new Min(index, inputType, outputType, filterArg));
-                }
+                aggList.add(new MinV2(index, filterArg));
                 break;
             }
             case BIT_OR: {
-                if (outputType == DataTypes.ULongType) {
-                    if (inputTypeClass == Byte.class) {
-                        aggList.add(new Byte2UInt64BitOr(index, inputType, filterArg));
-                    } else if (inputTypeClass == Short.class) {
-                        aggList.add(new Short2UInt64BitOr(index, inputType, filterArg));
-                    } else if (inputTypeClass == Integer.class) {
-                        aggList.add(new Int2UInt64BitOr(index, inputType, filterArg));
-                    } else if (inputTypeClass == Long.class) {
-                        aggList.add(new Long2UInt64BitOr(index, inputType, filterArg));
-                    } else if (inputTypeClass == Decimal.class) {
-                        aggList.add(new Decimal2UInt64BitOr(index, inputType, filterArg));
-                    } else {
-                        aggList.add(new OtherType2UInt64BitOr(index, inputType, filterArg));
-                    }
-                } else {
-                    aggList.add(new BitOr(index, inputType, outputType, filterArg));
-                }
-                break;
-            }
-            case BIT_XOR: {
-                if (outputType == DataTypes.ULongType) {
-                    if (inputTypeClass == Byte.class) {
-                        aggList.add(new Byte2UInt64BitXor(index, inputType, filterArg));
-                    } else if (inputTypeClass == Short.class) {
-                        aggList.add(new Short2UInt64BitXor(index, inputType, filterArg));
-                    } else if (inputTypeClass == Integer.class) {
-                        aggList.add(new Int2UInt64BitXor(index, inputType, filterArg));
-                    } else if (inputTypeClass == Long.class) {
-                        aggList.add(new Long2UInt64BitXor(index, inputType, filterArg));
-                    } else if (inputTypeClass == Decimal.class) {
-                        aggList.add(new Decimal2UInt64BitXor(index, inputType, filterArg));
-                    } else {
-                        aggList.add(new OtherType2UInt64BitXor(index, inputType, filterArg));
-                    }
-                } else {
-                    aggList.add(new BitXor(index, inputType, outputType, filterArg));
-                }
+                aggList.add(new BitOr(index, filterArg));
                 break;
             }
             case BIT_AND: {
-                if (outputType == DataTypes.ULongType) {
-                    if (inputTypeClass == Byte.class) {
-                        aggList.add(new Byte2UInt64BitAnd(index, inputType, filterArg));
-                    } else if (inputTypeClass == Short.class) {
-                        aggList.add(new Short2UInt64BitAnd(index, inputType, filterArg));
-                    } else if (inputTypeClass == Integer.class) {
-                        aggList.add(new Int2UInt64BitAnd(index, inputType, filterArg));
-                    } else if (inputTypeClass == Long.class) {
-                        aggList.add(new Long2UInt64BitAnd(index, inputType, filterArg));
-                    } else if (inputTypeClass == Decimal.class) {
-                        aggList.add(new Decimal2UInt64BitAnd(index, inputType, filterArg));
-                    } else {
-                        aggList.add(new OtherType2UInt64BitAnd(index, inputType, filterArg));
-                    }
-                } else {
-                    aggList.add(new BitAnd(index, inputType, outputType, filterArg));
-                }
+                aggList.add(new BitAnd(index, filterArg));
+                break;
+            }
+            case BIT_XOR: {
+                aggList.add(new BitXor(index, filterArg));
                 break;
             }
             case GROUP_CONCAT: {
@@ -349,87 +137,112 @@ public abstract class AggregateUtils {
                     groupConcatMaxLen,
                     executionContext.getEncoding(),
                     memoryAllocator,
-                    filterArg,
-                    outputType));
+                    filterArg));
                 break;
             }
             case __FIRST_VALUE: {
-                aggList.add(new InternalFirstValue(index, outputType, filterArg, executionContext));
+                aggList.add(new InternalFirstValue(index, filterArg));
+                break;
+            }
+            case ROW_NUMBER: {
+                aggList.add(new RowNumber());
+                break;
+            }
+            case RANK: {
+                aggList.add(new Rank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case DENSE_RANK: {
+                aggList.add(new DenseRank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case PERCENT_RANK: {
+                aggList
+                    .add(new PercentRank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case HYPER_LOGLOG: {
+                aggList.add(
+                    new HyperLoglog(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case PARTIAL_HYPER_LOGLOG: {
+                aggList.add(
+                    new PartialHyperLoglog(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case FINAL_HYPER_LOGLOG: {
+                aggList.add(
+                    new FinalHyperLoglog(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
                 break;
             }
             case CHECK_SUM: {
-                aggList.add(new CheckSumAccumulator(GroupConcat.toIntArray(call.getArgList()), outputType, filterArg,
-                    inputTypes));
+                aggList.add(new CheckSum(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
                 break;
             }
             case CHECK_SUM_MERGE: {
                 aggList.add(
-                    new CheckSumMergeAccumulator(index, outputType, filterArg, inputTypes));
+                    new CheckSumMerge(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case CHECK_SUM_V2: {
+                aggList.add(new CheckSumV2(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case CHECK_SUM_V2_MERGE: {
+                aggList.add(
+                    new CheckSumV2Merge(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case CUME_DIST: {
+                aggList.add(new CumeDist(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg));
+                break;
+            }
+            case FIRST_VALUE: {
+                aggList.add(new FirstValue(index, filterArg));
+                break;
+            }
+            case LAST_VALUE: {
+                aggList.add(new LastValue(index, filterArg));
+                break;
+            }
+            case NTH_VALUE: {
+                WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
+                aggList.add(new NThValue(windowAggregateCall.getArgList().get(0),
+                    windowAggregateCall.getNTHValueOffset(call.getArgList().get(1)), filterArg));
+                break;
+            }
+            case NTILE: {
+                WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
+                aggList.add(new NTile(windowAggregateCall.getNTileOffset(index), filterArg));
+                break;
+            }
+            case LAG:
+            case LEAD: {
+                WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
+                int lagLeadOffset = 1;
+                if (call.getArgList().size() > 1) {
+                    lagLeadOffset = windowAggregateCall.getLagLeadOffset(call.getArgList().get(1));
+                }
+                String defaultValue = null;
+                if (call.getArgList().size() > 2) {
+                    defaultValue = windowAggregateCall.getLagLeadDefaultValue(call.getArgList().get(2));
+                }
+                if (function == SqlKind.LAG) {
+                    aggList.add(new Lag(index, lagLeadOffset,
+                        defaultValue, filterArg));
+                } else {
+                    aggList.add(new Lead(index, lagLeadOffset,
+                        defaultValue, filterArg));
+                }
                 break;
             }
             default:
                 throw new UnsupportedOperationException(
                     "Unsupported agg function to convert:" + function.name());
-
             }
         }
         return aggList;
-    }
-
-    public static Aggregator convertWindowFunction(AggregateCall call) {
-        SqlKind function = call.getAggregation().getKind();
-        int filterArg = call.filterArg;
-        switch (function) {
-        case ROW_NUMBER: {
-            return new RowNumber(filterArg);
-        }
-        case RANK: {
-            return new Rank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
-        }
-        case DENSE_RANK: {
-            return new DenseRank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
-        }
-        case PERCENT_RANK: {
-            return new PercentRank(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
-        } case CUME_DIST: {
-            return new CumeDist(call.getArgList().stream().mapToInt(Integer::valueOf).toArray(), filterArg);
-        }
-        case FIRST_VALUE: {
-            return new FirstValue(call.getArgList().get(0), filterArg);
-        }
-        case LAST_VALUE: {
-            return new LastValue(call.getArgList().get(0), filterArg);
-        }
-        case NTH_VALUE: {
-            WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
-            return new NThValue(windowAggregateCall.getArgList().get(0),
-                windowAggregateCall.getNTHValueOffset(call.getArgList().get(1)), filterArg);
-        }
-        case NTILE: {
-            WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
-            return new NTile(windowAggregateCall.getNTileOffset(call.getArgList().get(0)), filterArg);
-        }
-        case LAG:
-        case LEAD: {
-            WindowAggregateCall windowAggregateCall = (WindowAggregateCall) call;
-            int lagLeadOffset = 1;
-            if (call.getArgList().size() > 1) {
-                lagLeadOffset = windowAggregateCall.getLagLeadOffset(call.getArgList().get(1));
-            }
-            String defaultValue = null;
-            if (call.getArgList().size() > 2) {
-                defaultValue = windowAggregateCall.getLagLeadDefaultValue(call.getArgList().get(2));
-            }
-            if (function == SqlKind.LAG) {
-                return new Lag(call.getArgList().get(0), lagLeadOffset, defaultValue, filterArg);
-            } else {
-                return new Lead(call.getArgList().get(0), lagLeadOffset, defaultValue, filterArg);
-            }
-        }
-        default:
-            throw new UnsupportedOperationException(
-                "Unsupported window function to convert:" + function.name());
-        }
     }
 
     public static int[] convertBitSet(ImmutableBitSet gp) {
@@ -462,8 +275,14 @@ public abstract class AggregateUtils {
     }
 
     public static int estimateHashTableSize(int expectedOutputRowCount, ExecutionContext context) {
-        int maxHashTableSize =
-            MAX_HASH_TABLE_SIZE * context.getParamManager().getInt(ConnectionParams.AGG_MAX_HASH_TABLE_FACTOR);
+
+        int maxHashTableSize;
+        int hashTableFactor = context.getParamManager().getInt(ConnectionParams.AGG_MAX_HASH_TABLE_FACTOR);
+        if (hashTableFactor > 1) {
+            maxHashTableSize = MAX_HASH_TABLE_SIZE * hashTableFactor;
+        } else {
+            maxHashTableSize = MAX_HASH_TABLE_SIZE * MemoryManager.getInstance().getAggHashTableFactor();
+        }
         int minHashTableSize =
             MIN_HASH_TABLE_SIZE / context.getParamManager().getInt(ConnectionParams.AGG_MIN_HASH_TABLE_FACTOR);
         if (expectedOutputRowCount > maxHashTableSize) {
@@ -472,9 +291,5 @@ public abstract class AggregateUtils {
             expectedOutputRowCount = minHashTableSize;
         }
         return expectedOutputRowCount;
-    }
-    public static boolean supportSpill(Aggregator aggregator) {
-        return !(aggregator instanceof Avg) && !(aggregator instanceof SpecificType2DecimalAvg)
-            && !(aggregator instanceof SpecificType2DoubleAvgV2) && !(aggregator instanceof GroupConcat);
     }
 }

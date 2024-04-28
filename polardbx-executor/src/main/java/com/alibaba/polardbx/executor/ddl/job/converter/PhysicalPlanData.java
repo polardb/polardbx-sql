@@ -19,7 +19,8 @@ package com.alibaba.polardbx.executor.ddl.job.converter;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.gms.locality.LocalityDesc;
 import com.alibaba.polardbx.gms.metadb.table.TablesExtRecord;
-import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
+import com.alibaba.polardbx.gms.lbac.LBACSecurityEntity;
+import com.alibaba.polardbx.gms.tablegroup.TableGroupDetailConfig;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.AlterTablePreparedData;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.partition.pruning.PhysicalPartitionInfo;
@@ -70,7 +71,7 @@ public class PhysicalPlanData {
     private String createTablePhysicalSql;
 
     private PartitionInfo partitionInfo;
-    private TableGroupConfig tableGroupConfig;
+    private TableGroupDetailConfig tableGroupConfig;
 
     private boolean truncatePartition;
 
@@ -79,6 +80,11 @@ public class PhysicalPlanData {
     private AlterTablePreparedData alterTablePreparedData;
 
     private boolean flashbackRename = false;
+
+    private boolean renamePhyTable = false;
+
+    private LBACSecurityEntity tableESA;
+    private List<LBACSecurityEntity> colEsaList;
 
     @Override
     public String toString() {
@@ -114,6 +120,9 @@ public class PhysicalPlanData {
         clone.truncatePartition = this.truncatePartition;
         clone.localityDesc = this.localityDesc;
         clone.alterTablePreparedData = this.alterTablePreparedData;
+        clone.renamePhyTable = this.renamePhyTable;
+        clone.tableESA = this.tableESA;
+        clone.colEsaList = colEsaList == null ? null : new ArrayList<>(colEsaList);
         return clone;
     }
 

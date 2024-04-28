@@ -23,7 +23,7 @@ single_t1_jyc,CREATE TABLE `single_t1_jyc` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 select * from single_t1_jyc order by id;
 id,name
 1,Tom
@@ -76,7 +76,7 @@ brd_tbl_jyc,CREATE TABLE `brd_tbl_jyc` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT BY GROUP,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8  broadcast
+) ENGINE = InnoDB DEFAULT CHARSET = utf8  broadcast
 select * from brd_tbl_jyc order by id;
 id,name
 1,Tom
@@ -89,7 +89,7 @@ brd_t1_jyc,CREATE TABLE `brd_t1_jyc` (
 	`id` bigint(20) NOT NULL AUTO_INCREMENT BY GROUP,
 	`name` varchar(30) DEFAULT NULL,
 	PRIMARY KEY (`id`)
-) ENGINE = InnoDB AUTO_INCREMENT = 9 DEFAULT CHARSET = utf8  broadcast
+) ENGINE = InnoDB DEFAULT CHARSET = utf8  broadcast
 select * from brd_t1_jyc order by id;
 id,name
 1,Tom
@@ -101,7 +101,7 @@ Table,Create Table
 single_t2_jyc,CREATE TABLE `single_t2_jyc` (
 	`id` bigint(20) NOT NULL COMMENT 'select key',
 	`name` varchar(30) DEFAULT NULL COMMENT 'select key'
-) ENGINE = InnoDB AUTO_INCREMENT = 100004 DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
 create table t2_jyc(test_varchar varchar(255) character set utf8, test_2 varchar(255) character set utf8mb4);
 show create table t2_jyc;
 Table,Create Table
@@ -123,3 +123,22 @@ t4_jyc,CREATE TABLE `t4_jyc` (
 	`test_2` varchar(8) CHARACTER SET utf8 DEFAULT NULL,
 	`test_varchar` varchar(255) CHARACTER SET utf8 DEFAULT NULL COMMENT 'select key'
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+CREATE TABLE tv1 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v;
+select * from tv1 order by column_0;
+column_0,column_1,column_2
+1,3,5
+2,4,6
+CREATE TABLE tv2 SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv2 order by x;
+x,y,z
+1,3,5
+2,4,6
+CREATE TABLE tv3 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6)) AS v(x,y,z);
+select * from tv3 order by x;
+a,b,c,x,y,z
+null,null,null,1,3,5
+null,null,null,2,4,6
+CREATE TABLE tv4 (a INT, b INT, c INT)  SELECT * FROM (VALUES ROW(1,3,5), ROW(2,4,6) order by column_1 desc limit 1) AS v(x,y,z);
+select * from tv4 order by x;
+a,b,c,x,y,z
+null,null,null,2,4,6

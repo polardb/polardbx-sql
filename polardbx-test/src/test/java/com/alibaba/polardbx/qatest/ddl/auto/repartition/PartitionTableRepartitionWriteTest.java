@@ -131,11 +131,12 @@ public class PartitionTableRepartitionWriteTest extends PartitionTableRepartitio
         trace = getTrace(tddlConnection);
         Assert.assertThat(trace.size(), is(2));
 
-        //预期：select + delete + insert
         sql = MessageFormat
             .format("INSERT IGNORE INTO {0} (id, c_int_32, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) \n"
                 + "VALUES (232, 3, now(), now(), now(), now())", primaryTableName);
         executeDml(dmlHintStr + sql);
+
+        //预期：select + delete + replace
         sql = MessageFormat
             .format("REPLACE INTO {0} (id, c_int_32, c_timestamp, c_timestamp_1, c_timestamp_3, c_timestamp_6) \n"
                 + "VALUES (232, 3, now(), now(), now(), now())", primaryTableName);

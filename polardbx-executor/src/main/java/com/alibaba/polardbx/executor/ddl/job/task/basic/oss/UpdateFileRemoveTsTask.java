@@ -41,7 +41,8 @@ public class UpdateFileRemoveTsTask extends BaseGmsTask {
     private Long ts;
 
     @JSONCreator
-    public UpdateFileRemoveTsTask(String engine, String schemaName, String logicalTableName, List<String> files, Long ts) {
+    public UpdateFileRemoveTsTask(String engine, String schemaName, String logicalTableName, List<String> files,
+                                  Long ts) {
         super(schemaName, logicalTableName);
         this.engine = engine;
         this.files = files;
@@ -59,7 +60,8 @@ public class UpdateFileRemoveTsTask extends BaseGmsTask {
         fileStorageMetaStore.setConnection(metaDbConnection);
 
         if (files != null && !files.isEmpty()) {
-            List<FilesRecord> filesRecords = tableInfoManager.queryFilesByLogicalSchemaTable(schemaName, logicalTableName);
+            List<FilesRecord> filesRecords =
+                tableInfoManager.queryFilesByLogicalSchemaTable(schemaName, logicalTableName);
             for (FilesRecord filesRecord : filesRecords) {
                 if (files.contains(filesRecord.getFileName())) {
                     if (ts == null) {

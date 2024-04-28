@@ -16,6 +16,7 @@
 
 package com.alibaba.polardbx.optimizer.view;
 
+import com.google.common.collect.Lists;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelInput;
@@ -43,35 +44,55 @@ public class InformationSchemaArchive extends VirtualView {
         List<RelDataTypeFieldImpl> columns = new LinkedList<>();
         int index = 0;
         // archive-source mapping info
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_TABLE_SCHEMA", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_TABLE_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_TABLE_SCHEMA", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_TABLE_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_TABLE_SCHEMA", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_TABLE_NAME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_TABLE_SCHEMA", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_TABLE_NAME", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         // local partition info
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_INTERVAL_COUNT", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_INTERVAL_UNIT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_EXPIRE_AFTER", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_PREALLOCATE", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_PIVOT_DATE", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_INTERVAL_COUNT", index++,
+            typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_INTERVAL_UNIT", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_EXPIRE_AFTER", index++,
+            typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_PREALLOCATE", index++,
+            typeFactory.createSqlType(SqlTypeName.BIGINT)));
+        columns.add(new RelDataTypeFieldImpl("LOCAL_PARTITION_PIVOT_DATE", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         // schedule info
         columns.add(new RelDataTypeFieldImpl("SCHEDULE_ID", index++, typeFactory.createSqlType(SqlTypeName.BIGINT)));
-        columns.add(new RelDataTypeFieldImpl("SCHEDULE_STATUS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SCHEDULE_STATUS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("SCHEDULE_EXPR", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SCHEDULE_COMMENT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("SCHEDULE_TIME_ZONE", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("LAST_FIRE_TIME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("NEXT_FIRE_TIME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SCHEDULE_COMMENT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("SCHEDULE_TIME_ZONE", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("LAST_FIRE_TIME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("NEXT_FIRE_TIME", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         columns.add(new RelDataTypeFieldImpl("NEXT_EVENT", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
 
         // archive execution info
-        columns.add(new RelDataTypeFieldImpl("LAST_SUCCESS_ARCHIVE_TIME", index++, typeFactory.createSqlType(SqlTypeName.TIMESTAMP)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_STATUS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_PROGRESS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_JOB_PROGRESS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_CURRENT_TASK", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
-        columns.add(new RelDataTypeFieldImpl("ARCHIVE_CURRENT_TASK_PROGRESS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("LAST_SUCCESS_ARCHIVE_TIME", index++,
+            typeFactory.createSqlType(SqlTypeName.TIMESTAMP)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_STATUS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_PROGRESS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_JOB_PROGRESS", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(
+            new RelDataTypeFieldImpl("ARCHIVE_CURRENT_TASK", index++, typeFactory.createSqlType(SqlTypeName.VARCHAR)));
+        columns.add(new RelDataTypeFieldImpl("ARCHIVE_CURRENT_TASK_PROGRESS", index++,
+            typeFactory.createSqlType(SqlTypeName.VARCHAR)));
         return typeFactory.createStructType(columns);
     }
 
@@ -81,11 +102,22 @@ public class InformationSchemaArchive extends VirtualView {
         return i == getTableSchemaIndex() || i == getTableNameIndex();
     }
 
-    public int getTableSchemaIndex() {
+    private static final List<Integer> INDEXABLE_COLUMNS;
+
+    static {
+        INDEXABLE_COLUMNS = Lists.newArrayList(getTableSchemaIndex(), getTableNameIndex());
+    }
+
+    @Override
+    List<Integer> indexableColumnList() {
+        return INDEXABLE_COLUMNS;
+    }
+
+    static public int getTableSchemaIndex() {
         return 0;
     }
 
-    public int getTableNameIndex() {
+    static public int getTableNameIndex() {
         return 1;
     }
 }

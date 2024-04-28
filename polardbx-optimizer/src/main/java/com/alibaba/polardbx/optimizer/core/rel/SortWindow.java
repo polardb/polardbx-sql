@@ -70,17 +70,14 @@ public class SortWindow extends Window implements PhysicalNode {
             }).collect(Collectors.toList()),
             relInput.getRowType("rowType"),
             relInput.getWindowGroups());
-        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE);
+        this.traitSet = this.traitSet.replace(DrdsConvention.INSTANCE).replace(relInput.getPartitionWise());
     }
 
     public static SortWindow create(RelTraitSet traitSet, final RelNode input, List<RexLiteral> constants,
                                     List<Window.Group> groups,
-                                    RelDataType rowType,
-                                    RelOptCost fixedCost) {
+                                    RelDataType rowType) {
         final RelOptCluster cluster = input.getCluster();
-        SortWindow overWindow = new SortWindow(cluster, traitSet, input, constants, groups, rowType);
-        overWindow.setFixedCost(fixedCost);
-        return overWindow;
+        return new SortWindow(cluster, traitSet, input, constants, groups, rowType);
     }
 
     //~ Methods ----------------------------------------------------------------
@@ -92,7 +89,6 @@ public class SortWindow extends Window implements PhysicalNode {
             constants,
             groups,
             rowType);
-        overWindow.setFixedCost(getFixedCost());
         return overWindow;
     }
 
@@ -126,15 +122,13 @@ public class SortWindow extends Window implements PhysicalNode {
         }
         pw.item("Reference Windows", windowInfo.toString().substring(0, windowInfo.length() - 1));
         pw.itemIf("constants", constants.toString(), constants != null && constants.size() > 0);
+        pw.itemIf("partition", traitSet.getPartitionWise(), !traitSet.getPartitionWise().isTop());
         return pw;
     }
 
     @Override
     public RelOptCost computeSelfCost(RelOptPlanner planner,
                                       RelMetadataQuery mq) {
-        if (getFixedCost() != null) {
-            return getFixedCost();
-        }
         double rowCount = mq.getRowCount(this.input);
         if (Double.isInfinite(rowCount)) {
             return planner.getCostFactory().makeHugeCost();
@@ -161,7 +155,9 @@ public class SortWindow extends Window implements PhysicalNode {
             .item("keys", groups.get(0).keys)
             .item("constants", constants)
             .item("rowType", rowType)
-            .item("groups", groups);
+            .item("groups", groups)
+            .itemIf("partitionWise", this.traitSet.getPartitionWise(), !this.traitSet.getPartitionWise().isTop());
+
         return relWriter;
     }
 

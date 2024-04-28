@@ -16,10 +16,9 @@
 
 package com.alibaba.polardbx.executor.balancer.solver;
 
-import org.apache.calcite.util.Pair;
-
-import com.alibaba.polardbx.executor.balancer.solver.SolverUtils.PartitionSet;
 import com.alibaba.polardbx.executor.balancer.solver.SolverUtils.PartitionCluster;
+import com.alibaba.polardbx.executor.balancer.solver.SolverUtils.PartitionSet;
+import org.apache.calcite.util.Pair;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -32,7 +31,6 @@ import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class GreedyModel {
     public Logger logger = Logger.getLogger(String.valueOf(getClass()));

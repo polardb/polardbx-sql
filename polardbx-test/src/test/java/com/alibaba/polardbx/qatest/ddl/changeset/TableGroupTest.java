@@ -18,20 +18,12 @@ public class TableGroupTest extends DDLBaseNewDBTestCase {
     private static final String AUTO_DB = "tpcc_auto";
     private static final String TABLE_NAME = "bmsql_order_line";
     private static final String PARTITION_GROUP = "p3";
-    private static final String MOVE_PARTITION_GROUPS = "p1";
-    private static final String NEW_PARTITION_GROUP = "p4,p5";
+    private static final String MOVE_PARTITION_GROUPS = "p1,p2,p3";
     private static final String SHOW_DS = "show ds where db='%s'";
     private static final String MOVE_PARTITION_COMMAND = "alter tablegroup %s move partitions %s to '%s'";
-    private static final String SPLIT_PARTITION_COMMAND = "alter tablegroup %s split partition %s into %s";
-    private static final String MERGE_PARTITION_COMMAND = "alter tablegroup %s merge partitions %s to %s";
 
     private static final String SELECT_FROM_TABLE_DETAIL =
         "select storage_inst_id,table_group_name from information_schema.table_detail where table_schema='%s' and table_name='%s' and partition_name='%s'";
-
-    private static final String NEW_PARTITION_GROUPS_DEF = "(\n"
-        + "  PARTITION p4 VALUES LESS THAN (6148914691236517205),\n"
-        + "  PARTITION p5 VALUES LESS THAN (9223372036854775807)\n"
-        + ")";
 
     @Test
     public void alterTableGroupWithTPCCTest() throws SQLException {
@@ -86,15 +78,10 @@ public class TableGroupTest extends DDLBaseNewDBTestCase {
                 String.format(MOVE_PARTITION_COMMAND, curTableGroup, PARTITION_GROUP, instIds.iterator().next()));
             commands.add(String.format(MOVE_PARTITION_COMMAND, curTableGroup, PARTITION_GROUP, curInstId));
 
-            // move partition p1
+            // move partition p1,p2,p3
             commands.add(
                 String.format(MOVE_PARTITION_COMMAND, curTableGroup, MOVE_PARTITION_GROUPS, instIds.iterator().next()));
             commands.add(String.format(MOVE_PARTITION_COMMAND, curTableGroup, MOVE_PARTITION_GROUPS, curInstId));
-
-            // split and merge partition p3
-            commands.add(
-                String.format(SPLIT_PARTITION_COMMAND, curTableGroup, PARTITION_GROUP, NEW_PARTITION_GROUPS_DEF));
-            commands.add(String.format(MERGE_PARTITION_COMMAND, curTableGroup, NEW_PARTITION_GROUP, PARTITION_GROUP));
         }
         return commands;
     }

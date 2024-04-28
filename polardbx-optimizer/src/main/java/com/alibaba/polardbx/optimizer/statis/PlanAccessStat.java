@@ -253,9 +253,19 @@ public class PlanAccessStat {
         List<List<PlanJoinClosureStatInfo>> closureStatsOfAllCn = new ArrayList<>();
         for (int i = 0; i < joinClosureListOfCn.size(); i++) {
             List<Map<String, Object>> closureRecInfosOfOneCn = joinClosureListOfCn.get(i);
+            if (closureRecInfosOfOneCn == null || closureRecInfosOfOneCn.isEmpty()) {
+                /**
+                 * Maybe some cn exec sync action failed or some cn is not init
+                 */
+                continue;
+            }
             List<PlanJoinClosureStatInfo> closureStatsOfOneCn = new ArrayList<>();
             for (int j = 0; j < closureRecInfosOfOneCn.size(); j++) {
                 Map<String, Object> closeRecInfo = closureRecInfosOfOneCn.get(j);
+                if (closeRecInfo == null) {
+                    continue;
+                }
+
                 String closureKey = (String) closeRecInfo.get("JOIN_CLOSURE_KEY");
                 Long accessCount = (Long) closeRecInfo.get("ACCESS_COUNT");
 

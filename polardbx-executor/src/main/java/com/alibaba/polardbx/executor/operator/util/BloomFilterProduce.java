@@ -16,19 +16,19 @@
 
 package com.alibaba.polardbx.executor.operator.util;
 
-import com.alibaba.polardbx.common.utils.bloomfilter.BitSet;
-import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
-import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
-import com.google.common.net.HttpHeaders;
-import com.google.common.net.MediaType;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.bloomfilter.BitSet;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
+import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.common.utils.hash.IStreamingHasher;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.executor.chunk.Chunk;
 import com.alibaba.polardbx.executor.mpp.deploy.ServiceProvider;
 import com.alibaba.polardbx.executor.mpp.execution.QueryManager;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilter;
-import com.alibaba.polardbx.common.utils.bloomfilter.BloomFilterInfo;
+import com.alibaba.polardbx.executor.operator.util.minmaxfilter.MinMaxFilter;
+import com.google.common.net.HttpHeaders;
+import com.google.common.net.MediaType;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpUriBuilder;
 import io.airlift.http.client.JsonBodyGenerator;
@@ -78,7 +78,8 @@ public class BloomFilterProduce {
     }
 
     public static BloomFilterProduce create(List<List<Integer>> bloomfilterId, List<List<Integer>> hashKeys,
-                                            List<BloomFilter> bloomFilters, List<List<MinMaxFilter>> minMaxFilters, HttpClient client, URI uri,
+                                            List<BloomFilter> bloomFilters, List<List<MinMaxFilter>> minMaxFilters,
+                                            HttpClient client, URI uri,
                                             String query) {
         if (bloomFilters.isEmpty()) {
             throw new IllegalArgumentException("Empty BloomFilterList in BloomFilterProduce");
@@ -125,7 +126,8 @@ public class BloomFilterProduce {
                 }
                 bloomFilterInfos.add(
                     new BloomFilterInfo(id, bloomFilters.get(i).getBitmap(), bloomFilters.get(i).getNumHashFunctions(),
-                        bloomFilters.get(i).getHashMethodInfo(), minMaxFilters.get(i).stream().map(x -> x.toMinMaxFilterInfo()).collect(Collectors.toList())));
+                        bloomFilters.get(i).getHashMethodInfo(),
+                        minMaxFilters.get(i).stream().map(x -> x.toMinMaxFilterInfo()).collect(Collectors.toList())));
             }
         }
         return bloomFilterInfos;

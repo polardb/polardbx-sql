@@ -43,7 +43,7 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
     private static String partitionTableWithTg = "t_p_tg";
 
     private static final String TABLE_TEMPLATE = "create table %s(pk int(11), id int(11) default null,"
-        + " ex decimal(11,3) default null, attr varchar(128) default null, primary key(pk), index(id)) %s";
+        + " ex decimal(11,3) default null, attr varchar(128) default null, primary key(pk), index id_idx(id)) %s";
 
     private static final String INSERT = "insert into %s(pk, id, ex, attr) values (1,2,1.3,'test'),(30,20,2.4,'try')";
 
@@ -54,6 +54,8 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
     private static final String SUBQUERY = "select * from %s a where a.id not in "
         + "(select c.pk from %s b join %s c on b.id = c.id where a.pk < b.pk)";
     private static final String POINT = "select * from %s a where id < 10";
+
+    private static final String FORCE_INDEX = "select pk from %s force index(id_idx) a";
 
     private static final String VIEW_TEMPLATE =
         "create view %s as select a.pk, b.id, c.ex from %s a join %s b on a.pk = b.pk join %s c on a.id = c.id";
@@ -105,24 +107,28 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
 
         // point sql
         sql = String.format(POINT, singleTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, singleTable);
         sql = String.format(POINT, broadcastTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, broadcastTable);
         sql = String.format(POINT, partitionTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, partitionTable);
         checkIgnoreString(getTddlConnection1(), sql);
+
+        // force index sql
+        sql = String.format(FORCE_INDEX, partitionTable);
+        checkCommon(getTddlConnection1(), sql, partitionTable);
 
         // join sql
         sql = String.format(JOIN, singleTable, broadcastTable, partitionTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, broadcastTable);
         sql = String.format(JOIN, singleTable, broadcastTable, tddlDatabase2 + "." + partitionTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, partitionTable);
 
         // subquery sql
         sql = String.format(SUBQUERY, broadcastTable, partitionTable, partitionTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, partitionTable);
         sql = String.format(JOIN, singleTable, broadcastTable, tddlDatabase2 + "." + partitionTable);
-        checkCommon(getTddlConnection1(), sql);
+        checkCommon(getTddlConnection1(), sql, partitionTable);
     }
 
     @Test
@@ -136,15 +142,15 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
             String.format(VIEW_TEMPLATE, view, singleTable, tddlDatabase2 + "." + partitionTable, partitionTable));
         // point sql
         sql = String.format(POINT, tddlDatabase1 + "." + view);
-        checkCommon(getTddlConnection2(), sql);
+        checkCommon(getTddlConnection2(), sql, partitionTable);
 
         // join sql
         sql = String.format(JOIN, singleTable, tddlDatabase1 + "." + view, partitionTable);
-        checkCommon(getTddlConnection2(), sql);
+        checkCommon(getTddlConnection2(), sql, partitionTable);
 
         // subquery sql
         sql = String.format(SUBQUERY, broadcastTable, partitionTable, tddlDatabase1 + "." + view);
-        checkCommon(getTddlConnection2(), sql);
+        checkCommon(getTddlConnection2(), sql, broadcastTable);
     }
 
     @Test
@@ -159,9 +165,9 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
         JdbcUtil.executeSuccess(getTddlConnection2(), result);
     }
 
-    private void checkCommon(Connection conn, String sql) {
+    private void checkCommon(Connection conn, String sql, String content) {
         checkYml(conn, sql);
-        checkSQL(conn, sql);
+        checkSQL(conn, sql, content);
         assertWithMessage("yml文件不长于sql文件").that(getYmlAffectRow(conn, sql))
             .isGreaterThan((getSQLAffectRow(conn, sql)));
     }
@@ -212,9 +218,10 @@ public class IntoOutfileStatisticsTest extends DDLBaseNewDBTestCase {
         }
     }
 
-    private void checkSQL(Connection conn, String targetSql) {
+    private void checkSQL(Connection conn, String targetSql, String content) {
         String result = getSQLResult(conn, targetSql);
         assertWithMessage("缺少reload").that(result).contains("reload statistics");
+        assertWithMessage("缺少reload").that(result).contains(content);
     }
 
     private void checkYml(Connection conn, String targetSql) {

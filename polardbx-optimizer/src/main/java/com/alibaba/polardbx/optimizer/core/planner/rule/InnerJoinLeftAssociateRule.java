@@ -101,6 +101,14 @@ public class InnerJoinLeftAssociateRule extends AbstractInnerJoinLeftAssociateRu
         //               /    \
         //              B      C
 
+        // becomes
+        //
+        //        newTopJoin
+        //        /        \
+        //   newBottomJoin  C
+        //    /    \
+        //   A      B
+
         final int aCount = relA.getRowType().getFieldCount();
         final int bCount = relB.getRowType().getFieldCount();
         final int cCount = relC.getRowType().getFieldCount();

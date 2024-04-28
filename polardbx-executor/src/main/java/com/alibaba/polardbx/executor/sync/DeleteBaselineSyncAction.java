@@ -23,9 +23,9 @@ public class DeleteBaselineSyncAction implements ISyncAction {
 
     private String schemaName;
 
-    private final String parameterSql;
+    private String parameterSql;
 
-    private final Integer planInfoId;
+    private Integer planInfoId;
 
     public DeleteBaselineSyncAction(String schemaName, String parameterSql) {
         this.schemaName = schemaName;
@@ -63,6 +63,14 @@ public class DeleteBaselineSyncAction implements ISyncAction {
 
     public Integer getPlanInfoId() {
         return planInfoId;
+    }
+
+    public void setParameterSql(String parameterSql) {
+        this.parameterSql = parameterSql;
+    }
+
+    public void setPlanInfoId(Integer planInfoId) {
+        this.planInfoId = planInfoId;
     }
 }
 

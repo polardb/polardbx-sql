@@ -17,20 +17,13 @@
 package com.alibaba.polardbx.executor.ddl.job.task.gsi;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
-import com.alibaba.polardbx.executor.ddl.job.builder.DdlPhyPlanBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropGlobalIndexBuilder;
 import com.alibaba.polardbx.executor.ddl.job.builder.gsi.DropPartitionGlobalIndexBuilder;
-import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.BasePhyDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
-import com.alibaba.polardbx.executor.utils.failpoint.FailPoint;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.alibaba.polardbx.optimizer.core.rel.PhyDdlTableOperation;
 import lombok.Getter;
-
-import java.util.List;
-import java.util.Map;
 
 @Getter
 @TaskName(name = "DropPartitionGsiPhyDdlTask")

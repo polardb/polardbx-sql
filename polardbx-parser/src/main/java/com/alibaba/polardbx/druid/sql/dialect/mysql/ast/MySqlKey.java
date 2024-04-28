@@ -18,6 +18,7 @@ package com.alibaba.polardbx.druid.sql.dialect.mysql.ast;
 import com.alibaba.polardbx.druid.DbType;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLIndex;
+import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLTableConstraint;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUnique;
 import com.alibaba.polardbx.druid.sql.ast.statement.SQLUniqueConstraint;
@@ -80,4 +81,21 @@ public class MySqlKey extends SQLUnique implements SQLUniqueConstraint, SQLTable
     public void setKeyBlockSize(SQLExpr x) {
         indexDefinition.getOptions().setKeyBlockSize(x);
     }
+
+    public SQLName getTableGroup() {
+        return this.indexDefinition.getTableGroup();
+    }
+
+    public void setTableGroup(SQLName tableGroup) {
+        this.indexDefinition.setTableGroup(tableGroup);
+    }
+
+    public boolean isWithImplicitTablegroup() {
+        return this.indexDefinition.isWithImplicitTablegroup();
+    }
+
+    public void setWithImplicitTablegroup(boolean withImplicitTablegroup) {
+        this.indexDefinition.setWithImplicitTablegroup(withImplicitTablegroup);
+    }
+
 }

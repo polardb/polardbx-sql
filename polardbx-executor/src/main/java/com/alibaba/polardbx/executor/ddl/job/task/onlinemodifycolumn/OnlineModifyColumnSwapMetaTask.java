@@ -16,16 +16,11 @@
 
 package com.alibaba.polardbx.executor.ddl.job.task.onlinemodifycolumn;
 
-import com.alibaba.polardbx.executor.common.ExecutorContext;
-import com.alibaba.polardbx.executor.ddl.job.meta.GsiMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.meta.TableMetaChanger;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseGmsTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
-import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
-import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
-import com.google.common.collect.ImmutableList;
 import lombok.Getter;
 
 import java.sql.Connection;

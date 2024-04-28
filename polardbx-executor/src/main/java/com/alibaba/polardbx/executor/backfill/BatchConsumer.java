@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.mysql.cj.polarx.protobuf.PolarxPhysicalBackfill;
 
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,16 @@ public interface BatchConsumer {
         throw new UnsupportedOperationException();
     }
 
-    default void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context, List<Map<Integer, ParameterContext>> mockResult) {
+    default void consume(String sourcePhySchema, String sourcePhyTable, Cursor cursor, ExecutionContext context,
+                         List<Map<Integer, ParameterContext>> mockResult) {
+        throw new UnsupportedOperationException();
+    }
+
+    default void consume(Pair<String, String> targetDbAndGroup,
+                         Pair<String, String> targetFileAndDir,
+                         List<Pair<String, Integer>> targetHosts,
+                         Pair<String, String> userInfo,
+                         PolarxPhysicalBackfill.TransferFileDataOperator transferFileData) {
         throw new UnsupportedOperationException();
     }
 }

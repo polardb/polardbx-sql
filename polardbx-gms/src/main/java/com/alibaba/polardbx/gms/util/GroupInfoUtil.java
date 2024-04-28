@@ -16,8 +16,11 @@
 
 package com.alibaba.polardbx.gms.util;
 
+import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.Pair;
+import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
 import org.apache.commons.lang.StringUtils;
 
@@ -50,6 +53,8 @@ public class GroupInfoUtil {
     private static final String GROUP_NAME_POSTFIX_TEMPLATE_FOR_PARTITIONED_TABLES = "pxxxxx_group";
 
     private static final String SINGLE_GROUP_POSTFIX_TEMPLATE = "_single_group";
+
+    public static final String GROUP_NAME_FOR_IMPORTED_DATABASE = "%s_group";
 
     /**
      * xxx_group@xxxx_storage_inst_id
@@ -104,7 +109,16 @@ public class GroupInfoUtil {
     }
 
     public static String buildGroupNameFromPhysicalDb(String physicalDb) {
-        physicalDb = StringUtils.stripEnd(physicalDb, "sS");
+        /**
+         * 修复正常physicalDb的名字后缀带s时，被误strip掉的问题
+         **/
+        String shareStorageMode =
+            MetaDbInstConfigManager.getInstance()
+                .getInstProperty(ConnectionProperties.SHARE_STORAGE_MODE,
+                    ConnectionParams.SHARE_STORAGE_MODE.getDefault());
+        if ("True".equalsIgnoreCase(shareStorageMode)) {
+            physicalDb = StringUtils.stripEnd(physicalDb, "sS");
+        }
         String groupName = physicalDb + "_group";
         return groupName.toUpperCase();
     }

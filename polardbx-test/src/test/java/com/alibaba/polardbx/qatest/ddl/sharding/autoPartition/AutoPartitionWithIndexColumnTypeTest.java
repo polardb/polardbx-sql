@@ -49,16 +49,14 @@ import static org.hamcrest.Matchers.is;
  */
 
 public class AutoPartitionWithIndexColumnTypeTest extends AutoPartitionTestBase {
-    public   String TABLE_NAME = "auto_partition_idx_tb";
-    public   String INDEX_NAME = "ap_index";
-
     private static final String CREATE_TEMPLATE = "CREATE PARTITION TABLE {0} ({1} {2})";
     private static final String INSERT_TEMPLATE = "INSERT INTO {0}({1}) VALUES({2})";
     private static final ImmutableMap<String, List<String>> COLUMN_VALUES = GsiConstant.buildGsiFullTypeTestValues();
-
     private final String indexColumnRaw;
     private final String indexColumn;
     private final String columnDef;
+    public String TABLE_NAME = "auto_partition_idx_tb";
+    public String INDEX_NAME = "ap_index";
 
     public AutoPartitionWithIndexColumnTypeTest(String indexColumn) {
         this.indexColumnRaw = indexColumn;
@@ -85,14 +83,15 @@ public class AutoPartitionWithIndexColumnTypeTest extends AutoPartitionTestBase 
             .filter(c -> !c.contains("_set"))
             .filter(c -> !c.contains("_binary"))
             .filter(c -> !c.contains("_varbinary"))
+            .filter(c -> !c.contains("_bigint_64_un"))
             .map(c -> new String[] {c})
             .collect(Collectors.toList());
     }
 
     @Before
     public void before() {
-        TABLE_NAME = "auto_partition_idx_tb" +  RandomUtils.getStringBetween(1, 10);
-        INDEX_NAME = "ap_index" +  RandomUtils.getStringBetween(1, 10);
+        TABLE_NAME = "auto_partition_idx_tb" + RandomUtils.getStringBetween(1, 10);
+        INDEX_NAME = "ap_index" + RandomUtils.getStringBetween(1, 10);
         dropTableWithGsi(TABLE_NAME, ImmutableList.of(INDEX_NAME));
     }
 

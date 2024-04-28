@@ -21,11 +21,15 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
+import com.alibaba.polardbx.gms.sync.SyncScope;
+import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.group.jdbc.TGroupDataSource;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager.GsiMetaBean;
 
 import javax.sql.DataSource;
 import java.util.EnumSet;
+
 
 /**
  * @author chenmo.cm
@@ -57,9 +61,6 @@ public class GsiManager extends AbstractLifecycle {
         return getGsiMetaManager().getTableAndIndexMeta(schema, primaryOrIndexTableName, statusSet);
     }
 
-    /**
-     * this should only be used in old DDL engine, for new DDL engine, please use CreateGlobalIndexInsertMetaTask instead
-     */
     public GsiMetaManager getGsiMetaManager() {
         DataSource gsiMgrDs = MetaDbDataSource.getInstance().getDataSource();
         return new GsiMetaManager(gsiMgrDs, topologyHandler.getSchemaName());

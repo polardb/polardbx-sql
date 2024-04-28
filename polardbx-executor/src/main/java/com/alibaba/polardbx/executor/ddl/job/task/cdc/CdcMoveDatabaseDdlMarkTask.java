@@ -17,8 +17,8 @@
 package com.alibaba.polardbx.executor.ddl.job.task.cdc;
 
 import com.alibaba.fastjson.annotation.JSONCreator;
+import com.alibaba.polardbx.common.cdc.CdcDdlMarkVisibility;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.common.cdc.DdlVisibility;
 import com.alibaba.polardbx.common.ddl.newengine.DdlType;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseDdlTask;
 import com.alibaba.polardbx.executor.ddl.job.task.util.TaskName;
@@ -63,7 +63,7 @@ public class CdcMoveDatabaseDdlMarkTask extends BaseDdlTask {
         FailPoint.injectRandomSuspendFromHint(executionContext);
         CdcManagerHelper.getInstance()
             .notifyDdlNew(schemaName, "", sqlKind.name(), ddlStmt, DdlType.MOVE_DATABASE,
-                ddlContext.getJobId(), getTaskId(), DdlVisibility.Private,
+                ddlContext.getJobId(), getTaskId(), CdcDdlMarkVisibility.Private,
                 buildExtendParameter(executionContext), false, null);
     }
 }

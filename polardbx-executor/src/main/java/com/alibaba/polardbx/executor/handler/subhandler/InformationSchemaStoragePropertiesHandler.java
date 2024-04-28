@@ -21,6 +21,7 @@ import com.alibaba.polardbx.executor.cursor.impl.ArrayResultCursor;
 import com.alibaba.polardbx.executor.handler.VirtualViewHandler;
 import com.alibaba.polardbx.executor.sync.StoragePropertiesSyncAction;
 import com.alibaba.polardbx.executor.sync.SyncManagerHelper;
+import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.view.InformationSchemaStorageProperties;
 import com.alibaba.polardbx.optimizer.view.VirtualView;
@@ -51,7 +52,8 @@ public class InformationSchemaStoragePropertiesHandler extends BaseVirtualViewSu
     public Cursor handle(VirtualView virtualView, ExecutionContext executionContext, ArrayResultCursor cursor) {
 
         final String schema = executionContext.getSchemaName();
-        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new StoragePropertiesSyncAction(), schema);
+        List<List<Map<String, Object>>> results = SyncManagerHelper.sync(new StoragePropertiesSyncAction(), schema,
+            SyncScope.CURRENT_ONLY);
 
         Map<String, Integer> functionStatus = new HashMap<>();
         for (List<Map<String, Object>> rs : results) {

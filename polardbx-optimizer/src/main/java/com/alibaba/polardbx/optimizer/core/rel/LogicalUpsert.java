@@ -127,7 +127,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
                          List<ColumnMeta> evalRowColMetas, List<RexNode> genColRexNodes,
                          List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
                          List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
-                         boolean pushablePrimaryKeyCheck, boolean isPushableForeignConstraintCheck) {
+                         boolean pushablePrimaryKeyCheck, boolean isPushableForeignConstraintCheck,
+                         boolean modifyForeignKey) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
@@ -137,7 +138,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             unOptimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriters, primaryDeleteWriter,
             gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
             genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
-            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, isPushableForeignConstraintCheck);
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, isPushableForeignConstraintCheck, modifyForeignKey);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.primaryUpsertWriter = primaryUpsertWriter;
@@ -215,7 +216,8 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             getDefaultExprColRexNodes(),
             getDefaultExprEvalFieldsMapping(),
             isPushablePrimaryKeyCheck(),
-            isPushableForeignConstraintCheck());
+            isPushableForeignConstraintCheck(),
+            isModifyForeignKey());
         return newLogicalUpsert;
     }
 
@@ -272,7 +274,7 @@ public class LogicalUpsert extends LogicalInsertIgnore {
             insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
             insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
-            insert.isPushableForeignConstraintCheck());
+            insert.isPushableForeignConstraintCheck(), insert.isModifyForeignKey());
 
         final InsertWriter upsertWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return upsertWriter.getInput(executionContext);

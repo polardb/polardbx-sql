@@ -17,7 +17,6 @@
 package com.alibaba.polardbx.server.response;
 
 import com.alibaba.polardbx.Fields;
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.whatIf.ShardingWhatIf;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -89,29 +88,29 @@ public class ShardingAdvice {
         // write rows
         if (result.getSqls().size() == 0) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(c.getSchema(), c.getCharset()));
-            row.add(StringUtil.encode("No valid sql cache found in current schema!", c.getCharset()));
+            row.add(StringUtil.encode(c.getSchema(), c.getResultSetCharset()));
+            row.add(StringUtil.encode("No valid sql cache found in current schema!", c.getResultSetCharset()));
             for (int i = 0; i < 3; i++) {
-                row.add(StringUtil.encode("", c.getCharset()));
+                row.add(StringUtil.encode("", c.getResultSetCharset()));
             }
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         } else if (summary == null) {
             RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-            row.add(StringUtil.encode(c.getSchema(), c.getCharset()));
-            row.add(StringUtil.encode("No better sharding plan found for current workload!", c.getCharset()));
+            row.add(StringUtil.encode(c.getSchema(), c.getResultSetCharset()));
+            row.add(StringUtil.encode("No better sharding plan found for current workload!", c.getResultSetCharset()));
             for (int i = 0; i < 3; i++) {
-                row.add(StringUtil.encode("", c.getCharset()));
+                row.add(StringUtil.encode("", c.getResultSetCharset()));
             }
             row.packetId = ++tmpPacketId;
             proxy = row.write(proxy);
         } else {
             for (Map.Entry<String, StringBuilder> entry : result.display().entrySet()) {
                 RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-                row.add(StringUtil.encode(entry.getKey(), c.getCharset()));
-                row.add(StringUtil.encode(entry.getValue().toString(), c.getCharset()));
+                row.add(StringUtil.encode(entry.getKey(), c.getResultSetCharset()));
+                row.add(StringUtil.encode(entry.getValue().toString(), c.getResultSetCharset()));
                 for (String info : summary) {
-                    row.add(StringUtil.encode(info, c.getCharset()));
+                    row.add(StringUtil.encode(info, c.getResultSetCharset()));
                 }
                 row.packetId = ++tmpPacketId;
                 proxy = row.write(proxy);

@@ -72,9 +72,9 @@ public class OSSBackFillExtractor extends Extractor {
                                    Map<String, Set<String>> sourcePhyTables,
                                    Engine sourceEngine,
                                    Engine targetEngine) {
-        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism,
-            planSelectWithMax,
-            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, null, null, primaryKeysId);
+        super(schemaName, sourceTableName, targetTableName, batchSize, speedMin, speedLimit, parallelism, false,
+            null, planSelectWithMax,
+            planSelectWithMin, planSelectWithMinAndMax, planSelectMaxPk, null, primaryKeysId);
         this.sourcePhyTables = sourcePhyTables;
         this.sourceEngine = GeneralUtil.coalesce(sourceEngine, Engine.INNODB);
         this.targetEngine = GeneralUtil.coalesce(targetEngine, Engine.INNODB);
@@ -168,7 +168,7 @@ public class OSSBackFillExtractor extends Extractor {
                                                                Cursor extractCursor) {
         final List<Map<Integer, ParameterContext>> result;
         try {
-            result = com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam(extractCursor);
+            result = com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam(extractCursor, false, null);
         } finally {
             extractCursor.close(new ArrayList<>());
         }

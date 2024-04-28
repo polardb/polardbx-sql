@@ -16,6 +16,8 @@
 
 package org.apache.calcite.sql;
 
+import com.alibaba.polardbx.common.ColumnarTableOptions;
+import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
 import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLStatement;
@@ -24,7 +26,6 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlCreateTab
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.MySqlStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.visitor.MySqlOutputVisitor;
 import com.alibaba.polardbx.druid.util.JdbcConstants;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import org.apache.calcite.sql.SqlIndexDefinition.SqlIndexResiding;
 import org.apache.calcite.sql.SqlIndexDefinition.SqlIndexType;
 import org.apache.calcite.sql.SqlWriter.Frame;
@@ -34,10 +35,13 @@ import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.pretty.SqlPrettyWriter;
 import org.apache.calcite.sql.util.SqlString;
 import org.apache.calcite.util.ImmutableNullableList;
+import org.apache.commons.collections.CollectionUtils;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -53,6 +57,10 @@ public class SqlCreateIndex extends SqlCreate {
 
     private final SqlIdentifier originTableName;
     private final SqlIdentifier indexName;
+    /**
+     * Index name without suffix
+     */
+    private final SqlIdentifier originIndexName;
     private final List<SqlIndexColumnName> columns;
     private final SqlIndexConstraintType constraintType;
     private final SqlIndexResiding indexResiding;
@@ -61,29 +69,58 @@ public class SqlCreateIndex extends SqlCreate {
     private final SqlIndexAlgorithmType algorithm;
     private final SqlIndexLockType lock;
     private final List<SqlIndexColumnName> covering;
+    private final List<SqlIndexColumnName> originCovering;
+    private final List<SqlIndexColumnName> clusteredKeys;
     private final SqlNode dbPartitionBy;
     private final SqlNode dbPartitions = null;
     private final SqlNode tbPartitionBy;
     private final SqlNode tbPartitions;
 
     private final SqlNode partitioning;
+    private final SqlNode originPartitioning;
     private final String sourceSql;
+    private final boolean clusteredIndex;
+    private final boolean columnarIndex;
+    private final SqlNode tableGroupName;
+    private final SqlNode engineName;
+    private final List<SqlIndexColumnName> dictColumns;
     //originalSql is the same as what user input, while sourceSql maybe rewrite
     private String originalSql;
     private String primaryTableDefinition;
     private SqlCreateTable primaryTableNode;
-    private final boolean clusteredIndex;
-    private final SqlNode tableGroupName;
+    private final boolean withImplicitTableGroup;
     private boolean visible = true;
 
-    private SqlCreateIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
-                           List<SqlIndexColumnName> columns, SqlIndexConstraintType constraintType,
-                           SqlIndexResiding indexResiding, SqlIndexType indexType, List<SqlIndexOption> options,
-                           SqlIndexAlgorithmType algorithm, SqlIndexLockType lock, List<SqlIndexColumnName> covering,
-                           SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
-                           String sourceSql, boolean clusteredIndex, SqlNode tableGroupName, boolean visible) {
+    private SqlCreateIndex(SqlParserPos pos,
+                           SqlIdentifier indexName,
+                           SqlIdentifier originIndexName,
+                           SqlIdentifier table,
+                           List<SqlIndexColumnName> columns,
+                           SqlIndexConstraintType constraintType,
+                           SqlIndexResiding indexResiding,
+                           SqlIndexType indexType,
+                           List<SqlIndexOption> options,
+                           SqlIndexAlgorithmType algorithm,
+                           SqlIndexLockType lock,
+                           List<SqlIndexColumnName> covering,
+                           List<SqlIndexColumnName> originCovering,
+                           SqlNode dbPartitionBy,
+                           SqlNode tbPartitionBy,
+                           SqlNode tbPartitions,
+                           SqlNode partitioning,
+                           SqlNode originPartitioning,
+                           List<SqlIndexColumnName> clusteredKeys,
+                           String sourceSql,
+                           boolean clusteredIndex,
+                           boolean columnarIndex,
+                           SqlNode tableGroupName,
+                           boolean withImplicitTableGroup,
+                           SqlNode engineName,
+                           List<SqlIndexColumnName> dictColumns,
+                           boolean visible) {
         super(OPERATOR, pos, false, false);
         this.indexName = indexName;
+        this.originIndexName = originIndexName;
         this.name = table;
         this.originTableName = table;
         this.columns = columns;
@@ -94,28 +131,60 @@ public class SqlCreateIndex extends SqlCreate {
         this.algorithm = algorithm;
         this.lock = lock;
         this.covering = covering;
+        this.originCovering = originCovering;
         this.dbPartitionBy = dbPartitionBy;
         this.tbPartitionBy = tbPartitionBy;
         this.tbPartitions = tbPartitions;
         this.partitioning = partitioning;
+        this.originPartitioning = originPartitioning;
+        this.clusteredKeys = clusteredKeys;
         this.sourceSql = sourceSql;
         this.clusteredIndex = clusteredIndex;
+        this.columnarIndex = columnarIndex;
         this.tableGroupName = tableGroupName;
+        this.withImplicitTableGroup = withImplicitTableGroup;
+        this.engineName = engineName;
+        this.dictColumns = dictColumns;
         this.visible = visible;
     }
 
-    public SqlCreateIndex(SqlParserPos pos, boolean replace, boolean ifNotExists, SqlIdentifier originTableName,
-                          SqlIdentifier indexName, List<SqlIndexColumnName> columns,
-                          SqlIndexConstraintType constraintType, SqlIndexResiding indexResiding,
-                          SqlIndexType indexType, List<SqlIndexOption> options, SqlIndexAlgorithmType algorithm,
-                          SqlIndexLockType lock, List<SqlIndexColumnName> covering, SqlNode dbPartitionBy,
-                          SqlNode tbPartitionBy, SqlNode tbPartitions, SqlNode partitioning,
-                          String sourceSql, String primaryTableDefinition,
-                          SqlCreateTable primaryTableNode, boolean clusteredIndex,
-                          SqlNode tableGroupName, boolean visible) {
+    public SqlCreateIndex(SqlParserPos pos,
+                          boolean replace,
+                          boolean ifNotExists,
+                          SqlNode name,
+                          SqlIdentifier originTableName,
+                          SqlIdentifier indexName,
+                          SqlIdentifier originIndexName,
+                          List<SqlIndexColumnName> columns,
+                          SqlIndexConstraintType constraintType,
+                          SqlIndexResiding indexResiding,
+                          SqlIndexType indexType,
+                          List<SqlIndexOption> options,
+                          SqlIndexAlgorithmType algorithm,
+                          SqlIndexLockType lock,
+                          List<SqlIndexColumnName> covering,
+                          List<SqlIndexColumnName> originCovering,
+                          SqlNode dbPartitionBy,
+                          SqlNode tbPartitionBy,
+                          SqlNode tbPartitions,
+                          SqlNode partitioning,
+                          SqlNode originPartitioning,
+                          List<SqlIndexColumnName> clusteredKeys,
+                          String sourceSql,
+                          String primaryTableDefinition,
+                          SqlCreateTable primaryTableNode,
+                          boolean clusteredIndex,
+                          boolean columnarIndex,
+                          SqlNode tableGroupName,
+                          boolean withImplicitTableGroup,
+                          SqlNode engineName,
+                          List<SqlIndexColumnName> dictColumns,
+                          boolean visible) {
         super(OPERATOR, pos, replace, ifNotExists);
+        this.name = name;
         this.originTableName = originTableName;
         this.indexName = indexName;
+        this.originIndexName = originIndexName;
         this.columns = columns;
         this.constraintType = constraintType;
         this.indexResiding = indexResiding;
@@ -124,25 +193,35 @@ public class SqlCreateIndex extends SqlCreate {
         this.algorithm = algorithm;
         this.lock = lock;
         this.covering = covering;
+        this.originCovering = originCovering;
         this.dbPartitionBy = dbPartitionBy;
         this.tbPartitionBy = tbPartitionBy;
         this.tbPartitions = tbPartitions;
+        this.clusteredKeys = clusteredKeys;
         this.sourceSql = sourceSql;
         this.primaryTableDefinition = primaryTableDefinition;
         this.primaryTableNode = primaryTableNode;
         this.clusteredIndex = clusteredIndex;
+        this.columnarIndex = columnarIndex;
         this.partitioning = partitioning;
+        this.originPartitioning = originPartitioning;
         this.tableGroupName = tableGroupName;
+        this.withImplicitTableGroup = withImplicitTableGroup;
+        this.engineName = engineName;
+        this.dictColumns = dictColumns;
         this.visible = visible;
     }
 
     public static SqlCreateIndex createLocalIndex(SqlIdentifier indexName, SqlIdentifier tableName,
                                                   List<SqlIndexColumnName> columns,
+                                                  SqlNode tableGroupName,
+                                                  boolean withImplicitTableGroup,
                                                   SqlIndexConstraintType constraintType, boolean explicit,
                                                   SqlIndexType indexType, List<SqlIndexOption> options,
                                                   SqlIndexAlgorithmType algorithm, SqlIndexLockType lock, String sql,
                                                   SqlParserPos pos) {
         return new SqlCreateIndex(pos,
+            indexName,
             indexName,
             tableName,
             columns,
@@ -157,8 +236,15 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             null,
             null,
+            null,
+            null,
+            null,
             sql,
             false,
+            false,
+            tableGroupName,
+            withImplicitTableGroup,
+            null,
             null,
             true);
     }
@@ -170,8 +256,10 @@ public class SqlCreateIndex extends SqlCreate {
                                                    SqlIndexLockType lock, List<SqlIndexColumnName> covering,
                                                    SqlNode dbPartitionBy, SqlNode tbPartitionBy, SqlNode tbPartitions,
                                                    SqlNode partitioning, String sourceSql, SqlNode tableGroupName,
+                                                   boolean withImplicitTableGroup,
                                                    boolean visible) {
         return new SqlCreateIndex(pos,
+            indexName,
             indexName,
             table,
             columns,
@@ -182,13 +270,20 @@ public class SqlCreateIndex extends SqlCreate {
             algorithm,
             lock,
             covering,
+            covering,
             dbPartitionBy,
             tbPartitionBy,
             tbPartitions,
             partitioning,
+            partitioning,
+            null,
             sourceSql,
             false,
+            false,
             tableGroupName,
+            withImplicitTableGroup,
+            null,
+            null,
             visible);
     }
 
@@ -200,8 +295,10 @@ public class SqlCreateIndex extends SqlCreate {
                                                       SqlNode dbPartitionBy, SqlNode tbPartitionBy,
                                                       SqlNode tbPartitions,
                                                       SqlNode partitioning, String sourceSql,
-                                                      SqlNode tableGroupName, boolean visible) {
+                                                      SqlNode tableGroupName,
+                                                      boolean withImplicitTableGroup, boolean visible) {
         return new SqlCreateIndex(pos,
+            indexName,
             indexName,
             table,
             columns,
@@ -212,14 +309,72 @@ public class SqlCreateIndex extends SqlCreate {
             algorithm,
             lock,
             covering,
+            covering,
             dbPartitionBy,
             tbPartitionBy,
             tbPartitions,
             partitioning,
+            partitioning,
+            null,
             sourceSql,
             true,
+            false,
             tableGroupName,
+            withImplicitTableGroup,
+            null,
+            null,
             visible);
+    }
+
+    public static SqlCreateIndex createColumnarIndex(SqlParserPos pos, SqlIdentifier indexName, SqlIdentifier table,
+                                                     List<SqlIndexColumnName> columns,
+                                                     SqlIndexConstraintType constraintType, SqlIndexType indexType,
+                                                     List<SqlIndexOption> options, SqlIndexAlgorithmType algorithm,
+                                                     SqlIndexLockType lock, List<SqlIndexColumnName> covering,
+                                                     SqlNode dbPartitionBy, SqlNode tbPartitionBy,
+                                                     SqlNode tbPartitions,
+                                                     SqlNode partitioning, List<SqlIndexColumnName> clusteredKeys,
+                                                     String sourceSql,
+                                                     SqlNode tableGroupName,
+                                                     boolean withImplicitTableGroup,
+                                                     SqlNode engineName,
+                                                     List<SqlIndexColumnName> dictKeys,
+                                                     boolean visible) {
+        return new SqlCreateIndex(pos,
+            indexName,
+            indexName,
+            table,
+            columns,
+            constraintType,
+            SqlIndexResiding.GLOBAL,
+            indexType,
+            options,
+            algorithm,
+            lock,
+            covering,
+            covering,
+            dbPartitionBy,
+            tbPartitionBy,
+            tbPartitions,
+            partitioning,
+            partitioning,
+            clusteredKeys,
+            sourceSql,
+            true,
+            true,
+            tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictKeys,
+            visible);
+    }
+
+    public SqlNode getEngineName() {
+        return engineName;
+    }
+
+    public List<SqlIndexColumnName> getDictColumns() {
+        return dictColumns;
     }
 
     @Override
@@ -241,7 +396,7 @@ public class SqlCreateIndex extends SqlCreate {
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-        unparse(writer, leftPrec, rightPrec, this.indexResiding, false);
+        unparse(writer, leftPrec, rightPrec, this.indexResiding, false, false);
     }
 
     @Override
@@ -253,8 +408,13 @@ public class SqlCreateIndex extends SqlCreate {
         return clusteredIndex;
     }
 
+    @Override
+    public boolean createCci() {
+        return columnarIndex;
+    }
+
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec, SqlIndexResiding indexResiding,
-                        boolean withOriginTableName) {
+                        boolean withOriginTableName, boolean withOriginNames) {
         final boolean isGlobal = SqlUtil.isGlobal(indexResiding);
 
         final SqlWriter.Frame frame = writer.startList(SqlWriter.FrameTypeEnum.SELECT, "CREATE", "");
@@ -263,12 +423,22 @@ public class SqlCreateIndex extends SqlCreate {
             SqlUtil.wrapSqlLiteralSymbol(constraintType).unparse(writer, leftPrec, rightPrec);
         }
 
-        if (isGlobal) {
+        if (clusteredIndex) {
+            writer.keyword("CLUSTERED");
+        }
+
+        if (columnarIndex) {
+            writer.keyword("COLUMNAR");
+        } else if (isGlobal) {
             SqlUtil.wrapSqlLiteralSymbol(indexResiding).unparse(writer, leftPrec, rightPrec);
         }
 
         writer.keyword("INDEX");
-        indexName.unparse(writer, leftPrec, rightPrec);
+        if (withOriginNames) {
+            originIndexName.unparse(writer, leftPrec, rightPrec);
+        } else {
+            indexName.unparse(writer, leftPrec, rightPrec);
+        }
 
         if (null != indexType) {
             writer.keyword("USING");
@@ -289,13 +459,25 @@ public class SqlCreateIndex extends SqlCreate {
         }
 
         if (isGlobal) {
-            if (null != covering && !covering.isEmpty()) {
+            final List<SqlIndexColumnName> coveringToShow = withOriginNames ? originCovering : covering;
+            if (null != coveringToShow && !coveringToShow.isEmpty()) {
                 writer.keyword("COVERING");
                 final Frame frame2 = writer.startList(FrameTypeEnum.FUN_CALL, "(", ")");
-                SqlUtil.wrapSqlNodeList(covering).commaList(writer);
+                SqlUtil.wrapSqlNodeList(coveringToShow).commaList(writer);
                 writer.endList(frame2);
             }
+        }
 
+        if (columnarIndex) {
+            if (clusteredKeys != null && !clusteredKeys.isEmpty()) {
+                writer.keyword("CLUSTERED KEY");
+                final Frame frame2 = writer.startList(FrameTypeEnum.FUN_CALL, "(", ")");
+                SqlUtil.wrapSqlNodeList(clusteredKeys).commaList(writer);
+                writer.endList(frame2);
+            }
+        }
+
+        if (isGlobal || columnarIndex) {
             final boolean quoteAllIdentifiers = writer.isQuoteAllIdentifiers();
             if (writer instanceof SqlPrettyWriter) {
                 ((SqlPrettyWriter) writer).setQuoteAllIdentifiers(false);
@@ -316,9 +498,21 @@ public class SqlCreateIndex extends SqlCreate {
                 tbPartitions.unparse(writer, leftPrec, rightPrec);
             }
 
+            final SqlNode partitioningToShow = withOriginNames ? originPartitioning : partitioning;
+            if (null != partitioningToShow) {
+                writer.print(" ");
+                partitioningToShow.unparse(writer, leftPrec, rightPrec);
+            }
+
             if (writer instanceof SqlPrettyWriter) {
                 ((SqlPrettyWriter) writer).setQuoteAllIdentifiers(quoteAllIdentifiers);
             }
+        }
+
+        if (columnarIndex && null != engineName) {
+            writer.keyword("ENGINE");
+            writer.keyword("=");
+            engineName.unparse(writer, leftPrec, rightPrec);
         }
 
         if (null != options) {
@@ -353,6 +547,10 @@ public class SqlCreateIndex extends SqlCreate {
     }
 
     private String prepare() {
+        return prepare(false);
+    }
+
+    private String prepare(boolean withOriginNames) {
         String sqlForExecute = sourceSql;
         if (SqlUtil.isGlobal(indexResiding)) {
             // generate CREATE INDEX for executing on MySQL
@@ -362,7 +560,7 @@ public class SqlCreateIndex extends SqlCreate {
             writer.setIndentation(0);
             final int leftPrec = getOperator().getLeftPrec();
             final int rightPrec = getOperator().getRightPrec();
-            unparse(writer, leftPrec, rightPrec, indexResiding, true);
+            unparse(writer, leftPrec, rightPrec, indexResiding, true, withOriginNames);
             sqlForExecute = writer.toSqlString().getSql();
         }
 
@@ -401,6 +599,10 @@ public class SqlCreateIndex extends SqlCreate {
         return new SqlString(dialect, sql);
     }
 
+    public String toString(boolean withOriginNames) {
+        return prepare(withOriginNames);
+    }
+
     public SqlNode getDbPartitionBy() {
         return dbPartitionBy;
     }
@@ -421,6 +623,10 @@ public class SqlCreateIndex extends SqlCreate {
         return indexName;
     }
 
+    public SqlIdentifier getOriginIndexName() {
+        return originIndexName;
+    }
+
     public List<SqlIndexColumnName> getColumns() {
         return columns;
     }
@@ -429,21 +635,16 @@ public class SqlCreateIndex extends SqlCreate {
         return covering;
     }
 
+    public List<SqlIndexColumnName> getOriginCovering() {
+        return originCovering;
+    }
+
+    public List<SqlIndexColumnName> getClusteredKeys() {
+        return clusteredKeys;
+    }
+
     public SqlNode getTableGroupName() {
         return tableGroupName;
-    }
-
-    public static enum SqlIndexConstraintType {
-        UNIQUE, FULLTEXT, SPATIAL;
-
-    }
-
-    public static enum SqlIndexAlgorithmType {
-        DEFAULT, INPLACE, COPY;
-    }
-
-    public static enum SqlIndexLockType {
-        DEFAULT, NONE, SHARED, EXCLUSIVE;
     }
 
     public String getPrimaryTableDefinition() {
@@ -506,6 +707,46 @@ public class SqlCreateIndex extends SqlCreate {
         return partitioning;
     }
 
+    public SqlNode getOriginPartitioning() {
+        return originPartitioning;
+    }
+
+    @Override
+    public SqlNode clone(SqlParserPos pos) {
+        return new SqlCreateIndex(pos,
+            replace,
+            ifNotExists,
+            name,
+            originTableName,
+            indexName,
+            originIndexName,
+            columns,
+            constraintType,
+            indexResiding,
+            indexType,
+            options,
+            algorithm,
+            lock,
+            covering,
+            originCovering,
+            dbPartitionBy,
+            tbPartitionBy,
+            tbPartitions,
+            partitioning,
+            originPartitioning,
+            clusteredKeys,
+            sourceSql,
+            primaryTableDefinition,
+            primaryTableNode,
+            clusteredIndex,
+            columnarIndex,
+            tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
+            visible);
+    }
+
     public SqlCreateIndex rebuildCovering(Collection<String> coveringColumns) {
         if (GeneralUtil.isEmpty(coveringColumns)) {
             return this;
@@ -518,8 +759,10 @@ public class SqlCreateIndex extends SqlCreate {
         return new SqlCreateIndex(pos,
             replace,
             ifNotExists,
+            name,
             originTableName,
             indexName,
+            originIndexName,
             columns,
             constraintType,
             indexResiding,
@@ -528,21 +771,36 @@ public class SqlCreateIndex extends SqlCreate {
             algorithm,
             lock,
             newCovering,
+            originCovering,
             dbPartitionBy,
             tbPartitionBy,
             tbPartitions,
             partitioning,
+            originPartitioning,
+            clusteredKeys,
             sourceSql,
             primaryTableDefinition,
             primaryTableNode,
             clusteredIndex,
+            columnarIndex,
             tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
             this.visible);
     }
 
-    public SqlCreateIndex rebuildToGsi(SqlIdentifier newName, SqlNode dbpartition, boolean clustered) {
+    /**
+     * Rebuild gsi definition with new index name and full partition definition
+     *
+     * @param newName New index name, with random suffix
+     * @param dbPartition Update with full partition definition, with DBPARTITION BY appended
+     * @return Copied SqlIndexDefinition
+     */
+    public SqlCreateIndex rebuildToGsi(SqlIdentifier newName, SqlNode dbPartition) {
         return new SqlCreateIndex(pos,
             null == newName ? indexName : newName,
+            originIndexName,
             originTableName,
             columns,
             constraintType,
@@ -551,20 +809,35 @@ public class SqlCreateIndex extends SqlCreate {
             options,
             algorithm,
             lock,
-            clustered ? null : covering,
-            null == dbpartition ? dbPartitionBy : dbpartition,
-            null == dbpartition ? tbPartitionBy : null,
-            null == dbpartition ? tbPartitions : null,
+            covering,
+            originCovering,
+            null == dbPartition ? dbPartitionBy : dbPartition,
+            null == dbPartition ? tbPartitionBy : null,
+            null == dbPartition ? tbPartitions : null,
             partitioning,
+            originPartitioning,
+            columnarIndex ? clusteredKeys : null,
             sourceSql,
-            clustered,
+            clusteredIndex,
+            columnarIndex,
             tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
             this.visible);
     }
 
-    public SqlCreateIndex rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition, boolean clustered) {
+    /**
+     * Rebuild gsi definition with new index name and full partition definition
+     *
+     * @param newName New index name, with random suffix
+     * @param newPartition Update with full partition definition, with PARTITION BY/PARTITIONS appended
+     * @return Copied SqlIndexDefinition
+     */
+    public SqlCreateIndex rebuildToGsiNewPartition(SqlIdentifier newName, SqlNode newPartition) {
         return new SqlCreateIndex(pos,
             null == newName ? indexName : newName,
+            originIndexName,
             originTableName,
             columns,
             constraintType,
@@ -573,20 +846,28 @@ public class SqlCreateIndex extends SqlCreate {
             options,
             algorithm,
             lock,
-            clustered ? null : covering,
+            covering,
+            originCovering,
             null == newPartition ? dbPartitionBy : null,
             null == newPartition ? tbPartitionBy : null,
             null == newPartition ? tbPartitions : null,
             null == newPartition ? partitioning : newPartition,
+            originPartitioning,
+            columnarIndex ? clusteredKeys : null,
             sourceSql,
-            clustered,
+            clusteredIndex,
+            columnarIndex,
             tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
             this.visible);
     }
 
     public SqlCreateIndex rebuildToExplicitLocal(SqlIdentifier newName, String sql) {
         return new SqlCreateIndex(pos,
             null == newName ? indexName : newName,
+            originIndexName,
             originTableName,
             columns,
             constraintType,
@@ -600,15 +881,23 @@ public class SqlCreateIndex extends SqlCreate {
             null,
             null,
             null,
+            null,
+            null,
+            null,
             null == sql ? sourceSql : sql,
             false,
+            false,
             tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
             this.visible);
     }
 
     public SqlCreateIndex replaceTableName(SqlIdentifier newTableName) {
         return new SqlCreateIndex(pos,
             indexName,
+            originIndexName,
             null == newTableName ? originTableName : newTableName,
             columns,
             constraintType,
@@ -618,13 +907,81 @@ public class SqlCreateIndex extends SqlCreate {
             algorithm,
             lock,
             covering,
+            originCovering,
             dbPartitionBy,
             tbPartitionBy,
             tbPartitions,
             partitioning,
+            originPartitioning,
+            clusteredKeys,
             sourceSql,
             clusteredIndex,
+            columnarIndex,
             tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
             this.visible);
+    }
+
+    public SqlCreateIndex replaceIndexName(SqlIdentifier newIndexName) {
+        return new SqlCreateIndex(pos,
+            null == newIndexName ? indexName : newIndexName,
+            originIndexName,
+            originTableName,
+            columns,
+            constraintType,
+            indexResiding,
+            indexType,
+            options,
+            algorithm,
+            lock,
+            covering,
+            originCovering,
+            dbPartitionBy,
+            tbPartitionBy,
+            tbPartitions,
+            partitioning,
+            originPartitioning,
+            clusteredKeys,
+            sourceSql,
+            clusteredIndex,
+            columnarIndex,
+            tableGroupName,
+            withImplicitTableGroup,
+            engineName,
+            dictColumns,
+            this.visible);
+    }
+
+    /**
+     * columnar index options
+     */
+    public Map<String, String> getColumnarOptions() {
+        Map<String, String> options = new HashMap<>();
+        if (CollectionUtils.isNotEmpty(dictColumns)) {
+            String columns = dictColumns.stream()
+                    .map(sqlIndexColumnName -> SqlIdentifier.surroundWithBacktick(sqlIndexColumnName.getColumnNameStr()))
+                    .collect(Collectors.joining(","));
+            options.put(ColumnarTableOptions.DICTIONARY_COLUMNS, columns);
+        }
+        return options;
+    }
+
+    public static enum SqlIndexConstraintType {
+        UNIQUE, FULLTEXT, SPATIAL;
+
+    }
+
+    public static enum SqlIndexAlgorithmType {
+        DEFAULT, INPLACE, COPY;
+    }
+
+    public static enum SqlIndexLockType {
+        DEFAULT, NONE, SHARED, EXCLUSIVE;
+    }
+
+    public boolean isWithImplicitTableGroup() {
+        return withImplicitTableGroup;
     }
 }
