@@ -56,7 +56,7 @@ fi
 # for rpm
 if [ "x${RELEASE}" != "x" ];then
   # since 5.4.19, version changes into "5.4.19-${DATE}_${BUILDNUMBER}-SNAPSHOT"
-  ec="echo $version | sed 's/SNAPSHOT/$RELEASE/g'"
+  ec="echo $version | sed 's/_.*-SNAPSHOT//'"
   version=`eval $ec`
 elif [ "x${FW_BRANCH_NAME}" != "x" ]; then
   # for fastwork read from rpm tag build name

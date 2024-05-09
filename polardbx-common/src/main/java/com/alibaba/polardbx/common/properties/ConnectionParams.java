@@ -3455,7 +3455,7 @@ public class ConnectionParams {
         ConnectionProperties.ADVISE_TYPE, null, true);
 
     public static final BooleanConfigParam ENABLE_HLL = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_HLL, false, true);
+        ConnectionProperties.ENABLE_HLL, true, true);
 
     public static final IntConfigParam HLL_PARALLELISM = new IntConfigParam(
         ConnectionProperties.HLL_PARALLELISM,

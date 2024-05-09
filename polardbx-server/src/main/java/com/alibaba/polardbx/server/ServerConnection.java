@@ -58,6 +58,7 @@ import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.TStringUtil;
+import com.alibaba.polardbx.common.utils.logger.Level;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil;
@@ -225,7 +226,7 @@ import static com.alibaba.polardbx.executor.gsi.GsiUtils.vendorErrorIs;
  */
 public final class ServerConnection extends FrontendConnection implements Reschedulable {
 
-    private static final Logger logger = LoggerFactory.getLogger(ServerConnection.class);
+    protected static final Logger logger = LoggerFactory.getLogger(ServerConnection.class);
     private static final Logger io_logger = LoggerFactory.getLogger("net_error");
     private static final Logger cdcLogger = LoggerFactory.getLogger("cdc_log");
     private static final ErrorPacket shutDownError = PacketUtil.getShutdown();
@@ -2089,29 +2090,18 @@ public final class ServerConnection extends FrontendConnection implements Resche
     }
 
     public void handleError(ErrorCode errCode, Throwable t, String sql, boolean fatal) {
-
-        String db = this.schema;
-        if (db == null) {
-            db = "";
-        }
         // 取得配置文件
         SchemaConfig schema = getSchemaConfig();
 
         String message = t.getMessage();
-        Throwable ex;
         if (!ErrorCode.match(message)) {
-            logger.error(t.getMessage(), t);
             if (t instanceof NullPointerException) {
-                ex = new TddlRuntimeException(ERR_SERVER, "unknown NPE");
+                message = "unknown NPE";
                 // NPE (NullPointerException) may not have been handled correctly,
                 // to avoid the exception being swallowed, print the exception stack trace again.
             } else {
-                ex = new TddlRuntimeException(ERR_SERVER, message);
+                message = t.getMessage();
             }
-            logger.error(ex.getMessage(), t);
-            message = ex.getMessage();
-        } else {
-            ex = t;
         }
 
         String sqlState = null;
@@ -2152,35 +2142,8 @@ public final class ServerConnection extends FrontendConnection implements Resche
                 io_logger.info(toString(), t);
             }
         } else {
-            if (ex instanceof EOFException || ex instanceof ClosedChannelException) {
-                if (logger.isInfoEnabled()) {
-                    buildMDC();
-                    logger.info(ex);
-                }
-            } else if (isConnectionReset(ex)) {
-                if (logger.isInfoEnabled()) {
-                    buildMDC();
-                    logger.info(ex);
-                }
-            } else if (isTableNotFount(ex) || isColumnNotFount(ex)) {
-                if (logger.isDebugEnabled()) {
-                    buildMDC();
-                    logger.debug(ex);
-                }
-            } else if (isMySQLIntegrityConstraintViolationException(ex)) {
-                if (logger.isDebugEnabled()) {
-                    buildMDC();
-                    logger.debug(ex);
-                }
-            } else {
-                if (logger.isWarnEnabled()) {
-                    buildMDC();
-                    if (schema != null) {
-                        schema.getDataSource().getStatistics().errorCount++;
-                    }
-                    logger.warn("[ERROR-CODE: " + errCode + "][" + this.traceId + "] SQL: " + sql, ex);
-                }
-            }
+            // use origin exception t to judge log level
+            logError(logger, errCode, sql, t, schema);
         }
 
         switch (errCode) {
@@ -2193,6 +2156,38 @@ public final class ServerConnection extends FrontendConnection implements Resche
             break;
         default:
             close();
+        }
+    }
+
+    protected void logError(Logger logger, ErrorCode errCode, String sql, Throwable ex, SchemaConfig schema) {
+        if (ex instanceof EOFException || ex instanceof ClosedChannelException) {
+            if (logger.isInfoEnabled()) {
+                buildMDC();
+                logger.info(ex);
+            }
+        } else if (isConnectionReset(ex)) {
+            if (logger.isInfoEnabled()) {
+                buildMDC();
+                logger.info(ex);
+            }
+        } else if (isTableNotFount(ex) || isColumnNotFount(ex)) {
+            if (logger.isDebugEnabled()) {
+                buildMDC();
+                logger.debug(ex);
+            }
+        } else if (isMySQLIntegrityConstraintViolationException(ex)) {
+            if (logger.isDebugEnabled()) {
+                buildMDC();
+                logger.debug(ex);
+            }
+        } else {
+            if (logger.isWarnEnabled()) {
+                buildMDC();
+                if (schema != null) {
+                    schema.getDataSource().getStatistics().errorCount++;
+                }
+                logger.warn("[ERROR-CODE: " + errCode + "][" + this.traceId + "] SQL: " + sql, ex);
+            }
         }
     }
 
