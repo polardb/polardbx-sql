@@ -9,7 +9,7 @@
     <artifactId>polardbx</artifactId>
     <packaging>pom</packaging>
     <name>root module for polardbx ${project.version}</name>
-    <version>5.4.19</version>
+    <version>5.4.20-SNAPSHOT</version>
     <url>https://github.com/polardb/polardbx-sql</url>
     <developers>
         <developer>
@@ -286,12 +286,12 @@
             <dependency>
                 <groupId>com.alibaba.polardbx</groupId>
                 <artifactId>polardbx-calcite</artifactId>
-                <version>1.11.0</version>
+                <version>1.11.1-SNAPSHOT</version>
             </dependency>
             <dependency>
                 <groupId>com.alibaba.polardbx</groupId>
                 <artifactId>polardbx-calcite</artifactId>
-                <version>1.11.0</version>
+                <version>1.11.1-SNAPSHOT</version>
                 <classifier>tests</classifier>
                 <scope>test</scope>
             </dependency>
