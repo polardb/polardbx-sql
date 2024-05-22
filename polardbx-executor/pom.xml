@@ -115,15 +115,6 @@
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
         </dependency>
-
-        <dependency>
-            <groupId>${project.groupId}</groupId>
-            <artifactId>polardbx-optimizer</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-            <type>test-jar</type>
-        </dependency>
-
         <dependency>
             <groupId>io.airlift</groupId>
             <artifactId>bootstrap</artifactId>

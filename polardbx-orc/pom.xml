@@ -433,21 +433,6 @@
         <artifactId>reproducible-build-maven-plugin</artifactId>
         <version>0.14</version>
       </plugin>
-
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-javadoc-plugin</artifactId>
-        <configuration>
-          <sourceFileExcludes>
-            <exclude>**/OrcProto.java</exclude>
-          </sourceFileExcludes>
-          <destDir>${project.artifactId}</destDir>
-        </configuration>
-      </plugin>
     </plugins>
   </build>
 </project>

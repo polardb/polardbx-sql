@@ -21,3 +21,4 @@ polardbx-server/logs
 polardbx-server/src/main/resources/*.properties
 polardbx-server/src/main/resources/logback.xml
 target/
+.flattened-pom.xml

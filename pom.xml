@@ -1,14 +1,16 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.sonatype.oss</groupId>
+        <artifactId>oss-parent</artifactId>
+        <version>7</version>
+    </parent>
     <groupId>com.alibaba.polardbx</groupId>
     <artifactId>polardbx</artifactId>
     <packaging>pom</packaging>
     <name>root module for polardbx ${project.version}</name>
     <version>${revision}</version>
-    <url>https://github.com/tddl/tddl</url>
-    <!-- <parent> <groupId>org.sonatype.oss</groupId> <artifactId>oss-parent</artifactId>
-        <version>7</version> </parent> -->
+    <url>https://github.com/polardb/polardbx-sql</url>
     <developers>
         <developer>
             <name>agapple</name>
@@ -46,10 +48,17 @@
         </repository>
     </repositories>
 
+    <scm>
+        <url>git@github.com:polardb/polardbx-sql.git</url>
+        <connection>scm:git:git@github.com:polardb/polardbx-sql.git</connection>
+        <developerConnection>scm:git:git@github.com:polardb/polardbx-sql.git</developerConnection>
+    </scm>
+
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!--maven properties -->
         <maven.test.skip>false</maven.test.skip>
+        <javadoc_skip>false</javadoc_skip>
         <downloadSources>true</downloadSources>
         <!-- compiler settings properties -->
         <java_source_version>1.8</java_source_version>
@@ -204,7 +213,6 @@
         <module>polardbx-parser</module>
         <module>polardbx-orc</module>
         <module>polardbx-orc-tools</module>
-        <!--        <module>tddl-qatest</module>-->
         <module>polardbx-test</module>
     </modules>
 
@@ -280,7 +288,6 @@
                 <artifactId>polardbx-calcite</artifactId>
                 <version>${calcite.version}</version>
             </dependency>
-
             <dependency>
                 <groupId>com.alibaba.polardbx</groupId>
                 <artifactId>polardbx-calcite</artifactId>
@@ -486,8 +493,17 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
-                <version>2.9.1</version>
+                <version>3.2.0</version>
                 <configuration>
+                    <skip>${javadoc_skip}</skip>
+                    <source>11</source> <!-- 指定 Java 源代码版本 -->
+                    <additionalJOptions>
+                        <additionalOption>--add-exports=java.base/sun.nio.ch=ALL-UNNAMED</additionalOption>
+                        <additionalOption>--add-exports=java.base/com.sun.crypto.provider=ALL-UNNAMED</additionalOption>
+                        <additionalOption>--add-exports=jdk.scripting.nashorn/jdk.nashorn.internal.codegen=ALL-UNNAMED</additionalOption>
+                        <additionalOption>--add-exports=java.xml/com.sun.org.apache.xpath.internal.operations=ALL-UNNAMED</additionalOption>
+                    </additionalJOptions>
+                    <doclint>none</doclint>
                     <encoding>${file_encoding}</encoding>
                     <charset>${file_encoding}</charset>
                     <aggregate>true</aggregate>
@@ -632,11 +648,20 @@
             </testResource>
         </testResources>
     </build>
-    <!-- <distributionManagement> <snapshotRepository> <id>sonatype-nexus-snapshots</id>
-        <name>Sonatype Nexus Snapshots</name> <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
-        </snapshotRepository> <repository> <id>sonatype-nexus-staging</id> <name>Nexus
-        Release Repository</name> <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository> </distributionManagement> -->
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>sonatype-nexus-snapshots</id>
+            <name>Sonatype Nexus Snapshots</name>
+            <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
+        </snapshotRepository>
+        <repository>
+            <id>sonatype-nexus-staging</id>
+            <name>Nexus Release Repository</name>
+            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
+    </distributionManagement>
+    <!--
     <distributionManagement>
         <repository>
             <id>releases</id>
@@ -649,4 +674,5 @@
             <url>http://mvnrepo.alibaba-inc.com/mvn/snapshots</url>
         </snapshotRepository>
     </distributionManagement>
+    -->
 </project>

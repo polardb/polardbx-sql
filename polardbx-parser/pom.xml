@@ -14,7 +14,6 @@
     <properties>
         <junit.version>4.12</junit.version>
         <gpg.skip>true</gpg.skip>
-        <javadoc.skip>true</javadoc.skip>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <jdk.version>1.8</jdk.version>
     </properties>
@@ -59,30 +58,6 @@
                     <attach>true</attach>
                 </configuration>
             </plugin>
-
-            <plugin>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <version>2.10.3</version>
-                <executions>
-                    <execution>
-                        <id>attach-javadoc</id>
-                        <goals>
-                            <goal>jar</goal>
-                        </goals>
-                    </execution>
-                </executions>
-                <configuration>
-                    <skip>${javadoc.skip}</skip>
-                    <show>public</show>
-                    <charset>UTF-8</charset>
-                    <encoding>UTF-8</encoding>
-                    <docencoding>UTF-8</docencoding>
-                    <links>
-                        <link>http://docs.oracle.com/javase/6/docs/api</link>
-                    </links>
-                </configuration>
-            </plugin>
-
             <plugin>
                 <artifactId>maven-gpg-plugin</artifactId>
                 <version>1.4</version>
