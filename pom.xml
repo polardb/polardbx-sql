@@ -209,7 +209,7 @@
         <module>polardbx-transaction</module>
         <module>polardbx-executor</module>
         <module>polardbx-server</module>
-        <module>polardbx-rpc</module>
+        <!-- <module>polardbx-rpc</module> -->
         <module>polardbx-parser</module>
         <module>polardbx-orc</module>
         <module>polardbx-orc-tools</module>
