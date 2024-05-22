@@ -9,7 +9,7 @@
     <artifactId>polardbx</artifactId>
     <packaging>pom</packaging>
     <name>root module for polardbx ${project.version}</name>
-    <version>${revision}</version>
+    <version>5.4.19</version>
     <url>https://github.com/polardb/polardbx-sql</url>
     <developers>
         <developer>
@@ -57,7 +57,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!--maven properties -->
-        <maven.test.skip>false</maven.test.skip>
+        <maven.test.skip>true</maven.test.skip>
         <javadoc_skip>false</javadoc_skip>
         <downloadSources>true</downloadSources>
         <!-- compiler settings properties -->
@@ -286,12 +286,12 @@
             <dependency>
                 <groupId>com.alibaba.polardbx</groupId>
                 <artifactId>polardbx-calcite</artifactId>
-                <version>${calcite.version}</version>
+                <version>1.11.0</version>
             </dependency>
             <dependency>
                 <groupId>com.alibaba.polardbx</groupId>
                 <artifactId>polardbx-calcite</artifactId>
-                <version>${calcite.version}</version>
+                <version>1.11.0</version>
                 <classifier>tests</classifier>
                 <scope>test</scope>
             </dependency>

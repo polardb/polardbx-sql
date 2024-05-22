@@ -19,11 +19,11 @@ limitations under the License.
     <parent>
         <artifactId>polardbx</artifactId>
         <groupId>com.alibaba.polardbx</groupId>
-        <version>${revision}</version>
+        <version>5.4.19</version>
     </parent>
     <artifactId>polardbx-calcite</artifactId>
         <packaging>jar</packaging>
-        <version>${calcite.version}</version>
+        <version>1.11.0</version>
         <name>${project.artifactId} module for polardbx ${project.version}</name>
     <description>Core Calcite APIs and engine.</description>
     <properties>
@@ -189,12 +189,12 @@ limitations under the License.
     <dependency>
       <groupId>com.alibaba.polardbx</groupId>
       <artifactId>polardbx-common</artifactId>
-      <version>${parent.version}</version>
+      <version>5.4.19</version>
     </dependency>
     <dependency>
       <groupId>com.alibaba.polardbx</groupId>
       <artifactId>polardbx-rule</artifactId>
-      <version>${parent.version}</version>
+      <version>5.4.19</version>
     </dependency>
   </dependencies>
 
