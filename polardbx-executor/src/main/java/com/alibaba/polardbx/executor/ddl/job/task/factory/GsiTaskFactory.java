@@ -101,6 +101,7 @@ public class GsiTaskFactory {
      */
     public static List<DdlTask> addGlobalIndexTasks(String schemaName,
                                                     String primaryTableName,
+                                                    String oldIndexName,
                                                     String indexName,
                                                     boolean stayAtDeleteOnly,
                                                     boolean stayAtWriteOnly,
@@ -159,9 +160,10 @@ public class GsiTaskFactory {
         if (stayAtWriteOnly) {
             return taskList;
         }
+        String backFillSourceTableName = mirrorCopy ? oldIndexName : primaryTableName;
         taskList.add(
-            new LogicalTableBackFillTask(schemaName, primaryTableName, indexName, virtualColumns, backfillColumnMap,
-                modifyStringColumns, false, mirrorCopy, modifyColumn));
+            new LogicalTableBackFillTask(schemaName, backFillSourceTableName, indexName, virtualColumns,
+                backfillColumnMap, modifyStringColumns, false, mirrorCopy, modifyColumn));
         if (stayAtBackFill) {
             return taskList;
         }

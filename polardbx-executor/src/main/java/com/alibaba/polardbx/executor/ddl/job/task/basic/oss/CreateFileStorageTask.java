@@ -40,6 +40,7 @@ import org.apache.hadoop.fs.FileSystem;
 import java.io.IOException;
 import java.sql.Connection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -49,17 +50,24 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.ABS_URI_SUFFIX_PATTERN;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.AZURE_WASBS_SCHEME;
+import static com.alibaba.polardbx.common.oss.filesystem.Constants.AZURE_WASB_SCHEME;
+
 @Getter
 @TaskName(name = "CreateFileStorageTask")
 public class CreateFileStorageTask extends BaseGmsTask {
     private String engineName;
     private Map<FileStorageInfoKey, String> items;
+    private Map<FileStorageInfoKey.AzureConnectionStringKey, String> azureItems;
 
     @JSONCreator
-    public CreateFileStorageTask(String schemaName, String engineName, Map<FileStorageInfoKey, String> items) {
+    public CreateFileStorageTask(String schemaName, String engineName, Map<FileStorageInfoKey, String> items,
+                                 Map<FileStorageInfoKey.AzureConnectionStringKey, String> azureItems) {
         super(schemaName, null);
         this.engineName = engineName;
         this.items = items;
+        this.azureItems = azureItems;
         onExceptionTryRollback();
     }
 
@@ -76,10 +84,10 @@ public class CreateFileStorageTask extends BaseGmsTask {
         record1.priority = 1;
         record1.regionId = "";
         record1.availableZoneId = "";
-        record1.cachePolicy = CachePolicy.META_AND_DATA_CACHE.getValue();
+        record1.cachePolicy = CachePolicy.DATA_CACHE.getValue();
         record1.deletePolicy = DeletePolicy.MASTER_ONLY.getValue();
         record1.status = 1;
-        String uri = items.get(FileStorageInfoKey.FILE_URI).trim();
+        String uri = items.getOrDefault(FileStorageInfoKey.FILE_URI, "").trim();
         if (!uri.endsWith("/")) {
             uri = uri + "/";
         }
@@ -90,6 +98,23 @@ public class CreateFileStorageTask extends BaseGmsTask {
             record1.internalVpcEndpoint = items.get(FileStorageInfoKey.ENDPOINT);
             record1.accessKeyId = items.get(FileStorageInfoKey.ACCESS_KEY_ID);
             record1.accessKeySecret = PasswdUtil.encrypt(items.get(FileStorageInfoKey.ACCESS_KEY_SECRET));
+        } else if (Engine.S3.name().equalsIgnoreCase(record1.engine)) {
+            record1.accessKeyId = items.get(FileStorageInfoKey.ACCESS_KEY_ID);
+            record1.accessKeySecret = PasswdUtil.encrypt(items.get(FileStorageInfoKey.ACCESS_KEY_SECRET));
+        } else if (Engine.ABS.name().equalsIgnoreCase(record1.engine)) {
+            record1.accessKeyId = azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.AccountName);
+            record1.accessKeySecret =
+                PasswdUtil.encrypt(azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.AccountKey));
+            record1.externalEndpoint = azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.EndpointSuffix);
+            record1.internalClassicEndpoint =
+                azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.EndpointSuffix);
+            record1.internalVpcEndpoint = azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.EndpointSuffix);
+            String endpointsProtocol =
+                azureItems.get(FileStorageInfoKey.AzureConnectionStringKey.DefaultEndpointsProtocol);
+            record1.fileUri =
+                ("https".equalsIgnoreCase(endpointsProtocol) ? AZURE_WASBS_SCHEME : AZURE_WASB_SCHEME) + "://"
+                    + items.get(FileStorageInfoKey.AZURE_CONTAINER_NAME)
+                    + "@" + String.format(ABS_URI_SUFFIX_PATTERN, record1.accessKeyId, record1.externalEndpoint) + "/";
         }
 
         if (fileStorageInfoAccessor.query(Engine.of(engineName)).size() != 0) {

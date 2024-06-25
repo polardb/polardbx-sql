@@ -66,7 +66,8 @@ public class GsiChangeSetLoader extends Loader {
                                  BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
             executeFunc,
-            true);
+            true, null);
+        this.conflictDetection = true;
         this.tableNameMapping = tableNameMapping;
     }
 
@@ -174,7 +175,8 @@ public class GsiChangeSetLoader extends Loader {
             PartitionInfo newPartInfo = tableMeta.getNewPartitionInfo();
             return InsertIndexExecutor
                 .backfillIntoPartitionedTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc,
-                    false, newPartInfo, sourceDbIndex, tableNameMapping.get(phyTableName), this.mirrorCopy);
+                    false, newPartInfo, sourceDbIndex, tableNameMapping.get(phyTableName), this.mirrorCopy, false,
+                    null);
         } else {
             return InsertIndexExecutor
                 .insertIntoTable(null, sqlInsert, tableMeta, sourceDbIndex, tableNameMapping.get(phyTableName),

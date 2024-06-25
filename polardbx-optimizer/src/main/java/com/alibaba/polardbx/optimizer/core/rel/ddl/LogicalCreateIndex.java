@@ -302,14 +302,14 @@ public class LogicalCreateIndex extends LogicalTableOperation {
             // Local indexes on clustered GSIs.
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
-                if (gsiEntry.getValue().clusteredIndex) {
+                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getValue().columnarIndex) {
                     final String clusteredTableName = gsiEntry.getKey();
                     CreateLocalIndexPreparedData preparedData =
                         prepareCreateLocalIndexData(clusteredTableName, indexName, true, onGsi);
                     if (onGsi) {
                         preparedData.setTableVersion(sm.getTable(clusteredTableName).getVersion());
                     }
-                    createLocalIndexPreparedDataList.add(preparedData);
+                    getCreateLocalIndexPreparedDataList().add(preparedData);
                 }
             }
         }

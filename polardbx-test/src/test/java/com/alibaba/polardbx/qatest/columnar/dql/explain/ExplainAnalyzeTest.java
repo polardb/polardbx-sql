@@ -4,16 +4,13 @@ import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.qatest.columnar.dql.ColumnarReadBaseTestCase;
 import com.alibaba.polardbx.qatest.columnar.dql.ColumnarUtils;
-import com.alibaba.polardbx.qatest.data.ExecuteTableName;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import com.alibaba.polardbx.qatest.util.JdbcUtil;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.yaml.snakeyaml.Yaml;
 
@@ -21,6 +18,7 @@ import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -82,6 +80,8 @@ public class ExplainAnalyzeTest extends ColumnarReadBaseTestCase {
                 String createTable = String.format("create table %s like %s.%s", table, srcDb, table);
                 String insertSelect = String.format("insert into %s select * from %s.%s", table, srcDb, table);
                 JdbcUtil.executeSuccess(connection, createTable);
+                dropColumnarIndexIfExists(connection, table);
+
                 JdbcUtil.executeSuccess(connection, insertSelect);
                 ColumnarUtils.createColumnarIndex(connection, table + "_col", table, "pk", "pk", 4);
             }
@@ -98,6 +98,25 @@ public class ExplainAnalyzeTest extends ColumnarReadBaseTestCase {
                         + "StatisticValue:1000", DB_NAME) + "\n";
             JdbcUtil.executeSuccess(connection, String.format("set global STATISTIC_CORRECTIONS=\"%s\";", injectStats));
             Thread.sleep(1500);
+        }
+    }
+
+    private static void dropColumnarIndexIfExists(Connection connection, String table) {
+        try (Statement stmt = connection.createStatement();) {
+            String queryIndexSql = String.format(
+                "select INDEX_NAME from information_schema.columnar_index_status where TABLE_SCHEMA='%s' and TABLE_NAME='%s';",
+                DB_NAME, table);
+            try (ResultSet rs = stmt.executeQuery(queryIndexSql)) {
+                if (!rs.next()) {
+                    // do nothing if there is no columnar index
+                    return;
+                }
+                String indexName = rs.getString(1);
+                JdbcUtil.executeSuccess(connection, String.format("drop index %s on %s;", indexName, table));
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
     }
 

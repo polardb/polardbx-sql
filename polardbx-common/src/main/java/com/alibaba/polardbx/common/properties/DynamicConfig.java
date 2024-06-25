@@ -16,13 +16,23 @@
 
 package com.alibaba.polardbx.common.properties;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson.parser.Feature;
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.constants.IsolationLevel;
 import com.alibaba.polardbx.common.statementsummary.StatementSummaryManager;
 import com.alibaba.polardbx.common.utils.version.InstanceVersion;
+import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.config.ConfigDataMode;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -336,14 +346,8 @@ public class DynamicConfig {
             case ConnectionProperties.ENABLE_TRX_DEBUG_MODE:
                 enableTrxDebugMode = parseValue(value, Boolean.class, false);
                 break;
-            case ConnectionProperties.ENABLE_MQ_CACHE_COST_BY_THREAD:
-                enableMQCacheByThread = parseValue(value, Boolean.class, true);
-                break;
             case ConnectionProperties.INSTANCE_READ_ONLY:
                 instanceReadOnly = parseValue(value, Boolean.class, false);
-                break;
-            case ConnectionProperties.ENABLE_1PC_OPT:
-                enable1PcOpt = parseValue(value, Boolean.class, true);
                 break;
             case ConnectionProperties.MIN_SNAPSHOT_KEEP_TIME:
                 minSnapshotKeepTime = parseValue(value, Integer.class, 5 * 60 * 1000);
@@ -351,6 +355,38 @@ public class DynamicConfig {
             case ConnectionProperties.FORBID_AUTO_COMMIT_TRX:
                 forbidAutoCommitTrx = parseValue(value, Boolean.class, false);
                 break;
+            case ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE:
+                errorCodeMapping = initErrorCodeMapping(value);
+                break;
+            case ConnectionProperties.PRUNING_TIME_WARNING_THRESHOLD:
+                pruningTimeWarningThreshold = parseValue(value, Long.class, 500L);
+                break;
+            case ConnectionProperties.ENABLE_PRUNING_IN:
+                enablePruningIn = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_PRUNING_IN_DML:
+                enablePruningInDml = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_MQ_CACHE_COST_BY_THREAD:
+                enableMQCacheByThread = parseValue(value, Boolean.class, true);
+                break;
+            case ConnectionProperties.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX:
+                enableUseKeyForAllLocalIndex = parseValue(value, Boolean.class, false);
+                break;
+            case TddlConstants.BLACK_LIST_CONF:
+                String blockLists = parseValue(value, String.class, "");
+                List<String> tempBlackList = new ArrayList<>();
+                if (StringUtils.isNotBlank(blockLists)) {
+                    String[] blockListArr = blockLists.split(",");
+                    for (String blockList : blockListArr) {
+                        if (StringUtils.isNotBlank(blockList)) {
+                            tempBlackList.add(blockList.toLowerCase(Locale.ROOT));
+                        }
+                    }
+                }
+                blackListConf = tempBlackList;
+                break;
+
             default:
                 FileConfig.getInstance().loadValue(logger, key, value);
                 break;
@@ -644,7 +680,8 @@ public class DynamicConfig {
     }
 
     private static final String DEFAULT_PASSWORD_CHECK_PATTERN_STR = "^[0-9A-Za-z!@#$%^&*()_+=-]{6,32}$";
-    private static final Pattern DEFAULT_PASSWORD_CHECK_PATTERN = Pattern.compile(DEFAULT_PASSWORD_CHECK_PATTERN_STR);
+    private static final Pattern DEFAULT_PASSWORD_CHECK_PATTERN =
+        Pattern.compile(DEFAULT_PASSWORD_CHECK_PATTERN_STR);
 
     private volatile Pattern passwordCheckPattern = DEFAULT_PASSWORD_CHECK_PATTERN;
 
@@ -881,12 +918,6 @@ public class DynamicConfig {
         return instanceReadOnly;
     }
 
-    private volatile boolean enable1PcOpt = true;
-
-    public boolean isEnable1PcOpt() {
-        return enable1PcOpt;
-    }
-
     // 5 min.
     private volatile long minSnapshotKeepTime = 5 * 60 * 1000;
 
@@ -896,8 +927,57 @@ public class DynamicConfig {
 
     private volatile boolean forbidAutoCommitTrx = false;
 
+    private volatile Map<Integer, Integer> errorCodeMapping = new HashMap<>();
+
     public boolean isForbidAutoCommitTrx() {
         return forbidAutoCommitTrx;
+    }
+
+    public Map<Integer, Integer> getErrorCodeMapping() {
+        return errorCodeMapping;
+    }
+
+    private Map<Integer, Integer> initErrorCodeMapping(String mapping) {
+        if (TStringUtil.isNotBlank(mapping)) {
+            try {
+                return JSON.parseObject(mapping, new TypeReference<Map<Integer, Integer>>() {
+                }, Feature.IgnoreAutoType);
+            } catch (Exception ignored) {
+            }
+        }
+        return new HashMap<>();
+    }
+
+    private boolean enableUseKeyForAllLocalIndex =
+        Boolean.valueOf(ConnectionParams.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX.getDefault());
+
+    public boolean isEnableUseKeyForAllLocalIndex() {
+        return enableUseKeyForAllLocalIndex;
+    }
+
+    // pruning warning threshold in microsecond
+    private volatile long pruningTimeWarningThreshold = 500;
+
+    public long getPruningTimeWarningThreshold() {
+        return pruningTimeWarningThreshold;
+    }
+
+    private volatile boolean enablePruningIn = true;
+
+    private volatile boolean enablePruningInDml = true;
+
+    public boolean isEnablePruningIn() {
+        return enablePruningIn;
+    }
+
+    public boolean isEnablePruningInDml() {
+        return enablePruningInDml;
+    }
+
+    private volatile List<String> blackListConf = new ArrayList<>();
+
+    public List<String> getBlacklistConf() {
+        return blackListConf;
     }
 
     public static <T> T parseValue(String value, Class<T> type, T defaultValue) {

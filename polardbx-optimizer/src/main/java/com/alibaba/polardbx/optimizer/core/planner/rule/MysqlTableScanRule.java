@@ -53,12 +53,14 @@ public class MysqlTableScanRule extends RelOptRule {
             mysqlTableScan = MysqlTableScan
                 .create(logicalTableScan.getCluster(), logicalTableScan.getTable(), logicalFilter.getChildExps(),
                     logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getFlashbackOperator(),
                     logicalTableScan.getPartitions());
         } else {
             LogicalTableScan logicalTableScan = call.rel(0);
             mysqlTableScan = MysqlTableScan
                 .create(logicalTableScan.getCluster(), logicalTableScan.getTable(), ImmutableList.of(),
                     logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getFlashbackOperator(),
                     logicalTableScan.getPartitions());
         }
         call.transformTo(mysqlTableScan);

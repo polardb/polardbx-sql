@@ -1,8 +1,11 @@
 package com.alibaba.polardbx.qatest.NotThreadSafe.ccl;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.polardbx.qatest.ReadBaseTestCase;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import com.alibaba.polardbx.qatest.util.PropertiesUtil;
+import com.clearspring.analytics.util.Lists;
+import com.google.common.collect.Maps;
 import lombok.SneakyThrows;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.junit.After;
@@ -17,6 +20,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -76,7 +82,7 @@ public class CclDalSqlTest extends ReadBaseTestCase {
         try (Statement stmt = tddlConnection.createStatement()) {
             stmt.execute("clear ccl_triggers");
             stmt.execute("clear ccl_rules");
-            stmt.execute("delete from  " + CCL_TEST_TABLE_NAME);
+            stmt.execute(" /*TDDL:FORBID_EXECUTE_DML_ALL=FALSE*/delete from  " + CCL_TEST_TABLE_NAME);
         }
 
     }
@@ -168,62 +174,236 @@ public class CclDalSqlTest extends ReadBaseTestCase {
 
     @Test
     public void test3() throws SQLException {
-        try (Statement stmt = tddlConnection.createStatement()) {
-            stmt.execute("clear ccl_rules;");
-            stmt.execute(
-                "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
-                    + " FILTER BY KEYWORD('sleep')\n" + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,light_wait=0");
-            final Connection anotherConnection = getPolardbxDirectConnection();
-            Thread thread = new Thread() {
-                @SneakyThrows
-                public void run() {
+        String[] cclRules = {
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,LIGHT_WAIT=0",
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,LIGHT_WAIT=1"};
+        for (String cclRule : cclRules) {
+            try (Statement stmt = tddlConnection.createStatement()) {
+                stmt.execute("clear ccl_rules;");
+                stmt.execute(cclRule);
+                final Connection anotherConnection = getPolardbxDirectConnection();
+                Thread thread = new Thread() {
+                    @SneakyThrows
+                    public void run() {
 
-                    try (Connection connection = anotherConnection; Statement stmt = connection.createStatement()) {
-                        stmt.execute("select sleep(6)");
-                    } catch (Exception e) {
-                        System.out.println(ExceptionUtils.getFullStackTrace(e));
+                        try (Connection connection = anotherConnection; Statement stmt = connection.createStatement()) {
+                            stmt.execute("select sleep(6)");
+                        } catch (Exception e) {
+                            System.out.println(ExceptionUtils.getFullStackTrace(e));
+                        }
                     }
+                };
+                thread.start();
+                Thread.sleep(1000);
+                try (ResultSet rs = stmt.executeQuery("show full processlist")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getString("Command").contains("busu1118")) {
+                            hasWait = true;
+                        }
+                        if (hasWait) {
+                            break;
+                        }
+                    }
+                    Assert.assertTrue(hasWait);
                 }
-            };
-            thread.start();
-            Thread.sleep(1000);
-            try (ResultSet rs = stmt.executeQuery("show full processlist")) {
-                boolean hasWait = false;
-                boolean hasSqlTemplateId = false;
-                while (rs.next()) {
-                    if (rs.getString("Command").contains("busu1118")) {
-                        hasWait = true;
+                try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getInt("Waiting") > 0) {
+                            hasWait = true;
+                            break;
+                        }
                     }
-
-//                    System.out.println(
-//                        rs.getString("Command") + " " + rs.getString("INFO") + "  " + rs.getString("SQL_TEMPLATE_ID"));
-                    if (rs.getString("SQL_TEMPLATE_ID") != null) {
-                        hasSqlTemplateId = true;
-                    }
-                    if (hasWait && hasSqlTemplateId) {
-                        break;
-                    }
+                    Assert.assertTrue(hasWait);
                 }
-                Assert.assertTrue(hasWait);
-                Assert.assertTrue(hasSqlTemplateId);
+                anotherConnection.abort(Executors.newCachedThreadPool());
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-            try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
-                boolean hasWait = false;
-                while (rs.next()) {
-                    if (rs.getInt("Waiting") > 0) {
-                        hasWait = true;
-                        break;
-                    }
-                }
-                Assert.assertTrue(hasWait);
-            }
-            anotherConnection.abort(Executors.newCachedThreadPool());
-            thread.join();
-
-        } catch (InterruptedException e) {
-            e.printStackTrace();
         }
+    }
 
+    @Test
+    public void testCclWaitTimeout() throws SQLException {
+        String[] cclRules = {
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,LIGHT_WAIT=0,WAIT_TIMEOUT=6",
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=0,WAIT_QUEUE_SIZE=1,LIGHT_WAIT=1,WAIT_TIMEOUT=6"};
+        for (String cclRule : cclRules) {
+            try (Statement stmt = tddlConnection.createStatement()) {
+                stmt.execute("clear ccl_rules;");
+                stmt.execute(cclRule);
+                final Connection anotherConnection = getPolardbxDirectConnection();
+                Thread thread = new Thread() {
+                    @SneakyThrows
+                    public void run() {
+
+                        try (Connection connection = anotherConnection; Statement stmt = connection.createStatement()) {
+                            stmt.execute("select sleep(6)");
+                        } catch (Exception e) {
+                            System.out.println(ExceptionUtils.getFullStackTrace(e));
+                        }
+                    }
+                };
+                thread.start();
+                Thread.sleep(1000);
+                try (ResultSet rs = stmt.executeQuery("show full processlist")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getString("Command").contains("busu1118")) {
+                            hasWait = true;
+                        }
+                        if (hasWait) {
+                            break;
+                        }
+                    }
+                    Assert.assertTrue(hasWait);
+                }
+                try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getInt("Waiting") != 0) {
+                            hasWait = true;
+                            break;
+                        }
+                    }
+                    Assert.assertTrue(hasWait);
+                }
+                Thread.sleep(8000);
+                try (ResultSet rs = stmt.executeQuery("show full processlist")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getString("Command").contains("busu1118")) {
+                            hasWait = true;
+                        }
+                        if (hasWait) {
+                            break;
+                        }
+                    }
+                    Assert.assertTrue(!hasWait);
+                }
+                try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getInt("Waiting") != 0) {
+                            hasWait = true;
+                            break;
+                        }
+                    }
+                    Assert.assertTrue(!hasWait);
+                }
+                ExecutorService executorService = Executors.newCachedThreadPool();
+                anotherConnection.abort(executorService);
+                thread.join();
+                executorService.shutdown();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @Test
+    public void testRunWaitTimeout() throws SQLException {
+        String[] cclRules = {
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=1,WAIT_QUEUE_SIZE=2,LIGHT_WAIT=0,WAIT_TIMEOUT=7",
+            "CREATE CCL_RULE  if not exists busu1118 ON `*`.`*` TO '" + userName + "'@'%'\n" + "FOR SELECT \n"
+                + " FILTER BY KEYWORD('sleep')\n"
+                + " WITH MAX_CONCURRENCY=1,WAIT_QUEUE_SIZE=2,LIGHT_WAIT=1,WAIT_TIMEOUT=7"};
+        for (String cclRule : cclRules) {
+            try (Statement stmt = tddlConnection.createStatement()) {
+                stmt.execute("clear ccl_rules;");
+                stmt.execute(cclRule);
+                List<Thread> threads = Lists.newArrayList();
+                List<Connection> connections = Lists.newArrayList();
+                Map<Integer, String> result = Maps.newConcurrentMap();
+                for (int i = 0; i < 7; i++) {
+                    Connection anotherConnection = getPolardbxDirectConnection();
+                    connections.add(anotherConnection);
+                    int finalI = i;
+                    Thread thread = new Thread() {
+                        @SneakyThrows
+                        public void run() {
+                            try (Connection connection = anotherConnection;
+                                Statement stmt = connection.createStatement()) {
+                                stmt.execute("select sleep(5)");
+                                result.put(finalI + 10000, "finish");
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                result.put(finalI, e.getMessage());
+                            }
+                        }
+                    };
+                    thread.start();
+                    threads.add(thread);
+                }
+                Thread.sleep(3000);
+                try (ResultSet rs = stmt.executeQuery("show full processlist")) {
+                    boolean hasWait = false;
+                    while (rs.next()) {
+                        if (rs.getString("Command").contains("busu1118")) {
+                            hasWait = true;
+                        }
+                    }
+                    Assert.assertTrue(hasWait);
+                }
+                try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
+                    boolean hasWait = false;
+                    boolean hasRunning = false;
+                    while (rs.next()) {
+                        if (rs.getInt("Waiting") != 0) {
+                            hasWait = true;
+                        }
+                        if (rs.getInt("Running") != 0) {
+                            hasRunning = true;
+                        }
+                    }
+                    Assert.assertTrue(hasWait);
+                    Assert.assertTrue(hasRunning);
+                }
+                Thread.sleep(12000);
+                try (ResultSet rs = stmt.executeQuery("show ccl_rules")) {
+                    boolean hasWait = false;
+                    boolean hasRunning = false;
+                    while (rs.next()) {
+                        if (rs.getInt("Waiting") != 0) {
+                            hasWait = true;
+                        }
+                        if (rs.getInt("Running") != 0) {
+                            hasRunning = true;
+                        }
+                    }
+                    Assert.assertTrue(!hasWait);
+                    Assert.assertTrue(!hasRunning);
+                }
+                System.out.println("result------" + JSON.toJSONString(result));
+                Assert.assertEquals(7, result.size());
+                ExecutorService executorService = Executors.newCachedThreadPool();
+                for (Connection connection : connections) {
+                    try {
+                        connection.abort(executorService);
+                    } catch (Throwable throwable) {
+                        throwable.printStackTrace();
+                    }
+                }
+                for (Thread thread : threads) {
+                    thread.join();
+                }
+                executorService.shutdown();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Test

@@ -128,19 +128,9 @@ public class OSSInstanceInitializer {
 
     private synchronized OSSFileSystem createOSSFileSystem(URI ossFileUri, boolean enableCache) throws
         IOException {
-        // fetch rate params
-        Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
-            ConnectionParams.OSS_FS_MAX_READ_RATE,
-            ConnectionParams.OSS_FS_MAX_WRITE_RATE
-        );
-        Long maxReadRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
-        Long maxWriteRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
-
+        FileSystemRateLimiter rateLimiter = FileSystemUtils.newRateLimiter();
         // oss file system
         // oss://[accessKeyId:accessKeySecret@]bucket[.endpoint]/object/path
-        FileSystemRateLimiter rateLimiter = new GuavaFileSystemRateLimiter(maxReadRate, maxWriteRate);
         OSSFileSystem OSS_FILE_SYSTEM = new OSSFileSystem(enableCache, rateLimiter);
         Configuration fsConf = new Configuration();
         fsConf.set(ACCESS_KEY_ID, this.accessKeyIdValue);

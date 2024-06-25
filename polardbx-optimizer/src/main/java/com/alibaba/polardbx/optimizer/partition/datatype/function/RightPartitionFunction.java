@@ -17,16 +17,12 @@
 package com.alibaba.polardbx.optimizer.partition.datatype.function;
 
 import com.alibaba.polardbx.common.exception.NotSupportException;
-import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.time.calculator.MySQLIntervalType;
-import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.TddlOperatorTable;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
 import com.alibaba.polardbx.optimizer.core.field.SessionProperties;
 import com.alibaba.polardbx.optimizer.partition.datatype.PartitionField;
-import com.alibaba.polardbx.optimizer.utils.FunctionUtils;
 import io.airlift.slice.Slice;
 import org.apache.calcite.sql.SqlOperator;
 
@@ -137,6 +133,14 @@ public class RightPartitionFunction extends PartitionIntFunction {
         return new String[] {"RightPartition"};
     }
 
+    @Override
+    public DataType getReturnType() {
+        if (this.resultField != null) {
+            return resultField.getDataType();
+        } else {
+            return DataTypes.VarcharType;
+        }
+    }
 
     @Override
     public int hashCode() {

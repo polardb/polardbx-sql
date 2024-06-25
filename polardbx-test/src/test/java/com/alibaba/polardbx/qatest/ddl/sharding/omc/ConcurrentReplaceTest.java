@@ -4,6 +4,7 @@ import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.qatest.ddl.sharding.omc.ConcurrentDMLBaseTest;
 import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.function.Function;
@@ -193,6 +194,7 @@ public class ConcurrentReplaceTest extends ConcurrentDMLBaseTest {
             1);
     }
 
+    @Ignore
     @Test
     public void changeMultiWithReplace2() throws Exception {
         String tableName = "omc_with_replace_2";

@@ -577,14 +577,14 @@ public class ForeignKeyUtils {
         // Fake one meta and do check push down.
         final ForeignKeyData foreignKeyData = new ForeignKeyData();
         foreignKeyData.constraint = foreignKey.getConstraint() != null ?
-            SQLUtils.normalize(foreignKey.getConstraint().getLastName()) : null;
+            SQLUtils.normalizeNoTrim(foreignKey.getConstraint().getLastName()) : null;
         foreignKeyData.indexName = foreignKey.getIndexName() != null ?
-            SQLUtils.normalize(foreignKey.getIndexName().getLastName()) : null;
+            SQLUtils.normalizeNoTrim(foreignKey.getIndexName().getLastName()) : null;
         foreignKeyData.columns = foreignKey.getIndexDef().getColumns().stream()
             .map(c -> c.getColumnNameStr().toLowerCase()).collect(Collectors.toList());
         foreignKeyData.refSchema = foreignKey.getSchemaName();
         foreignKeyData.refTableName =
-            SQLUtils.normalize(
+            SQLUtils.normalizeNoTrim(
                 foreignKey.getReferenceDefinition().getTableName().getLastName().toLowerCase());
         foreignKeyData.refColumns =
             foreignKey.getReferenceDefinition().getColumns().stream()

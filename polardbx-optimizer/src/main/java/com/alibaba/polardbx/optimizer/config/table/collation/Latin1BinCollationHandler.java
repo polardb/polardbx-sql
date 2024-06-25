@@ -153,6 +153,34 @@ public class Latin1BinCollationHandler extends AbstractCollationHandler {
         return doWildCompare(slice, 0, wildCard, 0) == 0;
     }
 
+    @Override
+    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+        if (wildCard == null || wildCard.length == 0) {
+            // like '%%' always match
+            return true;
+        }
+        int length = slice.length();
+        int i = 0;
+        int j = 0;
+
+        while (i < length) {
+            if (wildCard[j] == slice.getByteUnchecked(i)) {
+                i++;
+                j++;
+            }
+            if (j == wildCard.length) {
+                return true;
+            } else if (i < length && wildCard[j] != slice.getByteUnchecked(i)) {
+                if (j != 0) {
+                    j = lps[j - 1];
+                } else {
+                    i++;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * @return -1代表不匹配，0代表匹配，1代表继续
      */

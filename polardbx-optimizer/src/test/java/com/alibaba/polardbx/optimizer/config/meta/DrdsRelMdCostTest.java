@@ -131,7 +131,7 @@ public class DrdsRelMdCostTest extends PlanTestCommon {
     }
 
     @Test
-    public void testParrallel() throws InterruptedException {
+    public void testParrallel() {
         DynamicConfig.getInstance().loadValue(null, ConnectionProperties.ENABLE_MQ_CACHE_COST_BY_THREAD, "true");
         ExecutorService pool = newFixedThreadPool(11, new DefaultThreadFactory("mq-test"));
         RelMetadataQuery mq = PlannerUtils.newMetadataQuery();

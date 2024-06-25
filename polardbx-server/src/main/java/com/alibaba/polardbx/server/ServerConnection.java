@@ -828,9 +828,10 @@ public final class ServerConnection extends FrontendConnection implements Resche
             PolarPrivilegeUtils.checkInstancePrivilege(PrivilegePoint.REPLICATION_SLAVE,
                 this.conn.getExecutionContext());
         } catch (Exception e) {
-            EventLogger.log(EventType.CDC_WARN, "No replication slave privilege for binlog dump!");
+            EventLogger.log(EventType.CDC_WARN, String.format("No replication slave privilege for binlog dump! "
+                + "user %s, host %s ", getUser(), getHost()));
             throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED,
-                PrivilegePoint.REPLICATION_SLAVE.name(), "*", getUser(), getHost(), "*");
+                PrivilegePoint.REPLICATION_SLAVE.name(), getUser(), getHost());
         }
 
         CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -1279,7 +1280,7 @@ public final class ServerConnection extends FrontendConnection implements Resche
             // In some cases, the current thread is interrupted due to some reason.
             // The actual reason is indicated by futureCancelErrorCode, so we should
             // first set the actual exception here.
-            if (null != futureCancelErrorCode) {
+            if (null != futureCancelErrorCode && !(e instanceof CclRescheduleException)) {
                 exception = new TddlRuntimeException(futureCancelErrorCode, e);
             } else {
                 exception = e;
@@ -2144,6 +2145,14 @@ public final class ServerConnection extends FrontendConnection implements Resche
         } else {
             // use origin exception t to judge log level
             logError(logger, errCode, sql, t, schema);
+        }
+
+        if (conn != null
+            && conn.getExecutionContext().getParamManager() != null
+            && conn.getExecutionContext().getParamManager().getBoolean(ConnectionParams.OUTPUT_MYSQL_ERROR_CODE)
+            && GeneralUtil.isNotEmpty(DynamicConfig.getInstance().getErrorCodeMapping())
+            && DynamicConfig.getInstance().getErrorCodeMapping().containsKey(errorCode)) {
+            errorCode = DynamicConfig.getInstance().getErrorCodeMapping().get(errorCode);
         }
 
         switch (errCode) {

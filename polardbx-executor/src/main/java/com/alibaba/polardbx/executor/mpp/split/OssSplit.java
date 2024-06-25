@@ -280,6 +280,10 @@ public class OssSplit implements ConnectorSplit {
                 allOrcFiles.clear();
             }
 
+            if (allOrcFiles.isEmpty() && allCsvFiles.isEmpty()) {
+                return ImmutableList.of();
+            }
+
             // correct project column indexes (skip implicit column)
             ImmutableList<Integer> projectList = ossTableScan.getOrcNode().getInProjects();
 
@@ -476,8 +480,8 @@ public class OssSplit implements ConnectorSplit {
         }
     }
 
-    private static int calcPartition(String logicalSchema, String logicalTableName, String physicalSchema,
-                                     String physicalTableName) {
+    public static int calcPartition(String logicalSchema, String logicalTableName, String physicalSchema,
+                                    String physicalTableName) {
         PartitionInfo partInfo =
             OptimizerContext.getContext(logicalSchema).getPartitionInfoManager()
                 .getPartitionInfo(logicalTableName);
@@ -588,7 +592,16 @@ public class OssSplit implements ConnectorSplit {
             String desinatedFileName;
             if (CollectionUtils.isEmpty(designatedFile)) {
                 // for csv file
-                desinatedFileName = deltaReadOption.allCsvFiles.values().stream().findFirst().get().get(0);
+                Optional<List<String>> fileNames = deltaReadOption.allCsvFiles.values().stream().findFirst();
+                if (fileNames.isPresent()) {
+                    if (fileNames.get().isEmpty()) {
+                        return null;
+                    } else {
+                        desinatedFileName = fileNames.get().get(0);
+                    }
+                } else {
+                    return null;
+                }
             } else {
                 // for orc file
                 desinatedFileName = designatedFile.get(0);

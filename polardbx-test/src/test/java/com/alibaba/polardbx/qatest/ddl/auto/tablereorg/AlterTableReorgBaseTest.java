@@ -66,11 +66,11 @@ public class AlterTableReorgBaseTest extends DDLBaseNewDBTestCase {
     protected static String pk = "id";
 
     public static final String PARTITION_BY_BIGINT_KEY =
-        " partition by key(id) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 4 partition by key(id) partitions 3";
     public static final String PARTITION_BY_INT_KEY =
-        " partition by key(c_int_32) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8 partition by key(c_int_32) partitions 3";
     public static final String PARTITION_BY_INT_BIGINT_KEY =
-        " partition by key(c_int_32, id) partitions 3";
+        "ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16 partition by key(c_int_32, id) partitions 3";
     public static final String PARTITION_BY_INT_BIGINT_HASH =
         " partition by hash(c_int_32, id) partitions 3";
     public static final String PARTITION_BY_MONTH_HASH =

@@ -17,12 +17,16 @@
 package com.alibaba.polardbx.gms.engine;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
+import com.alibaba.polardbx.common.oss.filesystem.GuavaFileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.config.impl.MetaDbInstConfigManager;
 import com.alibaba.polardbx.gms.topology.ServerInstIdManager;
 import org.apache.commons.io.IOUtils;
@@ -35,6 +39,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Map;
+import java.util.Optional;
 
 public class FileSystemUtils {
 
@@ -160,5 +166,22 @@ public class FileSystemUtils {
 
     private static String getColdDataDirectory() {
         return ServerInstIdManager.getInstance().getMasterInstId();
+    }
+
+    public static GuavaFileSystemRateLimiter newRateLimiter() {
+        // fetch rate params
+        Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
+            ConnectionParams.OSS_FS_MAX_READ_RATE,
+            ConnectionParams.OSS_FS_MAX_WRITE_RATE
+        );
+        Long maxReadRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
+        Long maxWriteRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
+            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
+
+        return new GuavaFileSystemRateLimiter(
+            maxReadRate == null ? -1 : maxReadRate,
+            maxWriteRate == null ? -1 : maxWriteRate
+        );
     }
 }

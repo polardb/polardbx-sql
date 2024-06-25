@@ -41,6 +41,7 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -49,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.TddlConstants.INFORMATION_SCHEMA;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.LESS_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlConstants.MORE_WAITING_TIME;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
@@ -102,6 +104,11 @@ public class DdlEngineRequester {
     }
 
     public void execute() {
+        if (StringUtils.equalsIgnoreCase(ddlContext.getSchemaName(), INFORMATION_SCHEMA)) {
+            throw DdlHelper.logAndThrowError(LOGGER,
+                "The DDL job can not be executed under the database 'information_schema'");
+        }
+
         ddlContext.setResources(ddlJob.getExcludeResources());
 
         // Create a new job and put it in the queue.

@@ -55,4 +55,6 @@ public class ExecutionStrategyResult {
     public boolean pushablePrimaryKeyCheck = true;
 
     public boolean pushableForeignConstraintCheck = true;
+
+    public boolean ukContainsAllSkAndGsiContainsAllUk = false;
 }

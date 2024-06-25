@@ -1283,7 +1283,8 @@ public class GsiMetaManager extends AbstractLifecycle {
         public boolean withColumnar(String tableName) {
             return !isEmpty() && tableMeta.containsKey(tableName)
                 && tableMeta.get(tableName).tableType != TableType.COLUMNAR
-                && GeneralUtil.isNotEmpty(tableMeta.get(tableName).indexMap);
+                && GeneralUtil.isNotEmpty(tableMeta.get(tableName).indexMap)
+                && tableMeta.get(tableName).indexMap.values().stream().anyMatch(e -> e.columnarIndex);
         }
 
         public boolean isGsiOrCci(String tableName) {

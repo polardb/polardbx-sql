@@ -57,10 +57,13 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.ImmutableIntList;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil.isGroupSets;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.buildNewGroupSet;
+import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.canSplitDistinct;
 
 /**
  * Created by lingce.ldm on 2016/11/2.
@@ -279,7 +282,7 @@ public abstract class PushAggRule extends RelOptRule {
         // 3. switch aggregate and push
         // 4. build new RelNode tree
         // 5. transform
-        PushDownAggCtx ctx = new PushDownAggCtx(tableScan, aggregate);
+
         logger.debug("tableScan.aggIsPushed:" + tableScan.aggIsPushed());
 
         TddlRuleManager or =
@@ -298,9 +301,11 @@ public abstract class PushAggRule extends RelOptRule {
         boolean fullMatch = false;
         int matchNum = 0;
 
+        Set<Integer> shardIndex = new HashSet<>();
         for (String shardName : shardColumns) {
             boolean match = false;
             int shardRef = tableScan.getRefByColumnName(tableScan.getShardingTable(), shardName, false, true);
+            shardIndex.add(shardRef);
             if (shardRef == -1) {
                 break;
             } else {
@@ -333,11 +338,7 @@ public abstract class PushAggRule extends RelOptRule {
         RelUtils.changeRowType(aggregate.getInput(), tableScan.getRowType());
 
         // 已经执行过下压
-        if (ctx.getTableScan().aggIsPushed()) {
-            return;
-        }
-
-        if (PlannerUtils.shouldNotPushDistinctAgg(aggregate, shardColumns)) {
+        if (tableScan.aggIsPushed()) {
             return;
         }
 
@@ -346,6 +347,37 @@ public abstract class PushAggRule extends RelOptRule {
          */
         List<AggregateCall> aggCalls = aggregate.getAggCallList();
         if (PlannerUtils.haveAggWithDistinct(aggCalls)) {
+
+            PlannerContext plannerContext = PlannerContext.getPlannerContext(aggregate);
+            boolean enablePushDownDistinct = plannerContext.getParamManager().getBoolean(
+                ConnectionParams.ENABLE_PUSHDOWN_DISTINCT);
+            if (aggregate.groupSets.size() <= 1 && enablePushDownDistinct) {
+                boolean enableSplitDistinct = canSplitDistinct(shardIndex, aggregate);
+                PushDownAggCtx ctx = new PushDownAggCtx(tableScan, aggregate);
+                if (enableSplitDistinct) {
+                    try {
+                        for (int i = 0; i < ctx.getAggCallCount(); ++i) {
+                            AggregateCall aggregateCall = ctx.getOneAggCall(i);
+                            SqlAggFunction function = aggregateCall.getAggregation();
+                            if (aggregateCall.isDistinct()) {
+                                buildNewAggWithDistinct(function, ctx, i, aggregateCall);
+                            } else {
+                                buildNewAgg(function, ctx, i, aggregateCall);
+                            }
+                        }
+                        aggregate.getAggOptimizationContext().setAggPushed(true);
+                        build(ctx, call, aggregate);
+                        return;
+                    } catch (Throwable t) {
+                        //ignore
+                    }
+                }
+            }
+
+            if (PlannerUtils.shouldNotPushDistinctAgg(aggregate, shardColumns)) {
+                return;
+            }
+
             if (PlannerUtils.isAllowedAggWithDistinct(aggregate, shardColumns)) {
                 List<Integer> groupSet = buildNewGroupSet(aggregate);
                 ImmutableBitSet bitSet = ImmutableBitSet.of(groupSet);
@@ -388,98 +420,132 @@ public abstract class PushAggRule extends RelOptRule {
         }
 
         // main routine
+        PushDownAggCtx ctx = new PushDownAggCtx(tableScan, aggregate);
         for (int i = 0; i < ctx.getAggCallCount(); ++i) {
             AggregateCall aggCall = ctx.getOneAggCall(i);
             SqlAggFunction function = aggCall.getAggregation();
-            switch (function.getKind()) {
-            // 将count下压，并将count修改为sum
-            case COUNT:
-                SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
-
-                // NOTE: Aggregate节点的输出总是groupSet列在前，对应agg列在后
-                AggregateCall sumAggregateCall = ctx.create(sumAggFunction, false);
-                ctx.addNewAggCalls(i, sumAggregateCall);
-                ctx.addPushedAggCalls(i, aggCall);
-                ctx.addPushedToPartitionAggCalls(i, sumAggregateCall);
-                break;
-            /**
-             * 将AVG分解为sum和count下压至tableScan，并将当前Agg节点中的avg替换为两个sum：
-             * sum(sum()) 计算总和 SUM_ALL sum(count(*)) 计算总数 COUNT_ALL
-             * 最后为当前Agg节点添加一个Project父节点，计算 SUM_ALL/COUNT_ALL
-             */
-            case AVG:
-                TddlTypeFactoryImpl tddlTypeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
-
-                SqlSumAggFunction pushedSumAggFunc = new SqlSumAggFunction(null);
-                AggregateCall pushedSumAggCall = ctx.create(pushedSumAggFunc,
-                    aggCall.getArgList(),
-                    aggCall.getType(),
-                    "pushed_sum");
-
-                SqlCountAggFunction pushedCountFunc = new SqlCountAggFunction("COUNT");
-                AggregateCall pushedCountAggCall = ctx.create(pushedCountFunc,
-                    aggCall.getArgList(),
-                    tddlTypeFactory.createSqlType(SqlTypeName.BIGINT),
-                    "pushed_count");
-
-                // 下压至TableScan，并转换为nativeSQL的聚合函数，物理表级别聚合
-                int addedAggIndex = ctx.getCurAvgCount() + ctx.getAggCallCount();
-                ctx.addPushedAggCalls(i, pushedSumAggCall);
-                ctx.addPushedAggCalls(addedAggIndex, pushedCountAggCall);
-
-                AggregateCall sumSumAggCall = pushedSumAggCall.copy(ImmutableIntList.of(i + ctx.getGroupSetLen()),
-                    -1,
-                    false,
-                    "sum_pushed_sum");
-
-                AggregateCall sumCountAggCall = pushedSumAggCall
-                    .copy(ImmutableIntList.of(addedAggIndex + ctx.getGroupSetLen()), -1, false, "sum_pushed_count");
-
-                // 保留在TableScan上层的聚合函数(全局聚合)
-                ctx.addNewAggCalls(i, sumSumAggCall);
-                ctx.addNewAggCalls(addedAggIndex, sumCountAggCall);
-
-                // 下压至partition级别的聚合函数，partition级别的局部集合
-                ctx.addPushedToPartitionAggCalls(i, sumSumAggCall);
-                ctx.addPushedToPartitionAggCalls(addedAggIndex, sumCountAggCall);
-
-                ctx.addAvgIndex(ctx.getCurAvgCount(), i);
-                ctx.curAvgCountPlusOne();
-                ctx.setNeedNewAgg(true);
-                break;
-            // 以下三种可以直接下压，当前Agg节点需要修改引用参数
-            case MIN:
-            case MAX:
-            case SUM:
-            case BIT_OR:
-            case BIT_XOR:
-            case BIT_AND:
-            case __FIRST_VALUE:
-                AggregateCall newAggCall = aggCall.copy(ImmutableIntList.of(ctx.getGroupSetLen() + i), -1);
-                ctx.addNewAggCalls(i, newAggCall);
-                ctx.addPushedAggCalls(i, aggCall);
-                ctx.addPushedToPartitionAggCalls(i, aggCall);
-                break;
-            case GROUP_CONCAT:
-                GroupConcatAggregateCall groupConcatAggregateCall = (GroupConcatAggregateCall) aggCall;
-                if (groupConcatAggregateCall.getOrderList() != null
-                    && groupConcatAggregateCall.getOrderList().size() != 0) {
-                    return;
-                }
-                GroupConcatAggregateCall newGroupConcatAggregateCall =
-                    groupConcatAggregateCall.copy(ImmutableIntList.of(ctx.getGroupSetLen() + i),
-                        -1, groupConcatAggregateCall.getOrderList());
-                ctx.addNewAggCalls(i, newGroupConcatAggregateCall);
-                ctx.addPushedAggCalls(i, groupConcatAggregateCall);
-                ctx.addPushedToPartitionAggCalls(i, groupConcatAggregateCall);
-                break;
-            default:
-                throw new UnsupportedOperationException(
-                    "Unsupported agg function to push down:" + function.getKind().name());
+            boolean ret = buildNewAgg(function, ctx, i, aggCall);
+            if (!ret) {
+                return;
             }
         }
         aggregate.getAggOptimizationContext().setAggPushed(true);
         build(ctx, call, aggregate);
+    }
+
+    private void buildNewAggWithDistinct(SqlAggFunction function, PushDownAggCtx ctx, int i, AggregateCall aggCall) {
+        switch (function.getKind()) {
+        // 将count下压，并将count修改为sum
+        case COUNT:
+            SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
+
+            // NOTE: Aggregate节点的输出总是groupSet列在前，对应agg列在后
+            AggregateCall sumAggregateCall = ctx.create(sumAggFunction, false);
+            ctx.addNewAggCalls(i, sumAggregateCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, sumAggregateCall);
+            break;
+        case SUM:
+            AggregateCall newAggCall = aggCall.copy(
+                ImmutableIntList.of(ctx.getGroupSetLen() + i), -1).withDistinct(false);
+            ctx.addNewAggCalls(i, newAggCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, aggCall);
+            break;
+        default:
+            throw new UnsupportedOperationException(
+                "Unsupported agg function to push down:" + function.getKind().name());
+        }
+    }
+
+    private boolean buildNewAgg(SqlAggFunction function, PushDownAggCtx ctx, int i, AggregateCall aggCall) {
+        switch (function.getKind()) {
+        // 将count下压，并将count修改为sum
+        case COUNT:
+            SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
+
+            // NOTE: Aggregate节点的输出总是groupSet列在前，对应agg列在后
+            AggregateCall sumAggregateCall = ctx.create(sumAggFunction, false);
+            ctx.addNewAggCalls(i, sumAggregateCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, sumAggregateCall);
+            break;
+        /**
+         * 将AVG分解为sum和count下压至tableScan，并将当前Agg节点中的avg替换为两个sum：
+         * sum(sum()) 计算总和 SUM_ALL sum(count(*)) 计算总数 COUNT_ALL
+         * 最后为当前Agg节点添加一个Project父节点，计算 SUM_ALL/COUNT_ALL
+         */
+        case AVG:
+            TddlTypeFactoryImpl tddlTypeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+
+            SqlSumAggFunction pushedSumAggFunc = new SqlSumAggFunction(null);
+            AggregateCall pushedSumAggCall = ctx.create(pushedSumAggFunc,
+                aggCall.getArgList(),
+                aggCall.getType(),
+                "pushed_sum");
+
+            SqlCountAggFunction pushedCountFunc = new SqlCountAggFunction("COUNT");
+            AggregateCall pushedCountAggCall = ctx.create(pushedCountFunc,
+                aggCall.getArgList(),
+                tddlTypeFactory.createSqlType(SqlTypeName.BIGINT),
+                "pushed_count");
+
+            // 下压至TableScan，并转换为nativeSQL的聚合函数，物理表级别聚合
+            int addedAggIndex = ctx.getCurAvgCount() + ctx.getAggCallCount();
+            ctx.addPushedAggCalls(i, pushedSumAggCall);
+            ctx.addPushedAggCalls(addedAggIndex, pushedCountAggCall);
+
+            AggregateCall sumSumAggCall = pushedSumAggCall.copy(ImmutableIntList.of(i + ctx.getGroupSetLen()),
+                -1,
+                false,
+                "sum_pushed_sum");
+
+            AggregateCall sumCountAggCall = pushedSumAggCall
+                .copy(ImmutableIntList.of(addedAggIndex + ctx.getGroupSetLen()), -1, false, "sum_pushed_count");
+
+            // 保留在TableScan上层的聚合函数(全局聚合)
+            ctx.addNewAggCalls(i, sumSumAggCall);
+            ctx.addNewAggCalls(addedAggIndex, sumCountAggCall);
+
+            // 下压至partition级别的聚合函数，partition级别的局部集合
+            ctx.addPushedToPartitionAggCalls(i, sumSumAggCall);
+            ctx.addPushedToPartitionAggCalls(addedAggIndex, sumCountAggCall);
+
+            ctx.addAvgIndex(ctx.getCurAvgCount(), i);
+            ctx.curAvgCountPlusOne();
+            ctx.setNeedNewAgg(true);
+            break;
+        // 以下三种可以直接下压，当前Agg节点需要修改引用参数
+        case MIN:
+        case MAX:
+        case SUM:
+        case BIT_OR:
+        case BIT_XOR:
+        case BIT_AND:
+        case __FIRST_VALUE:
+            AggregateCall newAggCall = aggCall.copy(ImmutableIntList.of(ctx.getGroupSetLen() + i), -1);
+            ctx.addNewAggCalls(i, newAggCall);
+            ctx.addPushedAggCalls(i, aggCall);
+            ctx.addPushedToPartitionAggCalls(i, aggCall);
+            break;
+        case GROUP_CONCAT:
+            GroupConcatAggregateCall groupConcatAggregateCall = (GroupConcatAggregateCall) aggCall;
+            if (groupConcatAggregateCall.getOrderList() != null
+                && groupConcatAggregateCall.getOrderList().size() != 0) {
+                return false;
+            }
+            GroupConcatAggregateCall newGroupConcatAggregateCall =
+                groupConcatAggregateCall.copy(ImmutableIntList.of(ctx.getGroupSetLen() + i),
+                    -1, groupConcatAggregateCall.getOrderList());
+            ctx.addNewAggCalls(i, newGroupConcatAggregateCall);
+            ctx.addPushedAggCalls(i, groupConcatAggregateCall);
+            ctx.addPushedToPartitionAggCalls(i, groupConcatAggregateCall);
+            break;
+        default:
+            throw new UnsupportedOperationException(
+                "Unsupported agg function to push down:" + function.getKind().name());
+        }
+        return true;
     }
 
     private void build(PushDownAggCtx ctx, RelOptRuleCall call, LogicalAggregate aggregate) {

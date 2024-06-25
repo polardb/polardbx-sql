@@ -319,7 +319,7 @@ public final class ManagerParseShow {
             if ((c1 == 'R' || c1 == 'r') && (c2 == 'E' || c2 == 'e')
                 && (c3 == 'C' || c3 == 'c') && (c4 == 'T' || c4 == 't')
                 && (c5 == '_') && (c6 == 'M' || c6 == 'm')
-                && (c7 == 'C' || c7 == 'c') && (c8 == 'M' || c8 == 'm')) {
+                && (c7 == 'E' || c7 == 'e') && (c8 == 'M' || c8 == 'm')) {
                 return DIRECT_MEM;
             }
         }

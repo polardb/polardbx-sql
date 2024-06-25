@@ -107,7 +107,7 @@ public class ReplicationShardingModifyWriter extends ShardingModifyWriter implem
                 if (canWrite) {
                     RelNode moveTableRel =
                         baseTableOperation.copy(baseTableOperation.getTraitSet(), baseTableOperation.getInputs());
-                    ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaloutGroupName(dbIndex));
+                    ((BaseTableOperation) moveTableRel).setDbIndex(GroupInfoUtil.buildScaleOutGroupName(dbIndex));
                     moveTableRelNodes.add(moveTableRel);
                 }
             }

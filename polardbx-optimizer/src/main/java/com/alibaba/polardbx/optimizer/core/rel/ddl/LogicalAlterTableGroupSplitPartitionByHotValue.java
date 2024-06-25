@@ -259,7 +259,7 @@ public class LogicalAlterTableGroupSplitPartitionByHotValue extends LogicalAlter
         preparedData.setInsertPos(insertPos);
         preparedData.setSplitPointInfos(splitPointInfos);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE);
         preparedData.setHotKeyPartitionName(hotKeyPartNamePrefix);
     }

@@ -5,6 +5,7 @@ import com.alibaba.polardbx.qatest.util.ConnectionManager;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -397,6 +398,23 @@ public class ConcurrentUpdateTest extends ConcurrentDMLBaseTest {
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, true,
             1);
         concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator1, generator2, checker, true, false,
+            1);
+    }
+
+    @Test
+    public void modifyWithUpdateAndNothingChanged() throws Exception {
+        String tableName = "omc_with_update_nothing";
+        String colDef = "int";
+        String alterSql = buildCmdExtra(OMC_FORCE_TYPE_CONVERSION)
+            + " alter table %s modify column b bigint";
+        String selectSql = "select * from %s order by a";
+        Function<Integer, String> generator =
+            (count) -> String.format("update %%s set b=%d where a=%d", count, count);
+        QuadFunction<Integer, Integer, String, String, Boolean> checker = (colA, colB, colC, colD) ->
+            Objects.equals(colA, colB);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, true,
+            1);
+        concurrentTestInternal(tableName, colDef, alterSql, selectSql, generator, generator, checker, true, false,
             1);
     }
 }

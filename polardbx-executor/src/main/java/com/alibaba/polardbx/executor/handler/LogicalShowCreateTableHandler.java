@@ -115,7 +115,7 @@ public class LogicalShowCreateTableHandler extends HandlerCommon {
             for (SQLTableElement tableElement : createTableStmt.getTableElementList()) {
                 if (tableElement instanceof SQLColumnDefinition) {
                     String physicalColumnName =
-                        SQLUtils.normalize(((SQLColumnDefinition) tableElement).getColumnName());
+                        SQLUtils.normalizeNoTrim(((SQLColumnDefinition) tableElement).getColumnName());
                     if (TStringUtil.equalsIgnoreCase(physicalColumnName, logicalColumn.columnName)) {
                         newTableElements.add(tableElement);
                         break;

@@ -18,6 +18,7 @@ package org.apache.calcite.sql.fun;
 
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlAsOf57Operator;
 import org.apache.calcite.sql.SqlAsOf80Operator;
 import org.apache.calcite.sql.SqlAsOfOperator;
 import org.apache.calcite.sql.SqlAsOperator;
@@ -173,8 +174,19 @@ public class SqlStdOperatorTable extends ReflectiveSqlOperatorTable {
    * with an alias.
    */
   public static final SqlAsOperator AS = new SqlAsOperator();
+  /**
+   * as of timestamp; 5.7 物理sql使用 as of timestamp; 8.0 需转成 AS OF GCN
+   */
   public static final SqlAsOfOperator AS_OF = new SqlAsOfOperator();
+  /**
+   * 8.0版本: 用户sql为as of tso，物理sql使用 AS OF GCN
+   */
   public static final SqlAsOf80Operator AS_OF_80 = new SqlAsOf80Operator();
+
+  /**
+   * 5.7 版本: 用户sql为as of tso，物理sql使用 as of tso
+   */
+  public static final SqlAsOf57Operator AS_OF_57 = new SqlAsOf57Operator();
 
   /**
    * <code>ARGUMENT_ASSIGNMENT</code> operator (<code>=&lt;</code>)

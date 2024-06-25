@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
+import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.corrector.Checker;
 import com.alibaba.polardbx.executor.corrector.Reporter;
 import com.alibaba.polardbx.executor.cursor.Cursor;
@@ -74,6 +75,9 @@ public class AlterTableGroupBackfillHandler extends HandlerCommon {
         BackfillExecutor backfillExecutor = new BackfillExecutor((List<RelNode> inputs,
                                                                   ExecutionContext executionContext1) -> {
             QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext1);
+            if (Loader.canUseBackfillReturning(executionContext1, schemaName)) {
+                queryConcurrencyPolicy = QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
+            }
             List<Cursor> inputCursors = new ArrayList<>(inputs.size());
             executeWithConcurrentPolicy(executionContext1, inputs, queryConcurrencyPolicy, inputCursors, schemaName);
             return inputCursors;

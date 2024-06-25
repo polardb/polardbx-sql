@@ -43,7 +43,7 @@ public class MoveDatabasePreparedData extends DdlPreparedData {
         groupAndStorageInstId = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : storageGroups.entrySet()) {
             for (String sourceGroup : entry.getValue()) {
-                String targetGroup = GroupInfoUtil.buildScaloutGroupName(sourceGroup);
+                String targetGroup = GroupInfoUtil.buildScaleOutGroupName(sourceGroup);
                 sourceTargetGroupMap.put(sourceGroup, targetGroup);
                 final String sourceInstId = DbTopologyManager
                     .getStorageInstIdByGroupName(InstIdUtil.getInstId(), schemaName,

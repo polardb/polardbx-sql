@@ -16,6 +16,8 @@
 
 package com.alibaba.polardbx.executor.mpp.execution.scheduler;
 
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.partition.MurmurHashUtils;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -45,6 +47,8 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
 
     private Set<Integer> nodeUsedByPairWise = new HashSet<>();
 
+    private boolean scheduleByPartition = false;
+
     public ColumnarNodeSelector(InternalNodeManager nodeManager, NodeTaskMap nodeTaskMap, Set<InternalNode> nodes,
                                 int limitCandidates, int maxSplitsPerNode, boolean enableOssRoundRobin,
                                 boolean randomNode, boolean enableTwoChoiceSchedule, boolean preferLocal) {
@@ -57,10 +61,20 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
     public Multimap<Node, Split> scheduleOssSplit(List<Split> splits, List<Node> candidateNodes,
                                                   NodeAssignmentStats assignmentStats,
                                                   Multimap<Node, Split> assignment) {
+        if (scheduleByPartition) {
+            return scheduleColumnarByPartition(splits, candidateNodes, assignmentStats, assignment);
+        }
         Pair<List<Split>, List<Split>> splitsPair = splitByDefinedPartNum(splits);
         // assign non partition first, and handle schedule skew if happened
         assignNonPartition(splitsPair.getValue(), candidateNodes, assignmentStats, assignment);
-        assignByPartition(splitsPair.getKey(), candidateNodes, assignmentStats, assignment);
+        assignByPartition(splitsPair.getKey(), candidateNodes, assignmentStats, assignment, false);
+        return assignment;
+    }
+
+    private Multimap<Node, Split> scheduleColumnarByPartition(List<Split> splits, List<Node> candidateNodes,
+                                                              NodeAssignmentStats assignmentStats,
+                                                              Multimap<Node, Split> assignment) {
+        assignByPartition(splits, candidateNodes, assignmentStats, assignment, true);
         return assignment;
     }
 
@@ -111,7 +125,7 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
      */
     public static int chooseBucketByTwoChoice(List<String> files, int allNodes, Map<Integer, Integer> balancedAssign) {
         long fileNameCode = files.hashCode();
-        long hashCode1 = MurmurHashUtils.murmurHashWithZeroSeed(fileNameCode);
+        long hashCode1 = MurmurHashUtils.murmurHash128WithZeroSeed(fileNameCode);
         long hashCode2 = XxHash64.hash(fileNameCode);
 
         // calculate two bucket
@@ -153,7 +167,7 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
 
     private void assignByPartition(List<Split> splits, List<Node> candidateNodes,
                                    NodeAssignmentStats assignmentStats,
-                                   Multimap<Node, Split> assignment) {
+                                   Multimap<Node, Split> assignment, boolean forceGenPart) {
         if (splits.isEmpty()) {
             return;
         }
@@ -172,6 +186,10 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
         for (Split split : splits) {
             OssSplit ossSplit = (OssSplit) (split.getConnectorSplit());
             int partNum = ossSplit.getPartIndex();
+            if (partNum < 0 && forceGenPart) {
+                partNum = OssSplit.calcPartition(ossSplit.getLogicalSchema(), ossSplit.getLogicalTableName(),
+                    ossSplit.getPhysicalSchema(), ossSplit.getPhyTableNameList().get(0));
+            }
             int nodeId = partNum % candidateNodes.size();
             if (log.isDebugEnabled()) {
                 log.debug("oss split: " + ossSplit + " part number: " + partNum + " node id: " + nodeId + "\n");
@@ -211,5 +229,9 @@ public class ColumnarNodeSelector extends SimpleNodeSelector {
                 ossSplit.setPartIndex(nodeParts.indexOf(partNum));
             }
         }
+    }
+
+    public void setScheduleByPartition(boolean scheduleByPartition) {
+        this.scheduleByPartition = scheduleByPartition;
     }
 }

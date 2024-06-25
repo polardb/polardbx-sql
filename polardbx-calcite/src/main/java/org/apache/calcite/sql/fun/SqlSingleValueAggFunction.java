@@ -16,6 +16,7 @@
  */
 package org.apache.calcite.sql.fun;
 
+import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.sql.SqlAggFunction;
@@ -23,8 +24,7 @@ import org.apache.calcite.sql.SqlFunctionCategory;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
-
-import com.google.common.collect.ImmutableList;
+import org.apache.calcite.util.Optionality;
 
 import java.util.List;
 
@@ -70,6 +70,10 @@ public class SqlSingleValueAggFunction extends SqlAggFunction {
   @Deprecated // to be removed before 2.0
   public RelDataType getType() {
     return type;
+  }
+
+  @Override public Optionality getDistinctOptionality() {
+    return Optionality.IGNORED;
   }
 }
 

@@ -190,6 +190,14 @@ public class ExecutionPlan {
         }
     }
 
+    private ExecutionPlan(SqlNode ast, RelNode plan, CursorMeta columnMeta,
+                          Map<String, Set<String>> referencedGsiNames) {
+        this.ast = ast;
+        this.plan = plan;
+        this.cursorMeta = columnMeta;
+        this.referencedGsiNames = referencedGsiNames;
+    }
+
     public RelNode getPlan() {
         return plan;
     }
@@ -227,7 +235,7 @@ public class ExecutionPlan {
     }
 
     public ExecutionPlan copy(RelNode plan) {
-        ExecutionPlan newExecutionPlan = new ExecutionPlan(ast, plan, this.cursorMeta);
+        ExecutionPlan newExecutionPlan = new ExecutionPlan(ast, plan, this.cursorMeta, this.referencedGsiNames);
         newExecutionPlan.hitCache = this.hitCache;
         newExecutionPlan.isExplain = this.isExplain;
         newExecutionPlan.getPlanProperties().or(this.planProperties);
@@ -249,7 +257,6 @@ public class ExecutionPlan {
         newExecutionPlan.isDirectShardingKey = this.isDirectShardingKey;
         newExecutionPlan.dbIndexAndTableName = this.dbIndexAndTableName;
         newExecutionPlan.canOptByForcePrimary = this.canOptByForcePrimary;
-        newExecutionPlan.referencedGsiNames = this.referencedGsiNames;
         newExecutionPlan.constantParams = this.constantParams;
         newExecutionPlan.hintCollection = this.hintCollection;
         newExecutionPlan.useColumnar = this.useColumnar;

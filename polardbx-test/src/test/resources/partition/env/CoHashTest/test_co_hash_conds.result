@@ -87,9 +87,9 @@ Project(id="id", sid="sid")
   MemSort(sort="user_id ASC")
     MaterializedSemiJoin(condition="user_id = user_id", type="semi")
       Gather(concurrent=true)
-        LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`user_id` IN (...))", isDynamicParam="true")
+        LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`user_id` IN (...))")
       Gather(concurrent=true)
-        LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", isDynamicParam="true")
+        LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", pruningInfo="all size:3*3(part), pruning size:6")
 select id,sid from ch_t1_u_o where
 user_id in (select user_id from ch_t2_u_o where order_id in (123456, 123458, 123459)) order by user_id;
 id,sid
@@ -103,9 +103,9 @@ Project(id="id", sid="sid")
   MemSort(sort="user_id ASC")
     MaterializedSemiJoin(condition="user_id = user_id", type="semi")
       Gather(concurrent=true)
-        LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`user_id` IN (...))", isDynamicParam="true")
+        LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`user_id` IN (...))")
       Gather(concurrent=true)
-        LogicalView(tables="ch_t3_u_o[p2,p3,p4]", shardCount=3, sql="SELECT `user_id` FROM `ch_t3_u_o` AS `ch_t3_u_o` WHERE (`order_id` IN(?))", isDynamicParam="true")
+        LogicalView(tables="ch_t3_u_o[p2,p3,p4]", shardCount=3, sql="SELECT `user_id` FROM `ch_t3_u_o` AS `ch_t3_u_o` WHERE (`order_id` IN(?))", pruningInfo="all size:3*3(part), pruning size:6")
 select id,sid from ch_t1_u_o where
 user_id in (select user_id from ch_t3_u_o where order_id in (123456, 123458, 123459)) order by user_id;
 id,sid
@@ -119,12 +119,12 @@ user_id in (select user_id from ch_t2_u_o where order_id in (123456, 123458, 123
 Logical ExecutionPlan
 Project(id="id", sid="sid")
   MergeSort(sort="user_id ASC")
-    LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`order_id` IN(?)) OR (`user_id` IN(?))) ORDER BY `user_id`", isDynamicParam="true")
+    LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`order_id` IN(?)) OR (`user_id` IN(?))) ORDER BY `user_id`")
 HitCache:false
 Source:PLAN_CACHE
 >> individual scalar subquery
 Gather(concurrent=true)
-  LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", isDynamicParam="true")
+  LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", pruningInfo="all size:3*3(part), pruning size:6")
 select id,sid from ch_t1_u_o where
 order_id in (123456, 123458, 123459)
 or
@@ -141,12 +141,12 @@ order_id in (select order_id from ch_t2_u_o where order_id in (123456, 123458, 1
 Logical ExecutionPlan
 Project(id="id", sid="sid")
   MergeSort(sort="user_id ASC")
-    LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`user_id` IN(?)) OR (`order_id` IN(?))) ORDER BY `user_id`", isDynamicParam="true")
+    LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`user_id` IN(?)) OR (`order_id` IN(?))) ORDER BY `user_id`")
 HitCache:false
 Source:PLAN_CACHE
 >> individual scalar subquery
 Gather(concurrent=true)
-  LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `order_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", isDynamicParam="true")
+  LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `order_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", pruningInfo="all size:3*3(part), pruning size:6")
 select id,sid from ch_t1_u_o where
 user_id in (123456, 123458, 123459)
 or
@@ -162,7 +162,7 @@ order_id in (123456, 123458, 123459,1234510,1234511,1234512,1234513,1234514) ord
 Logical ExecutionPlan
 Project(id="id", sid="sid")
   MergeSort(sort="user_id ASC")
-    LogicalView(tables="ch_t1_u_o[p1,p3,p4,p5,p7,p8]", shardCount=6, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`user_id` IN(?)) OR (`order_id` IN(?))) ORDER BY `user_id`", isDynamicParam="true")
+    LogicalView(tables="ch_t1_u_o[p1,p3,p4,p5,p7,p8]", shardCount=6, sql="SELECT `id`, `sid`, `user_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE ((`user_id` IN(?)) OR (`order_id` IN(?))) ORDER BY `user_id`", pruningInfo="all size:11*6(part), pruning size:21")
 select id,sid from ch_t1_u_o where
 user_id in (123456, 123458, 123459)
 or

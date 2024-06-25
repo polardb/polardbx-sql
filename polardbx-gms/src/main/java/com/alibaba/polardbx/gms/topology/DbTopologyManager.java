@@ -17,6 +17,7 @@
 package com.alibaba.polardbx.gms.topology;
 
 import com.alibaba.polardbx.common.Engine;
+import com.alibaba.polardbx.common.exception.NotSupportException;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
@@ -75,7 +76,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -116,6 +119,17 @@ public class DbTopologyManager {
     protected static SchemaMetaCleaner schemaMetaCleaner = null;
 
     public static List<String> singleGroupStorageInstList = new ArrayList<>();
+
+    /**
+     * A topology mapping from GroupKey to logicalDbName
+     * <pre>
+     *      key: The upperCase of GroupKey
+     *      val: the name of logical dbName from db_info
+     *  </pre>
+     */
+    private static final ReentrantLock groupTopologyMappingLock = new ReentrantLock();
+    private static volatile Map<String, String> groupTopologyMapping =
+        new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
 
     public static void initDbTopologyManager(SchemaMetaCleaner cleanerImpl) {
         schemaMetaCleaner = cleanerImpl;
@@ -283,13 +297,23 @@ public class DbTopologyManager {
             DbInfoRecord dbInfo = dbInfoAccessor.getDbInfoByDbName(dbName);
             boolean hasDbConfig = false;
             if (dbInfo != null) {
-                if (dbInfo.dbStatus == DbInfoRecord.DB_STATUS_RUNNING) {
-                    if (createIfNotExist) {
-                        return dbId;
+                if (dbInfo.dbStatus == DbInfoRecord.DB_STATUS_RUNNING
+                    || dbInfo.dbStatus == DbInfoRecord.DB_STATUS_DROPPING) {
+                    if (dbInfo.dbStatus == DbInfoRecord.DB_STATUS_RUNNING) {
+                        if (createIfNotExist) {
+                            return dbId;
+                        }
+                        // throw exception
+                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                            String.format("Create db error, db[%s] has already exist", dbName));
+                    } else {
+                        // throw exception
+                        throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
+                            String.format(
+                                "Create db error, db[%s] has not finished dropping, please retry to drop it by using 'drop database if exists `%s`'",
+                                dbName, dbName));
                     }
-                    // throw exception
-                    throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC,
-                        String.format("Create db error, db[%s] has already exist", dbName));
+
                 } else if (dbInfo.dbStatus == DbInfoRecord.DB_STATUS_CREATING) {
                     // ignore, just continue to create phy dbs
                     hasDbConfig = true;
@@ -337,6 +361,10 @@ public class DbTopologyManager {
 
             // commit configs
             metaDbConn.commit();
+
+            // refresh local group topology of db topology manager
+            DbTopologyManager.refreshGroupKeysIntoTopologyMapping(createDbInfo.groupNameList, new ArrayList<>(),
+                createDbInfo.dbName);
 
             // sync other node to reload dbInfo quickly
             MetaDbConfigManager.getInstance().sync(MetaDbDataIdBuilder.getDbInfoDataId());
@@ -443,10 +471,28 @@ public class DbTopologyManager {
             schemaMetaCleaner.clearSchemaMeta(dbName, metaDbConn);
         }
 
+        // clear group_detail_info
+        List<String> allGrpNames = getGroupNamesFromMetaDb(metaDbConn, instId, dbName);
+
         // ---- remove topology configs
         removeDbTopologyConfig(dbName, metaDbConn);
         metaDbConn.commit();
 
+        // refresh local group topology of db topology manager of memory
+        DbTopologyManager.unregisterGroupKeysIntoTopologyMapping(allGrpNames);
+
+    }
+
+    private static List<String> getGroupNamesFromMetaDb(Connection metaDbConn, String instId, String dbName) {
+        List<String> allGrpNames = new ArrayList<>();
+        GroupDetailInfoAccessor groupDetailInfoAccessor = new GroupDetailInfoAccessor();
+        groupDetailInfoAccessor.setConnection(metaDbConn);
+        List<GroupDetailInfoRecord> grpInfos = groupDetailInfoAccessor.getGroupDetailInfoByInstIdAndDbName(instId,
+            dbName);
+        for (int i = 0; i < grpInfos.size(); i++) {
+            allGrpNames.add(grpInfos.get(i).getGroupName());
+        }
+        return allGrpNames;
     }
 
     public static void dropLogicalDb(DropDbInfo dropDbInfo) {
@@ -727,7 +773,6 @@ public class DbTopologyManager {
 
             // ---- commit trx ----
             conn.commit();
-
         } catch (Throwable ex) {
             throw new TddlRuntimeException(ErrorCode.ERR_GMS_GENERIC, ex,
                 String.format("Failed to create db[%s], err is %s", dbName, ex.getMessage())
@@ -1236,6 +1281,7 @@ public class DbTopologyManager {
         createDbInfo.dbType = dbType;
 
         String grpNameSingleGroup = "";
+        List<String> groupNames = new ArrayList<>();
         if (createDbInfo.dbType == DbInfoRecord.DB_TYPE_PART_DB || createDbInfo.dbType == DbInfoRecord.DB_TYPE_CDC_DB) {
             grpNameSingleGroup = GroupInfoUtil.buildGroupName(dbName, -1, false);
             String phyDbNameSingle = GroupInfoUtil.buildPhyDbName(dbName, -1, false);
@@ -1260,9 +1306,11 @@ public class DbTopologyManager {
                 createDbInfo.defaultSingle = defaultSingle;
             }
         }
+        groupNames.addAll(grpAndPhyDbNameMap.keySet());
 
         createDbInfo.locality = locality;
         createDbInfo.groupPhyDbMap = grpAndPhyDbNameMap;
+        createDbInfo.groupNameList = groupNames;
         createDbInfo.singleGroup = grpNameSingleGroup;
         createDbInfo.defaultDbIndex = grpNameSingleGroup;
         createDbInfo.groupLocator =
@@ -2050,7 +2098,7 @@ public class DbTopologyManager {
 
     }
 
-    public static String getPhysicalDbNameByGroupKey(String dbName, String groupName) {
+    public static String getPhysicalDbNameByGroupKeyFromMetaDb(String dbName, String groupName) {
 
         if (SystemDbHelper.INFO_SCHEMA_DB_NAME.equalsIgnoreCase(dbName)
             && SystemDbHelper.INFO_SCHEMA_DB_GROUP_NAME.equalsIgnoreCase(groupName)) {
@@ -2586,4 +2634,43 @@ public class DbTopologyManager {
             throw GeneralUtil.nestedException(ex);
         }
     }
+
+    public static void refreshGroupKeysIntoTopologyMapping(List<String> groupKeysToBeAdded,
+                                                           List<String> groupKeysToBeRemoved,
+                                                           String schemaName) {
+        try {
+            groupTopologyMappingLock.lock();
+            Map<String, String> newGroupTopologyMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            newGroupTopologyMapping.putAll(DbTopologyManager.groupTopologyMapping);
+            for (String grp : groupKeysToBeAdded) {
+                newGroupTopologyMapping.put(grp, schemaName);
+            }
+            for (String grp : groupKeysToBeRemoved) {
+                newGroupTopologyMapping.remove(grp);
+            }
+            DbTopologyManager.groupTopologyMapping = newGroupTopologyMapping;
+        } finally {
+            groupTopologyMappingLock.unlock();
+        }
+    }
+
+    public static void unregisterGroupKeysIntoTopologyMapping(List<String> groupKeys) {
+        try {
+            groupTopologyMappingLock.lock();
+            Map<String, String> newGroupTopologyMapping = new TreeMap<>(CaseInsensitive.CASE_INSENSITIVE_ORDER);
+            newGroupTopologyMapping.putAll(DbTopologyManager.groupTopologyMapping);
+            for (String grp : groupKeys) {
+                newGroupTopologyMapping.remove(grp);
+            }
+            DbTopologyManager.groupTopologyMapping = newGroupTopologyMapping;
+        } finally {
+            groupTopologyMappingLock.unlock();
+        }
+    }
+
+    public static String getDbNameByGroupKey(String groupKey) {
+        Map<String, String> groupTopologyMapping = DbTopologyManager.groupTopologyMapping;
+        return groupTopologyMapping.get(groupKey);
+    }
+
 }

@@ -31,8 +31,11 @@ import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfo;
 import com.alibaba.polardbx.optimizer.locality.LocalityInfoUtils;
 import com.alibaba.polardbx.optimizer.locality.LocalityManager;
+import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
+import com.alibaba.polardbx.optimizer.partition.PartitionSpec;
 import org.apache.calcite.rel.core.DDL;
 import org.apache.calcite.rel.ddl.AlterTableGroupSetPartitionsLocality;
+import org.apache.calcite.util.PrecedenceClimbingParser;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,6 +70,16 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
 
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(schemaName).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
+        if (tableGroupConfig.getTables().size() == 0) {
+            throw new TddlRuntimeException(ErrorCode.ERR_INVALID_DDL_PARAMS,
+                String.format(
+                    "invalid alter locality operation on partition! table group [%s] contains no table",
+                    tableGroupName));
+        }
+        String tableName = tableGroupConfig.getTables().get(0);
+        PartitionInfo partitionInfo =
+            OptimizerContext.getContext(schemaName).getPartitionInfoManager().getPartitionInfo(tableName);
+
         int tgType = tableGroupConfig.getTableGroupRecord().tg_type;
         if (tgType == TableGroupRecord.TG_TYPE_BROADCAST_TBL_TG
             || tgType == TableGroupRecord.TG_TYPE_DEFAULT_SINGLE_TBL_TG
@@ -77,8 +90,8 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
                     tableGroupName));
         }
 
-        PartitionGroupRecord partitionGroupRecord = tableGroupConfig.getPartitionGroupByName(partition);
-        String originalPartitionGroupLocality = partitionGroupRecord.getLocality();
+        PartitionSpec partitionSpec = partitionInfo.getPartitionBy().getPartitionByPartName(partition);
+        String originalPartitionGroupLocality = partitionSpec.getLocality();
         LocalityDesc originalPartitionGroupLocalityDesc = LocalityInfoUtils.parse(originalPartitionGroupLocality);
 
         Set<String> targetDnList = targetLocalityDesc.getDnSet();
@@ -96,7 +109,7 @@ public class LogicalAlterTableGroupSetPartitionsLocality extends BaseDdlOperatio
 //                String.format("invalid locality: '%s', conflict with locality of database [%s]: '%s'",
 //                    targetLocality, schemaName, localityDescOfDb));
 //        }
-        if (targetDnList.containsAll(orignialDnList) && !orignialDnList.isEmpty()) {
+        if (targetDnList.containsAll(orignialDnList) || targetDnList.isEmpty()) {
             withRebalance = false;
         } else {
             withRebalance = true;

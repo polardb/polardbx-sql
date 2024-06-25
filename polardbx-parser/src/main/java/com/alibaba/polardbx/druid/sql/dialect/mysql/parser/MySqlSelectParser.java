@@ -1005,6 +1005,16 @@ public class MySqlSelectParser extends SQLSelectParser {
                 printError(lexer.token());
             }
 
+            //支持as of tso expr; expr 不做限定，可以是tso，可以是表达式。
+            //不同于下面as of timestamp 和 as of 限定了后面表达式类型;
+            if (lexer.identifierEquals("TSO")) {
+                lexer.nextToken();
+                SQLExpr expr = this.exprParser.expr();
+                tableSource.setFlashback(expr);
+                tableSource.setFlashbackWithTso(true);
+                return true;
+            }
+
             SQLExpr expr = this.exprParser.expr();
             if (expr instanceof SQLTimestampExpr) {
                 // FROM t AS OF TIMESTAMP '2021-12-10 17:44:00'

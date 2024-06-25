@@ -86,7 +86,8 @@ public class LogicalAlterTableGroupAddPartition extends LogicalAlterTableAddPart
 
         preparedData.setOldPartitionNames(ImmutableList.of());
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = partitionInfo.containSubPartitions();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.ADD_PARTITION);
 

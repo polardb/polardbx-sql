@@ -183,7 +183,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
         //query gsi statistics info
         Map<String, Set<String>> schemaAndGsis = new TreeMap<>(String::compareToIgnoreCase);
         gsiTableBeans.forEach(tableBean -> {
-            if (tableBean != null && tableBean.gsiMetaBean != null) {
+            if (tableBean != null && tableBean.gsiMetaBean != null && !tableBean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
                 String schema = indexBean.tableSchema;
                 String index = indexBean.indexName;
@@ -223,7 +223,7 @@ public class InformationSchemaGlobalIndexesHandler extends BaseVirtualViewSubCla
 
         // make sure all GSI tables are presented in the final result
         gsiTableBeans.forEach(tableBean -> {
-            if (tableBean != null && tableBean.gsiMetaBean != null) {
+            if (tableBean != null && tableBean.gsiMetaBean != null && !tableBean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean indexBean = tableBean.gsiMetaBean;
                 // visit count, last access time
                 String schema = indexBean.tableSchema;

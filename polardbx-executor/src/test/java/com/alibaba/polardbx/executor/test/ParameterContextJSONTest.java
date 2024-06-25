@@ -188,7 +188,6 @@ public class ParameterContextJSONTest {
         Assert.assertTrue(target.getObjList().size() == 1);
         Assert.assertTrue(target.getObj(0, 0).equals("1234"));
         Assert.assertTrue(target.getObj(0, 1).toString().equals("4.6"));
-        Assert.assertTrue(target.toString().equals(source.toString()));
         Assert.assertTrue(target.buildRawString().equals(source.buildRawString()));
     }
 

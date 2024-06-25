@@ -1360,4 +1360,98 @@ public class SchemaRepositoryTest {
         Assert.assertEquals(expect, tableMeta1.getStatement().toString());
 
     }
+
+    @Test
+    public void testTableWithBlankName() {
+        SchemaRepository memoryTableMeta = new SchemaRepository(JdbcConstants.MYSQL);
+        memoryTableMeta.setDefaultSchema("d1");
+
+        String sql1 = "CREATE TABLE ` engineer` (\n"
+            + "  id INTEGER NOT NULL,\n"
+            + "  engineer_name VARCHAR(50),\n"
+            + "  PRIMARY KEY (id)\n"
+            + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`";
+        String sql2 = "CREATE TABLE `engineer` (\n"
+            + "  id INTEGER NOT NULL,\n"
+            + "  engineer_name VARCHAR(50),\n"
+            + "  engineer_type VARCHAR(50),\n"
+            + "  PRIMARY KEY (id)\n"
+            + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`";
+        memoryTableMeta.console(sql1);
+        memoryTableMeta.console(sql2);
+        SchemaObject tableMeta1 = memoryTableMeta.findSchema("d1").findTable(" engineer");
+        SchemaObject tableMeta2 = memoryTableMeta.findSchema("d1").findTable("engineer");
+        System.out.println(tableMeta1.getStatement().toString());
+        System.out.println(tableMeta2.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE ` engineer` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id)\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta1.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE `engineer` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tengineer_type VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id)\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta2.getStatement().toString());
+
+        String sql3 = "alter table ` engineer` add column engineer_age bigint";
+        String sql4 = "alter table `engineer` add column engineer_age bigint";
+        memoryTableMeta.console(sql3);
+        memoryTableMeta.console(sql4);
+        SchemaObject tableMeta3 = memoryTableMeta.findSchema("d1").findTable(" engineer");
+        SchemaObject tableMeta4 = memoryTableMeta.findSchema("d1").findTable("engineer");
+        System.out.println(tableMeta3.getStatement().toString());
+        System.out.println(tableMeta4.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE ` engineer` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id),\n"
+                + "\tengineer_age bigint\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta3.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE `engineer` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tengineer_type VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id),\n"
+                + "\tengineer_age bigint\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta4.getStatement().toString());
+
+        String sql5 = "rename table ` engineer` to ` engineer_new`";
+        String sql6 = "rename table `engineer` to `engineer_new`";
+        memoryTableMeta.console(sql5);
+        memoryTableMeta.console(sql6);
+        SchemaObject tableMeta5 = memoryTableMeta.findSchema("d1").findTable(" engineer_new");
+        SchemaObject tableMeta6 = memoryTableMeta.findSchema("d1").findTable("engineer_new");
+        System.out.println(tableMeta5.getStatement().toString());
+        System.out.println(tableMeta6.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE ` engineer_new` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id),\n"
+                + "\tengineer_age bigint\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta5.getStatement().toString());
+        Assert.assertEquals("CREATE TABLE `engineer_new` (\n"
+                + "\tid INTEGER NOT NULL,\n"
+                + "\tengineer_name VARCHAR(50),\n"
+                + "\tengineer_type VARCHAR(50),\n"
+                + "\tPRIMARY KEY (id),\n"
+                + "\tengineer_age bigint\n"
+                + ") DEFAULT CHARSET = `utf8mb4` DEFAULT COLLATE = `utf8mb4_general_ci`",
+            tableMeta6.getStatement().toString());
+
+        String sql7 = "drop table ` engineer_new`";
+        String sql8 = "drop table `engineer_new`";
+        memoryTableMeta.console(sql7);
+        memoryTableMeta.console(sql8);
+        SchemaObject tableMeta7 = memoryTableMeta.findSchema("d1").findTable(" engineer_new");
+        SchemaObject tableMeta8 = memoryTableMeta.findSchema("d1").findTable("engineer_new");
+        System.out.println(tableMeta7);
+        System.out.println(tableMeta8);
+    }
 }

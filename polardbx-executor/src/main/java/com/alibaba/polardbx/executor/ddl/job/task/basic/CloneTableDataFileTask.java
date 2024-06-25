@@ -64,6 +64,7 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     final List<Pair<String, Integer>> targetHostsIpAndPort;
     final String sourceStorageInstId;
     final Long batchSize;
+    final boolean encrypted;
     //don't serialize this parameter
     private transient Map<String, Pair<String, String>> storageInstAndUserInfos = new ConcurrentHashMap<>();
 
@@ -71,7 +72,7 @@ public class CloneTableDataFileTask extends BaseDdlTask {
     public CloneTableDataFileTask(String schemaName, String logicalTableName, Pair<String, String> srcDbAndGroup,
                                   Pair<String, String> tarDbAndGroup, String phyTableName, List<String> phyPartNames,
                                   String sourceStorageInstId, Pair<String, Integer> sourceHostIpAndPort,
-                                  List<Pair<String, Integer>> targetHostsIpAndPort, Long batchSize) {
+                                  List<Pair<String, Integer>> targetHostsIpAndPort, Long batchSize, Boolean encrypted) {
         super(schemaName);
         this.srcDbAndGroup = srcDbAndGroup;
         this.tarDbAndGroup = tarDbAndGroup;
@@ -82,6 +83,7 @@ public class CloneTableDataFileTask extends BaseDdlTask {
         this.sourceHostIpAndPort = sourceHostIpAndPort;
         this.targetHostsIpAndPort = targetHostsIpAndPort;
         this.batchSize = batchSize;
+        this.encrypted = encrypted;
     }
 
     @Override
@@ -144,13 +146,8 @@ public class CloneTableDataFileTask extends BaseDdlTask {
                 PhysicalBackfillManager.BackfillObjectBean bean = backfillBean.backfillObject;
                 try {
                     PhysicalBackfillDetailInfoFieldJSON detailInfoFieldJSON = bean.detailInfo;
-                    PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, bean.sourceGroupName, bean.physicalDb,
-                        detailInfoFieldJSON.getSourceHostAndPort().getKey(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getValue(),
-                        PhysicalBackfillUtils.convertToCfgFileName(bean.sourceDirName), true, ec);
-                    PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, bean.sourceGroupName, bean.physicalDb,
-                        detailInfoFieldJSON.getSourceHostAndPort().getKey(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getValue(), bean.sourceDirName, true, ec);
+                    PhysicalBackfillUtils.deleteInnodbDataFiles(schemaName, detailInfoFieldJSON.getSourceHostAndPort(),
+                        bean.sourceDirName, bean.sourceGroupName, bean.physicalDb, true, ec);
                 } catch (Exception ex) {
                     //ignore
                     try {
@@ -219,7 +216,9 @@ public class CloneTableDataFileTask extends BaseDdlTask {
                 for (Map.Entry<String, Pair<String, String>> entry : srcFileAndDirs.entrySet()) {
                     Pair<String, String> srcFileAndDir = entry.getValue();
 
-                    boolean handlerIbdFile = false;
+                    boolean handleCfgFile = false;
+                    boolean handleIbdFile = false;
+                    boolean needHandleCfpFile = encrypted;
                     do {
                         PhysicalBackfillUtils.checkInterrupted(ec, null);
                         PolarxPhysicalBackfill.FileInfo.Builder srcFileInfoBuilder =
@@ -227,8 +226,16 @@ public class CloneTableDataFileTask extends BaseDdlTask {
                         String fileName = srcFileAndDir.getKey();
                         String directory = srcFileAndDir.getValue();
 
-                        if (!handlerIbdFile) {
-                            directory = PhysicalBackfillUtils.convertToCfgFileName(directory);
+                        if (!handleCfgFile) {
+                            directory =
+                                PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFG);
+                            handleCfgFile = true;
+                        } else if (needHandleCfpFile) {
+                            needHandleCfpFile = false;
+                            directory =
+                                PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFP);
+                        } else {
+                            handleIbdFile = true;
                         }
 
                         srcFileInfoBuilder.setFileName(fileName);
@@ -248,10 +255,8 @@ public class CloneTableDataFileTask extends BaseDdlTask {
                         }
                         copyFileInfo.append(directory);
                         i++;
-                        if (handlerIbdFile) {
+                        if (handleIbdFile) {
                             break;
-                        } else {
-                            handlerIbdFile = true;
                         }
                     } while (true);
                 }

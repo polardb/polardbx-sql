@@ -28,12 +28,124 @@ import java.util.Optional;
 import java.util.function.Function;
 
 public abstract class AbstractCollationHandler implements CollationHandler {
+    /* wm_wc and wc_mb return codes */
+    /* clang-format off */
+    static final int MY_CS_ILSEQ = 0;        /* Wrong by sequence: wb_wc                   */
+    static final int MY_CS_ILUNI = 0;        /* Cannot encode Unicode to charset: wc_mb    */
+    static final int MY_CS_TOOSMALL = -101; /* Need at least one byte:    wc_mb and mb_wc */
+    static final int MY_CS_TOOSMALL2 = -102; /* Need at least two bytes:   wc_mb and mb_wc */
+    static final int MY_CS_TOOSMALL3 = -103; /* Need at least three bytes: wc_mb and mb_wc */
+
+    /* These following three are currently not really used */
+    static final int MY_CS_TOOSMALL4 = -104; /* Need at least 4 bytes: wc_mb and mb_wc */
+    static final int MY_CS_TOOSMALL5 = -105; /* Need at least 5 bytes: wc_mb and mb_wc */
+    static final int MY_CS_TOOSMALL6 = -106; /* Need at least 6 bytes: wc_mb and mb_wc */
+
     protected final CharsetHandler charsetHandler;
 
     AbstractCollationHandler(CharsetHandler charsetHandler) {
         this.charsetHandler = charsetHandler;
     }
 
+    /**
+     * 0x0 - 0x7f | 0xxxxxxx
+     * 0x80 - 0x7ff | 110xxxxx 10xxxxxx
+     * 0x800 - 0xffff | 1110xxxx 10xxxxxx 10xxxxxx
+     * 0x10000 - 0x10ffff | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+     */
+    public static int codepointOfUTF8(int[] parsedWildCharacter, Slice str, int s, int e,
+                                      boolean rangeCheck, boolean supportMB4) {
+        if (rangeCheck && s >= e) {
+            return MY_CS_TOOSMALL;
+        }
+
+        byte c = str.getByte(s);
+        if (Byte.toUnsignedInt(c) < 0x80) {
+            parsedWildCharacter[0] = c;
+            return 1;
+        }
+
+        if (Byte.toUnsignedInt(c) < 0xe0) {
+            // Resulting code point would be less than 0x80.
+            if (Byte.toUnsignedInt(c) < 0xc2) {
+                return MY_CS_ILSEQ;
+            }
+
+            if (rangeCheck && s + 2 > e) {
+                return MY_CS_TOOSMALL2;
+            }
+
+            // Next byte must be a continuation byte.
+            if ((str.getByte(s + 1) & 0xc0) != 0x80) {
+                return MY_CS_ILSEQ;
+            }
+
+            parsedWildCharacter[0] = ((c & 0x1f) << 6) + (str.getByte(s + 1) & 0x3f);
+            return 2;
+        }
+
+        if (Byte.toUnsignedInt(c) < 0xf0) {
+            if (rangeCheck && s + 3 > e) {
+                return MY_CS_TOOSMALL3;
+            }
+
+            // Next two bytes must be continuation bytes.
+            int two_bytes = ((str.getByte(s + 1) & 0xFF) << 8) | (str.getByte(s + 2) & 0xFF);
+
+            // Endianness does not matter.
+            if ((two_bytes & 0xc0c0) != 0x8080) {
+                return MY_CS_ILSEQ;
+            }
+
+            parsedWildCharacter[0] = ((c & 0x0f) << 12)
+                + ((str.getByte(s + 1) & 0x3f) << 6)
+                + (str.getByte(s + 2) & 0x3f);
+
+            if (parsedWildCharacter[0] < 0x800) {
+                return MY_CS_ILSEQ;
+            }
+
+            // According to RFC 3629, UTF-8 should prohibit characters between
+            // U+D800 and U+DFFF, which are reserved for surrogate pairs and do
+            // not directly represent characters.
+            if (parsedWildCharacter[0] >= 0xd800 && parsedWildCharacter[0] <= 0xdfff) {
+                return MY_CS_ILSEQ;
+            }
+            return 3;
+        }
+
+        if (supportMB4) {
+            // We need 4 characters
+            if (rangeCheck && s + 4 > e) {
+                return MY_CS_TOOSMALL4;
+            }
+
+            // This byte must be of the form 11110xxx, and the next three bytes
+            // must be continuation bytes.
+            long four_bytes = ((0xFF & str.getByte(s)) << 24) | ((0xFF & str.getByte(s + 1)) << 16) |
+                ((0xFF & str.getByte(s + 2)) << 8) | (0xFF & str.getByte(s + 3));
+
+            if ((four_bytes & 0xf8c0c0c0) != 0xf0808080) {
+                return MY_CS_ILSEQ;
+            }
+
+            parsedWildCharacter[0] = ((c & 0x07) << 18) + ((str.getByte(s + 1) & 0x3f) << 12) +
+                ((str.getByte(s + 2) & 0x3f) << 6) + (str.getByte(s + 3) & 0x3f);
+            if (parsedWildCharacter[0] < 0x10000 || parsedWildCharacter[0] > 0x10ffff) {
+                return MY_CS_ILSEQ;
+            }
+            return 4;
+        }
+
+        return MY_CS_ILSEQ;
+    }
+
+    /**
+     * 0x0 - 0x7f | 0xxxxxxx
+     * 0x80 - 0x7ff | 110xxxxx 10xxxxxx
+     * 0x800 - 0xffff | 1110xxxx 10xxxxxx 10xxxxxx
+     * 0x10000 - 0x10ffff | 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+     */
     public static int codepointOfUTF8(SliceInput buff) {
         if (!buff.isReadable()) {
             return INVALID_CODE;

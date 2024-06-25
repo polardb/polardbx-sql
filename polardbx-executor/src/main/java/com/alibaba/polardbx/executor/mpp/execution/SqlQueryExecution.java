@@ -159,7 +159,7 @@ public class SqlQueryExecution extends QueryExecution {
 
             NodeSelector nodeSelector = nodeScheduler.createNodeSelector(session, limitNode, randomNode);
             if (nodeSelector instanceof ColumnarNodeSelector) {
-                optimizeScheduleUnderColumnar(nodeSelector);
+                optimizeScheduleUnderColumnar((ColumnarNodeSelector) nodeSelector);
             }
             planDistribution(subPlan.getKey(), nodeSelector);
             stateMachine.recordDistributedPlanningTime(distributedPlanningStart);
@@ -182,12 +182,14 @@ public class SqlQueryExecution extends QueryExecution {
         }
     }
 
-    private void optimizeScheduleUnderColumnar(NodeSelector nodeSelector) {
+    private void optimizeScheduleUnderColumnar(ColumnarNodeSelector nodeSelector) {
         if (ExecUtils.needPutIfAbsent(session.getClientContext(), ConnectionProperties.SCHEDULE_BY_PARTITION)) {
             PartScheduleChecker checker = new PartScheduleChecker(nodeSelector.getOrderedNode().size());
             physicalPlan.accept(checker);
+            boolean scheduleByPartition = checker.canScheduleByPart();
             session.getClientContext()
-                .putIntoHintCmds(ConnectionProperties.SCHEDULE_BY_PARTITION, checker.canScheduleByPart());
+                .putIntoHintCmds(ConnectionProperties.SCHEDULE_BY_PARTITION, scheduleByPartition);
+            nodeSelector.setScheduleByPartition(scheduleByPartition);
             logger.info(MessageFormat.format("Trace id is: {0}, schedule by partition is {1}",
                 session.getClientContext().getTraceId(), checker.canScheduleByPart()));
         }

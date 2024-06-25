@@ -144,7 +144,7 @@ public class EnumBlock extends AbstractCommonBlock {
             String val = getString(pos);
             Integer index = enumValues.get(val);
             if (index == null) {
-                return NULL_HASH_CODE;
+                return XxhashUtils.finalShuffle(0);
             } else {
                 return XxhashUtils.finalShuffle(index);
             }

@@ -176,7 +176,10 @@ public class ReplaceRelocateWriter extends RelocateWriter {
         // conflict rows than expected, because SELECT FOR UPDATE that we previously used to select conflict rows
         // will not lock gap in isolation level below RR.
         return ec.getParamManager().getBoolean(ConnectionParams.DML_FORCE_PUSHDOWN_RC_REPLACE)
-            || ec.getTxIsolation() > Connection.TRANSACTION_READ_COMMITTED;
+            || ec.getTxIsolation() > Connection.TRANSACTION_READ_COMMITTED
+            // If primary table and all GSI contain all uk, and all uk contains all sharding keys,
+            // we can push down REPLACE even under RC isolation level.
+            || parent.isUkContainsAllSkAndGsiContainsAllUk();
     }
 
     public boolean isContainsAllUk() {

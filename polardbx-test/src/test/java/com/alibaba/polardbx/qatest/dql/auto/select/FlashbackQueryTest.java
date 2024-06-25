@@ -10,6 +10,7 @@ import org.junit.Test;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.text.MessageFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
@@ -59,6 +60,21 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
         + "PARTITION `p2` VALUES LESS THAN (20) ENGINE = InnoDB,\n"
         + "PARTITION `p3` VALUES LESS THAN (30) ENGINE = InnoDB,\n"
         + "PARTITION `p4` VALUES LESS THAN (MAXVALUE) ENGINE = InnoDB);";
+
+    final String tableName = "FlashbackQueryTest";
+    final String tableFormat = "CREATE TABLE FlashbackQueryTest ("
+        + "`a` int(11) NOT NULL AUTO_INCREMENT,\n"
+        + "`b` int(11) NOT NULL,\n"
+        + "`c` int(11) NOT NULL,\n"
+        + "`d` int(11) NOT NULL,\n"
+        + "PRIMARY KEY (`a`) \n"
+        + ") {0} ";
+
+    final String[] partitionStrings = new String[] {
+        "single",
+        "broadcast",
+        "partition by key(a)"
+    };
 
     @Before
     public void before() {
@@ -158,4 +174,92 @@ public class FlashbackQueryTest extends AutoReadBaseTestCase {
         }
     }
 
+    @Test
+    public void test57Tso() {
+        if (isMySQL80()) {
+            return;
+        }
+        String sql =
+            "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest tt partition(p1) as of tso 10000";
+        String expect =
+            "Gather(concurrent=true)  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF TSO ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
+        String explain = JdbcUtil.getExplainResult(tddlConnection, sql);
+        Assert.assertEquals(expect, explain);
+    }
+
+    @Test
+    public void test80Tso() {
+        if (!isMySQL80()) {
+            return;
+        }
+        String sql =
+            "/*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest tt partition(p1) as of tso 10000";
+        String expect =
+            "Gather(concurrent=true)  LogicalView(tables=\"FlashbackQueryTest[p1]\", sql=\"SELECT `a`, `b`, `c`, `d` FROM `FlashbackQueryTest` AS OF GCN ? AS `FlashbackQueryTest`\")HitCache:falseSource:nullTemplateId: NULL";
+        String explain = JdbcUtil.getExplainResult(tddlConnection, sql);
+        Assert.assertEquals(expect, explain);
+    }
+
+    @Test
+    public void testTraceFunction() throws Exception {
+        for (String partition : partitionStrings) {
+            String createTable = MessageFormat.format(tableFormat, partition);
+
+            JdbcUtil.dropTable(tddlConnection, tableName);
+            JdbcUtil.executeSuccess(tddlConnection, createTable);
+
+            //等待5s，避免时间转tso：(UNIX_TIMESTAMP(now()) << 22) * 1000，报错：The definition of the table required by the flashback query has changed
+            Thread.sleep(5000);
+
+            String sql =
+                "set @tso=tso_timestamp(); trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso @tso";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+            List<List<String>> result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("@tso".toUpperCase()));
+
+            sql =
+                "set @tso=tso_timestamp(); trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso @tso + 10 - 10";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("@tso".toUpperCase()));
+
+            sql =
+                "trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso tso_timestamp()";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("tso_timestamp".toUpperCase()));
+
+            sql =
+                "trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso (UNIX_TIMESTAMP(now()) << 22) * 1000";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("now()".toUpperCase()));
+
+            sql =
+                "trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso tso_timestamp() + round(rand())";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("rand()".toUpperCase()));
+
+            sql =
+                "trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso (UNIX_TIMESTAMP(CURRENT_TIMESTAMP()) << 22) * 1000";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("CURRENT_TIMESTAMP()".toUpperCase()));
+
+            //点查
+            sql =
+                "trace /*+TDDL:plancache=false enable_mpp=false*/ select * from FlashbackQueryTest as of tso tso_timestamp() + round(rand()) where a = 1";
+            JdbcUtil.executeSuccess(tddlConnection, sql);
+
+            result = getTrace(tddlConnection);
+            System.out.println(result.get(0).get(11));
+            Assert.assertFalse(result.get(0).get(11).toUpperCase().contains("rand()".toUpperCase()));
+        }
+    }
 }

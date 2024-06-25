@@ -394,7 +394,7 @@ public class MetaDbUtil {
      *
      * @return {Version}-{ReleaseDate}
      */
-    public static String getGmsPolardbVersion() {
+    public static String getGmsPolardbVersion() throws Exception {
         String sql = POLARDB_VERSION_SQL;
         String dnPolardbxVersion = null;
         String dnReleaseDate = null;
@@ -406,10 +406,6 @@ public class MetaDbUtil {
                 dnReleaseDate = rs.getString(2);
             }
             return String.format("%s-%s", dnPolardbxVersion, dnReleaseDate);
-        } catch (SQLException e) {
-            MetaDbLogUtil.META_DB_LOG.error(e);
-            // ignore
-            return null;
         }
     }
 
@@ -451,6 +447,27 @@ public class MetaDbUtil {
         } catch (SQLException ex) {
             MetaDbLogUtil.META_DB_LOG.error(ex);
             throw ex;
+        }
+    }
+
+    public static boolean tryGetLock(Connection conn, String lockObj, long timeout) {
+        try (Statement statement = conn.createStatement();
+            ResultSet lockRs = statement.executeQuery(
+                String.format("SELECT GET_LOCK('" + lockObj + "', %d) ", timeout))) {
+            return lockRs.next() && lockRs.getInt(1) == 1;
+        } catch (Throwable e) {
+            MetaDbLogUtil.META_DB_LOG.error("tryGetLock error", e);
+            return false;
+        }
+    }
+
+    public static boolean releaseLock(Connection conn, String lockObj) {
+        try (Statement statement = conn.createStatement();
+            ResultSet lockRs = statement.executeQuery("SELECT RELEASE_LOCK('" + lockObj + "') ")) {
+            return lockRs.next() && lockRs.getInt(1) == 1;
+        } catch (Exception e) {
+            MetaDbLogUtil.META_DB_LOG.error("releaseLock error", e);
+            return false;
         }
     }
 }

@@ -45,26 +45,35 @@ import static com.alibaba.polardbx.qatest.validator.PrepareData.tableDataPrepare
  * 复杂Update测试
  */
 
-
 public class ComplexUpdateTest extends AutoCrudBasedLockTestCase {
     static String clazz = Thread.currentThread().getStackTrace()[1].getClassName();
     private static final String HINT1 = "";
     //多线程执行
-    private static final String HINT2 = "/*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
+    private static final String HINT2 =
+        "/*+TDDL:CMD_EXTRA(UPDATE_DELETE_SELECT_BATCH_SIZE=1,MODIFY_SELECT_MULTI=true)*/ ";
 
     private final String HINT;
 
     @Parameters(name = "{index}:hint={0},table0={1},table1={2}")
     public static List<String[]> prepareData() {
-        List<String []> allTests = new ArrayList<>();
-        List<String []> result = Arrays.asList(ExecuteTableName.allBaseTypeTwoStrictSameTable(ExecuteTableName.UPDATE_DELETE_BASE));
+        List<String[]> allTests = new ArrayList<>();
+        List<String[]> result =
+            Arrays.asList(ExecuteTableName.allBaseTypeTwoStrictSameTable(ExecuteTableName.UPDATE_DELETE_BASE));
         final List<String[]> tableNames = Arrays.asList(
             new String[][] {
                 //相同库表会直接下推
-                {ExecuteTableName.UPDATE_DELETE_BASE + ONE_DB_ONE_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + TWO + MULTI_DB_ONE_TB_SUFFIX},
-                {ExecuteTableName.UPDATE_DELETE_BASE + ONE_DB_MUTIL_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + TWO + MULTI_DB_ONE_TB_SUFFIX},
-                {ExecuteTableName.UPDATE_DELETE_BASE + MULTI_DB_ONE_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + TWO + MUlTI_DB_MUTIL_TB_SUFFIX},
-                {ExecuteTableName.UPDATE_DELETE_BASE + MUlTI_DB_MUTIL_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + TWO + ONE_DB_MUTIL_TB_SUFFIX},
+                {
+                    ExecuteTableName.UPDATE_DELETE_BASE + ONE_DB_ONE_TB_SUFFIX,
+                    ExecuteTableName.UPDATE_DELETE_BASE + TWO + MULTI_DB_ONE_TB_SUFFIX},
+                {
+                    ExecuteTableName.UPDATE_DELETE_BASE + ONE_DB_MUTIL_TB_SUFFIX,
+                    ExecuteTableName.UPDATE_DELETE_BASE + TWO + MULTI_DB_ONE_TB_SUFFIX},
+                {
+                    ExecuteTableName.UPDATE_DELETE_BASE + MULTI_DB_ONE_TB_SUFFIX,
+                    ExecuteTableName.UPDATE_DELETE_BASE + TWO + MUlTI_DB_MUTIL_TB_SUFFIX},
+                {
+                    ExecuteTableName.UPDATE_DELETE_BASE + MUlTI_DB_MUTIL_TB_SUFFIX,
+                    ExecuteTableName.UPDATE_DELETE_BASE + TWO + ONE_DB_MUTIL_TB_SUFFIX},
                 //广播表会在CN端获取CURRENT_TIMESTAMP，和Mysql有些差异，正常现象
                 //{ExecuteTableName.UPDATE_DELETE_BASE + BROADCAST_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + TWO + MUlTI_DB_MUTIL_TB_SUFFIX},
                 //{ExecuteTableName.UPDATE_DELETE_BASE + TWO + MUlTI_DB_MUTIL_TB_SUFFIX, ExecuteTableName.UPDATE_DELETE_BASE + BROADCAST_TB_SUFFIX}
@@ -563,4 +572,35 @@ public class ComplexUpdateTest extends AutoCrudBasedLockTestCase {
         }
     }
 
+    @Test
+    public void updateWithUnion() {
+        // Execute update
+        String sql =
+            String.format("update %s a, "
+                    + "(select 9527 as integer_test, 'hello1234' as varchar_test "
+                    + "union select 27149 , 'safdwe') v "
+                    + "set a.bigint_test = v.integer_test where a.varchar_test = v.varchar_test",
+                baseOneTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
+
+    @Test
+    public void updateWithUnion1() {
+        // Execute update
+        String sql =
+            String.format("update %s a, "
+                    + "(select 9527 as integer_test, 'hello1234' as varchar_test "
+                    + "union select 27149 , varchar_test from %s b where b.bigint_test < 15) v "
+                    + "set a.bigint_test = v.integer_test where a.varchar_test = v.varchar_test",
+                baseOneTableName, baseTwoTableName);
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, sql, null);
+
+        // Check update result
+        sql = "SELECT bigint_test FROM " + baseOneTableName;
+        selectContentSameAssert(sql, null, mysqlConnection, tddlConnection, true);
+    }
 }

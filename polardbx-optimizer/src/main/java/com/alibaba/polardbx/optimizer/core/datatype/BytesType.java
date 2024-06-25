@@ -100,31 +100,23 @@ public class BytesType extends AbstractDataType<byte[]> {
         int actualLength = value.length - notZeroOffset;
         int actualTargetLength = targetValue.length - targetNotZeroOffset;
 
-        if (actualLength > actualTargetLength) {
-            return 1;
-        } else if (actualLength < actualTargetLength) {
-            return -1;
-        } else {
-            int index = notZeroOffset;
-            int targetIndex = targetNotZeroOffset;
-            while (true) {
-                if (index >= value.length || targetIndex >= targetValue.length) {
-                    break;
-                }
-                short shortValue = (short) (value[index] & 0xff);
-                short shortTargetValue = (short) (targetValue[targetIndex] & 0xff);
-                boolean re = (shortValue == shortTargetValue);
-                if (re) {
-                    index++;
-                    targetIndex++;
-                    continue;
-                } else {
-                    return shortValue > shortTargetValue ? 1 : -1;
-                }
+        int minLength = Math.min(actualLength, actualTargetLength);
+        int index = notZeroOffset;
+        int targetIndex = targetNotZeroOffset;
 
+        while (index - notZeroOffset < minLength) {
+            int code1 = Byte.toUnsignedInt(value[index]);
+            int code2 = Byte.toUnsignedInt(targetValue[targetIndex]);
+
+            int flag = code1 - code2;
+            if (flag != 0) {
+                return flag;
             }
-            return 0;
+            index++;
+            targetIndex++;
         }
+
+        return actualLength - actualTargetLength;
     }
 
     @Override

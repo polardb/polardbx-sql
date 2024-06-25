@@ -19,7 +19,6 @@ package com.alibaba.polardbx.executor.ddl.job.factory;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.changeset.ChangeSetManager;
-import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.ddl.job.converter.DdlJobDataConverter;
 import com.alibaba.polardbx.executor.ddl.job.converter.PhysicalPlanData;
 import com.alibaba.polardbx.executor.ddl.job.task.backfill.MoveTableBackFillTask;
@@ -31,17 +30,14 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseAddMetaTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PhysicalBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyExecutorInitTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
-import com.alibaba.polardbx.executor.ddl.job.task.changset.MoveTableCheckTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetCatchUpTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetStartTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.MoveTableCheckTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.ExecutableDdlJob;
 import com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils;
 import com.alibaba.polardbx.executor.physicalbackfill.PhysicalBackfillUtils;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
-import com.alibaba.polardbx.gms.topology.GroupDetailInfoExRecord;
 import com.alibaba.polardbx.gms.util.GroupInfoUtil;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
@@ -52,14 +48,13 @@ import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.DDL;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-import static com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager.ID_GENERATOR;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
+import static com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager.ID_GENERATOR;
 import static com.alibaba.polardbx.executor.ddl.util.ChangeSetUtils.genChangeSetCatchUpTasks;
 
 public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFactory {
@@ -195,14 +190,14 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
         if (usePhysicalBackfill) {
             for (Map.Entry<String, Set<String>> entry : sourceTableTopology.entrySet()) {
                 String srcGroupName = entry.getKey();
-                String tarGroupName = GroupInfoUtil.buildScaloutGroupName(srcGroupName);
+                String tarGroupName = GroupInfoUtil.buildScaleOutGroupName(srcGroupName);
                 Pair<String, String> srcTarGroup = Pair.of(srcGroupName, tarGroupName);
                 String sourceStorageId = sourceAndTarDnMap.computeIfAbsent(srcTarGroup.getKey(),
                     key -> DbTopologyManager.getStorageInstIdByGroupName(schemaName, srcTarGroup.getKey()));
                 String targetStorageId = tarGroupAndStorageIds.get(srcTarGroup.getValue());
 
                 String srcDbName = groupAndDbMap.computeIfAbsent(srcTarGroup.getKey(),
-                    key -> DbTopologyManager.getPhysicalDbNameByGroupKey(schemaName, srcTarGroup.getKey()));
+                    key -> DbTopologyManager.getPhysicalDbNameByGroupKeyFromMetaDb(schemaName, srcTarGroup.getKey()));
 
                 Pair<String, String> srcDbAndGroup = Pair.of(srcDbName.toLowerCase(), srcTarGroup.getKey());
                 String tarDbName;
@@ -233,7 +228,8 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                             phyTb);
                     CloneTableDataFileTask cloneTableDataFileTask =
                         new CloneTableDataFileTask(schemaName, tableName, srcDbAndGroup, tarDbAndGroup, phyTb,
-                            phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize);
+                            phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize,
+                            tableMeta.isEncryption());
                     cloneTableDataFileTask.setTaskId(ID_GENERATOR.nextId());
 
                     List<DdlTask> importTableSpaceTasks = new ArrayList<>();
@@ -244,7 +240,8 @@ public class MoveDatabaseChangeSetJobFactory extends MoveDatabaseSubTaskJobFacto
                             srcTarGroup,
                             Pair.of(sourceStorageId, targetStorageId), storageInstAndUserInfos, batchSize, parallelism,
                             minUpdateBatch,
-                            waitLsn);
+                            waitLsn,
+                            tableMeta.isEncryption());
 
                     storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
                         key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));

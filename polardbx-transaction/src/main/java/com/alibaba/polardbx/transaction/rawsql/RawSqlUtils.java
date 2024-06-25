@@ -16,9 +16,9 @@
 
 package com.alibaba.polardbx.transaction.rawsql;
 
+import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.jdbc.TableName;
 import com.alibaba.polardbx.common.jdbc.ZeroDate;
 import com.alibaba.polardbx.common.jdbc.ZeroTime;
 import com.alibaba.polardbx.common.jdbc.ZeroTimestamp;

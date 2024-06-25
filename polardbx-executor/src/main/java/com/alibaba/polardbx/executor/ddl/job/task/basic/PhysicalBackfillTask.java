@@ -84,6 +84,7 @@ public class PhysicalBackfillTask extends BaseDdlTask {
     private final boolean newPartitionDb;
     private final Map<String, Pair<String, String>> storageInstAndUserInfos;
     private final boolean waitLsn;
+    private final boolean encrypted;
 
     //don't serialize those parameters
     private transient long lastUpdateTime = 0l;
@@ -104,7 +105,8 @@ public class PhysicalBackfillTask extends BaseDdlTask {
                                 long batchSize,
                                 long parallelism,
                                 long minUpdateBatch,
-                                boolean waitLsn) {
+                                boolean waitLsn,
+                                boolean encrypted) {
         super(schemaName);
         this.schemaName = schemaName;
         this.backfillId = backfillId;
@@ -118,6 +120,7 @@ public class PhysicalBackfillTask extends BaseDdlTask {
         this.parallelism = Math.max(parallelism, 1);
         this.minUpdateBatch = minUpdateBatch;
         this.waitLsn = waitLsn;
+        this.encrypted = encrypted;
 
         this.curSpeedLimit = OptimizerContext.getContext(schemaName).getParamManager()
             .getLong(ConnectionParams.PHYSICAL_BACKFILL_SPEED_LIMIT);
@@ -340,20 +343,10 @@ public class PhysicalBackfillTask extends BaseDdlTask {
         final Pair<String, Integer> sourceHostIpAndPort = detailInfo.getSourceHostAndPort();
         final AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
 
-        // copy the .cfg file before .ibd file
-        String srcFileName = srcFileAndDir.getKey();
-        String srcDir;
-        if (initBean.isEmpty()) {
-            srcDir = PhysicalBackfillUtils.convertToCfgFileName(
-                srcFileAndDir.getValue() + PhysicalBackfillUtils.TEMP_FILE_POSTFIX);
-        } else {
-            srcDir = PhysicalBackfillUtils.convertToCfgFileName(srcFileAndDir.getValue());
-        }
+        // copy the .cfg/.cfp file before .ibd file
 
-        String tarFileName = targetFileAndDir.getKey();
-        String tarDir = PhysicalBackfillUtils.convertToCfgFileName(targetFileAndDir.getValue());
-        copyCfgFile(Pair.of(srcFileName, srcDir), srcDbAndGroup, sourceHostIpAndPort,
-            Pair.of(tarFileName, tarDir), targetDbAndGroup, targetHost, consumer, ec);
+        copyCfgFile(srcFileAndDir, srcDbAndGroup, sourceHostIpAndPort,
+            targetFileAndDir, targetDbAndGroup, targetHost, consumer, !initBean.isEmpty(), ec);
 
         if (bitSetPosMark == null || bitSetPosMark.length == 0) {
             bitSet = new BitSet(offsetAndSize.size());
@@ -450,12 +443,9 @@ public class PhysicalBackfillTask extends BaseDdlTask {
 
         Pair<String, Integer> ipPortPair = bfb.backfillObject.detailInfo.getSourceHostAndPort();
 
-        PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, srcDbAndGroup.getValue(), srcDbAndGroup.getKey(),
-            ipPortPair.getKey(), ipPortPair.getValue(),
-            PhysicalBackfillUtils.convertToCfgFileName(tempFileAndDir.getValue()), false, ec);
+        PhysicalBackfillUtils.deleteInnodbDataFiles(schemaName, ipPortPair,
+            tempFileAndDir.getValue(), srcDbAndGroup.getValue(), srcDbAndGroup.getKey(), false, ec);
 
-        PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, srcDbAndGroup.getValue(), srcDbAndGroup.getKey(),
-            ipPortPair.getKey(), ipPortPair.getValue(), tempFileAndDir.getValue(), false, ec);
         // After all physical table finished
         backfillManager.updateBackfillObject(ImmutableList.of(bor));
 
@@ -670,62 +660,93 @@ public class PhysicalBackfillTask extends BaseDdlTask {
         SQLRecorderLogger.ddlLogger.info(msg);
     }
 
-    private void copyCfgFile(final Pair<String, String> srcFileAndDir, final Pair<String, String> srcDbAndGroup,
+    private void copyCfgFile(final Pair<String, String> srcDataFileAndDir,
+                             final Pair<String, String> srcDbAndGroup,
                              final Pair<String, Integer> sourceHostIpAndPort,
-                             final Pair<String, String> targetFileAndDir, final Pair<String, String> tarDbAndGroup,
+                             final Pair<String, String> targetDataFileAndDir, final Pair<String, String> tarDbAndGroup,
                              final List<Pair<String, Integer>> targetHosts, BatchConsumer consumer,
+                             boolean isInit,
                              ExecutionContext ec) {
 
-        //delete first before copy,because do not have backfillMeta for cfg file
+        //delete first before copy,because do not have backfillMeta for cfg/cfp file
+        String srcCfgDir;
+        String srcCfpDir;
+        List<Pair<String, String>> srcTargetFilePair = new ArrayList<>();
+        if (!isInit) {
+            srcCfgDir = PhysicalBackfillUtils.convertToCfgFileName(
+                srcDataFileAndDir.getValue() + PhysicalBackfillUtils.TEMP_FILE_POSTFIX, PhysicalBackfillUtils.CFG);
+            srcCfpDir = PhysicalBackfillUtils.convertToCfgFileName(
+                srcDataFileAndDir.getValue() + PhysicalBackfillUtils.TEMP_FILE_POSTFIX, PhysicalBackfillUtils.CFP);
+        } else {
+            srcCfgDir =
+                PhysicalBackfillUtils.convertToCfgFileName(srcDataFileAndDir.getValue(), PhysicalBackfillUtils.CFG);
+            srcCfpDir =
+                PhysicalBackfillUtils.convertToCfgFileName(srcDataFileAndDir.getValue(), PhysicalBackfillUtils.CFP);
+        }
+
+        //PhysicalBackfillUtils.
+        //String tarFileName = targetFileAndDir.getKey();
+        String tarCfgDir =
+            PhysicalBackfillUtils.convertToCfgFileName(targetDataFileAndDir.getValue(), PhysicalBackfillUtils.CFG);
+        String tarCfpDir =
+            PhysicalBackfillUtils.convertToCfgFileName(targetDataFileAndDir.getValue(), PhysicalBackfillUtils.CFP);
+        srcTargetFilePair.add(Pair.of(srcCfgDir, tarCfgDir));
+        if (encrypted) {
+            srcTargetFilePair.add(Pair.of(srcCfpDir, tarCfpDir));
+        }
 
         for (Pair<String, Integer> pair : GeneralUtil.emptyIfNull(
             targetHosts)) {
             PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, tarDbAndGroup.getValue(), tarDbAndGroup.getKey(),
-                pair.getKey(), pair.getValue(), targetFileAndDir.getValue(), true, ec);
+                pair.getKey(), pair.getValue(), targetDataFileAndDir.getValue(), true, ec);
         }
         PolarxPhysicalBackfill.TransferFileDataOperator transferFileData = null;
 
         Pair<String, String> srcUserInfo = storageInstAndUserInfos.get(sourceTargetDnId.getKey());
         Pair<String, String> tarUserInfo = storageInstAndUserInfos.get(sourceTargetDnId.getValue());
 
-        long offset = 0l;
-        do {
-            boolean success = false;
-            int tryTime = 0;
+        for (Pair<String, String> srcTarDir : srcTargetFilePair) {
+            long offset = 0l;
             do {
-                try (XConnection conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(
-                    srcDbAndGroup.getKey(),
-                    sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue(), srcUserInfo.getKey(),
-                    srcUserInfo.getValue(), -1))) {
+                boolean success = false;
+                int tryTime = 0;
+                do {
+                    try (XConnection conn = (XConnection) (PhysicalBackfillUtils.getXConnectionForStorage(
+                        srcDbAndGroup.getKey(),
+                        sourceHostIpAndPort.getKey(), sourceHostIpAndPort.getValue(), srcUserInfo.getKey(),
+                        srcUserInfo.getValue(), -1))) {
 
-                    PolarxPhysicalBackfill.TransferFileDataOperator.Builder builder =
-                        PolarxPhysicalBackfill.TransferFileDataOperator.newBuilder();
+                        PolarxPhysicalBackfill.TransferFileDataOperator.Builder builder =
+                            PolarxPhysicalBackfill.TransferFileDataOperator.newBuilder();
 
-                    builder.setOperatorType(PolarxPhysicalBackfill.TransferFileDataOperator.Type.GET_DATA_FROM_SRC_IBD);
-                    PolarxPhysicalBackfill.FileInfo.Builder fileInfoBuilder =
-                        PolarxPhysicalBackfill.FileInfo.newBuilder();
-                    fileInfoBuilder.setFileName(srcFileAndDir.getKey());
-                    fileInfoBuilder.setTempFile(false);
-                    fileInfoBuilder.setDirectory(srcFileAndDir.getValue());
-                    fileInfoBuilder.setPartitionName("");
-                    builder.setFileInfo(fileInfoBuilder.build());
-                    builder.setBufferLen(batchSize);
-                    builder.setOffset(offset);
-                    transferFileData = conn.execReadBufferFromFile(builder);
-                    success = true;
-                } catch (Exception ex) {
-                    if (tryTime >= PhysicalBackfillUtils.MAX_RETRY) {
-                        throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+                        builder.setOperatorType(
+                            PolarxPhysicalBackfill.TransferFileDataOperator.Type.GET_DATA_FROM_SRC_IBD);
+                        PolarxPhysicalBackfill.FileInfo.Builder fileInfoBuilder =
+                            PolarxPhysicalBackfill.FileInfo.newBuilder();
+                        fileInfoBuilder.setFileName(srcDataFileAndDir.getKey());
+                        fileInfoBuilder.setTempFile(false);
+                        fileInfoBuilder.setDirectory(srcTarDir.getKey());
+                        fileInfoBuilder.setPartitionName("");
+                        builder.setFileInfo(fileInfoBuilder.build());
+                        builder.setBufferLen(batchSize);
+                        builder.setOffset(offset);
+                        transferFileData = conn.execReadBufferFromFile(builder);
+                        success = true;
+                    } catch (Exception ex) {
+                        if (tryTime >= PhysicalBackfillUtils.MAX_RETRY) {
+                            throw new TddlRuntimeException(ErrorCode.ERR_SCALEOUT_EXECUTE, ex);
+                        }
+                        tryTime++;
                     }
-                    tryTime++;
+                } while (!success);
+                consumer.consume(tarDbAndGroup, Pair.of(srcDataFileAndDir.getKey(), srcTarDir.getValue()), targetHosts,
+                    tarUserInfo,
+                    transferFileData);
+                if (transferFileData.getBufferLen() < batchSize) {
+                    break;
                 }
-            } while (!success);
-            consumer.consume(tarDbAndGroup, targetFileAndDir, targetHosts, tarUserInfo,
-                transferFileData);
-            if (transferFileData.getBufferLen() < batchSize) {
-                return;
-            }
-            offset += transferFileData.getBufferLen();
-        } while (true);
+                offset += transferFileData.getBufferLen();
+            } while (true);
+        }
     }
 }

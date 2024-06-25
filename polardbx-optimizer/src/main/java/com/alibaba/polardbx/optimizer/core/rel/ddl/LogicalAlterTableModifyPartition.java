@@ -190,7 +190,7 @@ public class LogicalAlterTableModifyPartition extends BaseDdlOperation {
          * (including allocate the phy_db value for the new partition group )
          */
         preparedData.setDropVal(isDropVal);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(preparedData.isUseSubPart());
 
         /**
          * Collect all the partitionNames from the new partition groups

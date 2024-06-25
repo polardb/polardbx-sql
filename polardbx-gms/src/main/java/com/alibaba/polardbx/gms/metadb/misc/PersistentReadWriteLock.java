@@ -61,6 +61,8 @@ public class PersistentReadWriteLock {
     private static final long RETRY_INTERVAL = 1000L;
     public static final String OWNER_PREFIX = "DDL_";
 
+    public static final long GET_LOCK_TIMEOUT = 50l; // the same as default innodb_lock_wait_timeout
+
     private PersistentReadWriteLock() {
     }
 
@@ -486,6 +488,7 @@ public class PersistentReadWriteLock {
         boolean isSuccess = new ReadWriteLockAccessDelegate<Boolean>() {
             @Override
             protected Boolean invoke() {
+                boolean needRelease = false;
                 try {
                     MetaDbUtil.beginTransaction(connection);
                     if (CollectionUtils.isEmpty(readLocks) && CollectionUtils.isEmpty(writeLocks)) {
@@ -493,6 +496,10 @@ public class PersistentReadWriteLock {
                         MetaDbUtil.commit(connection);
                         MetaDbUtil.endTransaction(connection, LOGGER);
                         return true;
+                    }
+                    needRelease = true;
+                    if (!MetaDbUtil.tryGetLock(connection, schemaName, GET_LOCK_TIMEOUT)) {
+                        return false;
                     }
                     List<String> allLocks = Lists.newArrayList(Sets.union(readLocks, writeLocks));
                     List<ReadWriteLockRecord> currentLocks = new ArrayList<>(allLocks.size());
@@ -568,6 +575,10 @@ public class PersistentReadWriteLock {
                     //rollback all, if any resource is unable to acquire
                     MetaDbUtil.rollback(connection, e, LOGGER, "acquire write lock");
                     return false;
+                } finally {
+                    if (needRelease) {
+                        MetaDbUtil.releaseLock(connection, schemaName);
+                    }
                 }
             }
         }.execute().booleanValue();

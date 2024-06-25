@@ -127,6 +127,7 @@
         <test.tmp.dir>${project.build.directory}/testing-tmp</test.tmp.dir>
         <example.dir>${project.basedir}/../examples</example.dir>
         <min.hadoop.version>2.7.3</min.hadoop.version>
+        <hadoop.version>3.2.2</hadoop.version>
         <orc.version>1.6.9</orc.version>
         <storage-api.version>2.7.1</storage-api.version>
         <gson.version>2.9.0</gson.version>
@@ -151,8 +152,6 @@
         <powermock.version>2.0.2</powermock.version>
         <equalsverifier.version>3.16</equalsverifier.version>
         <byte-buddy.version>1.9.3</byte-buddy.version>
-        <junit.version>5.7.0</junit.version>
-        <ibatis-sqlmap.version>2.3.4.726</ibatis-sqlmap.version>
 
         <!-- for common -->
         <commons-beanutils.version>1.9.4</commons-beanutils.version>

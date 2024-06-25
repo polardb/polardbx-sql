@@ -183,124 +183,6 @@ public class PartitionByDefinition extends PartitionByDefinitionBase {
         return targetPartColList;
     }
 
-    public static void normalizePartitions(PartitionsNormalizationParams params) {
-        StringBuilder sb = params.getBuilder();
-        boolean usePartGroupNameAsPartName = params.isUsePartGroupNameAsPartName();
-        Map<Long, String> partGrpNameInfo = params.getPartGrpNameInfo();
-        boolean needSortPartitions = params.isNeedSortPartitions();
-        boolean showHashByRange = params.isShowHashByRange();
-        //int prefixPartColCnt = params.getPrefixPartColCnt();
-
-        List<Integer> allLevelPrefixPartColCnt = params.getAllLevelPrefixPartColCnt();
-
-        boolean useSubPartBy = params.isUseSubPartBy();
-        boolean useSubPartByTemp = params.isUseSubPartByTemp();
-        boolean nextPartLevelUseTemp = params.isNextPartLevelUseTemp();
-        boolean buildSubPartByTemp = params.isBuildSubPartByTemp();
-        PartitionStrategy parentPartStrategy = params.getParentPartStrategy();
-        SearchDatumComparator boundSpaceComparator = params.getBoundSpaceComparator();
-
-        List<PartitionSpec> partSpecList = params.getPartSpecList();
-        List<PartitionSpec> orderedPartSpecList = params.getOrderedPartSpecList();
-        String textIndentBase = params.getTextIndentBase();
-        String textIndent = params.getTextIndent();
-        if (needSortPartitions) {
-            partSpecList = orderedPartSpecList;
-        }
-        PartitionStrategy partStrategy = partSpecList.get(0).getStrategy();
-        PartKeyLevel partKeyLevel = partSpecList.get(0).getPartLevel();
-        boolean isSpecTemplate = partSpecList.get(0).isSpecTemplate();
-        int i;
-        switch (partStrategy) {
-        case KEY:
-        case HASH:
-        case DIRECT_HASH:
-        case CO_HASH:
-            if (partKeyLevel == PartKeyLevel.PARTITION_KEY) {
-                if (!useSubPartBy) {
-                    if (!showHashByRange) {
-                        break;
-                    }
-                } else {
-                    if (nextPartLevelUseTemp) {
-                        if (!showHashByRange) {
-                            break;
-                        }
-                    }
-                }
-            } else if (partKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
-                if (buildSubPartByTemp) {
-                    if (!showHashByRange) {
-                        break;
-                    }
-                }
-            }
-        case UDF_HASH:
-        case LIST:
-        case LIST_COLUMNS:
-        case RANGE:
-        case RANGE_COLUMNS:
-
-            sb.append(textIndentBase);
-            sb.append(textIndent);
-            sb.append("(");
-            i = 0;
-            for (PartitionSpec pSpec : partSpecList) {
-                if (i > 0) {
-                    sb.append(",\n");
-                    sb.append(textIndentBase);
-                    sb.append(" ");
-                    sb.append(textIndent);
-                }
-                String partGrpName = null;
-                if (usePartGroupNameAsPartName && partGrpNameInfo != null) {
-                    if (!pSpec.isLogical()) {
-                        partGrpName = partGrpNameInfo.get(pSpec.getLocation().getPartitionGroupId());
-                    } else {
-                        partGrpName = pSpec.getName();
-                    }
-                }
-                PartSpecNormalizationParams normalSpecParams = new PartSpecNormalizationParams();
-                normalSpecParams.setUsePartGroupNameAsPartName(usePartGroupNameAsPartName);
-                normalSpecParams.setPartGrpName(partGrpName);
-                normalSpecParams.setAllLevelPrefixPartColCnts(allLevelPrefixPartColCnt);
-                normalSpecParams.setPartSpec(pSpec);
-                normalSpecParams.setNeedSortBoundValues(needSortPartitions);
-                normalSpecParams.setPartGrpNameInfo(partGrpNameInfo);
-                normalSpecParams.setShowHashByRange(showHashByRange);
-                normalSpecParams.setBoundSpaceComparator(boundSpaceComparator);
-                normalSpecParams.setNeedSortPartitions(needSortPartitions);
-                normalSpecParams.setUseSubPartByTemp(useSubPartByTemp);
-                normalSpecParams.setTextIntentBase(textIndentBase);
-                sb.append(PartitionSpec.normalizePartSpec(normalSpecParams));
-                i++;
-            }
-            sb.append(")");
-
-            if (buildSubPartByTemp) {
-                boolean hasMoreParentPartSpecsToShow = needShowMoreParentPartSpecs(showHashByRange, parentPartStrategy);
-                if (hasMoreParentPartSpecsToShow) {
-                    sb.append('\n');
-                }
-            }
-            break;
-        }
-
-        //sb.append('\n');
-    }
-
-    private static boolean needShowMoreParentPartSpecs(boolean showHashByRange,
-                                                       PartitionStrategy parentPartStrategy) {
-        boolean hasMoreParentPartSpecsToShow = true;
-        if (parentPartStrategy != null && (parentPartStrategy == PartitionStrategy.KEY
-            || parentPartStrategy == PartitionStrategy.HASH || parentPartStrategy == PartitionStrategy.DIRECT_HASH
-            || parentPartStrategy == PartitionStrategy.CO_HASH)
-            && !showHashByRange) {
-            hasMoreParentPartSpecsToShow = false;
-        }
-        return hasMoreParentPartSpecsToShow;
-    }
-
     public static List<SearchDatumInfo> getDistinctSearchDatumInfos(PartitionSpec partitionSpec,
                                                                     SearchDatumComparator bndSpaceComparator,
                                                                     List<SearchDatumInfo> searchRecords) {
@@ -1504,6 +1386,130 @@ public class PartitionByDefinition extends PartitionByDefinitionBase {
             }
         }
         return sb.toString();
+    }
+
+    public static void normalizePartitions(PartitionsNormalizationParams params) {
+        StringBuilder sb = params.getBuilder();
+        boolean usePartGroupNameAsPartName = params.isUsePartGroupNameAsPartName();
+        Map<Long, String> partGrpNameInfo = params.getPartGrpNameInfo();
+        boolean needSortPartitions = params.isNeedSortPartitions();
+        boolean showHashByRange = params.isShowHashByRange();
+        //int prefixPartColCnt = params.getPrefixPartColCnt();
+
+        List<Integer> allLevelPrefixPartColCnt = params.getAllLevelPrefixPartColCnt();
+
+        boolean useSubPartBy = params.isUseSubPartBy();
+        boolean useSubPartByTemp = params.isUseSubPartByTemp();
+        boolean nextPartLevelUseTemp = params.isNextPartLevelUseTemp();
+        boolean buildSubPartByTemp = params.isBuildSubPartByTemp();
+        PartitionStrategy parentPartStrategy = params.getParentPartStrategy();
+        SearchDatumComparator boundSpaceComparator = params.getBoundSpaceComparator();
+
+        List<PartitionSpec> partSpecList = params.getPartSpecList();
+        List<PartitionSpec> orderedPartSpecList = params.getOrderedPartSpecList();
+        String textIndentBase = params.getTextIndentBase();
+        String textIndent = params.getTextIndent();
+        if (textIndentBase == null) {
+            textIndentBase = "";
+        }
+        if (textIndent == null) {
+            textIndent = "";
+        }
+        if (needSortPartitions) {
+            partSpecList = orderedPartSpecList;
+        }
+        PartitionStrategy partStrategy = partSpecList.get(0).getStrategy();
+        PartKeyLevel partKeyLevel = partSpecList.get(0).getPartLevel();
+        boolean isSpecTemplate = partSpecList.get(0).isSpecTemplate();
+        int i;
+        switch (partStrategy) {
+        case KEY:
+        case HASH:
+        case CO_HASH:
+        case DIRECT_HASH:
+            if (partKeyLevel == PartKeyLevel.PARTITION_KEY) {
+                if (!useSubPartBy) {
+                    if (!showHashByRange) {
+                        break;
+                    }
+                } else {
+                    if (nextPartLevelUseTemp) {
+                        if (!showHashByRange) {
+                            break;
+                        }
+                    }
+                }
+            } else if (partKeyLevel == PartKeyLevel.SUBPARTITION_KEY) {
+                if (buildSubPartByTemp) {
+                    if (!showHashByRange) {
+                        break;
+                    }
+                }
+            }
+        case UDF_HASH:
+        case LIST:
+        case LIST_COLUMNS:
+        case RANGE:
+        case RANGE_COLUMNS:
+
+            sb.append(textIndentBase);
+            sb.append(textIndent);
+            sb.append("(");
+            i = 0;
+            for (PartitionSpec pSpec : partSpecList) {
+                if (i > 0) {
+                    sb.append(",\n");
+                    sb.append(textIndentBase);
+                    sb.append(" ");
+                    sb.append(textIndent);
+                }
+                String partGrpName = null;
+                if (usePartGroupNameAsPartName && partGrpNameInfo != null) {
+                    if (!pSpec.isLogical()) {
+                        partGrpName = partGrpNameInfo.get(pSpec.getLocation().getPartitionGroupId());
+                    } else {
+                        partGrpName = pSpec.getName();
+                    }
+                }
+                PartSpecNormalizationParams normalSpecParams = new PartSpecNormalizationParams();
+                normalSpecParams.setUsePartGroupNameAsPartName(usePartGroupNameAsPartName);
+                normalSpecParams.setPartGrpName(partGrpName);
+                normalSpecParams.setAllLevelPrefixPartColCnts(allLevelPrefixPartColCnt);
+                normalSpecParams.setPartSpec(pSpec);
+                normalSpecParams.setNeedSortBoundValues(needSortPartitions);
+                normalSpecParams.setPartGrpNameInfo(partGrpNameInfo);
+                normalSpecParams.setShowHashByRange(showHashByRange);
+                normalSpecParams.setBoundSpaceComparator(boundSpaceComparator);
+                normalSpecParams.setNeedSortPartitions(needSortPartitions);
+                normalSpecParams.setUseSubPartByTemp(useSubPartByTemp);
+                normalSpecParams.setTextIntentBase(textIndentBase);
+                sb.append(PartitionSpec.normalizePartSpec(normalSpecParams));
+                i++;
+            }
+            sb.append(")");
+
+            if (buildSubPartByTemp) {
+                boolean hasMoreParentPartSpecsToShow = needShowMoreParentPartSpecs(showHashByRange, parentPartStrategy);
+                if (hasMoreParentPartSpecsToShow) {
+                    sb.append('\n');
+                }
+            }
+            break;
+        }
+
+        //sb.append('\n');
+    }
+
+    private static boolean needShowMoreParentPartSpecs(boolean showHashByRange,
+                                                       PartitionStrategy parentPartStrategy) {
+        boolean hasMoreParentPartSpecsToShow = true;
+        if (parentPartStrategy != null && (parentPartStrategy == PartitionStrategy.KEY
+            || parentPartStrategy == PartitionStrategy.HASH || parentPartStrategy == PartitionStrategy.DIRECT_HASH
+            || parentPartStrategy == PartitionStrategy.CO_HASH)
+            && !showHashByRange) {
+            hasMoreParentPartSpecsToShow = false;
+        }
+        return hasMoreParentPartSpecsToShow;
     }
 
     @Override

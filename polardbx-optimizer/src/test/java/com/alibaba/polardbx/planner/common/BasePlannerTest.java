@@ -945,7 +945,7 @@ public abstract class BasePlannerTest {
         return ddlFlag.contains(fileName);
     }
 
-    private void prepareSchemaByDdl() {
+    protected void prepareSchemaByDdl() {
         if (isDDLInit()) {
             return;
         }

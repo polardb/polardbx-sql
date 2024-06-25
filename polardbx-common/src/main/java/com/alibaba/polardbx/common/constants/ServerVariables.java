@@ -18,6 +18,7 @@ package com.alibaba.polardbx.common.constants;
 
 import com.alibaba.polardbx.common.cdc.CdcConstants;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.google.common.collect.ImmutableSet;
 import org.apache.commons.lang.StringUtils;
 
@@ -3665,6 +3666,10 @@ public class ServerVariables {
 
     public static boolean isGlobalBanned(String variable) {
         return globalBannedVariables.contains(variable.toLowerCase());
+    }
+
+    public static boolean isGlobalBlackList(String variable) {
+        return DynamicConfig.getInstance().getBlacklistConf().contains(variable.toLowerCase());
     }
 
     public static boolean isCdcGlobal(String variable) {

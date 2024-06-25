@@ -115,14 +115,22 @@ public class SelectPolardbVersion {
         return ++packetId;
     }
 
-    private static byte addGmsVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
-        final String nodeType = "GMS";
-        RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithReleaseDate(row, nodeType, MetaDbUtil.getGmsPolardbVersion(), charset);
-        row.packetId = packetId;
-        row.write(proxy);
-
-        return ++packetId;
+    static byte addGmsVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+        String version = null;
+        try {
+            version = MetaDbUtil.getGmsPolardbVersion();
+        } catch (Exception e) {
+            logger.warn("Failed to get GMS version", e);
+        }
+        if (version != null) {
+            final String nodeType = "GMS";
+            RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+            addVersionWithReleaseDate(row, nodeType, version, charset);
+            row.packetId = packetId;
+            row.write(proxy);
+            return ++packetId;
+        }
+        return packetId;
     }
 
     private static byte addColumnarVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
@@ -161,13 +169,25 @@ public class SelectPolardbVersion {
         return packetId;
     }
 
-    private static byte addDnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
-        final String nodeType = "DN";
-        RowDataPacket row = new RowDataPacket(FIELD_COUNT);
-        addVersionWithReleaseDate(row, nodeType, ExecUtils.getDnPolardbVersion(), charset);
-        row.packetId = packetId;
-        row.write(proxy);
-        return ++packetId;
+    /**
+     * may not exist when this is a COLUMNAR_SLAVE
+     */
+    static byte addDnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {
+        String version = null;
+        try {
+            version = ExecUtils.getDnPolardbVersion();
+        } catch (Exception e) {
+            logger.warn("Failed to get DN version", e);
+        }
+        if (version != null) {
+            final String nodeType = "DN";
+            RowDataPacket row = new RowDataPacket(FIELD_COUNT);
+            addVersionWithReleaseDate(row, nodeType, version, charset);
+            row.packetId = packetId;
+            row.write(proxy);
+            return ++packetId;
+        }
+        return packetId;
     }
 
     private static byte addCnVersion(IPacketOutputProxy proxy, byte packetId, String charset) {

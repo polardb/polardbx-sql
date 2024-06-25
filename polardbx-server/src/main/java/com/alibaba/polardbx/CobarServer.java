@@ -16,10 +16,9 @@
 
 package com.alibaba.polardbx;
 
-
+import com.alibaba.polardbx.common.TddlConstants;
 import com.alibaba.polardbx.common.TddlNode;
 import com.alibaba.polardbx.common.cdc.CdcManagerHelper;
-import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.model.lifecycle.AbstractLifecycle;
@@ -29,11 +28,6 @@ import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.AddressUtils;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.properties.MppConfig;
-import com.alibaba.polardbx.common.utils.AddressUtils;
-import com.alibaba.polardbx.common.utils.ExecutorMode;
-import com.alibaba.polardbx.common.utils.Pair;
-import com.alibaba.polardbx.common.utils.*;
 import com.alibaba.polardbx.common.utils.extension.ExtensionLoader;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
@@ -69,6 +63,7 @@ import com.alibaba.polardbx.matrix.jdbc.TDataSource;
 import com.alibaba.polardbx.net.NIOAcceptor;
 import com.alibaba.polardbx.net.NIOProcessor;
 import com.alibaba.polardbx.net.util.TimeUtil;
+import com.alibaba.polardbx.optimizer.config.table.charset.CharsetFactory;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.expression.ExtraFunctionManager;
 import com.alibaba.polardbx.optimizer.memory.MemoryManager;
@@ -82,7 +77,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.text.DateFormat;
@@ -279,6 +273,9 @@ public class CobarServer extends AbstractLifecycle implements Lifecycle {
             properties.setProperty(ConnectionProperties.ENABLE_AUTO_COMMIT_TSO, "true");
             // Ignore setting NO_TRANSACTION.
             properties.setProperty(ConnectionProperties.IGNORE_TRANSACTION_POLICY_NO_TRANSACTION, "true");
+
+            //Disable udf
+            properties.setProperty(TddlConstants.ENABLE_JAVA_UDF, "false");
 
             // Update inst config using insert ignore.
             try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {

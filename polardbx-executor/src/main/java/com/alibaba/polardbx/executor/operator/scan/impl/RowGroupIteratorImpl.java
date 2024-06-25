@@ -200,6 +200,42 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
         init();
     }
 
+    static ColumnReader getDecimalReader(boolean enableDecimal64, ExecutionContext context, DataType inputType,
+                                         int colId, boolean isPrimaryKey,
+                                         StripeLoader stripeLoader, OrcIndex orcIndex,
+                                         RuntimeMetrics metrics, int indexStride,
+                                         OrcProto.ColumnEncoding encoding, boolean enableMetrics) {
+
+        if (enableDecimal64 && TypeUtils.isDecimal64Precision(inputType.getPrecision())) {
+            // whether to read a decimal64-encoded column into a decimal64 block
+            boolean readIntoDecimal64 = context.getParamManager()
+                .getBoolean(ConnectionParams.ENABLE_COLUMNAR_DECIMAL64);
+            if (readIntoDecimal64) {
+                return new LongColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
+                    encoding.getKind(),
+                    indexStride, enableMetrics);
+            } else {
+                return new Decimal64ToDecimalColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
+                    encoding.getKind(),
+                    indexStride, enableMetrics);
+            }
+        } else {
+            switch (encoding.getKind()) {
+            case DIRECT:
+            case DIRECT_V2: {
+                return new DecimalColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
+                    enableMetrics);
+            }
+            case DICTIONARY:
+            case DICTIONARY_V2:
+                return new DictionaryDecimalColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
+                    encoding, indexStride, enableMetrics);
+            default:
+                throw GeneralUtil.nestedException("Unsupported encoding " + encoding.getKind());
+            }
+        }
+    }
+
     private void init() {
         this.stripeLoader = new AsyncStripeLoader(
             ioExecutor, fileSystem, configuration, filePath,
@@ -405,28 +441,9 @@ public class RowGroupIteratorImpl implements RowGroupIterator<Block, ColumnStati
         }
         case MYSQL_TYPE_DECIMAL:
         case MYSQL_TYPE_NEWDECIMAL: {
-            if (enableDecimal64 && TypeUtils.isDecimal64Precision(inputType.getPrecision())) {
-                // whether to read a decimal64-encoded column into a decimal64 block
-                boolean readIntoDecimal64 = context.getParamManager()
-                    .getBoolean(ConnectionParams.ENABLE_COLUMNAR_DECIMAL64);
-                ColumnReader columnReader;
-                if (readIntoDecimal64) {
-                    columnReader = new LongColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
-                        encoding.getKind(),
-                        indexStride, enableMetrics);
-                } else {
-                    columnReader =
-                        new Decimal64ToDecimalColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
-                            encoding.getKind(),
-                            indexStride, enableMetrics);
-                }
-                columnReaders.put(colId, columnReader);
-            } else {
-                ColumnReader columnReader =
-                    new DecimalColumnReader(colId, isPrimaryKey, stripeLoader, orcIndex, metrics,
-                        enableMetrics);
-                columnReaders.put(colId, columnReader);
-            }
+            ColumnReader columnReader = getDecimalReader(enableDecimal64, context, inputType, colId, isPrimaryKey,
+                stripeLoader, orcIndex, metrics, indexStride, encoding, enableMetrics);
+            columnReaders.put(colId, columnReader);
             break;
         }
         case MYSQL_TYPE_VAR_STRING:

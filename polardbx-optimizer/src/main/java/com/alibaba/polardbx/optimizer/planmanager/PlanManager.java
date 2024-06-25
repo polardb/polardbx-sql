@@ -198,7 +198,8 @@ public class PlanManager extends AbstractLifecycle implements BaselineManageable
             executionPlan = executionPlan.copy(executionPlan.getPlan());
         }
         executionPlan.setUsePostPlanner(
-            PostPlanner.usePostPlanner(executionContext.getExplain(), executionContext.isUseHint()));
+            PostPlanner.usePostPlanner(executionContext.getExplain(),
+                executionContext.isUseHint()));
         executionPlan.setExplain(executionContext.getExplain() != null);
 
         if (!PlanManagerUtil.useSPM(schemaName, executionPlan, sqlParameterized.getSql(), executionContext)

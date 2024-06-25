@@ -39,6 +39,7 @@
                 <configuration>
                     <includes>
                         <include>**/bvt/**/*.java</include>
+                        <include>com/alibaba/polardbx/druid/sql/visitor/ExportParameterVisitorUtilsTest.java</include>
                     </includes>
                 </configuration>
             </plugin>
@@ -131,6 +132,13 @@
                     <artifactId>servlet-api</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>${mockito.verison}</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>

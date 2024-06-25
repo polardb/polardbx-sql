@@ -2,13 +2,13 @@
     select * from user_log where (userId=1 or userId=15 or user_log.userId=1 or userId in(12,41) or userId <100) and (operation='ge')
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid`, `name`, `operation`, `actiondate` from `user_log` as `user_log` where ((`operation` = ?) and ((`userid` = ?) or (`userid` in(?, ?)) or (`userid` in(?)) or (`userid` < ?)))", isdynamicparam="true")
+      logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid`, `name`, `operation`, `actiondate` from `user_log` as `user_log` where ((`operation` = ?) and ((`userid` = ?) or (`userid` in(?, ?)) or (`userid` in(?)) or (`userid` < ?)))")
 
 - sql: |
     select * from user_log where (userId=1 or userId=15 or user_log.userId=1 or userId in(12,41) or userId <100) and (operation='ge' and user_log.userId=15 and user_log.userId=1)
   plan: |
     gather(concurrent=true)
-      logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid`, `name`, `operation`, `actiondate` from `user_log` as `user_log` where ((`operation` = ?) and (`userid` = ?) and (`userid` = ?) and ((`userid` = ?) or (`userid` in(?, ?)) or (`userid` in(?)) or (`userid` < ?)))", isdynamicparam="true")
+      logicalview(tables="[0000-0003].user_log_[0-6]", shardcount=28, sql="select `userid`, `name`, `operation`, `actiondate` from `user_log` as `user_log` where ((`operation` = ?) and (`userid` = ?) and (`userid` = ?) and ((`userid` = ?) or (`userid` in(?, ?)) or (`userid` in(?)) or (`userid` < ?)))")
 
 - sql: |
     select * from user_log b where (userId,name) =(1,'biog') or (userId,name) =(2,'apple') or b.name='gege' and b.name='gfe' or operation='chaofan' or operation='yuehan' or operation='chaoge' or operation like '%chaoge%' and (actionDate = 'wang' or actionDate='chao' or actionDate>1 or actionDate=1.2);

@@ -68,7 +68,6 @@ public class LogicalAlterTableAddPartitionProxyHandler extends LogicalAlterTable
              *      sql 'split partition default_part into (partition p2 values in(3,4), partition p3 values in(5,6), partition default_part values in(default))'
              * 2. use new sql to build split partition subJob
              *  */
-
             String splitSql;
             if (!isAddSubPartition) {
                 splitSql = AlterTableGroupUtils.convertAddListRelToSplitListSql(alterTableAddPartition, true,

@@ -29,8 +29,10 @@ import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlJobManager;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlPlanAccessorDelegate;
 import com.alibaba.polardbx.executor.ddl.newengine.meta.DdlPlanManager;
+import com.alibaba.polardbx.executor.ddl.newengine.utils.DdlHelper;
 import com.alibaba.polardbx.executor.ddl.newengine.utils.TaskHelper;
 import com.alibaba.polardbx.executor.gsi.GsiBackfillManager;
+import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineRecord;
 import com.alibaba.polardbx.gms.metadb.misc.DdlEngineTaskRecord;
 import com.alibaba.polardbx.gms.scheduler.DdlPlanRecord;
@@ -59,9 +61,16 @@ public class RebalanceDdlPlanManager {
     public void process(final DdlPlanRecord ddlPlanRecord) {
         switch (DdlPlanState.valueOf(ddlPlanRecord.getState())) {
         case INIT:
+            if (!InstConfUtil.isInRebalanceMaintenanceTimeWindow()) {
+                break;
+            }
             onInit(ddlPlanRecord);
             break;
         case EXECUTING:
+            if (!InstConfUtil.isInRebalanceMaintenanceTimeWindow()) {
+                terminateRebalanceJob(ddlPlanRecord);
+                break;
+            }
             onExecuting(ddlPlanRecord);
             break;
         case SUCCESS:
@@ -70,6 +79,12 @@ public class RebalanceDdlPlanManager {
         case TERMINATED:
             onTerminated(ddlPlanRecord);
             break;
+        case PAUSE_ON_NON_MAINTENANCE_WINDOW:
+            if (!InstConfUtil.isInRebalanceMaintenanceTimeWindow()) {
+                onPauseInNonMaintenanceWindow(ddlPlanRecord);
+                break;
+            }
+            onExecuting(ddlPlanRecord);
         }
     }
 
@@ -87,7 +102,7 @@ public class RebalanceDdlPlanManager {
         });
     }
 
-    protected void onExecuting(final DdlPlanRecord ddlPlanRecord) {
+    public void onExecuting(final DdlPlanRecord ddlPlanRecord) {
         final long jobId = ddlPlanRecord.getJobId();
         DdlEngineRecord ddlEngineRecord = ddlJobManager.fetchRecordByJobId(jobId);
         if (ddlEngineRecord == null) {
@@ -120,6 +135,19 @@ public class RebalanceDdlPlanManager {
 
     protected void onTerminated(final DdlPlanRecord ddlPlanRecord) {
         //do nothing
+    }
+
+    protected void onPauseInNonMaintenanceWindow(final DdlPlanRecord ddlPlanRecord) {
+        //double check the job state
+        final long jobId = ddlPlanRecord.getJobId();
+        DdlEngineRecord ddlEngineRecord = ddlJobManager.fetchRecordByJobId(jobId);
+        if (ddlEngineRecord == null) {
+            return;
+        }
+        if (DdlState.valueOf(ddlEngineRecord.state) == DdlState.RUNNING) {
+            LOGGER.info(String.format("try to cancel rebalance job %d", jobId));
+            terminateRebalanceJob(ddlPlanRecord);
+        }
     }
 
     /*****************************************************************************************/
@@ -300,6 +328,23 @@ public class RebalanceDdlPlanManager {
         }
 
         return Pair.of(successRowCount, totalRowCount);
+    }
+
+    public void terminateRebalanceJob(DdlPlanRecord ddlPlanRecord) {
+        if (ddlPlanRecord.getJobId() <= 0) {
+            LOGGER.info("rebalance job is not schedule yet, not need to terminate it");
+            return;
+        }
+
+        String rebalanceSql =
+            "/*+TDDL:CMD_EXTRA(CANCEL_REBALANCE_JOB_DUE_MAINTENANCE=true)*/ cancel ddl " + ddlPlanRecord.getJobId();
+
+        SQLRecorderLogger.ddlEngineLogger.info(
+            String.format(
+                "submit terminater rebalance job due to not in maintenance window, schemaName:[%s], ddlSql:[%s]",
+                ddlPlanRecord.getTableSchema(), rebalanceSql));
+
+        DdlHelper.getServerConfigManager().executeBackgroundSql(rebalanceSql, ddlPlanRecord.getTableSchema(), null);
     }
 
 }

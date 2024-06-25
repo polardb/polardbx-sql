@@ -59,6 +59,16 @@ public class MetaDbDataIdBuilder {
 
     /**
      * {0} : instId, {1}: dbName, {2}: groupName
+     * <pre>
+     *     max data_id_length:
+     *     max pxc_id_len: 18, e.g. pxc-hkrmowavo1r123
+     *     max db_name_len: 64, e.g.abcd012345678901234567890123456789012345678901234567890123456789
+     *     max group_name_len: 70, e.g. ABCD01234567890123456789012345678901234567890123_2827BA7D_P00000_GROUP
+     *     fix len : 24
+     *     all len: 176
+     *     such as
+     *      polardbx.group.config.pxc-hkrmowavo1r123.abcd012345678901234567890123456789012345678901234567890123456789.ABCD01234567890123456789012345678901234567890123_2827BA7D_P00000_GROUP
+     * </pre>
      */
     public static final MessageFormat GROUP_CONFIG_DATA_ID = new MessageFormat("polardbx.group.config.{0}.{1}.{2}");
 

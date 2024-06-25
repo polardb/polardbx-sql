@@ -286,7 +286,7 @@ public class ScaleOutPlanUtil {
                 final String sourceInstId = DbTopologyManager
                     .getStorageInstIdByGroupName(InstIdUtil.getInstId(), schemaName,
                         sourceGroupKey);
-                final String targetGroupKey = GroupInfoUtil.buildScaloutGroupName(sourceGroupKey);
+                final String targetGroupKey = GroupInfoUtil.buildScaleOutGroupName(sourceGroupKey);
                 if (entry.getKey().equalsIgnoreCase(sourceInstId)) {
                     /*SQLRecorderLogger.scaleOutTaskLogger.info(MessageFormat.format(
                         "move database [{0}] to [{1}] is skip due to it is already in [{2}], ts={3} ", sourceGroupKey,

@@ -707,7 +707,7 @@ public class LogicalShowCreateTablesForShardingDatabaseHandler extends HandlerCo
                         // Only single to single table was allowed to create foreign keys.
                         String defaultGroupName = tddlRuleManager.getDefaultDbIndex().toLowerCase();
                         String phyReferencedTableName =
-                            SQLUtils.normalize(foreignKey.getReferencedTableName().getSimpleName());
+                            SQLUtils.normalizeNoTrim(foreignKey.getReferencedTableName().getSimpleName());
                         String fullQualifiedPhyRefTableName = defaultGroupName + "." + phyReferencedTableName;
 
                         Set<String> logicalTableNames =

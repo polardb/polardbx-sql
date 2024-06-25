@@ -58,6 +58,7 @@ import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
 import org.apache.calcite.util.Pair;
+import org.apache.commons.lang.StringUtils;
 
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -75,6 +76,8 @@ import java.util.stream.Collectors;
 public class TableMetaParser {
 
     private static final RelDataTypeFactory factory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
+    private static final String ENCRYPTED = "ENCRYPTION=\"Y\"";
+    private static final String NO_ENCRYPTED = "ENCRYPTION=\"N\"";
 
     /**
      * Parse TableMeta from FastSql's statements.
@@ -222,6 +225,15 @@ public class TableMetaParser {
                 TableStatus.PUBLIC,
                 0, 0);
         tableMeta.setEngine(sqlCreateTable.getEngine());
+        String encryptInfo = null;
+        if (sqlCreateTable.getEncryption() != null) {
+            if (sqlCreateTable.getEncryption().equalsIgnoreCase("'Y'")) {
+                encryptInfo = ENCRYPTED;
+            } else if (sqlCreateTable.getEncryption().equalsIgnoreCase("'N'")) {
+                encryptInfo = NO_ENCRYPTED;
+            }
+        }
+        tableMeta.setEncryption(parseEncryption(schemaName, encryptInfo));
         return tableMeta;
     }
 
@@ -345,4 +357,22 @@ public class TableMetaParser {
         }
     }
 
+    public static boolean parseEncryption(String tableSchema, String createOptions) {
+        String encryped = "ENCRYPTION=\"Y\"";
+        String noEncryped = "ENCRYPTION=\"N\"";
+        DbInfoRecord dbInfo = DbInfoManager.getInstance().getDbInfo(tableSchema);
+        boolean dbEncryped = dbInfo == null ? false : Optional.ofNullable(dbInfo.isEncryption()).orElse(false);
+        if (createOptions != null) {
+            if (dbEncryped) {
+                if (createOptions.toUpperCase().indexOf(noEncryped) != -1) {
+                    return false;
+                }
+            } else {
+                if (createOptions.toUpperCase().indexOf(encryped) != -1) {
+                    return true;
+                }
+            }
+        }
+        return dbEncryped;
+    }
 }

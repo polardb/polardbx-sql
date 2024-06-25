@@ -61,7 +61,8 @@ public class BackfillExecutor {
     }
 
     public int backfill(String schemaName, String primaryTable, String indexName, boolean useBinary,
-                        boolean useChangeSet, List<String> modifyStringColumns, ExecutionContext baseEc) {
+                        boolean useChangeSet, boolean canUseReturning, List<String> modifyStringColumns,
+                        ExecutionContext baseEc) {
         final long batchSize = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_BATCH_SIZE);
         final long speedLimit = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_LIMITATION);
         final long speedMin = baseEc.getParamManager().getLong(ConnectionParams.GSI_BACKFILL_SPEED_MIN);
@@ -92,7 +93,8 @@ public class BackfillExecutor {
                 GsiExtractor.create(schemaName, primaryTable, indexName, batchSize, speedMin, speedLimit, parallelism,
                     useBinary, modifyStringColumns, baseEc);
             loader =
-                GsiLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(), baseEc);
+                GsiLoader.create(schemaName, primaryTable, indexName, this.executeFunc, baseEc.isUseHint(),
+                    canUseReturning, baseEc);
         }
 
         boolean finished;

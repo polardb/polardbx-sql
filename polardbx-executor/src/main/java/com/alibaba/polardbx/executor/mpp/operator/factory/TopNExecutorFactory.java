@@ -71,12 +71,20 @@ public class TopNExecutorFactory extends ExecutorFactory {
                     skip = getRexParam(topN.offset, params);
                 }
             }
+            long topSize = skip + fetch;
+            if (skip > 0 && fetch > 0 && topSize < 0) {
+                topSize = Long.MAX_VALUE;
+            }
+
             for (int j = 0; j < parallelism; j++) {
                 List<RelFieldCollation> sortList = topN.getCollation().getFieldCollations();
                 List<OrderByOption> orderBys = ExecUtils.convertFrom(sortList);
 
-                Executor exec = new SpilledTopNExec(dataTypeList, orderBys, skip + fetch, context, spillerFactory);
-                registerRuntimeStat(exec, topN, context);
+                Executor exec = new SpilledTopNExec(dataTypeList, orderBys, topSize, context, spillerFactory);
+                exec.setId(topN.getRelatedId());
+                if (context.getRuntimeStatistics() != null) {
+                    RuntimeStatHelper.registerStatForExec(topN, exec, context);
+                }
                 executors.add(exec);
             }
         }

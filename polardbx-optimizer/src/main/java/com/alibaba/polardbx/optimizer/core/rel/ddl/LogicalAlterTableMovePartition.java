@@ -220,7 +220,8 @@ public class LogicalAlterTableMovePartition extends BaseDdlOperation {
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setTargetPartitionsLocation(targetPartitions);
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = false;
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MOVE_PARTITION);
         preparedData.setUsePhysicalBackfill(usePhysicalBackfill);
     }

@@ -29,18 +29,13 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.rel2sql.RelToSqlConverter;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
-import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexNode;
-import org.apache.calcite.sql.SqlBasicCall;
-import org.apache.calcite.sql.SqlCall;
 import org.apache.calcite.sql.SqlDialect;
-import org.apache.calcite.sql.SqlDynamicParam;
 import org.apache.calcite.sql.SqlIdentifier;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.util.Util;
 
 import java.util.ArrayList;
@@ -81,11 +76,14 @@ public class TddlRelToSqlConverter extends RelToSqlConverter {
             //}
             // MySQL only support syntax showed above.
             // So that we must put AS OF in front of alias and index_hint_list behind alias
+            //将flashback表达式转成SqlNode
+            final Map<String, RelDataType> pairs = ImmutableMap.of();
+            final Context context = aliasContext(pairs, false);
+            SqlNode flashbackSqlNode = context.toSql(null, flashback);
+
             final SqlIdentifier tsIdentifier =
                 new SqlIdentifier(identifier.names, null, SqlParserPos.ZERO, null, identifier.indexNode,
-                    identifier.partitions,
-                    new SqlDynamicParam(((RexDynamicParam) flashback).getIndex(), SqlTypeName.TIMESTAMP,
-                        SqlParserPos.ZERO));
+                    identifier.partitions, flashbackSqlNode, e.getFlashbackOperator());
             result = result(tsIdentifier, ImmutableList.of(Clause.FROM), e, null);
         } else {
             result = result(identifier, ImmutableList.of(Clause.FROM), e, null);

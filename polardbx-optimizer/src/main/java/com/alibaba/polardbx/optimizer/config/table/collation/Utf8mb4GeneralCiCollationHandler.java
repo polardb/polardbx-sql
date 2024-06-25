@@ -25,6 +25,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
 import io.airlift.slice.SliceInput;
+import io.airlift.slice.Slices;
 import org.yaml.snakeyaml.Yaml;
 
 import java.nio.ByteBuffer;
@@ -129,6 +130,23 @@ public class Utf8mb4GeneralCiCollationHandler extends AbstractCollationHandler {
     @Override
     public boolean wildCompare(Slice slice, Slice wildCard) {
         return doWildCompare(slice, wildCard) == 0;
+    }
+
+    /**
+     * FIXME high overhead implementation
+     */
+    @Override
+    public boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+        if (wildCard == null || wildCard.length == 0) {
+            // like '%%' always match
+            return true;
+        }
+        byte[] containWildCard = new byte[wildCard.length + 2];
+        containWildCard[0] = WILD_MANY;
+        System.arraycopy(wildCard, 0, containWildCard, 1, wildCard.length);
+        containWildCard[containWildCard.length - 1] = WILD_MANY;
+        Slice wildCardSlice = Slices.wrappedBuffer(containWildCard);
+        return doWildCompare(slice, wildCardSlice) == 0;
     }
 
     public int doWildCompare(Slice slice, Slice wildCard) {

@@ -109,7 +109,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -723,7 +722,6 @@ public class StatisticUtils {
             h.buildFromData(objs.stream().filter(d -> isReady ? topN.get(d) == 0 : true).toArray());
             cacheLine.setHistogram(colName, h);
         }
-        cacheLine.setRowCount((long) (rows.size() / sampleRate / sampleRateUp));
         cacheLine.setSampleRate(sampleRate);
         cacheLine.setLastModifyTime(unixTimeStamp());
 
@@ -1024,7 +1022,7 @@ public class StatisticUtils {
             throw e;
         } finally {
             if (rc != null) {
-                rc.close(Collections.emptyList());
+                rc.close(new ArrayList<>());
             }
             if (trx != null) {
                 trx.close();
@@ -1035,14 +1033,17 @@ public class StatisticUtils {
         }
     }
 
-    private static String constructScanSamplingSql(String logicalTableName, List<ColumnMeta> columnMetaList,
-                                                   float sampleRate) {
+    protected static String constructScanSamplingSql(String logicalTableName, List<ColumnMeta> columnMetaList,
+                                                     float sampleRate) {
         StringBuilder sql = new StringBuilder();
 
         String cmdExtraSamplePercentage = "";
         cmdExtraSamplePercentage = ",sample_percentage=" + sampleRate * 100;
-        sql.append("/*+TDDL:cmd_extra(merge_union=false,ENABLE_DIRECT_PLAN=false" + cmdExtraSamplePercentage + ") */ "
-            + "select ");
+        sql.append(
+            "/*+TDDL:cmd_extra("
+                + "enable_post_planner=false,enable_index_selection=false,merge_union=false,enable_direct_plan=false"
+                + cmdExtraSamplePercentage + ") */ "
+                + "select ");
         boolean first = true;
         for (ColumnMeta columnMeta : columnMetaList) {
             if (first) {

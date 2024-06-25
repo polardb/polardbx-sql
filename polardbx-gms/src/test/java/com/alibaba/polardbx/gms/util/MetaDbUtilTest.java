@@ -50,9 +50,35 @@ public class MetaDbUtilTest {
         Mockito.when(resultSet.getString(1)).thenReturn(mockEngineVersion);
         Mockito.when(resultSet.getString(2)).thenReturn(mockReleaseDate);
 
-        final String gmsPolardbVersion = MetaDbUtil.getGmsPolardbVersion();
-
+        String gmsPolardbVersion = null;
+        try {
+            gmsPolardbVersion = MetaDbUtil.getGmsPolardbVersion();
+        } catch (Exception e) {
+            Assert.fail(e.getMessage());
+        }
+        Assert.assertNotNull(gmsPolardbVersion);
         Assert.assertEquals(String.format("%s-%s", mockEngineVersion, mockReleaseDate), gmsPolardbVersion);
     }
 
+    @Test
+    public void testGmsPolardbVersionWithException() throws SQLException {
+
+        final String mockExceptionMessage = "Mock SQLException";
+
+        Connection mockConnection = mock(Connection.class);
+        mockMetaDbUtil.when(MetaDbUtil::getConnection).thenAnswer(i -> mockConnection);
+        Statement statement = mock(Statement.class);
+        Mockito.when(mockConnection.createStatement()).thenReturn(statement);
+        ResultSet resultSet = mock(ResultSet.class);
+        Mockito.when(statement.executeQuery(Mockito.anyString())).thenThrow(new SQLException(mockExceptionMessage));
+
+        String gmsPolardbVersion = null;
+        try {
+            gmsPolardbVersion = MetaDbUtil.getGmsPolardbVersion();
+            Assert.fail("Expect failed with exception");
+        } catch (Exception e) {
+            Assert.assertTrue(e.getMessage().contains(mockExceptionMessage));
+        }
+        Assert.assertNull(gmsPolardbVersion);
+    }
 }

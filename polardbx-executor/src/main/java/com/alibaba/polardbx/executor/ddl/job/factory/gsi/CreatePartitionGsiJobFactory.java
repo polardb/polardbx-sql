@@ -224,6 +224,7 @@ public class CreatePartitionGsiJobFactory extends CreateGsiJobFactory {
                 bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
                     schemaName,
                     primaryTableName,
+                    oldIndexName,
                     indexTableName,
                     stayAtDeleteOnly,
                     stayAtWriteOnly,

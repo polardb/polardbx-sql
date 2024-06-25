@@ -1,0 +1,11 @@
+drop table if exists ` engineer`;
+
+drop table if exists `per % cent`;
+
+CREATE TABLE ` engineer` ( id INTEGER NOT NULL, engineer_name VARCHAR(50), PRIMARY KEY (id));
+
+show create table ` engineer`;
+
+CREATE TABLE `per % cent` ( `(3)` INTEGER NOT NULL AUTO_INCREMENT, PRIMARY KEY (`(3)`) )ENGINE=InnoDB;
+
+show create table `per % cent`;

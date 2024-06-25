@@ -627,6 +627,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
             case LOCAL_DISK:
             case EXTERNAL_DISK:
             case NFS:
+            case ABS:
                 // innodb -> file store
                 return new LogicalAlterTableEngineHandler(repo, sourceEngine, targetEngine)
                     .buildDdlJob(logicalDdlPlan, executionContext);
@@ -639,6 +640,7 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         case OSS:
         case LOCAL_DISK:
         case EXTERNAL_DISK:
+        case ABS:
         case NFS: {
             switch (targetEngine) {
             case INNODB:
@@ -2238,10 +2240,12 @@ public class LogicalAlterTableHandler extends LogicalCommonDdlHandler {
         List<SqlIndexDefinition> gsiList = new ArrayList<>();
 
         {
+            TableRule tableRule =
+                executionContext.getSchemaManager(schemaName).getTddlRuleManager().getTableRule(tableName);
             String targetTableName = GsiUtils.generateRandomGsiName(tableName);
             tableNameMap.put(tableName, targetTableName);
             tableNameMapReverse.put(targetTableName, tableName);
-            needReHash.put(targetTableName, alterTablePreparedData.isNeedRepartition());
+            needReHash.put(targetTableName, tableRule.isBroadcast() || alterTablePreparedData.isNeedRepartition());
             ast.setLogicalSecondaryTableName(targetTableName);
 
             SqlAlterTablePartitionKey sqlAlterTablePartitionKey =

@@ -1,0 +1,84 @@
+CREATE TABLE `rm_local_t1` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	KEY `versionId` (`versionId`),
+	KEY `timeStamp` (`timeStamp`) COMMENT 'abc'
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+CREATE TABLE `rm_local_t2` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	INDEX `versionId`(`versionId`),
+	INDEX `timeStamp`(`timeStamp`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4;
+SET ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX = false;
+SHOW CREATE TABLE rm_local_t1;
+Table,Create Table
+rm_local_t1,CREATE TABLE `rm_local_t1` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	INDEX `versionId` (`versionId`),
+	LOCAL KEY `timeStamp` (`timeStamp`) COMMENT 'abc'
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE rm_local_t2;
+Table,Create Table
+rm_local_t2,CREATE TABLE `rm_local_t2` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	INDEX `versionId` (`versionId`),
+	LOCAL KEY `timeStamp` (`timeStamp`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SET ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX = true;
+SHOW CREATE TABLE rm_local_t1;
+Table,Create Table
+rm_local_t1,CREATE TABLE `rm_local_t1` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	KEY `versionId` (`versionId`),
+	KEY `timeStamp` (`timeStamp`) COMMENT 'abc, LOCAL KEY'
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+SHOW CREATE TABLE rm_local_t2;
+Table,Create Table
+rm_local_t2,CREATE TABLE `rm_local_t2` (
+	`id` varchar(128) NOT NULL,
+	`agentId` varchar(128) DEFAULT NULL COMMENT 'ace actor id',
+	`value` longblob,
+	`timeStamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	`agentName` varchar(50) DEFAULT NULL,
+	`capName` varchar(50) DEFAULT NULL,
+	`versionId` varchar(128) NOT NULL,
+	PRIMARY KEY (`id`),
+	KEY `versionId` (`versionId`),
+	KEY `timeStamp` (`timeStamp`) COMMENT 'LOCAL KEY'
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+DROP TABLE rm_local_t1;
+DROP TABLE rm_local_t2;

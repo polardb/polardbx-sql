@@ -421,7 +421,7 @@ public class AlterTableMovePartitionJobFactory extends AlterTableGroupBaseJobFac
                 new SyncLsnTask(schemaName, sourceGroupAndStorageIdMap, targetGroupAndStorageIdMap);
             executableDdlJob.addTask(syncLsnTask);
 
-            for (List<DdlTask> pipeLine : subTaskJobFactory.getPhysicalyTaskPipeLine()) {
+            for (List<DdlTask> pipeLine : GeneralUtil.emptyIfNull(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
                 DdlTask parentLeaveNode;
                 if (leavePipeLineQueue.size() < parallelism) {
                     parentLeaveNode = syncLsnTask;

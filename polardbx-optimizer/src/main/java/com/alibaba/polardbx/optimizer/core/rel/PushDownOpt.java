@@ -16,9 +16,11 @@
 
 package com.alibaba.polardbx.optimizer.core.rel;
 
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.jdbc.ParameterMethod;
+import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
-import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
-import com.alibaba.polardbx.common.model.sqljep.DynamicComparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -37,11 +39,13 @@ import com.alibaba.polardbx.optimizer.core.planner.rule.SemiJoinCorrToSubQueryRu
 import com.alibaba.polardbx.optimizer.partition.pruning.PartPruneStepType;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStep;
 import com.alibaba.polardbx.optimizer.partition.pruning.PartitionPruneStepBuilder;
+import com.alibaba.polardbx.optimizer.partition.util.PartitionPruneStepVisitor;
 import com.alibaba.polardbx.optimizer.sharding.ConditionExtractor;
 import com.alibaba.polardbx.optimizer.sharding.result.ExtractionResult;
 import com.alibaba.polardbx.optimizer.sharding.result.RelShardInfo;
 import com.alibaba.polardbx.optimizer.utils.OptimizerUtils;
 import com.alibaba.polardbx.optimizer.utils.RelUtils;
+import com.alibaba.polardbx.optimizer.utils.RexUtils;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import org.apache.calcite.plan.Contexts;
@@ -81,6 +85,7 @@ import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.rel.type.RelDataTypeFieldImpl;
 import org.apache.calcite.rex.RexCall;
+import org.apache.calcite.rex.RexDynamicParam;
 import org.apache.calcite.rex.RexInputRef;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexShuttle;
@@ -94,6 +99,7 @@ import org.apache.commons.lang.StringUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -142,6 +148,8 @@ public class PushDownOpt {
      * PartitionPruneStep : the part prune step info of the the index of logical table in LV
      */
     private Map<String, List<PartitionPruneStep>> allPartPruneSteps = Maps.newConcurrentMap();
+
+    private Set<Integer> shardRelatedInTypeParamIndexes;
 
     public PushDownOpt(LogicalView tableScan, DbType dbType, ExecutionContext ec) {
         this.tableScan = tableScan;
@@ -208,6 +216,7 @@ public class PushDownOpt {
                     PlannerContext.getPlannerContext(rel).getExecutionContext());
             newPushDownOpt.updatePartRoutingPlanInfo(partRoutingPlanInfo);
         }
+        newPushDownOpt.shardRelatedInTypeParamIndexes = shardRelatedInTypeParamIndexes;
         return newPushDownOpt;
     }
 
@@ -228,7 +237,7 @@ public class PushDownOpt {
         builder.scan(qualifiedName);
         pushedIndexHint(builder);
         if (this.tableScan.getFlashback() != null) {
-            builder.flashback(this.tableScan.getFlashback());
+            builder.flashback(this.tableScan.getFlashback(), this.tableScan.getFlashbackOperator());
         }
     }
 
@@ -524,13 +533,13 @@ public class PushDownOpt {
 
     private void updatePartPruneSteps(Map<String, PartitionPruneStep> allPartPruneStepMap) {
         List<String> logTbNameList = tableScan.getTableNames();
+        ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
         List<PartitionPruneStep> allPartPruneSteps = new ArrayList<>();
         for (int i = 0; i < logTbNameList.size(); i++) {
             String tbName = logTbNameList.get(i);
             PartitionPruneStep partStep = allPartPruneStepMap.get(tbName);
             if (partStep == null) {
                 // just add full table scan. for sql like column subquery
-                ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
                 partStep =
                     PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(tableScan.getSchemaName(),
                         tbName, ec);
@@ -540,6 +549,65 @@ public class PushDownOpt {
         String key = OptimizerUtils.buildInExprKey(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
 
         this.allPartPruneSteps.put(key, allPartPruneSteps);
+    }
+
+    /**
+     * if any shard column is used in `IN` expr, then put it into shardRelatedInTypeParamIndexes
+     *
+     * @param ec context that contains in expr params
+     */
+    public void buildShardRelatedInTypeParamIndexes(ExecutionContext ec) {
+        // prune all raw string size to 1, avoiding part routing plan info cannot being built
+        // for too large params num of in expr.
+        if (ec.getParams() == null || ec.getParams().getCurrentParameter() == null) {
+            shardRelatedInTypeParamIndexes = new HashSet<>();
+            return;
+        }
+        Parameters tmp = ec.getParams().clone();
+        Map<Integer, ParameterContext> replace = Maps.newHashMap();
+        boolean hasRawString = false;
+        for (Map.Entry<Integer, ParameterContext> entry : tmp.getCurrentParameter().entrySet()) {
+            ParameterContext parameterContext = entry.getValue();
+            Object param = parameterContext.getValue();
+            if (param instanceof RawString) {
+                hasRawString = true;
+                RawString rawString = (RawString) param;
+                replace.put(entry.getKey(), new ParameterContext(ParameterMethod.setObject1,
+                    new Object[] {entry.getKey(), rawString.pruneStep(0)}));
+            }
+        }
+        if (!hasRawString) {
+            shardRelatedInTypeParamIndexes = new HashSet<>();
+            return;
+        }
+        tmp.getCurrentParameter().putAll(replace);
+        ExecutionContext tmpEc = ec.copy(tmp);
+
+        if (this.tableScan.isNewPartDbTbl()) {
+            PartRoutingPlanInfo partRoutingPlanInfo =
+                buildPartRoutingPlanInfo(removeSemiJoin(), tableScan.isNewPartDbTbl(), tmpEc);
+            PartitionPruneStepVisitor stepVisitor = new PartitionPruneStepVisitor();
+            for (PartitionPruneStep step : partRoutingPlanInfo.allPartPruningSteps.values()) {
+                stepVisitor.visit(step);
+            }
+            Set<Integer> shardRelatedInTypeParamIndexes = stepVisitor.getDynamicIndexList();
+            shardRelatedInTypeParamIndexes.retainAll(OptimizerUtils.getInParamsIndexes(ec));
+            this.shardRelatedInTypeParamIndexes = shardRelatedInTypeParamIndexes;
+        } else {
+            RexUtils.RexDynamicParamFromComparativeVisitor visitor =
+                new RexUtils.RexDynamicParamFromComparativeVisitor();
+            Map<String, Comparative> colComparativeMap = this.getComparative(0);
+            for (Comparative comparative : colComparativeMap.values()) {
+                visitor.go(comparative);
+            }
+            List<RexDynamicParam> dynamicParams = visitor.getRexDynamicParams();
+            Set<Integer> shardRelatedInTypeParamIndexes = new HashSet<>();
+            for (RexDynamicParam dynamicParam : dynamicParams) {
+                shardRelatedInTypeParamIndexes.add(dynamicParam.getIndex() + 1);
+            }
+            shardRelatedInTypeParamIndexes.retainAll(OptimizerUtils.getInParamsIndexes(ec));
+            this.shardRelatedInTypeParamIndexes = shardRelatedInTypeParamIndexes;
+        }
     }
 
     private List<PartitionPruneStep> buildNewPartPruneSteps(ExecutionContext ec) {
@@ -612,28 +680,6 @@ public class PushDownOpt {
                 }
             }
         }
-
-//        if (comparatives.size() > tableIndex) {
-//            relShardInfo.setUsePartTable(false);
-//            relShardInfo.setAllComps(comparatives.get(tableIndex));
-//            relShardInfo.setAllFullComps(fullComparatives.get(tableIndex));
-//        } else {
-//            relShardInfo.setUsePartTable(true);
-//            String key = OptimizerUtils.buildInexprKey(ec);
-//            if (this.allPartPruneSteps.containsKey(key) && this.allPartPruneSteps.get(key).size() > tableIndex) {
-//                if (this.allPartPruneSteps.get(key).get(tableIndex) != null) {
-//                    relShardInfo.setPartPruneStepInfo(this.allPartPruneSteps.get(key).get(tableIndex));
-//                } else {
-//                    relShardInfo.setPartPruneStepInfo(
-//                        PartitionPruneStepBuilder.genFullScanAllPhyPartsStepInfoByDbNameAndTbName(dbName, logTbName, ec));
-//                }
-//            } else {
-//                List<PartitionPruneStep> list = buildNewPartPruneSteps(ec);
-//                if (list.size() > tableIndex) {
-//                    relShardInfo.setPartPruneStepInfo(list.get(tableIndex));
-//                }
-//            }
-//        }
 
         return relShardInfo;
     }
@@ -723,29 +769,8 @@ public class PushDownOpt {
     }
 
     public boolean couldDynamicPruning() {
-        if (allPartPruneSteps == null || allPartPruneSteps.size() == 0) {
-            if (comparatives != null && comparatives.size() > 0) {
-                for (Map<String, Comparative> l : comparatives) {
-                    for (Comparative c : l.values()) {
-                        if (isContainsDynamicComparative(c)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-            if (fullComparatives != null && fullComparatives.size() > 0) {
-                for (Map<String, Comparative> l : fullComparatives) {
-                    for (Comparative c : l.values()) {
-                        if (isContainsDynamicComparative(c)) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        } else if (allPartPruneSteps.size() >= 1 && !allPartPruneSteps.containsKey(OptimizerUtils.EMPTY_KEY)) {
-            return true;
-        }
-        return false;
+        getShardRelatedInTypeParamIndexes();
+        return shardRelatedInTypeParamIndexes != null && shardRelatedInTypeParamIndexes.size() > 0;
     }
 
     public boolean dynamicPruningContainsPartitionKey() {
@@ -760,23 +785,6 @@ public class PushDownOpt {
                             return true;
                         }
                     }
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean isContainsDynamicComparative(Comparative c) {
-        if (c == null) {
-            return false;
-        }
-        if (c instanceof DynamicComparative) {
-            return true;
-        }
-        if (c instanceof ComparativeBaseList) {
-            for (Comparative t : ((ComparativeBaseList) c).getList()) {
-                if (isContainsDynamicComparative(t)) {
-                    return true;
                 }
             }
         }
@@ -910,15 +918,13 @@ public class PushDownOpt {
             pruningPlanInfo.allComps = allComps;
             pruningPlanInfo.allFullComps = allFullComps;
             pruningPlanInfo.usePartitionTable = false;
-            return pruningPlanInfo;
         } else {
             ExtractionResult er = ConditionExtractor.predicateFrom(relPlan).extract();
             Map<String, PartitionPruneStep> allPartPruningSteps = er.allPartPruneSteps(ec);
-
             pruningPlanInfo.usePartitionTable = true;
             pruningPlanInfo.allPartPruningSteps = allPartPruningSteps;
-            return pruningPlanInfo;
         }
+        return pruningPlanInfo;
     }
 
     protected void updatePartRoutingPlanInfo(PartRoutingPlanInfo newPruningPlanInfo) {
@@ -927,6 +933,7 @@ public class PushDownOpt {
         } else {
             updatePartPruneSteps(newPruningPlanInfo.allPartPruningSteps);
         }
+        ExecutionContext ec = PlannerContext.getPlannerContext(tableScan).getExecutionContext();
     }
 
     class PlainRefCalculator extends RelShuttleImpl {
@@ -1257,5 +1264,12 @@ public class PushDownOpt {
             }
             return factory.createStructType(fieldList);
         }
+    }
+
+    public Set<Integer> getShardRelatedInTypeParamIndexes() {
+        if (shardRelatedInTypeParamIndexes == null) {
+            buildShardRelatedInTypeParamIndexes(PlannerContext.getPlannerContext(tableScan).getExecutionContext());
+        }
+        return shardRelatedInTypeParamIndexes;
     }
 }

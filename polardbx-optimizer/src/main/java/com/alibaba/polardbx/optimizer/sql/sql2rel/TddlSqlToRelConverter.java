@@ -185,8 +185,9 @@ public class TddlSqlToRelConverter extends SqlToRelConverter {
 
     public TddlSqlToRelConverter(DrdsViewExpander viewExpander, SqlValidator validator, CatalogReader catalogReader,
                                  RelOptCluster cluster, SqlRexConvertletTable convertletTable, Config config,
-                                 PlannerContext plannerContext, int inSubQueryThreshold) {
-        super(viewExpander, validator, catalogReader, cluster, convertletTable, config, inSubQueryThreshold);
+                                 PlannerContext plannerContext, int inSubQueryThreshold, boolean isRemoveDistinct) {
+        super(viewExpander, validator, catalogReader, cluster, convertletTable, config, inSubQueryThreshold,
+            isRemoveDistinct);
         this.plannerContext = plannerContext;
     }
 

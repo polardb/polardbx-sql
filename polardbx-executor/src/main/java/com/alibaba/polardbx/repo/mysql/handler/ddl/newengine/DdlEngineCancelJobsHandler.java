@@ -22,6 +22,7 @@ import com.alibaba.polardbx.common.ddl.newengine.DdlState;
 import com.alibaba.polardbx.common.ddl.newengine.DdlTaskState;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
+import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
@@ -49,6 +50,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.alibaba.polardbx.common.ddl.newengine.DdlPlanState.PAUSE_ON_NON_MAINTENANCE_WINDOW;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlPlanState.SUCCESS;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlPlanState.TERMINATED;
 import static com.alibaba.polardbx.common.ddl.newengine.DdlType.ALTER_TABLEGROUP;
@@ -93,12 +95,18 @@ public class DdlEngineCancelJobsHandler extends DdlEngineJobsHandler {
         if (REBALANCE.name().equalsIgnoreCase(record.ddlType)) {
             // update ddl plan state
             DdlPlanState afterState;
-            if (record.ddlStmt.toLowerCase().contains("drain_node")) {
-                // fail
-                afterState = TERMINATED;
+            boolean cancelDueToOutOfMaintennanceWidows =
+                executionContext.getParamManager().getBoolean(ConnectionParams.CANCEL_REBALANCE_JOB_DUE_MAINTENANCE);
+            if (cancelDueToOutOfMaintennanceWidows) {
+                afterState = PAUSE_ON_NON_MAINTENANCE_WINDOW;
             } else {
-                // success
-                afterState = SUCCESS;
+                if (record.ddlStmt.toLowerCase().contains("drain_node")) {
+                    // fail
+                    afterState = TERMINATED;
+                } else {
+                    // success
+                    afterState = SUCCESS;
+                }
             }
             String message = String.format("update state:[%s] by rollback the rebalance ddl", afterState.name());
             RebalanceDdlPlanManager rebalanceDdlPlanManager = new RebalanceDdlPlanManager();

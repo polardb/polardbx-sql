@@ -172,7 +172,7 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
         throw new NotSupportException("not support physical backfill for the operation");
     }
 
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean withSubPartition) {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
             .getTableGroupConfigByName(tableGroupName);
         int i = 0;
@@ -206,10 +206,18 @@ public class AlterTableGroupBasePreparedData extends DdlPreparedData {
                     i++;
                 } else if (!localityDesc.holdEmptyLocality()) {
                     partitionGroupRecord.phy_db = LocalityInfoUtils.allocatePhyDb(getSchemaName(), localityDesc);
-                    partitionGroupRecord.locality = localityDesc.toString();
+                    if (!withSubPartition) {
+                        partitionGroupRecord.locality = localityDesc.toString();
+                    } else {
+                        partitionGroupRecord.locality = "";
+                    }
                 } else {
                     partitionGroupRecord.phy_db = LocalityInfoUtils.allocatePhyDb(getSchemaName(), defaultLocalityDesc);
-                    partitionGroupRecord.locality = defaultLocalityDesc.toString();
+                    if (!withSubPartition) {
+                        partitionGroupRecord.locality = defaultLocalityDesc.toString();
+                    } else {
+                        partitionGroupRecord.locality = "";
+                    }
                 }
 
                 partitionGroupRecord.pax_group_id = 0L;

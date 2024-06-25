@@ -689,7 +689,7 @@ public class LogicalCreateTable extends LogicalTableOperation {
                 indexDef.isColumnar(),
                 indexDef.getTableGroupName(),
                 indexDef.isWithImplicitTableGroup(),
-                null,
+                indexDef.getEngineName(),
                 // Do not set locality for cci
                 indexDef.isColumnar() ? "" : createTablePreparedData.getLocality().toString(),
                 ((CreateTable) relDdl).getPartBoundExprInfo(),

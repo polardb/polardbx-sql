@@ -296,7 +296,7 @@ public class AlterTableGroupMovePartitionJobFactory extends AlterTableGroupBaseJ
             }
 
             if (preparedData.isUsePhysicalBackfill()) {
-                for (List<DdlTask> pipeLine : subTaskJobFactory.getPhysicalyTaskPipeLine()) {
+                for (List<DdlTask> pipeLine : GeneralUtil.emptyIfNull(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
                     DdlTask parentLeaveNode;
                     if (leavePipeLineQueue.size() < parallelism) {
                         parentLeaveNode = syncLsnTask;

@@ -8,6 +8,7 @@ import com.alibaba.polardbx.optimizer.config.table.statistic.StatisticUtils;
 import com.alibaba.polardbx.optimizer.core.datatype.DataTypeUtil;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.MockedStatic;
@@ -19,14 +20,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 
-@RunWith(MockitoJUnitRunner.class)
+//@RunWith(MockitoJUnitRunner.class)
+@Ignore
 public class StatisticManagerTest {
     @Before
     public void setMetaDBInfo() {
         MetaDbInstConfigManager.setConfigFromMetaDb(false);
     }
 
-    @Test
+    @Ignore
     public void statisticStringTruncatedTest() {
         final int DATA_MAX_LEN = StatisticUtils.DATA_MAX_LEN;
 

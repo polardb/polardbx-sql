@@ -513,6 +513,7 @@ public class PartitionSpec extends PartSpecBase {
         normalSpecParams.setBoundSpaceComparator(boundSpaceComparator);
         normalSpecParams.setNeedSortPartitions(false);
         normalSpecParams.setUseSubPartByTemp(false);
+        normalSpecParams.setTextIntentBase("");
         return normalizePartSpec(normalSpecParams);
     }
 

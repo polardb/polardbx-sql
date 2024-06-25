@@ -715,3 +715,12 @@
           hashwindow(id="id", create_time="create_time", f2w0$o0="window#0max($1)", reference windows="window#0=window(partition {0} order by [] range between unbounded preceding and unbounded following aggs [max($1)])")
             exchange(distribution=hash[0], collation=[])
               osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")
+
+- sql: |
+    /*+TDDL:PUSH_AGG_INPUT_ROW_COUNT_THRESHOLD=100000 ENABLE_EXPAND_DISTINCTAGG=false*/select CHECK_SUM(id), CHECK_SUM_V2(id) from t_shard_id2 group by create_time;
+  plan: |
+    project(check_sum(id)="check_sum(id)", check_sum_v2(id)="check_sum_v2(id)")
+      hashagg(group="create_time", check_sum(id)="check_sum_merge(check_sum(id))", check_sum_v2(id)="check_sum_v2_merge(check_sum_v2(id))")
+        exchange(distribution=hash[0]4, collation=[])
+          partialhashagg(group="create_time", check_sum(id)="check_sum(id)", check_sum_v2(id)="check_sum_v2(id)")
+            osstablescan(tables="t_shard_id2[p1,p2,p3,p4]", shardcount=4, sql="select `id`, `create_time` from `t_shard_id2` as `t_shard_id2`")

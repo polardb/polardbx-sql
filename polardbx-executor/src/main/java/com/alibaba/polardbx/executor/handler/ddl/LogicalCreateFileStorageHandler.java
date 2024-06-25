@@ -62,6 +62,7 @@ public class LogicalCreateFileStorageHandler extends LogicalCommonDdlHandler {
 
         // check fileStorageInfoKey
         Map<FileStorageInfoKey, String> with = new HashMap<>();
+        Map<FileStorageInfoKey.AzureConnectionStringKey, String> azureSettings = null;
         for (Map.Entry<String, String> e : createFileStorage.getWith().entrySet()) {
             String key = e.getKey();
             String value = e.getValue();
@@ -70,8 +71,34 @@ public class LogicalCreateFileStorageHandler extends LogicalCommonDdlHandler {
                 throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, "error key: " + key);
             }
             with.put(fileStorageInfoKey, value);
+            if (fileStorageInfoKey == FileStorageInfoKey.AZURE_CONNECTION_STRING) {
+                azureSettings = parseConnectionString(value);
+            }
         }
 
-        return new CreateFileStorageJobFactory(engine, with, executionContext).create();
+        return new CreateFileStorageJobFactory(engine, with, azureSettings, executionContext).create();
+    }
+
+    private static Map<FileStorageInfoKey.AzureConnectionStringKey, String> parseConnectionString(
+        String connectionString) {
+        Map<FileStorageInfoKey.AzureConnectionStringKey, String> parts = new HashMap<>();
+        // Split the connection string on semicolons
+        String[] pairs = connectionString.split(";");
+        for (String pair : pairs) {
+            // Split each pair on the first equals sign to separate key and value
+            int idx = pair.indexOf('=');
+            if (idx > 0 && idx < pair.length() - 1) {
+                // Ensure that the key and value are non-empty
+                String key = pair.substring(0, idx);
+                String value = pair.substring(idx + 1);
+                FileStorageInfoKey.AzureConnectionStringKey azureKey;
+                if ((azureKey = FileStorageInfoKey.AzureConnectionStringKey.of(key)) == null) {
+                    throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS,
+                        "error key of connection string: " + key);
+                }
+                parts.put(azureKey, value);
+            }
+        }
+        return parts;
     }
 }

@@ -92,10 +92,11 @@ public class RepartitionWriteTest extends RepartitionBaseTest {
         Assert.assertThat(trace.size(), is(1));
 
         //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = MessageFormat.format("UPDATE {0} SET c_timestamp = NOW() WHERE c_int_32 = 1", primaryTableName);
         executeDml("trace " + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = MessageFormat.format("DELETE FROM {0} WHERE c_int_32 = 1", primaryTableName);

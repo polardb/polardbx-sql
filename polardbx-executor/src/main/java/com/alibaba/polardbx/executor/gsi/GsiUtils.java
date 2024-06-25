@@ -1043,6 +1043,11 @@ public class GsiUtils {
             extra);
     }
 
+    public static <R> R wrapWithDistributedXATrx(ITransactionManager tm, ExecutionContext baseEc,
+                                                 Function<ExecutionContext, R> call) {
+        return wrapWithTransaction(tm, ITransactionPolicy.XA, baseEc, call);
+    }
+
     public static <R> R wrapWithDistributedTrx(ITransactionManager tm, ExecutionContext baseEc,
                                                Function<ExecutionContext, R> call) {
         return wrapWithTransaction(tm, tm.getDefaultDistributedTrxPolicy(baseEc), baseEc, call);

@@ -14,23 +14,14 @@
  * limitations under the License.
  */
 
-package com.alibaba.polardbx.planner.oss;
+package com.alibaba.polardbx.gms.engine.decorator.impl;
 
-import com.alibaba.polardbx.planner.common.ParameterizedTestCommon;
-import org.junit.runners.Parameterized;
+import com.alibaba.polardbx.gms.engine.decorator.FileSystemWrapper;
+import org.apache.hadoop.fs.azure.NativeAzureFileSystem;
 
-import java.util.List;
-
-/**
- * @author Shi Yuxuan
- */
-public class OssTpchTest extends ParameterizedTestCommon {
-    public OssTpchTest(String caseName, int sqlIndex, String sql, String expectedPlan, String lineNum) {
-        super(caseName, sqlIndex, sql, expectedPlan, lineNum);
-    }
-
-    @Parameterized.Parameters(name = "{0}:{1}")
-    public static List<Object[]> prepare() {
-        return loadSqls(OssTpchTest.class);
+public class SecureABSFileSystemWrapper extends NativeAzureFileSystem.Secure implements FileSystemWrapper {
+    @Override
+    public Statistics getInnerStatistics() {
+        return statistics;
     }
 }

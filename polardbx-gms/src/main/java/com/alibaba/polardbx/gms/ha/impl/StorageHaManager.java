@@ -538,7 +538,7 @@ public class StorageHaManager extends AbstractLifecycle {
 
         String phyDbName = null;
         try {
-            phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
+            phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKeyFromMetaDb(dbName, groupName);
         } catch (Throwable ex) {
             throw ex;
         }
@@ -1126,7 +1126,7 @@ public class StorageHaManager extends AbstractLifecycle {
             this.storageInstId = storageInstId;
             this.dbName = dbName;
             this.groupName = groupName;
-            this.phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKey(dbName, groupName);
+            this.phyDbName = DbTopologyManager.getPhysicalDbNameByGroupKeyFromMetaDb(dbName, groupName);
         }
 
         @Override

@@ -105,6 +105,19 @@ public class SetVariablesTest extends ReadBaseTestCase {
 
     }
 
+    @Test
+    public void setVariablesUdfTest() throws Exception {
+        enableSetGlobal();
+        String sql = "SET GLOBAL ENABLE_JAVA_UDF = true";
+        try {
+            execute(tddlConnection, sql);
+        } catch (Exception e) {
+            //ignore
+            return;
+        }
+        Assert.fail("Don't allow set ENABLE_JAVA_UDF");
+    }
+
     private void setGlobalVariableSingleTest(String variableName, String variableValue) throws Exception {
         setVariableValue(variableName, variableValue, true);
         TimeUnit.MINUTES.sleep(1);

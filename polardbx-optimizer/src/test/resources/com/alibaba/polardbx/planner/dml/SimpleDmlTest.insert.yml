@@ -114,3 +114,25 @@
   plan: |
 
     err-code: [tddl-4501][err_optimizer] optimize error by column 'name' specified twice.
+
+- sql: |
+    insert into test_group_sequence() values();
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0001.[test_group_sequence]", sql="insert into ? (`id`, `name`, `create_time`) values(?, null, current_timestamp)", params="`test_group_sequence`,1")
+
+- sql: |
+    insert into test_group_sequence values();
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0002.[test_group_sequence]", sql="insert into ? (`id`, `name`, `create_time`) values(?, null, current_timestamp)", params="`test_group_sequence`,2")
+
+- sql: |
+    insert into test_group_sequence values(),();
+
+  plan: |
+
+    PhyTableOperation(tables="optest_0003.[test_group_sequence]", sql="insert into ? (`id`, `name`, `create_time`) values(?, null, current_timestamp)", params="`test_group_sequence`,3")
+    PhyTableOperation(tables="optest_0000.[test_group_sequence]", sql="insert into ? (`id`, `name`, `create_time`) values(?, null, current_timestamp)", params="`test_group_sequence`,4")

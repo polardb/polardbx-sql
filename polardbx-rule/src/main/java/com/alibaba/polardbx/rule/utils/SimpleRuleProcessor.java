@@ -160,7 +160,7 @@ public class SimpleRuleProcessor {
         return db;
     }
 
-    public static Pair<String, String> shardReturnPair(TableRule table, Object value, String encoding) {
+    public static int simpleShard(TableRule table, Object value, String encoding) {
         int tableCount = table.getTbCount();
         int tableIndex;
         AtomIncreaseType partitionType = table.getPartitionType();
@@ -219,7 +219,11 @@ public class SimpleRuleProcessor {
         } else {
             throw new IllegalArgumentException("不是一个合法的简单规则类型");
         }
+        return tableIndex;
+    }
 
+    public static Pair<String, String> shardReturnPair(TableRule table, Object value, String encoding) {
+        int tableIndex = simpleShard(table, value, encoding);
         return new Pair<>(table.getDbNames()[tableIndex], table.getTbNames()[tableIndex]);
     }
 

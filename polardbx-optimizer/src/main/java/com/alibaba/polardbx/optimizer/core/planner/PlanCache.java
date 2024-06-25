@@ -291,7 +291,7 @@ public final class PlanCache {
                 // There may be an issue of excessive encapsulation
                 throw ex;
             } else {
-                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, ex.getMessage());
+                throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, ex, ex.getMessage());
             }
         }
 

@@ -79,6 +79,25 @@ public class GroupConcatAggregateCall extends AggregateCall {
     }
 
     @Override
+    public GroupConcatAggregateCall copy(List<Integer> args, int filterArg) {
+        return new GroupConcatAggregateCall(aggFunction, distinct, approximate, args,
+            filterArg, type, name, orderList, separator, ascOrDescList);
+    }
+
+    @Override
+    public GroupConcatAggregateCall copy(List<Integer> args, int filterArg, boolean isDistinct, String newName) {
+        return new GroupConcatAggregateCall(aggFunction, isDistinct, approximate, args,
+            filterArg, type, newName, orderList, separator, ascOrDescList);
+    }
+
+    @Override
+    public AggregateCall withDistinct(boolean distinct) {
+        return distinct == this.distinct ? this
+            : new GroupConcatAggregateCall(aggFunction, distinct, approximate, argList, filterArg, type, name,
+            orderList, separator, ascOrDescList);
+    }
+
+    @Override
     public AggregateCall adaptTo(RelNode input, List<Integer> argList, int filterArg, int oldGroupKeyCount,
                                  int newGroupKeyCount) {
         // The return type of aggregate call need to be recomputed.

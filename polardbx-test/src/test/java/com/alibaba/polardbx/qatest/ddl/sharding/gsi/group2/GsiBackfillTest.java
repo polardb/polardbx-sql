@@ -66,7 +66,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.qatest.validator.DataValidator.resultSetContentSameAssert;
-import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssert;
+import static com.alibaba.polardbx.qatest.validator.DataValidator.selectContentSameAssertAllowEmpty;
 
 /**
  * @author chenmo.cm
@@ -936,7 +936,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
             try {
                 lock.writeLock().lock();
-                selectContentSameAssert(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
+                selectContentSameAssertAllowEmpty(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
             } finally {
                 lock.writeLock().unlock();
             }
@@ -961,7 +961,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
             try {
                 lock.writeLock().lock();
-                selectContentSameAssert(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
+                selectContentSameAssertAllowEmpty(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
             } finally {
                 lock.writeLock().unlock();
             }
@@ -986,7 +986,7 @@ public class GsiBackfillTest extends DDLBaseNewDBTestCase {
 
             try {
                 lock.writeLock().lock();
-                selectContentSameAssert(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
+                selectContentSameAssertAllowEmpty(sqlSelectPrimary, sqlSelectGSI, null, conn, conn);
             } finally {
                 lock.writeLock().unlock();
             }

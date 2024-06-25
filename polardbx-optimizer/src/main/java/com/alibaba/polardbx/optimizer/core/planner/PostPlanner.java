@@ -49,6 +49,7 @@ import com.alibaba.polardbx.optimizer.core.dialect.DbType;
 import com.alibaba.polardbx.optimizer.core.rel.BaseTableOperation;
 import com.alibaba.polardbx.optimizer.core.rel.BroadcastTableModify;
 import com.alibaba.polardbx.optimizer.core.rel.DirectTableOperation;
+import com.alibaba.polardbx.optimizer.core.rel.Gather;
 import com.alibaba.polardbx.optimizer.core.rel.HashWindow;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalInsert;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModify;
@@ -346,7 +347,8 @@ public class PostPlanner {
                         schemaNamesOfAst,
                         logTableNames,
                         true,
-                        true);
+                        true,
+                        null);
                     builder.setUnionSize(0);
                     List<RelNode> phyTableScans = builder.build(executionContext);
                     RelNode ret = phyTableScans.get(0);
@@ -816,7 +818,9 @@ public class PostPlanner {
     }
 
     public static boolean usePostPlanner(ExplainResult explain, boolean usingHint) {
-        return !usingHint && !isExplainOptimizer(explain) && !isExplainSharding(explain);
+        return !usingHint &&
+            !isExplainOptimizer(explain) &&
+            !isExplainSharding(explain);
     }
 
     private boolean existUnPushableRelNode(RelNode node) {

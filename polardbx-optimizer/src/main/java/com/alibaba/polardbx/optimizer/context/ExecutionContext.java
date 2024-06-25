@@ -361,6 +361,8 @@ public class ExecutionContext {
 
     private String returning = null;
 
+    private String backfillReturning = null;
+
     private boolean optimizedWithReturning = false;
     /**
      * For DirectShardingKeyTableOperation
@@ -417,6 +419,8 @@ public class ExecutionContext {
     private boolean checkingCci = false;
 
     private List<String> readOrcFiles = null;
+
+    private long pruningTime = 0L;
 
     private String partitionName;
 
@@ -860,26 +864,6 @@ public class ExecutionContext {
         this.preparedStmtCache = null;
     }
 
-    public Map<Pair<String, List<String>>, Parameters> getPruneRawStringMap() {
-        return pruneRawStringMap;
-    }
-
-    public void setPruneRawStringMap(
-        Map<Pair<String, List<String>>, Parameters> pruneRawStringMap) {
-        this.pruneRawStringMap = pruneRawStringMap;
-    }
-
-    public Map<Integer, ParameterContext> getPruneParams(String dbIndex, List<String> tableNames) {
-        if (pruneRawStringMap == null) {
-            return null;
-        }
-        Pair<String, List<String>> pair = new Pair<>(dbIndex, tableNames);
-        if (pruneRawStringMap.get(pair) == null) {
-            return null;
-        }
-        return pruneRawStringMap.get(pair).getCurrentParameter();
-    }
-
     public String getPartitionHint() {
         return partitionHint;
     }
@@ -902,6 +886,14 @@ public class ExecutionContext {
 
     public void setColumnarTracer(ColumnarTracer columnarTracer) {
         this.columnarTracer = columnarTracer;
+    }
+
+    public long getPruningTime() {
+        return pruningTime;
+    }
+
+    public void addPruningTime(long pruningTime) {
+        this.pruningTime += pruningTime;
     }
 
     public static class ErrorMessage {
@@ -1286,6 +1278,7 @@ public class ExecutionContext {
         ec.sqlId = getSqlId();
         ec.planSource = getPlanSource();
         ec.returning = getReturning();
+        ec.backfillReturning = getBackfillReturning();
         ec.optimizedWithReturning = isOptimizedWithReturning();
         ec.readOnly = isReadOnly();
         ec.backfillId = getBackfillId();
@@ -1300,6 +1293,7 @@ public class ExecutionContext {
         ec.needAutoSavepoint = isNeedAutoSavepoint();
         ec.setColumnarTracer(getColumnarTracer());
         ec.columnarMaxShard = getColumnarMaxShard();
+        ec.pruningTime = getPruningTime();
         return ec;
     }
 
@@ -1786,14 +1780,12 @@ public class ExecutionContext {
         // clear params to release memory
         params = null;
 
-        if (pruneRawStringMap != null) {
-            pruneRawStringMap = null;
-        }
         calcitePlanOptimizerTrace = null;
 
         // reset use hint flag
         useHint = false;
         xplanStat = null;
+        pruningTime = 0L;
     }
 
     /**
@@ -1904,9 +1896,6 @@ public class ExecutionContext {
         clientFoundRows = true;
         enableRuleCounter = false;
         ruleCount = 0;
-        if (pruneRawStringMap != null) {
-            pruneRawStringMap = null;
-        }
         executingPreparedStmt = false;
 
         blockBuilderCapacity = null;
@@ -1916,7 +1905,7 @@ public class ExecutionContext {
     }
 
     public boolean useReturning() {
-        return null != returning;
+        return null != returning || null != backfillReturning;
     }
 
     public String getReturning() {
@@ -1925,6 +1914,14 @@ public class ExecutionContext {
 
     public void setReturning(String returning) {
         this.returning = returning;
+    }
+
+    public String getBackfillReturning() {
+        return backfillReturning;
+    }
+
+    public void setBackfillReturning(String backfillReturning) {
+        this.backfillReturning = backfillReturning;
     }
 
     public boolean isOptimizedWithReturning() {
@@ -2330,5 +2327,12 @@ public class ExecutionContext {
             return this.getParamManager().getBoolean(ConnectionParams.ENABLE_AUTO_COMMIT_TSO);
         }
         return false;
+    }
+
+    public boolean isEnable1PCOpt() {
+        if (null != this.getParamManager()) {
+            return this.getParamManager().getBoolean(ConnectionParams.ENABLE_1PC_OPT);
+        }
+        return true;
     }
 }

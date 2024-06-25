@@ -153,6 +153,8 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     private boolean useColumnar = false;
 
+    private boolean inExprToLookupJoin = false;
+
     public <T> T unwrap(Class<T> clazz) {
         return clazz.isInstance(this) ? clazz.cast(this) : null;
     }
@@ -646,5 +648,13 @@ public class PlannerContext implements Context, PlannerContextWithParam {
 
     public void setConstantParamIndex(Set<Integer> constantParamIndex) {
         this.constantParamIndex = constantParamIndex;
+    }
+
+    public boolean isInExprToLookupJoin() {
+        return inExprToLookupJoin;
+    }
+
+    public void setInExprToLookupJoin(boolean inExprToLookupJoin) {
+        this.inExprToLookupJoin = inExprToLookupJoin;
     }
 }

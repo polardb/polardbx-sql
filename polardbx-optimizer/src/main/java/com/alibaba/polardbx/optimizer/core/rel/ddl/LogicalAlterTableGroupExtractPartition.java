@@ -90,7 +90,8 @@ public class LogicalAlterTableGroupExtractPartition extends LogicalAlterTableExt
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.setPartBoundExprInfo(partBoundExprInfo);
         preparedData.setHotKeys(sqlAlterTableGroupExtractPartition.getHotKeys());
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = false;
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION);
         preparedData.setSplitPoints(splitPoints);
     }

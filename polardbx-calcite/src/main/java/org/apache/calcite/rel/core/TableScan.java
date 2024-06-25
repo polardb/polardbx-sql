@@ -35,6 +35,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
@@ -79,6 +80,11 @@ public abstract class TableScan extends AbstractRelNode {
   protected RexNode flashback;
 
   /**
+   * 记录AS OF 种类：AS_OF/AS_OF_80/AS_OF_57
+   */
+  protected SqlOperator flashbackOperator;
+
+  /**
    * This tableName identifier's partitions of mysql partition selection syntax
    * <pre>
    *     For example,
@@ -108,11 +114,11 @@ public abstract class TableScan extends AbstractRelNode {
 
   protected TableScan(RelOptCluster cluster, RelTraitSet traitSet,
                       RelOptTable table, SqlNodeList hints, SqlNode indexNode) {
-    this(cluster, traitSet, table, hints, indexNode, null, null);
+    this(cluster, traitSet, table, hints, indexNode, null, null, null);
   }
 
   protected TableScan(RelOptCluster cluster, RelTraitSet traitSet, RelOptTable table, SqlNodeList hints,
-                      SqlNode indexNode, RexNode flashback, SqlNode partitions) {
+                      SqlNode indexNode, RexNode flashback, SqlOperator flashbackOperator, SqlNode partitions) {
     super(cluster, traitSet);
     this.table = table;
     this.hints = hints;
@@ -121,6 +127,7 @@ public abstract class TableScan extends AbstractRelNode {
       cluster.getPlanner().registerSchema(table.getRelOptSchema());
     }
     this.flashback = flashback;
+    this.flashbackOperator = flashbackOperator;
     this.partitions = partitions;
   }
   /**
@@ -263,6 +270,14 @@ public abstract class TableScan extends AbstractRelNode {
 
   public void setFlashback(RexNode flashback) {
     this.flashback = flashback;
+  }
+
+  public SqlOperator getFlashbackOperator() {
+    return flashbackOperator;
+  }
+
+  public void setFlashbackOperator(SqlOperator flashbackOperator) {
+    this.flashbackOperator = flashbackOperator;
   }
 
   public SqlNode getPartitions() {

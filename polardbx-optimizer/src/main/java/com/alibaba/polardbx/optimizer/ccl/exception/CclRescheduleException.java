@@ -16,21 +16,24 @@
 
 package com.alibaba.polardbx.optimizer.ccl.exception;
 
-import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.optimizer.ccl.common.RescheduleCallback;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * @author busu
  * date: 2021/2/22 9:02 下午
  */
-@Data
-public class CclRescheduleException extends TddlNestableRuntimeException {
+@Setter
+@Getter
+public class CclRescheduleException extends TddlRuntimeException {
 
     private RescheduleCallback rescheduleCallback;
 
     public CclRescheduleException(String msg, RescheduleCallback rescheduleCallback) {
-        super(msg);
+        super(ErrorCode.ERR_CCL_RESCHEDULE, msg);
         this.rescheduleCallback = rescheduleCallback;
     }
 

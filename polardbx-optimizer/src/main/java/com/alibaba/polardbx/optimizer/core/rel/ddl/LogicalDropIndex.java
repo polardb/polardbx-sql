@@ -16,8 +16,8 @@
 
 package com.alibaba.polardbx.optimizer.core.rel.ddl;
 
-import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.common.TddlConstants;
+import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.archive.CheckOSSArchiveUtil;
@@ -30,6 +30,7 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.data.DropLocalIndexPreparedDa
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.RenameLocalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropGlobalIndexPreparedData;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.data.gsi.DropIndexWithGsiPreparedData;
+import lombok.Getter;
 import org.apache.calcite.rel.ddl.DropIndex;
 import org.apache.calcite.sql.SqlDropIndex;
 
@@ -44,6 +45,7 @@ import static com.alibaba.polardbx.common.TddlConstants.AUTO_LOCAL_INDEX_PREFIX;
 import static com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter.unwrapGsiName;
 import static org.apache.calcite.sql.SqlCreateTable.buildUnifyIndexName;
 
+@Getter
 public class LogicalDropIndex extends LogicalTableOperation {
 
     private final SqlDropIndex sqlDropIndex;
@@ -177,17 +179,18 @@ public class LogicalDropIndex extends LogicalTableOperation {
      * Drop local index on clustered-index table
      */
     private void prepareIndexOnClusteredTable(boolean isDropGsi) {
-        if (gsiMetaBean.withGsi(tableName)) {
-            final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
+        if (getGsiMetaBean().withGsi(tableName)) {
+            final GsiTableMetaBean gsiTableMeta = getGsiMetaBean().getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
-                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexName)) {
+                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexName)
+                    && !gsiEntry.getValue().columnarIndex) {
                     // Add all clustered index except which is dropping.
                     final String clusteredTableName = gsiEntry.getKey();
                     TableMeta tableMeta =
                         OptimizerContext.getContext(schemaName).getLatestSchemaManager().getTable(clusteredTableName);
                     Set<String> indexes = tableMeta.getLocalIndexNames();
 
-                    if (!dropIndexWithGsiPreparedData.hasLocalIndexOnClustered(clusteredTableName)) {
+                    if (!getDropIndexWithGsiPreparedData().hasLocalIndexOnClustered(clusteredTableName)) {
                         String targetLocalIndexName;
                         if (isDropGsi) {
                             targetLocalIndexName = AUTO_LOCAL_INDEX_PREFIX + unwrapGsiName(indexName);
@@ -211,7 +214,7 @@ public class LogicalDropIndex extends LogicalTableOperation {
                                 renameLocalIndexPreparedData.setNewIndexName(newName);
                                 continue;
                             }
-                            dropIndexWithGsiPreparedData.addLocalIndexPreparedData(
+                            getDropIndexWithGsiPreparedData().addLocalIndexPreparedData(
                                 prepareDropLocalIndexData(clusteredTableName, indexName, true, isDropGsi));
                         }
                     }

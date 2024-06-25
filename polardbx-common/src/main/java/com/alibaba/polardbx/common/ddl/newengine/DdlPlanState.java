@@ -21,7 +21,7 @@ public enum DdlPlanState {
     INIT,
     EXECUTING,
     SUCCESS,
-    TERMINATED
-    ;
+    TERMINATED,
+    PAUSE_ON_NON_MAINTENANCE_WINDOW;
 
 }

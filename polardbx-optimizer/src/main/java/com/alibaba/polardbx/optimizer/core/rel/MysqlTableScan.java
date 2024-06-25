@@ -45,6 +45,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlKind;
 import org.apache.calcite.sql.SqlNode;
 import org.apache.calcite.sql.SqlNodeList;
+import org.apache.calcite.sql.SqlOperator;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -69,15 +70,16 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
 
     MysqlTableScan(RelOptCluster cluster, RelTraitSet traitSet,
                    RelOptTable table, ImmutableList<RexNode> filters, SqlNodeList hints, SqlNode indexNode,
-                   RexNode flashback, SqlNode partitions) {
-        super(cluster, traitSet, table, hints, indexNode, flashback, partitions);
+                   RexNode flashback, SqlOperator flashbackOperator, SqlNode partitions) {
+        super(cluster, traitSet, table, hints, indexNode, flashback, flashbackOperator, partitions);
         this.filters = Preconditions.checkNotNull(filters);
     }
 
     public static MysqlTableScan create(RelOptCluster cluster, RelOptTable relOptTable, List<RexNode> filters,
-                                        SqlNodeList hints, SqlNode indexNode, RexNode flashback, SqlNode partitions) {
+                                        SqlNodeList hints, SqlNode indexNode, RexNode flashback,
+                                        SqlOperator flashbackOperator, SqlNode partitions) {
         return new MysqlTableScan(cluster, cluster.traitSetOf(Convention.NONE), relOptTable,
-            ImmutableList.copyOf(filters), hints, indexNode, flashback, partitions);
+            ImmutableList.copyOf(filters), hints, indexNode, flashback, flashbackOperator, partitions);
     }
 
     @Override
@@ -141,10 +143,12 @@ public class MysqlTableScan extends TableScan implements MysqlRel {
             synchronized (this) {
                 if (filters.isEmpty()) {
                     nodeForMetaQuery =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                 } else {
                     LogicalTableScan logicalTableScan =
-                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, partitions);
+                        LogicalTableScan.create(getCluster(), table, hints, indexNode, flashback, flashbackOperator,
+                            partitions);
                     LogicalFilter logicalFilter = LogicalFilter.create(logicalTableScan, filters.get(0));
                     nodeForMetaQuery = logicalFilter;
                 }

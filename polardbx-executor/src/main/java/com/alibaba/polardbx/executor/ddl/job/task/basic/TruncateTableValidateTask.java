@@ -23,6 +23,7 @@ import com.alibaba.polardbx.executor.ddl.job.validator.GsiValidator;
 import com.alibaba.polardbx.executor.ddl.job.validator.TableValidator;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import org.apache.calcite.sql.SqlKind;
 import lombok.Getter;
 
 @Getter
@@ -43,6 +44,7 @@ public class TruncateTableValidateTask extends BaseValidateTask {
     public void executeImpl(ExecutionContext executionContext) {
         TableValidator.validateTableExistence(schemaName, logicalTableName, executionContext);
         TableValidator.validateTableNotReferenceFk(schemaName, logicalTableName, executionContext);
+        TableValidator.validateTableWithCCI(schemaName, logicalTableName, executionContext, SqlKind.TRUNCATE_TABLE);
         GsiValidator.validateAllowTruncateOnTable(schemaName, logicalTableName, executionContext);
         if (tableGroupConfig != null) {
             TableValidator.validateTableGroupChange(schemaName, tableGroupConfig);

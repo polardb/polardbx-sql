@@ -24,7 +24,9 @@ import org.apache.calcite.sql.type.SqlOperandTypeInference;
 import org.apache.calcite.sql.type.SqlReturnTypeInference;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
+import org.apache.calcite.util.Optionality;
 
+import javax.annotation.Nonnull;
 import java.util.List;
 
 /**
@@ -130,6 +132,23 @@ public abstract class SqlAggFunction extends SqlFunction implements Context {
    * clause. */
   public boolean allowsFilter() {
     return true;
+  }
+
+  /** Returns whether this aggregate function allows the {@code DISTINCT}
+   * keyword.
+   *
+   * <p>The default implementation returns {@link Optionality#OPTIONAL},
+   * which is appropriate for most aggregate functions, including {@code SUM}
+   * and {@code COUNT}.
+   *
+   * <p>Some aggregate functions, for example {@code MIN}, produce the same
+   * result with or without {@code DISTINCT}, and therefore return
+   * {@link Optionality#IGNORED} to indicate this. For such functions,
+   * Calcite will probably remove {@code DISTINCT} while optimizing the query.
+   */
+  public @Nonnull
+  Optionality getDistinctOptionality() {
+    return Optionality.OPTIONAL;
   }
 }
 

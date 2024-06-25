@@ -26,10 +26,11 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.TStringUtil;
-import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
+import com.alibaba.polardbx.config.ConfigDataMode;
 import com.alibaba.polardbx.druid.sql.SQLUtils;
+import com.alibaba.polardbx.druid.sql.ast.SQLExpr;
 import com.alibaba.polardbx.druid.sql.ast.SQLName;
 import com.alibaba.polardbx.druid.sql.ast.SQLOrderingSpecification;
 import com.alibaba.polardbx.druid.sql.ast.SQLPartitionBy;
@@ -66,6 +67,8 @@ import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionAccessor;
 import com.alibaba.polardbx.gms.metadb.table.ColumnarTableEvolutionRecord;
 import com.alibaba.polardbx.gms.metadb.table.IndexStatus;
 import com.alibaba.polardbx.gms.metadb.table.IndexVisibility;
+import com.alibaba.polardbx.gms.metadb.table.TablesAccessor;
+import com.alibaba.polardbx.gms.metadb.table.TablesRecord;
 import com.alibaba.polardbx.gms.tablegroup.TableGroupConfig;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
@@ -324,7 +327,7 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
         List<SQLTableElement> indexDefs =
             buildIndexDefs(schemaName, gsiMeta, tableName, tableMeta, localIndexes, showCreateTable.isFull(),
-                needShowHashByRange);
+                needShowHashByRange, executionContext);
         createTable.getTableElementList().addAll(indexDefs);
 
         if (tableMeta.isAutoPartition() && showCreateTable.isFull()) {
@@ -572,7 +575,10 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                                                 TableMeta meta,
                                                 List<SQLTableElement> localIndexes,
                                                 boolean full,
-                                                boolean needShowHashByRange) {
+                                                boolean needShowHashByRange,
+                                                ExecutionContext executionContext) {
+        boolean enableUseKeyForAllLocalIndex =
+            executionContext.getParamManager().getBoolean(ConnectionParams.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX);
         Set<String> ignoredLocalIndexNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         List<SQLTableElement> indexDefs = new ArrayList<>();
         if (meta.withGsi() && gsiMeta.getTableMeta() != null && !gsiMeta.getTableMeta().isEmpty()) {
@@ -638,6 +644,8 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
 
                 final MySqlUnique indeDef = new MySqlUnique();
                 indeDef.getIndexDefinition().setIndex(true);
+                boolean isAutoPartTbl = meta.isAutoPartition();
+                useKeyInsteadOfIndexIfNeed(full, enableUseKeyForAllLocalIndex, isAutoPartTbl, indeDef);
                 if (!indexMeta.nonUnique) {
                     indeDef.getIndexDefinition().setType("UNIQUE");
                 }
@@ -665,6 +673,11 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                     if (options != null) {
                         indeDef.setDictionaryColumns(options.get(ColumnarTableOptions.DICTIONARY_COLUMNS));
                     }
+                    TablesAccessor tablesAccessor = new TablesAccessor();
+                    String engine = getColumnarIndexEngine(schemaName, indexMeta.indexName, tablesAccessor);
+                    if (engine != null) {
+                        indeDef.setEngineName(new SQLIdentifierExpr(engine));
+                    }
                 }
 
                 if (!coveringColumns.isEmpty() || full || !meta.isAutoPartition()) {
@@ -682,12 +695,14 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
                 indexName = SQLUtils.normalizeNoTrim(key.getName().getSimpleName());
                 if (meta.isAutoPartition() || full) {
                     key.getIndexDefinition().setLocal(true);
+                    removeLocalKeyWordOnShowCreateTableIfNeed(full, enableUseKeyForAllLocalIndex, key);
                 }
             } else if (localIndexElement instanceof MySqlTableIndex) {
                 MySqlTableIndex key = (MySqlTableIndex) localIndexElement;
                 indexName = SQLUtils.normalizeNoTrim(key.getName().getSimpleName());
                 if (meta.isAutoPartition() || full) {
                     key.setLocal(true);
+                    removeLocalKeyWordOnShowCreateTableIfNeed(full, enableUseKeyForAllLocalIndex, key);
                 }
             } else {
                 continue;
@@ -717,6 +732,20 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             return records.get(0).options;
         } catch (SQLException e) {
             logger.error("failed to query columnar option info", e);
+        }
+        return null;
+    }
+
+    public String getColumnarIndexEngine(String schemaName, String indexName, TablesAccessor accessor) {
+        try (Connection metaDbConn = MetaDbDataSource.getInstance().getConnection()) {
+            accessor.setConnection(metaDbConn);
+            TablesRecord record = accessor.query(schemaName, indexName, false);
+            if (record == null) {
+                return null;
+            }
+            return record.engine;
+        } catch (Throwable ex) {
+            logger.error("failed to query columnar engine info", ex);
         }
         return null;
     }
@@ -753,5 +782,48 @@ public class LogicalShowCreateTablesForPartitionDatabaseHandler extends HandlerC
             return ImplicitTableGroupUtil.tryAttachImplicitTableGroup(schemaName, tableName, sql);
         }
         return sql;
+    }
+
+    private void useKeyInsteadOfIndexIfNeed(
+        boolean full,
+        boolean enableUseKeyForAllLocalIndex,
+        boolean isAutoPartTbl,
+        MySqlUnique indexDef) {
+        if (enableUseKeyForAllLocalIndex && isAutoPartTbl && !full) {
+            indexDef.getIndexDefinition().setIndex(false);
+            indexDef.getIndexDefinition().setKey(true);
+        }
+    }
+
+    private void removeLocalKeyWordOnShowCreateTableIfNeed(boolean showFullCreateTable,
+                                                           boolean enableUseKeyForAllLocalIndex,
+                                                           SQLTableElement keyAst) {
+        if (enableUseKeyForAllLocalIndex && !showFullCreateTable) {
+            if (keyAst instanceof MySqlTableIndex) {
+                MySqlTableIndex key = (MySqlTableIndex) keyAst;
+                key.setLocal(false);
+                SQLExpr oldCommentExpr = key.getComment();
+                SQLExpr newCommentExpr = null;
+                if (oldCommentExpr == null) {
+                    newCommentExpr = new SQLCharExpr("LOCAL INDEX");
+                } else {
+                    String oldCommentStr = SQLUtils.normalizeNoTrim(((SQLCharExpr) oldCommentExpr).getText());
+                    newCommentExpr = new SQLCharExpr(oldCommentStr + ", LOCAL INDEX");
+                }
+                key.setComment(newCommentExpr);
+            } else if (keyAst instanceof MySqlKey) {
+                MySqlKey key = (MySqlKey) keyAst;
+                key.getIndexDefinition().setLocal(false);
+                SQLExpr oldCommentExpr = key.getComment();
+                SQLExpr newCommentExpr = null;
+                if (oldCommentExpr == null) {
+                    newCommentExpr = new SQLCharExpr("LOCAL KEY");
+                } else {
+                    String oldCommentStr = SQLUtils.normalizeNoTrim(((SQLCharExpr) oldCommentExpr).getText());
+                    newCommentExpr = new SQLCharExpr(oldCommentStr + ", LOCAL KEY");
+                }
+                key.setComment(newCommentExpr);
+            }
+        }
     }
 }

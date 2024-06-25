@@ -705,7 +705,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -713,7 +713,7 @@ public class SessionHintTest extends BaseTestCase {
                         "select * from select_base_three_multi_db_multi_tb_i9JV_06 a join select_base_three_multi_db_one_tb b on a.pk=b.pk;");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -743,7 +743,7 @@ public class SessionHintTest extends BaseTestCase {
                 Assert.fail("should report error");
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
             }
             try {
                 c.createStatement()
@@ -752,7 +752,7 @@ public class SessionHintTest extends BaseTestCase {
 
             } catch (SQLException e) {
                 log.info(e.getMessage());
-                Assert.assertTrue(e.getMessage().contains("[TDDL-4006][ERR_TABLE_NOT_EXIST]"));
+                Assert.assertTrue(e.getMessage().contains("[ERR_TABLE_NOT_EXIST]"));
             }
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
@@ -820,7 +820,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[TDDL-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -859,7 +859,7 @@ public class SessionHintTest extends BaseTestCase {
             Assert.fail("should report error");
         } catch (SQLException e) {
             Assert.assertTrue(
-                e.getMessage().contains("[TDDL-5311][ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
+                e.getMessage().contains("[ERR_GLOBAL_SECONDARY_INDEX_MODIFY_GSI_TABLE_DIRECTLY]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");
@@ -897,7 +897,7 @@ public class SessionHintTest extends BaseTestCase {
         } catch (SQLException e) {
             e.printStackTrace();
             Assert.assertTrue(
-                e.getMessage().contains("[TDDL-5325][ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
+                e.getMessage().contains("[ERR_MODIFY_BROADCAST_TABLE_BY_HINT_NOT_ALLOWED]"));
         } finally {
             Objects.requireNonNull(c).createStatement().execute("set partition_hint=''");
             log.info("session hint test end");

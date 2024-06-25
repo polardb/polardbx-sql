@@ -295,7 +295,8 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                         phyTb);
                 CloneTableDataFileTask cloneTableDataFileTask =
                     new CloneTableDataFileTask(schemaName, tableName, srcDbAndGroup, tarDbAndGroup, phyTb,
-                        phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize);
+                        phyPartNames, sourceStorageId, sourceHostIpAndPort, targetHostsIpAndPort, batchSize,
+                        tableMeta.isEncryption());
                 cloneTableDataFileTask.setTaskId(ID_GENERATOR.nextId());
 
                 List<DdlTask> importTableSpaceTasks = new ArrayList<>();
@@ -306,7 +307,8 @@ public class AlterTableGroupChangeSetJobFactory extends AlterTableGroupSubTaskJo
                         srcTarGroup,
                         Pair.of(sourceStorageId, targetStorageId), storageInstAndUserInfos, batchSize, parallelism,
                         minUpdateBatch,
-                        waitLsn);
+                        waitLsn,
+                        tableMeta.isEncryption());
                 storageInstAndUserInfos.computeIfAbsent(sourceStorageId,
                     key -> PhysicalBackfillUtils.getUserPasswd(sourceStorageId));
                 Pair<String, String> userAndPasswd = storageInstAndUserInfos.computeIfAbsent(targetStorageId,

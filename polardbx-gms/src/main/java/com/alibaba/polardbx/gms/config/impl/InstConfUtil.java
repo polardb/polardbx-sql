@@ -21,16 +21,19 @@ import com.alibaba.polardbx.common.properties.ConfigParam;
 import com.alibaba.polardbx.common.properties.FloatConfigParam;
 import com.alibaba.polardbx.common.properties.IntConfigParam;
 import com.alibaba.polardbx.common.properties.LongConfigParam;
+import com.alibaba.polardbx.common.properties.StringConfigParam;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 
-import java.text.ParseException;
 import java.util.Calendar;
 import java.util.HashMap;
 import java.util.Map;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANCE_TIME_END;
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MAINTENANCE_TIME_START;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_ENABLE;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_TIME_END;
+import static com.alibaba.polardbx.common.properties.ConnectionParams.REBALANCE_MAINTENANCE_TIME_START;
 
 /**
  * @author fangwu
@@ -49,13 +52,45 @@ public class InstConfUtil {
     }
 
     public static boolean isInMaintenanceTimeWindow() {
-        return isInMaintenanceTimeWindow(Calendar.getInstance());
+        return isInMaintenanceTimeWindow(Calendar.getInstance(), MAINTENANCE_TIME_START, MAINTENANCE_TIME_END);
     }
 
-    public static boolean isInMaintenanceTimeWindow(Calendar calendar) {
+    public static boolean isInRebalanceMaintenanceTimeWindow() {
+        return isInRebalanceMaintenanceTimeWindow(REBALANCE_MAINTENANCE_TIME_START, REBALANCE_MAINTENANCE_TIME_END,
+            REBALANCE_MAINTENANCE_ENABLE);
+    }
+
+    public static boolean isInRebalanceMaintenanceTimeWindow(StringConfigParam maintenanceTimeStart,
+                                                             StringConfigParam maintenanceTimeEnd,
+                                                             BooleanConfigParam rebalanceMainTenanceEnable) {
+        boolean enabled = getBool(rebalanceMainTenanceEnable);
+        if (!enabled) {
+            return true;// no limit, always works.
+        }
+        String startTime = getOriginVal(maintenanceTimeStart);
+        String endTime = getOriginVal(maintenanceTimeEnd);
+        try {
+            int startTimeInt = getMinute(startTime);
+            int endTimeInt = getMinute(endTime);
+            if (startTimeInt == endTimeInt) {
+                return true;// no limit, always works.
+            }
+        } catch (Exception e) {
+            logger.error(
+                "rebalance maintenance time parse error, check config  " + maintenanceTimeStart + "/"
+                    + maintenanceTimeEnd,
+                e);
+            return false;
+        }
+        return isInMaintenanceTimeWindow(Calendar.getInstance(),
+            maintenanceTimeStart, maintenanceTimeEnd);
+    }
+
+    public static boolean isInMaintenanceTimeWindow(Calendar calendar, StringConfigParam maintenanceTimeStart,
+                                                    StringConfigParam maintenanceTimeEnd) {
         int currentMinute = calendar.get(Calendar.MINUTE) + calendar.get(Calendar.HOUR_OF_DAY) * 60;
-        String startTime = getOriginVal(MAINTENANCE_TIME_START);
-        String endTime = getOriginVal(MAINTENANCE_TIME_END);
+        String startTime = getOriginVal(maintenanceTimeStart);
+        String endTime = getOriginVal(maintenanceTimeEnd);
         try {
             int startTimeInt = getMinute(startTime);
             int endTimeInt = getMinute(endTime);
@@ -72,7 +107,7 @@ public class InstConfUtil {
 
         } catch (Exception e) {
             logger.error(
-                "maintenance time parse error, check config  " + MAINTENANCE_TIME_START + "/" + MAINTENANCE_TIME_END,
+                "maintenance time parse error, check config  " + maintenanceTimeStart + "/" + maintenanceTimeEnd,
                 e);
             return false;
         }
@@ -90,7 +125,7 @@ public class InstConfUtil {
     /**
      * @param time like 05:00
      */
-    private static int getMinute(String time) {
+    public static int getMinute(String time) {
         int hour = Integer.parseInt(time.split(":")[0]);
         int minute = Integer.parseInt(time.split(":")[1]);
 
@@ -101,6 +136,14 @@ public class InstConfUtil {
         String val = MetaDbInstConfigManager.getInstance().propertiesInfoMap.getProperty(c.getName());
         if (val == null) {
             val = c.getDefault();
+        }
+        return Boolean.valueOf(val).booleanValue();
+    }
+
+    public static Boolean getValBool(String name) {
+        String val = MetaDbInstConfigManager.getInstance().getCnVariableConfigMap().getProperty(name);
+        if (val == null) {
+            return false;
         }
         return Boolean.valueOf(val).booleanValue();
     }

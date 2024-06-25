@@ -54,7 +54,6 @@ import com.alibaba.polardbx.gms.metadb.cdc.CdcConfigAccessor;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.privilege.AccountType;
 import com.alibaba.polardbx.gms.privilege.ActiveRoles;
-import com.alibaba.polardbx.gms.privilege.PolarAccount;
 import com.alibaba.polardbx.gms.privilege.PolarAccountInfo;
 import com.alibaba.polardbx.gms.privilege.PolarPrivManager;
 import com.alibaba.polardbx.gms.topology.DbTopologyManager;
@@ -1448,7 +1447,7 @@ public final class SetHandler {
             String systemVarValue = c.getVarStringValue(variable.getValue());
 
             try {
-                if (ServerVariables.isGlobalBanned(systemVarName)) {
+                if (ServerVariables.isGlobalBanned(systemVarName) || ServerVariables.isGlobalBlackList(systemVarName)) {
                     c.writeErrMessage(ErrorCode.ER_NOT_SUPPORTED_YET,
                         "The global variable '" + systemVarName + "' is no supported setting using SET GLOBAL");
                     return true;

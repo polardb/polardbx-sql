@@ -201,7 +201,7 @@ public class ColumnDataRandomGenerateRule {
         return random.nextBoolean() ? StringS[pk.intValue() % StringS.length] : UUID.randomUUID().toString();
     }
 
-    static String[] charS = {
+    public static String[] charS = {
         "hello1234", "he343243", "word23", "feed32feed",
         "nihaore", "afdaewer", "hellorew", "abdfeed", "cdefeed",
         "adaabcwer", "afsabcabcd", "sfdeiekd", "einoejk", "kisfe",

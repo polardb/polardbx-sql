@@ -174,8 +174,6 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private Boolean hasLogicalGeneratedColumnCache = null;
     private Boolean hasDefaultExprColumnCache = null;
     private Boolean hasGeneratedColumnCache = null;
-    private Boolean withGsi = null;
-    private Boolean withCci = null;
 
     private boolean hasPrimaryKey = true;
 
@@ -214,6 +212,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     private String defaultCharset;
 
     private String defaultCollation;
+
+    private boolean encryption;
 
     public TableMeta(String schemaName, String tableName, List<ColumnMeta> allColumnsOrderByDefined,
                      IndexMeta primaryIndex,
@@ -794,11 +794,8 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public boolean withGsi() {
-        if (withGsi == null) {
-            withGsi = null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.GSI
-                && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
-        }
-        return withGsi;
+        return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.GSI
+            && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap);
     }
 
     public boolean withGsi(String indexName) {
@@ -806,13 +803,9 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
     }
 
     public boolean withCci() {
-        if (withCci == null) {
-            withCci =
-                null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
-                    && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap) && getGsiTableMetaBean().indexMap.values()
-                    .stream().anyMatch(index -> index.columnarIndex);
-        }
-        return withCci;
+        return null != getGsiTableMetaBean() && getGsiTableMetaBean().tableType != GsiMetaManager.TableType.COLUMNAR
+            && GeneralUtil.isNotEmpty(getGsiTableMetaBean().indexMap) && getGsiTableMetaBean().indexMap.values()
+            .stream().anyMatch(index -> index.columnarIndex);
     }
 
     public boolean hasCci(String indexName) {
@@ -1175,5 +1168,13 @@ public class TableMeta implements Serializable, Cloneable, Table, Wrapper {
         } else {
             return OptimizerContext.getContext(schemaName).getRuleManager().getTableRule(tableName).getActualTopology();
         }
+    }
+
+    public boolean isEncryption() {
+        return encryption;
+    }
+
+    public void setEncryption(boolean encryption) {
+        this.encryption = encryption;
     }
 }

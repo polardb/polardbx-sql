@@ -61,17 +61,17 @@ public class NormalDecimalColumnReaderTest extends FullTypeScanTestBase {
 
         for (int row = 0; row < batch.size; row++) {
             ColumnVector vector = batch.cols[COLUMN_ID];
-
-            if (vector.isNull[row]) {
+            int idx = row;
+            if (vector.isRepeating) {
+                idx = 0;
+            }
+            if (vector.isNull[idx]) {
                 // check null
                 Assert.assertTrue(block.isNull(row));
             } else {
                 Assert.assertTrue(vector instanceof BytesColumnVector);
                 BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
-                int idx = row;
-                if (vector.isRepeating) {
-                    idx = 0;
-                }
+
                 int pos = bytesColumnVector.start[idx];
                 int len = bytesColumnVector.length[idx];
                 byte[] tmp = new byte[len];

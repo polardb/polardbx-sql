@@ -59,10 +59,14 @@ public class CteExecFactory extends ExecutorFactory {
                 skip = getRexParam(cte.getOffset(), params);
             }
         }
+        long fetchSize = skip + fetch;
+        if (skip > 0 && fetch > 0 && fetchSize < 0) {
+            fetchSize = Long.MAX_VALUE;
+        }
 
         Executor anchorExecutor = anchorExecutorFactory.createExecutor(context, index);
         RecursiveCTEExec recursiveCTEExec =
-            new RecursiveCTEExec(cte.getCteName(), anchorExecutor, recursiveExecutorFactory, fetch + skip, context);
+            new RecursiveCTEExec(cte.getCteName(), anchorExecutor, recursiveExecutorFactory, fetchSize, context);
         recursiveCTEExec.setId(cte.getRelatedId());
         if (context.getRuntimeStatistics() != null) {
             RuntimeStatHelper.registerStatForExec(cte, recursiveCTEExec, context);

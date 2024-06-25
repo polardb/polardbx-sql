@@ -134,7 +134,7 @@ public class LogicalAlterTableGroupReorgPartition extends LogicalAlterTableReorg
 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.REORGANIZE_PARTITION);
 
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(preparedData.isHasSubPartition());
 
         List<String> newPartGroupNames = new ArrayList<>();
         preparedData.getInvisiblePartitionGroups().forEach(p -> newPartGroupNames.add(p.getPartition_name()));

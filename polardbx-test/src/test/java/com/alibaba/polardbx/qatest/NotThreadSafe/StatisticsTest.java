@@ -122,6 +122,7 @@ public class StatisticsTest extends BaseTestCase {
     @Test
     public void testBigIn() throws SQLException, IOException {
         try (Connection c = getPolardbxConnection(DB_NAME)) {
+            c.createStatement().execute("reload statistics");
             StringBuilder sql =
                 new StringBuilder("explain cost_trace select 1 from STAT_TEST_tB where create_time IN (");
             for (int i = 0; i < 10000; i++) {
@@ -138,7 +139,8 @@ public class StatisticsTest extends BaseTestCase {
             Map<String, String> rsMap = GeneralUtil.decode(result.toString());
             System.out.println(rsMap);
             assert "50000".equals(rsMap.get(
-                "Catalog:STAT_TEST_DB,STAT_TEST_TB,create_time,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\nAction:getFrequency"));
+                "Catalog:STAT_TEST_DB,STAT_TEST_TB,create_time,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...\nAction:getFrequency".toLowerCase())
+            );
         }
     }
 
@@ -150,7 +152,7 @@ public class StatisticsTest extends BaseTestCase {
             if (line.startsWith("STATISTIC TRACE INFO:")) {
                 Map<String, String> traceInfo = GeneralUtil.decode(line);
                 for (String key : traceInfo.keySet()) {
-                    if (key.contains("Action:datetimeTypeCompensation")) {
+                    if (key.contains("Action:datetimeTypeCompensation".toLowerCase())) {
                         hasCompensation = true;
                         String value = traceInfo.get(key);
                         assert Long.parseLong(value) > 1000;

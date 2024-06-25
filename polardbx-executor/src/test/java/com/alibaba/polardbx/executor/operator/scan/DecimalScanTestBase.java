@@ -1,8 +1,13 @@
 package com.alibaba.polardbx.executor.operator.scan;
 
+import com.alibaba.polardbx.common.charset.MySQLUnicodeUtils;
+import com.alibaba.polardbx.common.datatype.DecimalConverter;
+import com.alibaba.polardbx.common.datatype.DecimalStructure;
+import com.alibaba.polardbx.common.datatype.FastDecimalUtils;
 import com.alibaba.polardbx.executor.chunk.Block;
 import com.alibaba.polardbx.executor.chunk.BlockBuilder;
 import com.alibaba.polardbx.executor.chunk.BlockBuilders;
+import com.alibaba.polardbx.executor.chunk.DecimalBlock;
 import com.alibaba.polardbx.executor.operator.scan.impl.AsyncStripeLoader;
 import com.alibaba.polardbx.executor.operator.scan.impl.PreheatFileMeta;
 import com.alibaba.polardbx.executor.operator.scan.impl.StaticStripePlanner;
@@ -19,6 +24,8 @@ import com.alibaba.polardbx.optimizer.workload.WorkloadUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.CompressionKind;
@@ -32,8 +39,8 @@ import org.apache.orc.TypeDescription;
 import org.apache.orc.impl.OrcTail;
 import org.apache.orc.impl.reader.ReaderEncryption;
 import org.jetbrains.annotations.NotNull;
+import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
 
 import java.io.IOException;
 import java.net.URL;
@@ -47,7 +54,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
-public class DecimalScanTestBase {
+public abstract class DecimalScanTestBase {
 
     private MemoryAllocatorCtx memoryAllocatorCtx;
 
@@ -78,15 +85,9 @@ public class DecimalScanTestBase {
         }
     }
 
-    public static final String TRACE_ID = "1d3hfeq89fdc";
     public static final int DEFAULT_CHUNK_LIMIT = 1000;
     public static final int IO_THREADS = 2;
-    public static final int RG_INDEX = 10000;
     public static final long STRIPE_SIZE_IN_MB = 8L;
-    public static final String TEST_ORC_FILE_NAME = "dec64.orc";
-
-    public static final int SEQUENCE_ID = 156428234;
-    public static final int FILE_ID = 1;
 
     // IO params.
     protected static Configuration CONFIGURATION;
@@ -137,16 +138,11 @@ public class DecimalScanTestBase {
 
     }
 
-    @BeforeClass
-    public static void prepareStaticParams() throws IOException {
+    @Before
+    public void prepareParams() throws IOException {
         SCHEMA = TypeDescription.createStruct();
         INPUT_TYPES = new ArrayList<>();
-        // 2 col = 1 bigint + 1 decimal
-        SCHEMA.addField("112__id__", TypeDescription.createLong());
-        SCHEMA.addField("113__id__", TypeDescription.createDecimal().withPrecision(15).withScale(2));
-
-        INPUT_TYPES.add(DataTypes.LongType);
-        INPUT_TYPES.add(new DecimalType(15, 2));
+        initSchema();
 
         IO_EXECUTOR = Executors.newFixedThreadPool(IO_THREADS);
 
@@ -157,15 +153,11 @@ public class DecimalScanTestBase {
         OrcConf.STRIPE_SIZE.setLong(CONFIGURATION, STRIPE_SIZE_IN_MB * 1024 * 1024);
 
         FILE_PATH = new Path(
-            getFileFromClasspath(TEST_ORC_FILE_NAME));
+            getFileFromClasspath(getOrcFileName()));
 
         FILESYSTEM = FileSystem.get(
             FILE_PATH.toUri(), CONFIGURATION
         );
-    }
-
-    @Before
-    public void prepareParams() throws IOException {
         preheatFileMeta = preheat();
 
         orcTail = preheatFileMeta.getPreheatTail();
@@ -217,6 +209,10 @@ public class DecimalScanTestBase {
                 context.getMemoryPool());
         this.memoryAllocatorCtx = memoryPool.getMemoryAllocatorCtx();
     }
+
+    protected abstract void initSchema();
+
+    abstract String getOrcFileName();
 
     @NotNull
     protected StripeLoader createStripeLoader(int stripeId, boolean[] columnIncluded, RuntimeMetrics runtimeMetrics) {
@@ -347,7 +343,7 @@ public class DecimalScanTestBase {
         }
 
         Path path = new Path(getFileFromClasspath
-            (TEST_ORC_FILE_NAME));
+            (getOrcFileName()));
 
         Reader.Options options = new Reader.Options(CONFIGURATION).schema(SCHEMA)
             .range(stripeInformation.getOffset(), stripeInformation.getLength());
@@ -389,4 +385,58 @@ public class DecimalScanTestBase {
         return result;
     }
 
+    protected static void check(DecimalBlock block, VectorizedRowBatch batch, int targetColumnId) {
+        for (int row = 0; row < batch.size; row++) {
+            ColumnVector vector = batch.cols[1];
+            int idx = row;
+            if (vector.isRepeating) {
+                idx = 0;
+            }
+            if (vector.isNull[idx]) {
+                // check null
+                Assert.assertTrue(block.isNull(row));
+            } else {
+                Assert.assertTrue(vector instanceof BytesColumnVector);
+                BytesColumnVector bytesColumnVector = (BytesColumnVector) vector;
+                int pos = bytesColumnVector.start[idx];
+                int len = bytesColumnVector.length[idx];
+                byte[] tmp = new byte[len];
+
+                boolean isUtf8FromLatin1 =
+                    MySQLUnicodeUtils.utf8ToLatin1(bytesColumnVector.vector[idx], pos, pos + len, tmp);
+                if (!isUtf8FromLatin1) {
+                    // in columnar, decimals are stored already in latin1 encoding
+                    System.arraycopy(bytesColumnVector.vector[idx], pos, tmp, 0, len);
+                }
+                DecimalStructure targetDec = new DecimalStructure();
+                DecimalConverter.binToDecimal(tmp, targetDec, INPUT_TYPES.get(targetColumnId - 1).getPrecision(),
+                    INPUT_TYPES.get(targetColumnId - 1).getScale());
+                Assert.assertEquals(0,
+                    FastDecimalUtils.compare(targetDec, block.getDecimal(row).getDecimalStructure()));
+            }
+        }
+    }
+
+    protected static void checkDecimal64(DecimalBlock block, VectorizedRowBatch batch, int targetColumnId) {
+        Assert.assertTrue(block.isDecimal64());
+
+        for (int row = 0; row < batch.size; row++) {
+            for (int columnIndex = 0; columnIndex < batch.cols.length; columnIndex++) {
+                if (targetColumnId != columnIndex + 1) {
+                    continue;
+                }
+
+                ColumnVector vector = batch.cols[columnIndex];
+
+                if (vector.isNull[row]) {
+                    // check null
+                    Assert.assertTrue(block.isNull(row));
+                } else {
+                    Assert.assertTrue(vector instanceof LongColumnVector);
+                    Assert.assertEquals(block.getLong(row), ((LongColumnVector) vector).vector[row]);
+                }
+            }
+
+        }
+    }
 }

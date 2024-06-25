@@ -120,7 +120,7 @@ public class StoragePoolManager extends AbstractLifecycle {
     @Override
     protected void doInit() {
         super.doInit();
-        logger.info("init StoragePoolManager");
+        logger.warn("init StoragePoolManager");
         if (mockMode) {
             this.storagePoolCache = new HashMap<>();
             this.storagePoolCacheByName = new HashMap<>();
@@ -186,7 +186,7 @@ public class StoragePoolManager extends AbstractLifecycle {
                 initializeStoragePoolInfo =
                     String.format("initialize %s storage pool info with %s, %s", "recycle", defaultDnIds,
                         undeletableDnId);
-                logger.info(initializeStoragePoolInfo);
+                logger.warn(initializeStoragePoolInfo);
                 EventLogger.log(EventType.STORAGE_POOL_INFO, initializeStoragePoolInfo);
                 accessor.addNewStoragePoolInfo(RECYCLE_STORAGE_POOL_NAME, "", "");
                 for (StorageInfoRecord storageInfoRecord : storageInfoRecords) {
@@ -477,7 +477,7 @@ public class StoragePoolManager extends AbstractLifecycle {
             this.storagePoolCacheByName = newCacheByName;
             this.storagePoolMap = newStoragePoolMap;
 
-            logger.info("reload storage pool cache from metadb: ");
+            logger.warn("reload storage pool cache from metadb: ");
         } catch (SQLException e) {
             MetaDbLogUtil.META_DB_LOG.error(e);
             throw GeneralUtil.nestedException(e);

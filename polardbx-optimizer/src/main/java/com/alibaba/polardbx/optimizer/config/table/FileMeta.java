@@ -110,6 +110,7 @@ public class FileMeta {
         case S3:
         case LOCAL_DISK:
         case EXTERNAL_DISK:
+        case ABS:
         case NFS: {
             // Identify the file with its suffix (orc, csv or del).
             String fileName = filesRecord.getFileName();

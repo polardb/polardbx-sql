@@ -21,6 +21,7 @@ import com.alibaba.polardbx.common.oss.filesystem.Constants;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
 import com.alibaba.polardbx.common.oss.filesystem.NFSFileSystem;
 import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
+import com.alibaba.polardbx.common.oss.filesystem.RateLimitable;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheConfig;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
 import com.alibaba.polardbx.common.oss.filesystem.cache.CacheStats;
@@ -109,12 +110,8 @@ public class FileStoreStatistics {
 
         if (fileSystem instanceof FileMergeCachingFileSystem) {
             FileSystem dataTierFileSystem = ((FileMergeCachingFileSystem) fileSystem).getDataTier();
-            if (dataTierFileSystem instanceof OSSFileSystem) {
-                FileSystemRateLimiter rateLimiter = ((OSSFileSystem) dataTierFileSystem).getRateLimiter();
-                statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
-                statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
-            } else if (dataTierFileSystem instanceof NFSFileSystem) {
-                FileSystemRateLimiter rateLimiter = ((NFSFileSystem) dataTierFileSystem).getRateLimiter();
+            if (dataTierFileSystem instanceof RateLimitable) {
+                FileSystemRateLimiter rateLimiter = ((RateLimitable) dataTierFileSystem).getRateLimiter();
                 statsBuilder.put(StatisticItem.MAX_READ_RATE, String.valueOf(rateLimiter.getReadRate()));
                 statsBuilder.put(StatisticItem.MAX_WRITE_RATE, String.valueOf(rateLimiter.getWriteRate()));
             } else {

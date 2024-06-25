@@ -89,9 +89,9 @@ Project(id="id", sid="sid")
     Project(id="id", sid="sid", user_id="user_id")
       MaterializedSemiJoin(condition="order_id = user_id", type="semi")
         Gather(concurrent=true)
-          LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id`, `order_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`order_id` IN (...))", isDynamicParam="true")
+          LogicalView(tables="ch_t1_u_o[p1,p2,p3,p4,p5,p6,p7,p8]", shardCount=8, sql="SELECT `id`, `sid`, `user_id`, `order_id` FROM `ch_t1_u_o` AS `ch_t1_u_o` WHERE (`order_id` IN (...))")
         Gather(concurrent=true)
-          LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", isDynamicParam="true")
+          LogicalView(tables="ch_t2_u_o[p3,p5,p7]", shardCount=3, sql="SELECT `user_id` FROM `ch_t2_u_o` AS `ch_t2_u_o` WHERE (`order_id` IN(?))", pruningInfo="all size:3*3(part), pruning size:6")
 ## route: p8
 explain select id from ch_t1_u_o where order_id in (111234);
 Logical ExecutionPlan

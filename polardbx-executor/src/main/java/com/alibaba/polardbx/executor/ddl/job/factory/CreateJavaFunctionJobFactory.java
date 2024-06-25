@@ -83,9 +83,7 @@ public class CreateJavaFunctionJobFactory extends AbstractFunctionJobFactory {
         String javaCode = sqlCreateFunction.getJavaCode();
         String functionName = sqlCreateFunction.getFuncName();
         String className = StringUtils.funcNameToClassName(functionName);
-        if (InstConfUtil.getBool(ConnectionParams.CHECK_INVALID_JAVA_UDF)) {
-            CompileUtils.checkInvalidJavaCode(javaCode, className);
-        }
+        CompileUtils.checkInvalidJavaCode(javaCode, className);
     }
 
     private void checkDataTypeValid() {

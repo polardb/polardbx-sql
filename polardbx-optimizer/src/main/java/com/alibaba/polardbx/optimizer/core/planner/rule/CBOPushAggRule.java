@@ -57,8 +57,11 @@ import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.ImmutableIntList;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
+import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.canSplitDistinct;
 import static com.alibaba.polardbx.optimizer.utils.PlannerUtils.haveAggWithDistinct;
 
 public class CBOPushAggRule extends RelOptRule {
@@ -127,14 +130,6 @@ public class CBOPushAggRule extends RelOptRule {
         if (logicalAggregate.getAggOptimizationContext().isAggPushed()) {
             return null;
         }
-        // agg(distinct) -> agg + group by, don't push agg to dn if agg has multi-columns
-        if (logicalAggregate.getAggOptimizationContext().isFromDistinctAgg()) {
-            for (AggregateCall call : logicalAggregate.getAggCallList()) {
-                if ((!call.isDistinct()) && call.getArgList().size() > 1) {
-                    return null;
-                }
-            }
-        }
         TddlRuleManager tddlRuleManager =
             PlannerContext.getPlannerContext(logicalAggregate).getExecutionContext()
                 .getSchemaManager(logicalView.getSchemaName()).getTddlRuleManager();
@@ -150,7 +145,8 @@ public class CBOPushAggRule extends RelOptRule {
             return null;
         }
 
-        if (fullMatchSharding(logicalAggregate, logicalView, shardColumns)) {
+        Set<Integer> shardIndex = new HashSet<>();
+        if (fullMatchSharding(logicalAggregate, logicalView, shardColumns, shardIndex)) {
             // fullMatchSharding should not match AccessPathRule
             // so we convert LogicalView to DrdsConvention (AccessPathRule only match Convention.None!)
             LogicalView newLogicalView = logicalView.copy(logicalView.getTraitSet().replace(DrdsConvention.INSTANCE));
@@ -160,14 +156,33 @@ public class CBOPushAggRule extends RelOptRule {
             return newLogicalView;
         }
 
-        if (haveAggWithDistinct(logicalAggregate.getAggCallList())) {
-            return null;
+        boolean enablePushDownDistinct = PlannerContext.getPlannerContext(
+            logicalAggregate).getParamManager().getBoolean(ConnectionParams.ENABLE_PUSHDOWN_DISTINCT);
+        boolean enableSplitDistinct = false;
+        if (enablePushDownDistinct && logicalAggregate.groupSets.size() <= 1 && haveAggWithDistinct(
+            logicalAggregate.getAggCallList())) {
+            enableSplitDistinct = canSplitDistinct(shardIndex, logicalAggregate);
         }
 
-        TwoPhaseAggComponent twoPhaseAggComponent = splitAgg(logicalAggregate, logicalView instanceof OSSTableScan);
+        TwoPhaseAggComponent twoPhaseAggComponent = null;
+        if (enableSplitDistinct) {
+            twoPhaseAggComponent = splitAgg(
+                logicalAggregate, logicalView instanceof OSSTableScan, true);
+        }
+
+        if (twoPhaseAggComponent == null) {
+            if (haveAggWithDistinct(logicalAggregate.getAggCallList())) {
+                return null;
+            }
+
+            twoPhaseAggComponent = splitAgg(
+                logicalAggregate, logicalView instanceof OSSTableScan, false);
+        }
+
         if (twoPhaseAggComponent == null) {
             return null;
         }
+
         List<RexNode> childExps = twoPhaseAggComponent.getProjectChildExps();
         List<AggregateCall> globalAggCalls = twoPhaseAggComponent.getGlobalAggCalls();
         ImmutableBitSet globalAggGroupSet = twoPhaseAggComponent.getGlobalAggGroupSet();
@@ -202,13 +217,14 @@ public class CBOPushAggRule extends RelOptRule {
     }
 
     private boolean fullMatchSharding(LogicalAggregate logicalAggregate, LogicalView logicalView,
-                                      List<String> shardColumns) {
+                                      List<String> shardColumns, Set<Integer> shardIndex) {
         int matchNum = 0;
         for (String shardName : shardColumns) {
             int shardRef = logicalView.getRefByColumnName(logicalView.getShardingTable(), shardName, false, true);
             if (shardRef != -1 && logicalAggregate.getGroupSet().asList().contains(shardRef)) {
                 matchNum++;
             }
+            shardIndex.add(shardRef);
         }
         return matchNum != 0 && matchNum == shardColumns.size();
     }
@@ -253,10 +269,10 @@ public class CBOPushAggRule extends RelOptRule {
     }
 
     public static TwoPhaseAggComponent splitAgg(Aggregate agg) {
-        return splitAgg(agg, true);
+        return splitAgg(agg, true, false);
     }
 
-    public static TwoPhaseAggComponent splitAgg(Aggregate agg, boolean canSplitOrcHash) {
+    public static TwoPhaseAggComponent splitAgg(Aggregate agg, boolean canSplitOrcHash, boolean withDistinct) {
         TddlTypeFactoryImpl tddlTypeFactory = new TddlTypeFactoryImpl(TddlRelDataTypeSystemImpl.getInstance());
         List<RexNode> childExps = new ArrayList<>();
         final int aggGroupSetCardinality = agg.getGroupSet().cardinality();
@@ -269,180 +285,18 @@ public class CBOPushAggRule extends RelOptRule {
 
         for (int i = 0; i < agg.getAggCallList().size(); i++) {
             AggregateCall aggCall = agg.getAggCallList().get(i);
-            SqlAggFunction function = aggCall.getAggregation();
-            switch (function.getKind()) {
-            case COUNT:
-                SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
-
-                AggregateCall sumAggregateCall = AggregateCall.create(sumAggFunction,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                    aggCall.filterArg,
-                    aggCall.getType(),
-                    aggCall.getName());
-
-                globalAggCalls.add(sumAggregateCall);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
-
-                partialAggCalls.add(aggCall);
-                break;
-            case AVG:
-                SqlSumAggFunction partialSumAggFunc = new SqlSumAggFunction(null);
-                AggregateCall partialSumAggCall = AggregateCall.create(partialSumAggFunc,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    aggCall.getArgList(),
-                    aggCall.filterArg,
-                    aggCall.getType(),
-                    "partial_sum");
-
-                AggregateCall globalSumAggCall =
-                    partialSumAggCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                        -1,
-                        false,
-                        "global_sum");
-
-                partialAggCalls.add(partialSumAggCall);
-
-                SqlCountAggFunction pushedCountFunc = new SqlCountAggFunction("COUNT");
-                AggregateCall partialCountAggCall = AggregateCall.create(pushedCountFunc,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    aggCall.getArgList(),
-                    aggCall.filterArg,
-                    tddlTypeFactory.createSqlType(SqlTypeName.BIGINT),
-                    "partial_count");
-
-                AggregateCall globalCountAggCall = AggregateCall.create(partialSumAggFunc,
-                    partialCountAggCall.isDistinct(),
-                    partialCountAggCall.isApproximate(),
-                    ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                    partialCountAggCall.filterArg,
-                    partialCountAggCall.getType(),
-                    "global_count");
-
-                partialAggCalls.add(partialCountAggCall);
-
-                RexInputRef partialSumRef =
-                    new RexInputRef(globalSumAggCall.getArgList().get(0), partialSumAggCall.getType());
-                RexInputRef partialCountRef =
-                    new RexInputRef(globalCountAggCall.getArgList().get(0), partialCountAggCall.getType());
-
-                RexBuilder rexBuilder = agg.getCluster().getRexBuilder();
-                RexCall divide = (RexCall) rexBuilder.makeCall(SqlStdOperatorTable.DIVIDE,
-                    partialSumRef,
-                    partialCountRef);
-
-                RelDataType relDataType = aggCall.getType();
-                if (!divide.getType().getSqlTypeName().equals(relDataType.getSqlTypeName())) {
-                    RexNode castNode = rexBuilder.makeCastForConvertlet(relDataType, divide);
-                    childExps.add(castNode);
+            boolean isDistinct = aggCall.isDistinct() && withDistinct;
+            try {
+                if (isDistinct) {
+                    buildTwoAggCallsWithDistinct(
+                        aggCall, aggGroupSetCardinality, globalAggCalls, partialAggCalls, childExps);
                 } else {
-                    childExps.add(divide);
+                    buildTwoAggCalls(
+                        aggCall, tddlTypeFactory, aggGroupSetCardinality, globalAggCalls, partialAggCalls, childExps,
+                        canSplitOrcHash, agg.getCluster().getRexBuilder());
                 }
-
-                globalAggCalls.add(globalSumAggCall);
-                globalAggCalls.add(globalCountAggCall);
-                break;
-            case MIN:
-            case MAX:
-            case SUM:
-            case BIT_OR:
-            case BIT_XOR:
-            case BIT_AND:
-            case __FIRST_VALUE:
-                AggregateCall newAggCall =
-                    aggCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()), -1);
-                globalAggCalls.add(newAggCall);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
-
-                partialAggCalls.add(aggCall);
-                break;
-            case GROUP_CONCAT:
-                GroupConcatAggregateCall groupConcatAggregateCall = (GroupConcatAggregateCall) aggCall;
-                if (groupConcatAggregateCall.getOrderList() != null
-                    && groupConcatAggregateCall.getOrderList().size() != 0) {
-                    return null;
-                }
-                GroupConcatAggregateCall newGroupConcatAggregateCall =
-                    groupConcatAggregateCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                        -1, groupConcatAggregateCall.getOrderList());
-                globalAggCalls.add(newGroupConcatAggregateCall);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
-
-                partialAggCalls.add(aggCall);
-                break;
-            case HYPER_LOGLOG:
-                SqlPartialHyperloglogFunction partialHllFunction = new SqlPartialHyperloglogFunction();
-                AggregateCall partialHllAggregateCall = AggregateCall.create(partialHllFunction,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    aggCall.getArgList(),
-                    aggCall.filterArg,
-                    tddlTypeFactory.createSqlType(SqlTypeName.VARBINARY),
-                    "partial_hll");
-
-                SqlFinalHyperloglogFunction finalHllFunction = new SqlFinalHyperloglogFunction();
-                AggregateCall finalHllAggregateCall = AggregateCall.create(finalHllFunction,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                    aggCall.filterArg,
-                    aggCall.getType(),
-                    "final_hll");
-
-                globalAggCalls.add(finalHllAggregateCall);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(),
-                    tddlTypeFactory.createSqlType(SqlTypeName.VARBINARY)));
-
-                partialAggCalls.add(partialHllAggregateCall);
-                break;
-            case CHECK_SUM:
-                if (!canSplitOrcHash) {
-                    return null;
-                }
-                SqlCheckSumMergeFunction crcAggFunction = new SqlCheckSumMergeFunction();
-
-                AggregateCall crcHashAggregateCall = AggregateCall.create(crcAggFunction,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                    aggCall.filterArg,
-                    aggCall.getType(),
-                    aggCall.getName());
-
-                globalAggCalls.add(crcHashAggregateCall);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
-
-                partialAggCalls.add(aggCall);
-                break;
-            case CHECK_SUM_V2:
-                if (!canSplitOrcHash) {
-                    return null;
-                }
-                SqlCheckSumV2MergeFunction func = new SqlCheckSumV2MergeFunction();
-
-                AggregateCall call = AggregateCall.create(func,
-                    aggCall.isDistinct(),
-                    aggCall.isApproximate(),
-                    ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
-                    aggCall.filterArg,
-                    aggCall.getType(),
-                    aggCall.getName());
-
-                globalAggCalls.add(call);
-
-                childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
-
-                partialAggCalls.add(aggCall);
-                break;
-            default:
+            } catch (UnsupportedOperationException t) {
+                // ignore
                 return null;
             }
         }
@@ -450,5 +304,233 @@ public class CBOPushAggRule extends RelOptRule {
             ImmutableBitSet.range(agg.getGroupSet().cardinality()),
             partialAggCalls, agg.getGroupSet());
     }
+
+    private static void buildTwoAggCallsWithDistinct(AggregateCall aggCall,
+                                                     int aggGroupSetCardinality,
+                                                     List<AggregateCall> globalAggCalls,
+                                                     List<AggregateCall> partialAggCalls,
+                                                     List<RexNode> childExps) {
+        SqlAggFunction function = aggCall.getAggregation();
+        switch (function.getKind()) {
+        case COUNT:
+            SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
+
+            AggregateCall sumAggregateCall = AggregateCall.create(sumAggFunction,
+                false,
+                aggCall.isApproximate(),
+                ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                aggCall.filterArg,
+                aggCall.getType(),
+                aggCall.getName());
+
+            globalAggCalls.add(sumAggregateCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        case SUM:
+            AggregateCall newAggCall =
+                aggCall.copy(
+                    ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()), -1).withDistinct(false);
+            globalAggCalls.add(newAggCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        default:
+            throw new UnsupportedOperationException();
+        }
+
+    }
+
+    private static void buildTwoAggCalls(AggregateCall aggCall, TddlTypeFactoryImpl tddlTypeFactory,
+                                         int aggGroupSetCardinality,
+                                         List<AggregateCall> globalAggCalls, List<AggregateCall> partialAggCalls,
+                                         List<RexNode> childExps,
+                                         boolean canSplitOrcHash, RexBuilder rexBuilder) {
+
+        SqlAggFunction function = aggCall.getAggregation();
+        switch (function.getKind()) {
+        case COUNT:
+            SqlSumEmptyIsZeroAggFunction sumAggFunction = new SqlSumEmptyIsZeroAggFunction();
+
+            AggregateCall sumAggregateCall = AggregateCall.create(sumAggFunction,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                aggCall.filterArg,
+                aggCall.getType(),
+                aggCall.getName());
+
+            globalAggCalls.add(sumAggregateCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            if (aggCall.getArgList().size() > 1) {
+                //make sure the count with one column, not with multi columns
+                aggCall = aggCall.copy(ImmutableList.of(aggCall.getArgList().get(0)), aggCall.filterArg);
+            }
+
+            partialAggCalls.add(aggCall);
+            break;
+        case AVG:
+            SqlSumAggFunction partialSumAggFunc = new SqlSumAggFunction(null);
+            AggregateCall partialSumAggCall = AggregateCall.create(partialSumAggFunc,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                aggCall.getArgList(),
+                aggCall.filterArg,
+                aggCall.getType(),
+                "partial_sum");
+
+            AggregateCall globalSumAggCall =
+                partialSumAggCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                    -1,
+                    false,
+                    "global_sum");
+
+            partialAggCalls.add(partialSumAggCall);
+
+            SqlCountAggFunction pushedCountFunc = new SqlCountAggFunction("COUNT");
+            AggregateCall partialCountAggCall = AggregateCall.create(pushedCountFunc,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                aggCall.getArgList(),
+                aggCall.filterArg,
+                tddlTypeFactory.createSqlType(SqlTypeName.BIGINT),
+                "partial_count");
+
+            AggregateCall globalCountAggCall = AggregateCall.create(partialSumAggFunc,
+                partialCountAggCall.isDistinct(),
+                partialCountAggCall.isApproximate(),
+                ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                partialCountAggCall.filterArg,
+                partialCountAggCall.getType(),
+                "global_count");
+
+            partialAggCalls.add(partialCountAggCall);
+
+            RexInputRef partialSumRef =
+                new RexInputRef(globalSumAggCall.getArgList().get(0), partialSumAggCall.getType());
+            RexInputRef partialCountRef =
+                new RexInputRef(globalCountAggCall.getArgList().get(0), partialCountAggCall.getType());
+
+            RexCall divide = (RexCall) rexBuilder.makeCall(SqlStdOperatorTable.DIVIDE,
+                partialSumRef,
+                partialCountRef);
+
+            RelDataType relDataType = aggCall.getType();
+            if (!divide.getType().getSqlTypeName().equals(relDataType.getSqlTypeName())) {
+                RexNode castNode = rexBuilder.makeCastForConvertlet(relDataType, divide);
+                childExps.add(castNode);
+            } else {
+                childExps.add(divide);
+            }
+
+            globalAggCalls.add(globalSumAggCall);
+            globalAggCalls.add(globalCountAggCall);
+            break;
+        case MIN:
+        case MAX:
+        case SUM:
+        case BIT_OR:
+        case BIT_XOR:
+        case __FIRST_VALUE:
+            AggregateCall newAggCall =
+                aggCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()), -1);
+            globalAggCalls.add(newAggCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        case GROUP_CONCAT:
+            GroupConcatAggregateCall groupConcatAggregateCall = (GroupConcatAggregateCall) aggCall;
+            if (groupConcatAggregateCall.getOrderList() != null
+                && groupConcatAggregateCall.getOrderList().size() != 0) {
+                throw new UnsupportedOperationException();
+            }
+            GroupConcatAggregateCall newGroupConcatAggregateCall =
+                groupConcatAggregateCall.copy(ImmutableIntList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                    -1, groupConcatAggregateCall.getOrderList());
+            globalAggCalls.add(newGroupConcatAggregateCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        case HYPER_LOGLOG:
+            SqlPartialHyperloglogFunction partialHllFunction = new SqlPartialHyperloglogFunction();
+            AggregateCall partialHllAggregateCall = AggregateCall.create(partialHllFunction,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                aggCall.getArgList(),
+                aggCall.filterArg,
+                tddlTypeFactory.createSqlType(SqlTypeName.VARBINARY),
+                "partial_hll");
+
+            SqlFinalHyperloglogFunction finalHllFunction = new SqlFinalHyperloglogFunction();
+            AggregateCall finalHllAggregateCall = AggregateCall.create(finalHllFunction,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                aggCall.filterArg,
+                aggCall.getType(),
+                "final_hll");
+
+            globalAggCalls.add(finalHllAggregateCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(),
+                tddlTypeFactory.createSqlType(SqlTypeName.VARBINARY)));
+
+            partialAggCalls.add(partialHllAggregateCall);
+            break;
+        case CHECK_SUM:
+            if (!canSplitOrcHash) {
+                throw new UnsupportedOperationException();
+            }
+            SqlCheckSumMergeFunction crcAggFunction = new SqlCheckSumMergeFunction();
+
+            AggregateCall crcHashAggregateCall = AggregateCall.create(crcAggFunction,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                aggCall.filterArg,
+                aggCall.getType(),
+                aggCall.getName());
+
+            globalAggCalls.add(crcHashAggregateCall);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        case CHECK_SUM_V2:
+            if (!canSplitOrcHash) {
+                throw new UnsupportedOperationException();
+            }
+            SqlCheckSumV2MergeFunction func = new SqlCheckSumV2MergeFunction();
+
+            AggregateCall call = AggregateCall.create(func,
+                aggCall.isDistinct(),
+                aggCall.isApproximate(),
+                ImmutableList.of(aggGroupSetCardinality + partialAggCalls.size()),
+                aggCall.filterArg,
+                aggCall.getType(),
+                aggCall.getName());
+
+            globalAggCalls.add(call);
+
+            childExps.add(new RexInputRef(aggGroupSetCardinality + partialAggCalls.size(), aggCall.getType()));
+
+            partialAggCalls.add(aggCall);
+            break;
+        default:
+            throw new UnsupportedOperationException();
+        }
+    }
+
 }
 

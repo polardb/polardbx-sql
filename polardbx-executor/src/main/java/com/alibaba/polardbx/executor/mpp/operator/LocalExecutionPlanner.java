@@ -304,10 +304,6 @@ public class LocalExecutionPlanner {
             RelNode relNode = fragment.getSerRootNode(
                 context.getSchemaName(), PlannerContext.fromExecutionContext(context));
             localBloomFilter = fragment.isLocalBloomFilter();
-            //PipelineFactory 创建executor的构造函数中，可能会去引用RelMetadataProvider，所以这里需要保证一定是
-            //DrdsRelMetadataProvider
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(
-                relNode.getCluster().getMetadataProvider()));
             PipelineFragment pipelineFragment = new PipelineFragment(defaultParallelism, relNode);
             ExecutorFactory factory = visit(null, relNode, pipelineFragment);
             if (pipelineFragment.getParallelism() > 1
@@ -348,10 +344,6 @@ public class LocalExecutionPlanner {
                                       OutputBufferMemoryManager manager, String queryId) {
         try {
             DefaultSchema.setSchemaName(context.getSchemaName());
-            //PipelineFactory 创建executor的构造函数中，可能会去引用RelMetadataProvider，所以这里需要保证一定是
-            //DrdsRelMetadataProvider
-            RelMetadataQuery.THREAD_PROVIDERS.set(JaninoRelMetadataProvider.of(
-                relNode.getCluster().getMetadataProvider()));
             PipelineFragment pipelineFragment = new PipelineFragment(defaultParallelism, relNode);
             ExecutorFactory factory = visit(null, relNode, pipelineFragment);
 

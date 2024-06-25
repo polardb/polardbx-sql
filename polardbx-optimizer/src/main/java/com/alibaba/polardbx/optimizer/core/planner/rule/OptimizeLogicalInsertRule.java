@@ -158,6 +158,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
             break;
         case LOGICAL:
             if (origin.isReplace()) {
+                origin.setUkContainsAllSkAndGsiContainsAllUk(executionStrategyRs.ukContainsAllSkAndGsiContainsAllUk);
                 updated = handleReplace(origin, context, executionStrategyRs, ec);
             } else if (origin.isUpsert()) {
                 updated = handleUpsert(origin, context, ec);
@@ -446,6 +447,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
 
         final LogicalInsert newInsert = replaceExpAndSeqWithParam(replace, true, false, ec);
 
+        newInsert.setUkContainsAllSkAndGsiContainsAllUk(replace.isUkContainsAllSkAndGsiContainsAllUk());
         // Writer for primary table
         InsertWriter primaryInsertWriter = null;
         ReplaceRelocateWriter primaryReplaceRelocateWriter = null;
@@ -1332,7 +1334,7 @@ public class OptimizeLogicalInsertRule extends RelOptRule {
                     result.getGenColRexNodes(), result.getInputToEvalFieldsMapping(), result.getDefaultExprColMetas(),
                     result.getDefaultExprColRexNodes(), result.getDefaultExprEvalFieldsMapping(),
                     result.isPushablePrimaryKeyCheck(), result.isPushableForeignConstraintCheck(),
-                    result.isModifyForeignKey());
+                    result.isModifyForeignKey(), result.isUkContainsAllSkAndGsiContainsAllUk());
             /**
              * 2、update the index of RexDynamicParam in onDuplicatedUpdate list recursively
              * how to update them? firstly, find out the minimum RexDynamicPara and compute the offset

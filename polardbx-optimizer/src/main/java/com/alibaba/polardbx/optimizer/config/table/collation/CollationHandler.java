@@ -87,6 +87,19 @@ public interface CollationHandler {
         return false;
     }
 
+    /**
+     * match pattern '%xxx%'
+     */
+    default boolean containsCompare(Slice slice, byte[] wildCard, int[] lps) {
+        return false;
+    }
+
+    /**
+     * Hash code of utf8 string should obey all three criteria in the contract:
+     * 1. internal consistency: the value of hashCode() may only change if a property that is in equals() changes
+     * 2. equals consistency: objects that are equal to each other must return the same hashCode
+     * 3. collisions: unequal objects may have the same hashCode
+     */
     default int hashcode(Slice str) {
         return Optional.ofNullable(str)
             .map(CharsetFactory.INSTANCE.DEFAULT_CHARSET_HANDLER::decode)

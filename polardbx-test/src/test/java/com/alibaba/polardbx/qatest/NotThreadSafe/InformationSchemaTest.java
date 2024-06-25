@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.alibaba.polardbx.qatest.dql.auto.infoschema;
+package com.alibaba.polardbx.qatest.NotThreadSafe;
 
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.common.utils.TStringUtil;

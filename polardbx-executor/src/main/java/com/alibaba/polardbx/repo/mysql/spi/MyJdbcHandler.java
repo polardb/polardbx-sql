@@ -1685,7 +1685,11 @@ public class MyJdbcHandler implements GeneralQueryHandler {
                         xConnection.setTraceId(executionContext.getTraceId());
                         connection.flushUnsent(); // Caution: This is important when use deferred sql.
                         xConnection.getSession().setChunkResult(false);
-                        xResult = xPreparedStatement.executeUpdateReturningX(executionContext.getReturning());
+                        boolean isBackfill = executionContext.getBackfillReturning() != null;
+                        String returning =
+                            isBackfill ? executionContext.getBackfillReturning() : executionContext.getReturning();
+                        xResult =
+                            xPreparedStatement.executeUpdateReturningX(returning, isBackfill);
                         xResult.getMetaData(); // Compatible with original time record.
                         affectRow = -2;
                     } else {

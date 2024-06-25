@@ -88,6 +88,10 @@ public class MySqlUnique extends MySqlKey {
         indexDefinition.getOptions().setDictionaryColumns(dictionaryColumns);
     }
 
+    public void setEngineName(SQLName engineName) {
+        indexDefinition.setEngineName(engineName);
+    }
+
     public SQLExpr getTablePartitions() {
         return indexDefinition.getTbPartitions();
     }

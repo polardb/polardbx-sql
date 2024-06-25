@@ -218,7 +218,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 
@@ -263,7 +263,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         Double inputRowCount = mq.getRowCount(rel.getInput());
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 
@@ -300,7 +300,7 @@ public class DrdsRelMdCost extends RelMdPercentageOriginalRows {
         }
 
         Map<Integer, ParameterContext> params = PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-        long skipPlusFetch = 0;
+        double skipPlusFetch = 0;
         if (rel.fetch != null) {
             skipPlusFetch += getRexParam(rel.fetch, params);
 

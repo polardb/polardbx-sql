@@ -29,12 +29,9 @@ import com.alibaba.polardbx.gms.metadb.table.IndexesRecord;
 import com.alibaba.polardbx.gms.metadb.table.TableInfoManager;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
-import com.alibaba.polardbx.optimizer.core.TddlRelDataTypeSystemImpl;
-import com.alibaba.polardbx.optimizer.core.TddlTypeFactoryImpl;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
-import org.apache.calcite.rel.type.RelDataTypeFactory;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;

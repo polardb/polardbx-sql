@@ -1,0 +1,473 @@
+DROP TABLE IF EXISTS t1;
+DROP TABLE IF EXISTS t2;
+CREATE TABLE t1 (
+	a int NOT NULL,
+	b int NOT NULL,
+	c int NOT NULL,
+	d int NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) PARTITION BY KEY (c),
+	GLOBAL INDEX `g_compressed_b`(`a`, `b`) PARTITION BY KEY (a, b)
+) ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY (a);
+INSERT INTO t1
+VALUES (101, 101, 101, 101),
+	(102, 102, 102, 102),
+	(103, 103, 103, 103),
+	(201, 201, 201, 201),
+	(202, 202, 202, 202),
+	(203, 203, 203, 203);
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+ALTER TABLE t1
+	KEY_BLOCK_SIZE = 16;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`a`)
+PARTITIONS 3
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+PARTITION BY KEY (b);
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` int(11) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	MODIFY COLUMN a bigint,
+	ALGORITHM = omc;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`b`)
+PARTITIONS 3
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	MERGE PARTITIONS p1, p2 TO p12;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`b`)
+PARTITIONS 2
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	KEY_BLOCK_SIZE = 0;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
+PARTITION BY KEY(`b`)
+PARTITIONS 2
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	ROW_FORMAT = DYNAMIC;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
+PARTITION BY KEY(`b`)
+PARTITIONS 2
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`) KEY_BLOCK_SIZE = 8,
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`) KEY_BLOCK_SIZE = 8,
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = DYNAMIC
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203
+ALTER TABLE t1
+	ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8;
+SHOW CREATE TABLE t1;
+Table,Create Table
+t1,CREATE TABLE `t1` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	`d` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	UNIQUE GLOBAL INDEX `gu_compressed_c` (`c`) COVERING (`b`)
+		PARTITION BY KEY(`c`)
+		PARTITIONS 3,
+	GLOBAL INDEX `g_compressed_b` (`a`, `b`)
+		PARTITION BY KEY(`a`,`b`)
+		PARTITIONS 3,
+	KEY `auto_shard_key_b` USING BTREE (`b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`b`)
+PARTITIONS 2
+SHOW CREATE TABLE gu_compressed_c;
+Table,Create Table
+gu_compressed_c_$,CREATE TABLE `gu_compressed_c_$` (
+	`a` bigint(20) DEFAULT NULL,
+	`b` int(11) NOT NULL,
+	`c` int(11) NOT NULL,
+	UNIQUE KEY `auto_shard_key_c` USING BTREE (`c`),
+	KEY `_gsi_pk_idx_` USING BTREE (`a`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`c`)
+PARTITIONS 3
+SHOW CREATE TABLE g_compressed_b;
+Table,Create Table
+g_compressed_b_$,CREATE TABLE `g_compressed_b_$` (
+	`a` bigint(20) NOT NULL,
+	`b` int(11) NOT NULL,
+	PRIMARY KEY (`a`),
+	KEY `i_a_b` USING BTREE (`a`, `b`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8
+PARTITION BY KEY(`a`,`b`)
+PARTITIONS 3
+SELECT *
+FROM t1
+ORDER BY a;
+a,b,c,d
+101,101,101,101
+102,102,102,102
+103,103,103,103
+201,201,201,201
+202,202,202,202
+203,203,203,203

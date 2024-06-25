@@ -151,6 +151,10 @@ public class Transformer {
      * @param cursor result cursor of select
      * @return batch parameters for insert
      */
+    public static List<Map<Integer, ParameterContext>> buildBatchParam(Cursor cursor, boolean useBinary) {
+        return buildBatchParam(cursor, useBinary, null);
+    }
+
     public static List<Map<Integer, ParameterContext>> buildBatchParam(Cursor cursor, boolean useBinary,
                                                                        Set<String> notConvertColumns) {
         final List<Map<Integer, ParameterContext>> batchParams = new ArrayList<>();

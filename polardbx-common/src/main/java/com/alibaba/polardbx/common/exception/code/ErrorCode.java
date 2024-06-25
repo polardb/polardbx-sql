@@ -708,6 +708,8 @@ public enum ErrorCode {
 
     ERR_STATISTIC_JOB_INTERRUPTED(ErrorType.Optimizer, 4531),
 
+    ERR_IN_PRUNING(ErrorType.Optimizer, 4532),
+
     // ============= executor 从4600下标开始================
     //
     ERR_FUNCTION(ErrorType.Executor, 4600),
@@ -1244,6 +1246,7 @@ public enum ErrorCode {
     // ================= concurrency control Related Exceptions ===================
 
     ERR_CCL(ErrorType.CCL, 9201),
+    ERR_CCL_RESCHEDULE(ErrorType.CCL, 9202),
 
     ERR_LOGICAL_TABLE_UNSUPPORTED(ErrorType.Executor, 9203),
 

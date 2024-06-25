@@ -35,7 +35,8 @@ public class OmcExtractorTest {
         primaryKeys.add("b");
 
         SqlInsert sqlInsert = builder.buildSqlInsertSelectForOMCBackfill(
-            targetTableColumns, sourceTableColumns, primaryKeys, true, true, SqlSelect.LockMode.SHARED_LOCK, true);
+            targetTableColumns, sourceTableColumns, primaryKeys, true, true, SqlSelect.LockMode.SHARED_LOCK, true,
+            true);
 
         Assert.assertEquals(sqlInsert.toString(), "INSERT IGNORE\n"
             + "INTO ? (`a`, `b`, `c`)\n"
@@ -65,12 +66,43 @@ public class OmcExtractorTest {
         primaryKeys.add("b");
 
         SqlInsert sqlInsert = builder.buildSqlInsertSelectForOMCBackfill(
-            targetTableColumns, sourceTableColumns, primaryKeys, true, true, SqlSelect.LockMode.UNDEF, false);
+            targetTableColumns, sourceTableColumns, primaryKeys, true, true, SqlSelect.LockMode.UNDEF, false, true);
 
         Assert.assertEquals(sqlInsert.toString(), "INSERT\n"
             + "INTO ? (`a`, `b`, `c`)\n"
             + "(SELECT `a`, `b`, `e`\n"
             + "FROM ? AS `tb` FORCE INDEX(PRIMARY)\n"
             + "WHERE (((`a` > ?) OR ((`a` = ?) AND (`b` > ?))) AND ((`a` < ?) OR ((`a` = ?) AND (`b` <= ?)))))");
+    }
+
+    @Test
+    public void testBuildInsertSelectForOMCBackfillWithChangeSetAndForceIndexOFF() {
+        ExecutionContext ec = mock(ExecutionContext.class);
+
+        final PhysicalPlanBuilder builder = new PhysicalPlanBuilder("wumu", true, ec);
+
+        List<String> targetTableColumns = new ArrayList<>();
+        targetTableColumns.add("a");
+        targetTableColumns.add("b");
+        targetTableColumns.add("c");
+
+        List<String> sourceTableColumns = new ArrayList<>();
+        sourceTableColumns.add("a");
+        sourceTableColumns.add("b");
+        sourceTableColumns.add("e");
+
+        List<String> primaryKeys = new ArrayList<>();
+        primaryKeys.add("a");
+        primaryKeys.add("b");
+
+        SqlInsert sqlInsert = builder.buildSqlInsertSelectForOMCBackfill(
+            targetTableColumns, sourceTableColumns, primaryKeys, true, true, SqlSelect.LockMode.SHARED_LOCK, true,
+            false);
+
+        Assert.assertEquals(sqlInsert.toString(), "INSERT IGNORE\n"
+            + "INTO ? (`a`, `b`, `c`)\n"
+            + "(SELECT `a`, `b`, `e`\n"
+            + "FROM ?\n"
+            + "WHERE (((`a` > ?) OR ((`a` = ?) AND (`b` > ?))) AND ((`a` < ?) OR ((`a` = ?) AND (`b` <= ?)))) LOCK IN SHARE MODE)");
     }
 }

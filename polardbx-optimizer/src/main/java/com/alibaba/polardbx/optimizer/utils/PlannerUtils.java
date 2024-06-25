@@ -27,20 +27,17 @@ import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeAND;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeBaseList;
 import com.alibaba.polardbx.common.model.sqljep.ComparativeOR;
-import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
 import com.alibaba.polardbx.common.utils.logger.LoggerFactory;
 import com.alibaba.polardbx.config.ConfigDataMode;
-import com.alibaba.polardbx.druid.sql.ast.SqlType;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.meta.DrdsRelMetadataProvider;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.datatype.DataType;
-import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.util.DynamicParamInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.IndexedDynamicParamInfo;
 import com.alibaba.polardbx.optimizer.core.rel.util.RuntimeFilterDynamicParamInfo;
@@ -89,6 +86,7 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.tools.RelBuilder;
+import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Permutation;
 import org.apache.calcite.util.Util;
 import org.apache.commons.collections.CollectionUtils;
@@ -107,9 +105,6 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.stream.Collectors;
-
-import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.EXPLICIT_TRANSACTION;
-import static com.alibaba.polardbx.common.jdbc.ITransactionPolicy.TransactionClass.SUPPORT_SHARE_READVIEW_TRANSACTION;
 
 /**
  * @author lingce.ldm 2017-11-16 10:20
@@ -800,6 +795,22 @@ public class PlannerUtils {
             }
         }
         return false;
+    }
+
+    public static boolean canSplitDistinct(Set<Integer> shardIndex, LogicalAggregate aggregate) {
+        boolean enableSplitDistinct = true;
+        for (int i = 0; i < aggregate.getAggCallList().size(); ++i) {
+            AggregateCall aggregateCall = aggregate.getAggCallList().get(i);
+            if (aggregateCall.isDistinct()) {
+                final List<Integer> argList = aggregateCall.getArgList();
+                final ImmutableBitSet distinctArg = ImmutableBitSet.builder()
+                    .addAll(argList)
+                    .build();
+                final List<Integer> columns = aggregate.getGroupSet().union(distinctArg).toList();
+                enableSplitDistinct = enableSplitDistinct && shardIndex.stream().allMatch(columns::contains);
+            }
+        }
+        return enableSplitDistinct;
     }
 
     public static boolean isAllowedAggWithDistinct(LogicalAggregate agg, List<String> shardColumns) {

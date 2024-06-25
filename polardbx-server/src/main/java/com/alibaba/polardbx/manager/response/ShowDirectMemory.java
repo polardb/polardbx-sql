@@ -55,10 +55,21 @@ public class ShowDirectMemory {
 
         try {
             Class<?> bitsClass = Class.forName("java.nio.Bits");
+            // jdk8
             directMemoryField = bitsClass.getDeclaredField("totalCapacity");
             directMemoryField.setAccessible(true);
         } catch (NoSuchFieldException | ClassNotFoundException e) {
             logger.warn("Failed to get java.nio.Bits.totalCapacity: " + e.getMessage());
+        }
+        if (directMemoryField == null) {
+            try {
+                Class<?> bitsClass = Class.forName("java.nio.Bits");
+                // jdk11
+                directMemoryField = bitsClass.getDeclaredField("TOTAL_CAPACITY");
+                directMemoryField.setAccessible(true);
+            } catch (NoSuchFieldException | ClassNotFoundException e) {
+                logger.warn("Failed to get java.nio.Bits.TOTAL_CAPACITY: " + e.getMessage());
+            }
         }
     }
 

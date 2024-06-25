@@ -108,7 +108,8 @@ public class LogicalAlterTableAddPartition extends BaseDdlOperation {
 
         preparedData.setOldPartitionNames(ImmutableList.of());
 
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = (partitionInfo.getPartitionBy().getSubPartitionBy() != null);
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
 
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
         preparedData.setTableName(logicalTableName);

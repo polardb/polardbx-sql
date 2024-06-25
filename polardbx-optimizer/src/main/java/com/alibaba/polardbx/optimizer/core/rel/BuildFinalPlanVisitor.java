@@ -28,7 +28,6 @@ import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.ComplexTaskPlanUtils;
 import com.alibaba.polardbx.optimizer.config.table.GlobalIndexMeta;
 import com.alibaba.polardbx.optimizer.config.table.SchemaManager;
-import com.alibaba.polardbx.optimizer.config.table.TableColumnMeta;
 import com.alibaba.polardbx.optimizer.config.table.TableColumnUtils;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
@@ -64,7 +63,6 @@ import org.apache.calcite.sql.fun.SqlRowOperator;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFamily;
-import org.apache.calcite.util.Pair;
 
 import java.security.MessageDigest;
 import java.util.ArrayList;
@@ -114,7 +112,7 @@ public class BuildFinalPlanVisitor extends RelShuttleImpl {
         /**
          * 如果仅下发至单库单表,替换为 SingleTableOperation
          */
-        if (tableNames.size() == 1 && !lv.hasDynamicPruning()) {
+        if (tableNames.size() == 1 && !lv.hasDynamicPruning() && !lv.unPushDown()) {
             newNode = buildSingleTableScan(oc, lv, or, false);
         } else if (tableNames.size() > 1) {
             // ignore

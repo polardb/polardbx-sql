@@ -17,7 +17,11 @@
 package com.alibaba.polardbx.executor.gsi.backfill;
 
 import com.alibaba.polardbx.executor.backfill.Extractor;
+import com.alibaba.polardbx.common.jdbc.ParameterContext;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.executor.backfill.Loader;
+import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.InsertIndexExecutor;
 import com.alibaba.polardbx.executor.gsi.PhysicalPlanBuilder;
@@ -42,6 +46,7 @@ import org.apache.calcite.sql.SqlNodeList;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -49,6 +54,8 @@ import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 import static com.alibaba.polardbx.common.TddlConstants.IMPLICIT_COL_NAME;
+import static com.alibaba.polardbx.executor.columns.ColumnBackfillExecutor.isAllDnUseXDataSource;
+import static org.apache.calcite.sql.fun.SqlStdOperatorTable.EQUALS;
 
 /**
  * Fill batch data into index table with duplication check
@@ -57,14 +64,14 @@ public class GsiLoader extends Loader {
 
     private GsiLoader(String schemaName, String tableName, SqlInsert insert, SqlInsert insertIgnore,
                       ExecutionPlan checkerPlan, int[] checkerPkMapping, int[] checkerParamMapping,
-                      BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc) {
+                      BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc, String backfillReturning) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc, false);
+            executeFunc, false, backfillReturning);
     }
 
     public static Loader create(String schemaName, String primaryTable, String indexTable,
                                 BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                                boolean useHint, ExecutionContext ec) {
+                                boolean useHint, boolean canUseReturning, ExecutionContext ec) {
         final OptimizerContext optimizerContext = OptimizerContext.getContext(schemaName);
 
         // Construct target table
@@ -120,7 +127,8 @@ public class GsiLoader extends Loader {
         final TddlRuleManager tddlRuleManager = optimizerContext.getRuleManager();
         final Set<String> filterColumns = Sets.newTreeSet(String::compareToIgnoreCase);
         final Set<String> primaryKeys = Sets.newTreeSet(String::compareToIgnoreCase);
-        primaryKeys.addAll(Extractor.getPrimaryKeys(primaryTableMeta, ec));
+        final List<String> pkList = Extractor.getPrimaryKeys(primaryTableMeta, ec);
+        primaryKeys.addAll(pkList);
         filterColumns.addAll(primaryKeys);
         filterColumns.addAll(tddlRuleManager.getSharedColumns(primaryTable));
         filterColumns.addAll(tddlRuleManager.getSharedColumns(indexTable));
@@ -158,14 +166,20 @@ public class GsiLoader extends Loader {
             checkerPlan,
             checkerPkMapping,
             checkerParamMapping,
-            executeFunc);
+            executeFunc,
+            canUseReturning ? String.join(",", pkList) : null);
     }
 
     @Override
     public int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
                              ExecutionContext executionContext, String sourceDbIndex, String phyTableName) {
         TableMeta tableMeta = executionContext.getSchemaManager(schemaName).getTable(tableName);
-        return InsertIndexExecutor
-            .insertIntoTable(null, sqlInsert, tableMeta, schemaName, executionContext, executeFunc, false);
+        List<Map<Integer, ParameterContext>> returningRes = new ArrayList<>();
+        int affectRows = InsertIndexExecutor
+            .insertIntoTable(null, sqlInsert, tableMeta, "", "",
+                schemaName, executionContext, executeFunc, false, true,
+                "", usingBackfillReturning, returningRes);
+
+        return usingBackfillReturning ? getReturningAffectRows(returningRes, executionContext) : affectRows;
     }
 }

@@ -252,7 +252,7 @@ public class JavaUdfCreateTest extends BaseTestCase {
             + "\n"
             + "} END_CODE";
         JdbcUtil.executeSuccess(connection, sql);
-        long hash1 = MurmurHashUtils.murmurHashWithZeroSeed(123);
+        long hash1 = MurmurHashUtils.murmurHash128WithZeroSeed(123);
         System.out.println(hash1);
 
         ResultSet rs = JdbcUtil.executeQuery("select murmurhash128(123)", connection);

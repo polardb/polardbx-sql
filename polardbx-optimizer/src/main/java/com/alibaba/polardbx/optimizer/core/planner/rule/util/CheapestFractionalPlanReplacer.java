@@ -121,7 +121,7 @@ public class CheapestFractionalPlanReplacer {
             Limit limit = ((Limit) rel);
             Map<Integer, ParameterContext> params =
                 PlannerContext.getPlannerContext(rel).getParams().getCurrentParameter();
-            long skipPlusFetch = 0;
+            double skipPlusFetch = 0;
             if (limit.fetch != null) {
                 skipPlusFetch += CBOUtil.getRexParam(limit.fetch, params);
 

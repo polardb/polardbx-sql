@@ -326,6 +326,14 @@ public class TableGroupInfoManager extends AbstractLifecycle {
             Map<String, List<TablePartitionRecord>> subPartRecInfos = PartitionInfoUtil
                 .prepareRecordForAllSubpartitions(partRecList, partitionInfo,
                     partitionInfo.getPartitionBy().getPartitions());
+            List<TablePartitionRecord> allPhyPartRecInfos = new ArrayList<>();
+            if (partitionInfo.getPartitionBy().getSubPartitionBy() != null) {
+                for (int i = 0; i < partRecList.size(); i++) {
+                    allPhyPartRecInfos.addAll(subPartRecInfos.get(partRecList.get(i).getPartName()));
+                }
+            } else {
+                allPhyPartRecInfos = partRecList;
+            }
 
             TableGroupRecord tableGroupRecord = null;
             List<PartitionGroupRecord> partitionGroupRecords = null;
@@ -368,7 +376,7 @@ public class TableGroupInfoManager extends AbstractLifecycle {
                 for (PartitionGroupRecord partitionGroupRecord : partitionGroupRecords) {
                     partitionGroupRecord.id = maxPartGroupId + 1;
                     maxPartGroupId = maxPartGroupId + 1;
-                    TablePartitionRecord tablePartitionRecord = partRecList.stream()
+                    TablePartitionRecord tablePartitionRecord = allPhyPartRecInfos.stream()
                         .filter(o -> o.partName.equalsIgnoreCase(partitionGroupRecord.partition_name)).findFirst()
                         .orElse(null);
                     assert tablePartitionRecord != null;

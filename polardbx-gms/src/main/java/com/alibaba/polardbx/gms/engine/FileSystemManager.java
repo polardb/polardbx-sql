@@ -20,15 +20,10 @@ import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.oss.filesystem.FileSystemRateLimiter;
-import com.alibaba.polardbx.common.oss.filesystem.NFSFileSystem;
-import com.alibaba.polardbx.common.oss.filesystem.OSSFileSystem;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheManager;
-import com.alibaba.polardbx.common.oss.filesystem.cache.CacheType;
-import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCacheManager;
+import com.alibaba.polardbx.common.oss.filesystem.RateLimitable;
 import com.alibaba.polardbx.common.oss.filesystem.cache.FileMergeCachingFileSystem;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
-import com.alibaba.polardbx.common.properties.FileConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.thread.NamedThreadFactory;
 import com.alibaba.polardbx.common.utils.time.parser.StringNumericParser;
@@ -61,8 +56,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
-import static com.google.common.base.Preconditions.checkState;
 
 public class FileSystemManager {
     private ThreadPoolExecutor executor;
@@ -147,26 +140,29 @@ public class FileSystemManager {
         final Long writeRate = Optional.ofNullable(configs.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
             .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
 
-        FileSystemGroup fileSystemGroup = getFileSystemGroup(Engine.OSS);
-
-        // reset rate-limiter of master && slave file system.
-        FileMergeCachingFileSystem masterFs = (FileMergeCachingFileSystem) fileSystemGroup.getMaster();
-        if (masterFs.getDataTier() instanceof OSSFileSystem) {
-            FileSystemRateLimiter rateLimiter = ((OSSFileSystem) masterFs.getDataTier()).getRateLimiter();
-            rateLimiter.setReadRate(readRate);
-            rateLimiter.setWriteRate(writeRate);
-        } else if (masterFs.getDataTier() instanceof NFSFileSystem) {
-            FileSystemRateLimiter rateLimiter = ((NFSFileSystem) masterFs.getDataTier()).getRateLimiter();
-            rateLimiter.setReadRate(readRate);
-            rateLimiter.setWriteRate(writeRate);
-        }
-        for (FileSystem fs : fileSystemGroup.getSlaves()) {
-            FileMergeCachingFileSystem slaveFs = (FileMergeCachingFileSystem) fs;
-            if (slaveFs.getDataTier() instanceof OSSFileSystem) {
-                FileSystemRateLimiter rateLimiter = ((OSSFileSystem) slaveFs.getDataTier()).getRateLimiter();
-                rateLimiter.setReadRate(readRate);
-                rateLimiter.setWriteRate(writeRate);
+        for (Engine engine : Engine.values()) {
+            if (Engine.hasCache(engine)) {
+                // If the engine does not exist, just skip
+                FileSystemGroup fileSystemGroup = FileSystemManager.getFileSystemGroup(engine, false);
+                // reset rate-limiter of master && slave file system.
+                if (fileSystemGroup == null) {
+                    continue;
+                }
+                FileMergeCachingFileSystem masterFs = (FileMergeCachingFileSystem) fileSystemGroup.getMaster();
+                reloadRateLimiter(readRate, writeRate, masterFs);
+                for (FileSystem fs : fileSystemGroup.getSlaves()) {
+                    FileMergeCachingFileSystem slaveFs = (FileMergeCachingFileSystem) fs;
+                    reloadRateLimiter(readRate, writeRate, slaveFs);
+                }
             }
+        }
+    }
+
+    private static void reloadRateLimiter(Long readRate, Long writeRate, FileMergeCachingFileSystem cachingFileSystem) {
+        if (cachingFileSystem.getDataTier() instanceof RateLimitable) {
+            FileSystemRateLimiter rateLimiter = ((RateLimitable) cachingFileSystem.getDataTier()).getRateLimiter();
+            rateLimiter.setReadRate(readRate);
+            rateLimiter.setWriteRate(writeRate);
         }
     }
 
@@ -281,8 +277,29 @@ public class FileSystemManager {
                     .initialize();
             return fileSystemWithDefaultDirectory(record.fileUri, nfsFileSystem);
         }
+        case S3: {
+            FileSystem s3FileSystem =
+                S3InstanceInitializer.newBuilder()
+                    .accessKeyIdValue(record.accessKeyId)
+                    .accessKeySecretValue(PasswdUtil.decrypt(record.accessKeySecret))
+                    .bucketName(record.fileUri)
+                    .cachePolicy(CachePolicy.MAP.get(record.cachePolicy))
+                    .initialize();
+            return fileSystemWithDefaultDirectory(record.fileUri, s3FileSystem);
+        }
+        case ABS: {
+            FileSystem absFileSystem =
+                ABSInstanceInitializer.newBuilder()
+                    .endpointValue(record.externalEndpoint)
+                    .accessKeyIdValue(record.accessKeyId)
+                    .accessKeySecretValue(PasswdUtil.decrypt(record.accessKeySecret))
+                    .bucketName(record.fileUri)
+                    .cachePolicy(CachePolicy.MAP.get(record.cachePolicy))
+                    .initialize();
+            return fileSystemWithDefaultDirectory(record.fileUri, absFileSystem);
+        }
         default:
-            return null;
+            throw new TddlRuntimeException(ErrorCode.ERR_EXECUTE_ON_OSS, "bad engine = " + engine);
         }
     }
 

@@ -205,11 +205,9 @@ public class InsertIndexExecutor extends IndexExecutor {
                                                    String schemaName,
                                                    ExecutionContext executionContext,
                                                    BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
-                                                   boolean mayInsertDuplicate,
-                                                   PartitionInfo newPartition,
-                                                   String targetGroup,
-                                                   String phyTableName,
-                                                   boolean mirrorCopy) {
+                                                   boolean mayInsertDuplicate, PartitionInfo newPartition,
+                                                   String targetGroup, String phyTableName, boolean mirrorCopy,
+                                                   boolean returning, List<Map<Integer, ParameterContext>> result) {
         Map<String, Map<String, List<Integer>>> shardResults;
         boolean forceReshard = executionContext.getParamManager().getBoolean(ConnectionParams.FORCE_RESHARD);
         boolean skipShard = mirrorCopy && StringUtils.isNotEmpty(targetGroup) && !forceReshard;
@@ -255,7 +253,7 @@ public class InsertIndexExecutor extends IndexExecutor {
             }
         }
         return insertIntoTable(logicalInsert, sqlInsert, tableMeta, "", schemaName, executionContext, executeFunc,
-            mayInsertDuplicate, shardResults);
+            mayInsertDuplicate, shardResults, returning, result);
     }
 
     public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
@@ -263,7 +261,8 @@ public class InsertIndexExecutor extends IndexExecutor {
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate,
-                                      boolean mayForGsi, String partName) {
+                                      boolean mayForGsi, String partName,
+                                      boolean returning, List<Map<Integer, ParameterContext>> result) {
         Map<String, Map<String, List<Integer>>> shardResults;
         boolean forceReshard = executionContext.getParamManager().getBoolean(ConnectionParams.FORCE_RESHARD);
         if (StringUtils.isBlank(targetGroup) || StringUtils.isBlank(phyTableName) || forceReshard) {
@@ -316,7 +315,7 @@ public class InsertIndexExecutor extends IndexExecutor {
 
         return insertIntoTable(logicalInsert, sqlInsert, tableMeta, targetGroup, schemaName, executionContext,
             executeFunc,
-            mayInsertDuplicate, shardResults);
+            mayInsertDuplicate, shardResults, returning, result);
     }
 
     public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
@@ -328,7 +327,7 @@ public class InsertIndexExecutor extends IndexExecutor {
         return insertIntoTable(logicalInsert, sqlInsert, tableMeta, targetGroup, phyTableName, schemaName,
             executionContext,
             executeFunc,
-            mayInsertDuplicate, mayForGsi, "");
+            mayInsertDuplicate, mayForGsi, "", false, null);
     }
 
     public static int insertIntoTable(RelNode logicalInsert, SqlInsert sqlInsert, TableMeta tableMeta,
@@ -336,7 +335,8 @@ public class InsertIndexExecutor extends IndexExecutor {
                                       ExecutionContext executionContext,
                                       BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                                       boolean mayInsertDuplicate,
-                                      Map<String, Map<String, List<Integer>>> shardResults) {
+                                      Map<String, Map<String, List<Integer>>> shardResults,
+                                      boolean returning, List<Map<Integer, ParameterContext>> result) {
 
         final RelOptCluster cluster = SqlConverter.getInstance(schemaName, executionContext).createRelOptCluster();
         RelTraitSet traitSet = RelTraitSet.createEmpty();
@@ -358,16 +358,6 @@ public class InsertIndexExecutor extends IndexExecutor {
                     outputParams);
                 SqlInsert newSqlInsert = visitor.visit(sqlInsert);
                 BytesSql sql = RelUtils.toNativeBytesSql(newSqlInsert, DbType.MYSQL);
-
-//                PhyTableOperation phyTableModify =
-//                    new PhyTableOperation(cluster, traitSet, rowType, null, logicalInsert);
-//                phyTableModify.setKind(newSqlInsert.getKind());
-//                phyTableModify.setDbIndex(targetDb);
-//                phyTableModify.setTableNames(ImmutableList.of(ImmutableList.of(targetTb)));
-//                phyTableModify.setBytesSql(sql);
-//                phyTableModify.setNativeSqlNode(newSqlInsert);
-//                phyTableModify.setParam(outputParams);
-//                phyTableModify.setBatchParameters(null);
 
                 PhyTableOpBuildParams buildParams = new PhyTableOpBuildParams();
                 buildParams.setSchemaName(schemaName);
@@ -410,6 +400,11 @@ public class InsertIndexExecutor extends IndexExecutor {
             } else {
                 throw e;
             }
+        }
+
+        if (returning && result != null) {
+            result.addAll(ExecUtils.getReturningResultByCursors(cursors, false));
+            return 0;
         }
 
         return ExecUtils.getAffectRowsByCursors(cursors, false);

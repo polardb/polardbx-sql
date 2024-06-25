@@ -5786,7 +5786,11 @@ public class MySqlOutputVisitor extends SQLASTOutputVisitor implements MySqlASTV
 
         if (x.getFlashback() != null) {
             println();
-            print0(ucase ? "AS OF " : "as of ");
+            if (x.isFlashbackWithTso()) {
+                print0(ucase ? "AS OF TSO " : "as of tso ");
+            } else {
+                print0(ucase ? "AS OF " : "as of ");
+            }
             printExpr(x.getFlashback());
         }
 

@@ -474,7 +474,8 @@ public class Planner {
             plan = getPlan(ast, plannerContext);
             plan.setExplain(executionContext.getExplain() != null);
             plan.setUsePostPlanner(
-                PostPlanner.usePostPlanner(executionContext.getExplain(), executionContext.isUseHint()));
+                PostPlanner.usePostPlanner(executionContext.getExplain(),
+                    executionContext.isUseHint()));
         }
 
         // build foreign key sub plans
@@ -828,7 +829,8 @@ public class Planner {
         executionPlan.setExplain(isExplain);
         executionPlan.setUsePostPlanner(
             StringUtils.isEmpty(ec.getPartitionHint()) &&
-                (PostPlanner.usePostPlanner(explain, ec.isUseHint()) || hintCollection.usePostPlanner()));
+                (PostPlanner.usePostPlanner(explain, ec.isUseHint())
+                    || hintCollection.usePostPlanner()));
         executionPlan.setHintCollection(hintCollection);
         return executionPlan;
     }

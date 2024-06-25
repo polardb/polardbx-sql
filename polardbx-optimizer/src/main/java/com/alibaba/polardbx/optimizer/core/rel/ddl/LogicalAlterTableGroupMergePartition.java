@@ -194,7 +194,7 @@ public class LogicalAlterTableGroupMergePartition extends LogicalAlterTableMerge
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setMergePartitions(mergePartitions);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.MERGE_PARTITION);
 
         List<String> newPartitionGroupNames = new ArrayList<>();

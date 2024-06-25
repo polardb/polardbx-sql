@@ -63,6 +63,37 @@ public class SelectRowFunctionTest extends AutoReadBaseTestCase {
     }
 
     @Test
+    public void testInExprForEachType() {
+        selectContentSameAssert("select ('abc', 'def') in ((N'abc', N'def'))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+        selectContentSameAssert("select ('abc', 'de') in ((N'abc', N'def'))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+
+        selectContentSameAssert("select (2, 1) in ((b'10', b'01'))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+        selectContentSameAssert("select (1, 1) in ((b'10', b'01'))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+
+        selectContentSameAssert("select (true, false) in ((true, false))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+        selectContentSameAssert("select (true, true) in ((true, false))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+
+        selectContentSameAssert("select (true, false) in ((true, false))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+        selectContentSameAssert("select (true, true) in ((true, false))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+
+        // FIXME: wrong result for hex expression, this may fail:
+        // selectContentSameAssert("select b'0001001000110100' in (0x1234)", new ArrayList<>(), mysqlConnection, tddlConnection);
+        // selectContentSameAssert("select (0x1234, 0xabcc) in ((0x1234, 0xabcd))", new ArrayList<>(), mysqlConnection, tddlConnection);
+        selectContentSameAssert("select (0x1234, 0xabcd) in ((0x1234, 0xabcd))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+        selectContentSameAssert("select (0x1233, 0xabcc) in ((0x1234, 0xabcd))", new ArrayList<>(), mysqlConnection,
+            tddlConnection);
+    }
+
+    @Test
     public void testDifferentRowLength() {
         String left = generateRandomStr(2);
         String right = generateRandomStr(3);

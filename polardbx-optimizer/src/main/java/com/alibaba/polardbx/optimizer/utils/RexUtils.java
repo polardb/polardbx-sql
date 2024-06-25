@@ -2050,4 +2050,29 @@ public class RexUtils {
             super.visit(comp, ordinal, parent);
         }
     }
+
+    /**
+     * get all {@link RexDynamicParam} in a {@link Comparative}
+     */
+    public static class RexDynamicParamFromComparativeVisitor<T extends RexDynamicParam> extends ComparativeVisitor {
+
+        private final List<RexDynamicParam> rexDynamicParams = Lists.newArrayList();
+
+        public RexDynamicParamFromComparativeVisitor() {
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public void visit(Comparative comp, int ordinal, Comparative parent) {
+            if (comp.getValue() instanceof RexNode) {
+                RexUtils.getDynamicParams((RexNode) comp.getValue()).forEach(rexDynamicParams::add);
+            }
+
+            super.visit(comp, ordinal, parent);
+        }
+
+        public List<RexDynamicParam> getRexDynamicParams() {
+            return rexDynamicParams;
+        }
+    }
 }

@@ -773,20 +773,27 @@ public class AlterRepartitionUtils {
 
         StringBuilder sb = new StringBuilder();
         sb.append("alter table ");
-        sb.append(tableName);
+        sb.append(SqlIdentifier.surroundWithBacktick(tableName));
 
-        if (dbPartitionBy != null) {
-            sb.append(" dbpartition by ").append(dbPartitionBy);
-            if (dbPartitions != null) {
-                sb.append(" dbpartitions ").append(dbPartitions);
-            }
+        if (tableRecord.getTableType() == GsiMetaManager.TableType.SHARDING.getValue()
+            || tableRecord.getTableType() == GsiMetaManager.TableType.GSI.getValue()) {
+            if (dbPartitionBy != null) {
+                sb.append(" dbpartition by ").append(dbPartitionBy);
+                if (dbPartitions != null) {
+                    sb.append(" dbpartitions ").append(dbPartitions);
+                }
 
-            if (tbPartitionBy != null) {
-                sb.append(" tbpartition by ").append(tbPartitionBy);
-                if (tbPartitions != null) {
-                    sb.append(" tbpartitions ").append(tbPartitions);
+                if (tbPartitionBy != null) {
+                    sb.append(" tbpartition by ").append(tbPartitionBy);
+                    if (tbPartitions != null) {
+                        sb.append(" tbpartitions ").append(tbPartitions);
+                    }
                 }
             }
+        } else if (tableRecord.getTableType() == GsiMetaManager.TableType.SINGLE.getValue()) {
+            sb.append(" single");
+        } else if (tableRecord.getTableType() == GsiMetaManager.TableType.BROADCAST.getValue()) {
+            sb.append(" broadcast");
         }
 
         String sql = sb.toString();

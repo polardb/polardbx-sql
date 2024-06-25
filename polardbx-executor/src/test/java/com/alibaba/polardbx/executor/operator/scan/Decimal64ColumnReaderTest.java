@@ -7,6 +7,8 @@ import com.alibaba.polardbx.executor.operator.scan.metrics.ProfileAccumulatorTyp
 import com.alibaba.polardbx.executor.operator.scan.metrics.ProfileUnit;
 import com.alibaba.polardbx.executor.operator.scan.metrics.RuntimeMetrics;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
+import com.alibaba.polardbx.optimizer.core.datatype.DataTypes;
+import com.alibaba.polardbx.optimizer.core.datatype.DecimalType;
 import com.google.common.collect.ImmutableList;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
@@ -17,6 +19,7 @@ import org.apache.orc.OrcProto;
 import org.apache.orc.Reader;
 import org.apache.orc.RecordReader;
 import org.apache.orc.StripeInformation;
+import org.apache.orc.TypeDescription;
 import org.apache.orc.impl.InStream;
 import org.apache.orc.impl.OrcIndex;
 import org.apache.orc.impl.StreamName;
@@ -33,9 +36,25 @@ public class Decimal64ColumnReaderTest extends DecimalScanTestBase {
     public static final String METRICS_NAME = "ScanWork$"
         + "1d74bd93f993225$" + "943268$" + 0;
 
+    @Override
+    protected void initSchema() {
+        // 2 col = 1 bigint + 1 decimal
+        SCHEMA.addField("112__id__", TypeDescription.createLong());
+        SCHEMA.addField("113__id__", TypeDescription.createDecimal().withPrecision(15).withScale(2));
+
+        INPUT_TYPES.add(DataTypes.LongType);
+        INPUT_TYPES.add(new DecimalType(15, 2));
+
+    }
+
+    @Override
+    String getOrcFileName() {
+        return "dec64.orc";
+    }
+
     @Test
     public void testSingleGroup() throws IOException {
-        doTest(0, 1,
+        doTest(0, 2,
             new boolean[] {true, true, true},
             fromRowGroupIds(0, new int[] {0}),
             ImmutableList.of(
@@ -138,7 +157,7 @@ public class Decimal64ColumnReaderTest extends DecimalScanTestBase {
         }
 
         Path path = new Path(getFileFromClasspath
-            (TEST_ORC_FILE_NAME));
+            (getOrcFileName()));
 
         Reader.Options options = new Reader.Options(CONFIGURATION).schema(SCHEMA)
             .range(stripeInformation.getOffset(), stripeInformation.getLength());
@@ -154,30 +173,7 @@ public class Decimal64ColumnReaderTest extends DecimalScanTestBase {
             VectorizedRowBatch batch = SCHEMA.createRowBatch(location.positionCount);
             rows.nextBatch(batch);
 
-            check(targetBlock, batch, targetColumnId);
-        }
-    }
-
-    private static void check(DecimalBlock block, VectorizedRowBatch batch, int targetColumnId) {
-        Assert.assertTrue(block.isDecimal64());
-
-        for (int row = 0; row < batch.size; row++) {
-            for (int columnIndex = 0; columnIndex < batch.cols.length; columnIndex++) {
-                if (targetColumnId != columnIndex + 1) {
-                    continue;
-                }
-
-                ColumnVector vector = batch.cols[columnIndex];
-
-                if (vector.isNull[row]) {
-                    // check null
-                    Assert.assertTrue(block.isNull(row));
-                } else {
-                    Assert.assertTrue(vector instanceof LongColumnVector);
-                    Assert.assertEquals(block.getLong(row), ((LongColumnVector) vector).vector[row]);
-                }
-            }
-
+            checkDecimal64(targetBlock, batch, targetColumnId);
         }
     }
 }

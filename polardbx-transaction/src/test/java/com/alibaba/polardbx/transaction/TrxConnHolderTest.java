@@ -30,6 +30,7 @@ import com.alibaba.polardbx.transaction.async.AsyncTaskQueue;
 import com.alibaba.polardbx.transaction.connection.TransactionConnectionHolder;
 import com.alibaba.polardbx.transaction.trx.AbstractTransaction;
 import com.alibaba.polardbx.transaction.trx.XATransaction;
+import com.alibaba.polardbx.common.mock.MockUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.junit.Assert;
 import org.junit.Test;
@@ -153,9 +154,9 @@ public class TrxConnHolderTest {
         TransactionManager trxManager = Mockito.mock(TransactionManager.class);
         TransactionExecutor transactionExecutor = Mockito.mock(TransactionExecutor.class);
 
-        setInternalState(transactionExecutor, "asyncQueue",
+        MockUtils.setInternalState(transactionExecutor, "asyncQueue",
             Mockito.spy(new AsyncTaskQueue(schema, ExecutorUtil.create("ServerExecutor", 10))));
-        setInternalState(trxManager, "executor", transactionExecutor);
+        MockUtils.setInternalState(trxManager, "executor", transactionExecutor);
 
         XATransaction trx = Mockito.spy(new XATransaction(executionContext, trxManager));
         Mockito.doNothing().when(trx).begin(anyString(), anyString(), any());
@@ -163,7 +164,7 @@ public class TrxConnHolderTest {
 
         // TransactionConnectionHolder 初始化引用了 this
         // 需要 hook 成 Mock的trx对象
-        setInternalState(trx.getConnectionHolder(), "trx", trx);
+        MockUtils.setInternalState(trx.getConnectionHolder(), "trx", trx);
         return trx;
     }
 
@@ -547,16 +548,6 @@ public class TrxConnHolderTest {
             } catch (TddlRuntimeException e) {
                 Assert.assertTrue(e.getMessage().contains("read connection is in use before write"));
             }
-        }
-    }
-
-    public static void setInternalState(Object target, String fieldName, Object value) {
-        try {
-            Field field = target.getClass().getDeclaredField(fieldName);
-            field.setAccessible(true);
-            field.set(target, value);
-        } catch (NoSuchFieldException | IllegalAccessException e) {
-            throw new RuntimeException(e);
         }
     }
 }

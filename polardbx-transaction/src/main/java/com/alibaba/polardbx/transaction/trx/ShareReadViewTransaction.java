@@ -87,7 +87,7 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
      * 获取 ReadView 序列号
      * 用于区分同一个 ReadView 下不同的连接
      */
-    private int getReadViewSeq(String group) {
+    protected int getReadViewSeq(String group) {
         int readViewCount = readViewConnCounter.getAndIncrement();
         if (readViewCount >= MAX_READ_VIEW_COUNT) {
             throw new TddlRuntimeException(ErrorCode.ERR_CONCURRENT_TRANSACTION, group,
@@ -241,7 +241,7 @@ public abstract class ShareReadViewTransaction extends AbstractTransaction {
             checkTerminated();
             checkCanContinue();
 
-            if (!isCrossGroup && DynamicConfig.getInstance().isEnable1PcOpt()) {
+            if (!isCrossGroup && executionContext.isEnable1PCOpt()) {
                 commitOneShardTrx();
                 return;
             }

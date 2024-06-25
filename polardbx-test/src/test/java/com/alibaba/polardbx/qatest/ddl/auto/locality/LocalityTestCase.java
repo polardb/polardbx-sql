@@ -72,6 +72,12 @@ public class LocalityTestCase extends LocalityTestBase {
     }
 
     @Test
+    public void testAlterTableGroupAddSecondaryPartition()
+        throws FileNotFoundException, InterruptedException, SQLException {
+        runTestCase("alter_tablegroup_add_secondary_partition_table.test.yml");
+    }
+
+    @Test
     public void testRebalanceSimpleWithEmptyTableGroup()
         throws FileNotFoundException, InterruptedException, SQLException {
         runTestCase("rebalance_drain_node_with_empty_tablegroup.test.yml");

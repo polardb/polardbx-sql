@@ -80,8 +80,8 @@ import org.apache.calcite.sql.SqlSelect;
 import org.apache.calcite.sql.SqlSelect.LockMode;
 import org.apache.calcite.sql.SqlSelectWithPartition;
 import org.apache.calcite.sql.SqlUpdate;
-import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
 import org.apache.calcite.sql.fun.SqlBinaryFunction;
+import org.apache.calcite.sql.fun.SqlHashCheckAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeFactoryImpl;
@@ -745,7 +745,7 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                                              boolean withLowerBound, boolean withUpperBound,
                                                              LockMode lockMode, boolean isInsertIgnore) {
         SqlInsert sqlInsert = buildSqlInsertSelectForOMCBackfill(targetColumnNames, sourceColumnNames,
-            primaryKeys, withLowerBound, withUpperBound, lockMode, isInsertIgnore);
+            primaryKeys, withLowerBound, withUpperBound, lockMode, isInsertIgnore, tableMeta.isHasPrimaryKey());
         return buildDmlPhyTblOpTemplate(tableMeta.getSchemaName(), sqlInsert, tableMeta);
     }
 
@@ -753,7 +753,8 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                                                         List<String> sourceColumnNames,
                                                         List<String> primaryKeys,
                                                         boolean withLowerBound, boolean withUpperBound,
-                                                        LockMode lockMode, boolean isInsertIgnore) {
+                                                        LockMode lockMode, boolean isInsertIgnore,
+                                                        boolean forceIndex) {
         initParams(0);
 
         // build select list
@@ -788,8 +789,9 @@ public class PhysicalPlanBuilder extends PhyOperationBuilderCommon {
                 null == condition ? upperBound : PlannerUtils.buildAndTree(ImmutableList.of(condition, upperBound));
         }
 
+        SqlNode target = forceIndex ? from : targetTableNode;
         final SqlSelect sqlSelect =
-            new SqlSelect(SqlParserPos.ZERO, null, selectList, from, condition, null, null, null, null,
+            new SqlSelect(SqlParserPos.ZERO, null, selectList, target, condition, null, null, null, null,
                 null, null);
 
         sqlSelect.setLockMode(lockMode);

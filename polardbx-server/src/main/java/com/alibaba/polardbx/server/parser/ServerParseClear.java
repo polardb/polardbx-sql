@@ -39,6 +39,8 @@ public final class ServerParseClear {
     public static final int ALLCACHE = 7;
     public static final int EXTERNAL_DISK_CACHE = 8;
     public static final int NFS_CACHE = 9;
+    public static final int S3_CACHE = 10;
+    public static final int ABS_CACHE = 11;
 
     public static final Set<Integer> PREPARE_UNSUPPORTED_CLEAR_TYPE;
 
@@ -54,6 +56,8 @@ public final class ServerParseClear {
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(ALLCACHE);
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(EXTERNAL_DISK_CACHE);
         PREPARE_UNSUPPORTED_CLEAR_TYPE.add(NFS_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(S3_CACHE);
+        PREPARE_UNSUPPORTED_CLEAR_TYPE.add(ABS_CACHE);
     }
 
     public static int parse(ByteString stmt, int offset) {
@@ -68,7 +72,11 @@ public final class ServerParseClear {
                 continue;
             case 'S':
             case 's':
-                return slowCheck(stmt, i);
+                if (i + 1 < stmt.length() && Character.toLowerCase(stmt.charAt(i + 1)) == 'l') {
+                    return slowCheck(stmt, i);
+                } else {
+                    return s3CacheCheck(stmt, i);
+                }
             case 'P':
             case 'p':
                 return pCheck(stmt, i);
@@ -77,7 +85,11 @@ public final class ServerParseClear {
                 return ossCacheCheck(stmt, i);
             case 'A':
             case 'a':
-                return allCacheCheck(stmt, i);
+                if (i + 1 < stmt.length() && Character.toLowerCase(stmt.charAt(i + 1)) == 'l') {
+                    return allCacheCheck(stmt, i);
+                } else {
+                    return absCacheCheck(stmt, i);
+                }
             case 'N':
             case 'n':
                 return nfsCacheCheck(stmt, i);
@@ -170,6 +182,28 @@ public final class ServerParseClear {
         if (stmt.length() >= offset + expect.length()) {
             if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
                 return EXTERNAL_DISK_CACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    // CLEAR S3Cache
+    private static int s3CacheCheck(ByteString stmt, int offset) {
+        final String expect = "S3 CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return S3_CACHE;
+            }
+        }
+        return OTHER;
+    }
+
+    // CLEAR ABSCache
+    private static int absCacheCheck(ByteString stmt, int offset) {
+        final String expect = "ABS CACHE";
+        if (stmt.length() >= offset + expect.length()) {
+            if (stmt.substring(offset, offset + expect.length()).equalsIgnoreCase(expect)) {
+                return ABS_CACHE;
             }
         }
         return OTHER;

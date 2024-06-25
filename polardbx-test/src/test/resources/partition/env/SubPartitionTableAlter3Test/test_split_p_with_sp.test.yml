@@ -1,0 +1,110 @@
+## DISABLE_FAST_SQL_PARSER
+
+CREATE TABLE `ntp_sp_l_k1` (
+`id` bigint NOT NULL,
+`c1` bigint NOT NULL,
+`c2` bigint NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`c1`)
+SUBPARTITION BY KEY(`c2`,`id`)
+(
+PARTITION `p1001` VALUES IN (1001) SUBPARTITIONS 2,
+PARTITION `p1002` VALUES IN (1002) SUBPARTITIONS 3,
+PARTITION `pd` VALUES IN (default) SUBPARTITIONS 4
+);
+
+CREATE TABLE `ntp_sp_l_k2` (
+`id` bigint NOT NULL,
+`c1` bigint NOT NULL,
+`c2` bigint NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`c1`)
+SUBPARTITION BY KEY(`c2`,`id`)
+(
+PARTITION `p1001` VALUES IN (1001) SUBPARTITIONS 2,
+PARTITION `p1002` VALUES IN (1002) SUBPARTITIONS 3,
+PARTITION `pd` VALUES IN (default) SUBPARTITIONS 4
+);
+
+alter tablegroup by table ntp_sp_l_k1 split partition `pd` into
+(
+PARTITION `p1003` VALUES IN (1003) SUBPARTITIONS 2,
+PARTITION `p1004` VALUES IN (1004) SUBPARTITIONS 1,
+PARTITION `p1005` VALUES IN (1005) SUBPARTITIONS 3 (
+SUBPARTITION p1005sp1 VALUES LESS THAN(10,maxvalue),
+SUBPARTITION p1005sp2 VALUES LESS THAN(100,maxvalue),
+SUBPARTITION p1005sp3 VALUES LESS THAN(maxvalue,maxvalue)
+),
+PARTITION `p1006` VALUES IN (1006),
+PARTITION `pd` VALUES IN (default) SUBPARTITIONS 5
+);
+show create table ntp_sp_l_k2;
+
+alter tablegroup by table ntp_sp_l_k1 drop partition p1003,p1004,p1005,p1006;
+show create table ntp_sp_l_k1;
+
+alter table ntp_sp_l_k2 split partition `pd` into
+(
+PARTITION `p1003` VALUES IN (1003) SUBPARTITIONS 2,
+PARTITION `p1004` VALUES IN (1004) SUBPARTITIONS 1,
+PARTITION `p1005` VALUES IN (1005) SUBPARTITIONS 3 (
+SUBPARTITION p1005sp1 VALUES LESS THAN(10,maxvalue),
+SUBPARTITION p1005sp2 VALUES LESS THAN(100,maxvalue),
+SUBPARTITION p1005sp3 VALUES LESS THAN(maxvalue,maxvalue)
+),
+PARTITION `p1006` VALUES IN (1006),
+PARTITION `pd` VALUES IN (default) SUBPARTITIONS 4
+);
+
+show create table ntp_sp_l_k2;
+
+drop table ntp_sp_l_k1;
+drop table ntp_sp_l_k2;
+
+CREATE TABLE `tp_sp_l_k1` (
+`id` bigint NOT NULL,
+`c1` bigint NOT NULL,
+`c2` bigint NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`c1`)
+SUBPARTITION BY KEY(`c2`,`id`)
+SUBPARTITIONS 3
+(
+PARTITION `p1001` VALUES IN (1001),
+PARTITION `p1002` VALUES IN (1002),
+PARTITION `pd` VALUES IN (default)
+);
+
+CREATE TABLE `tp_sp_l_k2` (
+`id` bigint NOT NULL,
+`c1` bigint NOT NULL,
+`c2` bigint NOT NULL,
+PRIMARY KEY (`id`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
+PARTITION BY LIST(`c1`)
+SUBPARTITION BY KEY(`c2`,`id`)
+SUBPARTITIONS 3
+(
+PARTITION `p1001` VALUES IN (1001),
+PARTITION `p1002` VALUES IN (1002),
+PARTITION `pd` VALUES IN (default)
+);
+
+alter tablegroup by table tp_sp_l_k1 split partition `pd` into
+(
+PARTITION `p1003` VALUES IN (1003),
+PARTITION `p1004` VALUES IN (1004),
+PARTITION `p1005` VALUES IN (1005),
+PARTITION `p1006` VALUES IN (1006),
+PARTITION `pd` VALUES IN (default)
+);
+
+show create table tp_sp_l_k1;
+
+drop table tp_sp_l_k1;
+drop table tp_sp_l_k2;
+
+

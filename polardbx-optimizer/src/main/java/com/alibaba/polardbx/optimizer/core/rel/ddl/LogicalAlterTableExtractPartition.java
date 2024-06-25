@@ -136,7 +136,8 @@ public class LogicalAlterTableExtractPartition extends BaseDdlOperation {
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
         preparedData.setPartBoundExprInfo(alterTable.getAllRexExprInfo());
         preparedData.setHotKeys(sqlAlterTableExtractPartitionByHotValue.getHotKeys());
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = partitionInfo.containSubPartitions();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.EXTRACT_PARTITION);
         preparedData.setSplitPoints(splitPoints);
 

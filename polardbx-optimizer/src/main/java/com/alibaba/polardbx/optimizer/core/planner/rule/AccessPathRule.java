@@ -29,13 +29,12 @@ import com.alibaba.polardbx.optimizer.config.table.GsiMetaManager;
 import com.alibaba.polardbx.optimizer.config.table.TableMeta;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.core.DrdsConvention;
-import com.alibaba.polardbx.optimizer.core.planner.rule.util.CBOUtil;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalIndexScan;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalModifyView;
 import com.alibaba.polardbx.optimizer.core.rel.LogicalView;
 import com.alibaba.polardbx.optimizer.core.rel.MysqlTableScan;
-import com.alibaba.polardbx.optimizer.index.TableScanFinder;
 import com.alibaba.polardbx.optimizer.index.IndexUtil;
+import com.alibaba.polardbx.optimizer.index.TableScanFinder;
 import com.alibaba.polardbx.optimizer.partition.PartitionInfo;
 import com.alibaba.polardbx.optimizer.planmanager.LogicalViewFinder;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
@@ -633,9 +632,11 @@ public abstract class AccessPathRule extends RelOptRule {
             final LogicalView primary = RelUtils.createLogicalView(scan, lockMode);
             final LogicalTableScan indexTableScan =
                 LogicalTableScan.create(scan.getCluster(), this.indexTable, scan.getHints(), null, scan.getFlashback(),
+                    scan.getFlashbackOperator(),
                     null);
             final LogicalIndexScan index = new LogicalIndexScan(this.indexTable, indexTableScan, lockMode);
             index.setFlashback(scan.getFlashback());
+            index.setFlashbackOperator(scan.getFlashbackOperator());
             return RelUtils.createTableLookup(primary, index, index.getTable());
         }
     }
@@ -687,7 +688,8 @@ public abstract class AccessPathRule extends RelOptRule {
             }
 
             final LogicalTableScan indexTableScan =
-                LogicalTableScan.create(scan.getCluster(), index, scan.getHints(), null, scan.getFlashback(), null);
+                LogicalTableScan.create(scan.getCluster(), index, scan.getHints(), null, scan.getFlashback(),
+                    scan.getFlashbackOperator(), null);
 
             indexTableScan.setIndexNode(Optional.ofNullable(scan.getIndexNode())
                 .filter(indexNode -> indexNode instanceof SqlNodeList && ((SqlNodeList) indexNode).size() > 0)

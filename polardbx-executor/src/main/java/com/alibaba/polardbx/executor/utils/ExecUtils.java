@@ -193,6 +193,7 @@ import java.util.stream.IntStream;
 
 import static com.alibaba.polardbx.common.properties.ConnectionParams.MASTER_READ_WEIGHT;
 import static com.alibaba.polardbx.common.utils.thread.ThreadCpuStatUtil.NUM_CORES;
+import static com.alibaba.polardbx.executor.gsi.utils.Transformer.buildBatchParam;
 import static com.alibaba.polardbx.executor.utils.failpoint.FailPointKey.FP_INJECT_IGNORE_INTERRUPTED_TO_STATISTIC_SCHEDULE_JOB;
 import static io.airlift.concurrent.MoreFutures.getFutureValue;
 import static io.airlift.concurrent.MoreFutures.tryGetFutureValue;
@@ -729,6 +730,27 @@ public class ExecUtils {
         }
 
         return QueryConcurrencyPolicy.SEQUENTIAL;
+    }
+
+    public static List<Map<Integer, ParameterContext>> getReturningResultByCursors(List<Cursor> cursors,
+                                                                                   boolean isBroadcast) {
+        List<Map<Integer, ParameterContext>> result = new ArrayList<>();
+        try {
+            for (Cursor cursor : cursors) {
+                if (isBroadcast) {
+                    result = buildBatchParam(cursor, false);
+                } else {
+                    result.addAll(buildBatchParam(cursor, false));
+                }
+            }
+        } finally {
+            for (Cursor inputCursor : cursors) {
+                if (inputCursor != null) {
+                    inputCursor.close(new ArrayList<>());
+                }
+            }
+        }
+        return result;
     }
 
     public static int getAffectRowsByCursors(List<Cursor> cursors, boolean isBroadcast) {
@@ -1732,8 +1754,14 @@ public class ExecUtils {
             Map<Integer, ParameterContext> params = context.getParams().getCurrentParameter();
             if (((Sort) node).fetch != null) {
                 outputCount = CBOUtil.getRexParam(sort.fetch, params);
+                long offset = 0;
                 if (sort.offset != null) {
-                    outputCount += CBOUtil.getRexParam(sort.offset, params);
+                    offset = CBOUtil.getRexParam(sort.offset, params);
+                }
+                if (outputCount == Long.MAX_VALUE || offset == Long.MAX_VALUE) {
+                    outputCount = Long.MAX_VALUE;
+                } else {
+                    outputCount = outputCount + offset;
                 }
             }
         }
@@ -2164,21 +2192,14 @@ public class ExecUtils {
      *
      * @return {Version}-{ReleaseDate}
      */
-    public static String getDnPolardbVersion() {
+    public static String getDnPolardbVersion() throws Exception {
         String sql = MetaDbUtil.POLARDB_VERSION_SQL;
-        if (ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME) == null) {
-            return null;
+        Set<String> allDnId = ExecUtils.getAllDnStorageId();
+        if (allDnId.isEmpty()) {
+            throw new SQLException("Failed to get DN datasource");
         }
-        TopologyHandler topologyHandler =
-            ExecutorContext.getContext(SystemDbHelper.CDC_DB_NAME).getTopologyHandler();
-        if (topologyHandler.getMatrix().getGroups().isEmpty()) {
-            return null;
-        }
-        Group group = topologyHandler.getMatrix().getGroups().get(0);
-        String groupName = group.getName();
-        IGroupExecutor groupExecutor = topologyHandler.get(groupName);
-        DataSource dataSource = groupExecutor.getDataSource();
-        try (Connection conn = dataSource.getConnection();
+        String dnId = allDnId.iterator().next();
+        try (Connection conn = DbTopologyManager.getConnectionForStorage(dnId);
             Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery(sql)) {
             String dnPolardbxVersion = null;
@@ -2188,9 +2209,6 @@ public class ExecUtils {
                 dnReleaseDate = rs.getString(2);
             }
             return String.format("%s-%s", dnPolardbxVersion, dnReleaseDate);
-        } catch (SQLException e) {
-            logger.error(e.getMessage(), e);
-            return null;
         }
     }
 

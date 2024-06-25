@@ -317,7 +317,10 @@ public enum CollationName {
         // for utf8
         UTF8_GENERAL_CI, UTF8_BIN, UTF8_UNICODE_CI, UTF8_GENERAL_MYSQL500_CI,
 
-        // for utf8mb
+        // for utf8mb4 in MySQL 8.0
+        UTF8MB4_ZH_0900_AS_CS,
+
+        // for utf8mb4
         UTF8MB4_GENERAL_CI, UTF8MB4_BIN, UTF8MB4_UNICODE_CI,
 
         // for utf16

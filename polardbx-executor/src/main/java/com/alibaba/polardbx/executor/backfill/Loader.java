@@ -21,10 +21,12 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.ExecutorHelper;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
+import com.alibaba.polardbx.executor.common.TopologyHandler;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.gsi.GsiUtils;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
@@ -35,16 +37,20 @@ import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.sql.SqlInsert;
 
+import java.sql.Connection;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ER_DUP_ENTRY;
+import static com.alibaba.polardbx.executor.columns.ColumnBackfillExecutor.isAllDnUseXDataSource;
 import static com.alibaba.polardbx.executor.gsi.GsiUtils.SQLSTATE_DUP_ENTRY;
 
 /**
@@ -71,12 +77,16 @@ public abstract class Loader extends PhyOperationBuilderCommon {
     private final int[] checkerPkMapping;
     private final ITransactionManager tm;
     protected final boolean mirrorCopy;
+    protected final String backfillReturning;
+    protected boolean conflictDetection;
+    protected final boolean usingBackfillReturning;
 
     protected final BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc;
 
     protected Loader(String schemaName, String tableName, SqlInsert insert, SqlInsert insertIgnore,
                      ExecutionPlan checkerPlan, int[] checkerPkMapping, int[] checkerParamMapping,
-                     BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc, boolean mirrorCopy) {
+                     BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
+                     boolean mirrorCopy, String backfillReturning) {
         this.schemaName = schemaName;
         this.tableName = tableName;
         this.sqlInsert = insert;
@@ -87,6 +97,9 @@ public abstract class Loader extends PhyOperationBuilderCommon {
         this.executeFunc = executeFunc;
         this.tm = ExecutorContext.getContext(schemaName).getTransactionManager();
         this.mirrorCopy = mirrorCopy;
+        this.backfillReturning = backfillReturning;
+        this.conflictDetection = !mirrorCopy;
+        this.usingBackfillReturning = backfillReturning != null && conflictDetection;
     }
 
     /**
@@ -95,6 +108,48 @@ public abstract class Loader extends PhyOperationBuilderCommon {
     public int fillIntoIndex(List<Map<Integer, ParameterContext>> batchParams,
                              Pair<ExecutionContext, Pair<String, String>> baseEcAndIndexPair,
                              Supplier<Boolean> checker) {
+        if (usingBackfillReturning) {
+            return fillIntoIndexWithReturning(batchParams, baseEcAndIndexPair, checker);
+        } else {
+            return fillIntoIndexWithInsert(batchParams, baseEcAndIndexPair, checker);
+        }
+    }
+
+    public int fillIntoIndexWithReturning(List<Map<Integer, ParameterContext>> batchParams,
+                                          Pair<ExecutionContext, Pair<String, String>> baseEcAndIndexPair,
+                                          Supplier<Boolean> checker) {
+        if (batchParams.isEmpty()) {
+            return 0;
+        }
+
+        baseEcAndIndexPair.getKey().setTxIsolation(Connection.TRANSACTION_READ_COMMITTED);
+
+        return GsiUtils.wrapWithDistributedXATrx(tm, baseEcAndIndexPair.getKey(), (insertEc) -> {
+            int result = 0;
+            try {
+                // Batch insert
+                result = applyBatchWithReturning(batchParams, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
+                    baseEcAndIndexPair.getValue().getValue());
+
+                // Batch insert success, check lock exists
+                return checkBeforeCommit(checker, insertEc, result);
+            } catch (TddlNestableRuntimeException e) {
+                // Batch insert failed
+                SQLRecorderLogger.ddlLogger
+                    .warn(MessageFormat.format(
+                        "[{0}] Batch insert(returning) failed first row: {1} cause: {2}, phyTableName: {3}",
+                        baseEcAndIndexPair.getKey().getTraceId(),
+                        GsiUtils.rowToString(batchParams.get(0)),
+                        e.getMessage(), baseEcAndIndexPair.getValue().getValue()));
+
+                throw e;
+            }
+        });
+    }
+
+    public int fillIntoIndexWithInsert(List<Map<Integer, ParameterContext>> batchParams,
+                                       Pair<ExecutionContext, Pair<String, String>> baseEcAndIndexPair,
+                                       Supplier<Boolean> checker) {
         if (batchParams.isEmpty()) {
             return 0;
         }
@@ -139,7 +194,7 @@ public abstract class Loader extends PhyOperationBuilderCommon {
 
                 for (Map<Integer, ParameterContext> param : batchParams) {
                     int single = applyRow(param, insertEc.copy(), baseEcAndIndexPair.getValue().getKey(),
-                        baseEcAndIndexPair.getValue().getValue(), true);
+                        baseEcAndIndexPair.getValue().getValue());
 
                     if (single < 1) {
                         // Compare row
@@ -240,7 +295,27 @@ public abstract class Loader extends PhyOperationBuilderCommon {
 
         newEc.setParams(parameters);
 
-        return executeInsert(sqlInsert, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
+        SqlInsert insert = conflictDetection ? sqlInsert : sqlInsertIgnore;
+
+        return executeInsert(insert, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
+    }
+
+    private int applyBatchWithReturning(List<Map<Integer, ParameterContext>> batchParams, ExecutionContext newEc,
+                                        String sourceDbIndex, String phyTableName) {
+        // Construct params for each batch
+        String orgBackfillReturning = newEc.getBackfillReturning();
+        try {
+            Parameters parameters = new Parameters();
+            parameters.setBatchParams(batchParams);
+
+            newEc.setParams(parameters);
+
+            newEc.setBackfillReturning(backfillReturning);
+
+            return executeInsert(sqlInsertIgnore, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
+        } finally {
+            newEc.setBackfillReturning(orgBackfillReturning);
+        }
     }
 
     /**
@@ -249,21 +324,54 @@ public abstract class Loader extends PhyOperationBuilderCommon {
      * @param param Parameter
      * @param newEc Copied ExecutionContext
      * @param sourceDbIndex the rows extract from which physicalDb
-     * @param ignore Use insert ignore
      * @return Affected rows
      */
     private int applyRow(Map<Integer, ParameterContext> param, ExecutionContext newEc, String sourceDbIndex,
-                         String phyTableName,
-                         boolean ignore) {
+                         String phyTableName) {
         Parameters parameters = new Parameters();
         parameters.setParams(param);
 
         newEc.setParams(parameters);
 
-        return executeInsert(ignore ? sqlInsertIgnore : sqlInsert, schemaName, tableName, newEc, sourceDbIndex,
-            phyTableName);
+        return executeInsert(sqlInsertIgnore, schemaName, tableName, newEc, sourceDbIndex, phyTableName);
     }
 
     public abstract int executeInsert(SqlInsert sqlInsert, String schemaName, String tableName,
                                       ExecutionContext executionContext, String sourceDbIndex, String phyTableName);
+
+    public static boolean canUseBackfillReturning(ExecutionContext ec, String schemaName) {
+        final ExecutorContext executorContext = ExecutorContext.getContext(schemaName);
+        final TopologyHandler topologyHandler = executorContext.getTopologyHandler();
+        final boolean allDnUseXDataSource = isAllDnUseXDataSource(topologyHandler);
+
+        return executorContext.getStorageInfoManager().supportsBackfillReturning()
+            && ec.getParamManager()
+            .getBoolean(ConnectionParams.BACKFILL_USE_RETURNING) && allDnUseXDataSource;
+    }
+
+    public static int getReturningAffectRows(List<Map<Integer, ParameterContext>> returningResult,
+                                             ExecutionContext newEc) {
+        List<Map<Integer, ParameterContext>> orgParams = newEc.getParams().getBatchParameters();
+
+        if (returningResult.isEmpty()) {
+            return orgParams.size();
+        }
+
+        // 判断
+        for (Map<Integer, ParameterContext> baseParam : returningResult) {
+            final List<String> pkParams = new ArrayList<>();
+
+            for (int i = 0; i < baseParam.size(); i++) {
+                final ParameterContext pkParam = baseParam.get(i + 1);
+                pkParams.add(
+                    Optional.ofNullable(pkParam.getArgs()[1]).map(e -> e.toString().toLowerCase()).orElse("NULL"));
+            }
+
+            throw new TddlRuntimeException(ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_BACKFILL_DUPLICATE_ENTRY,
+                String.join("-", pkParams),
+                "PRIMARY");
+        }
+
+        return orgParams.size();
+    }
 }

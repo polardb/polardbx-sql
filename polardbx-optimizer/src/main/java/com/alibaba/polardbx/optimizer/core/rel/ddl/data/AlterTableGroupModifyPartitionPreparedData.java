@@ -72,7 +72,7 @@ public class AlterTableGroupModifyPartitionPreparedData extends AlterTableGroupB
     }
 
     @Override
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean hasSubPartition) {
         List<PartitionGroupRecord> inVisiblePartitionGroups = new ArrayList<>();
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
             .getTableGroupConfigByName(getTableGroupName());

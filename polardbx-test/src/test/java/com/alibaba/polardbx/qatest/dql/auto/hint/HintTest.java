@@ -3,10 +3,12 @@ package com.alibaba.polardbx.qatest.dql.auto.hint;
 import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.qatest.AutoReadBaseTestCase;
 import com.alibaba.polardbx.qatest.ColumnarIgnore;
+import com.alibaba.polardbx.qatest.FileStoreIgnore;
 import com.alibaba.polardbx.qatest.data.ExecuteTableSelect;
 import org.junit.Test;
 import org.junit.runners.Parameterized;
 
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
@@ -53,6 +55,23 @@ public class HintTest extends AutoReadBaseTestCase {
 
     @Test
     @ColumnarIgnore
+    @FileStoreIgnore
+    public void testSampleHint() throws SQLException {
+        String hint =
+            "/*+TDDL:cmd_extra(enable_post_planner=false,enable_index_selection=false,merge_union=false,enable_direct_plan=false,sample_percentage=1)*/ ";
+        String sql = hint + "select * from " + baseOneTableName;
+        tddlConnection.createStatement().execute("clear plancache");
+
+        // execute first and put it into plancache
+        tddlConnection.createStatement().execute("trace " + sql);
+        ResultSet rs = tddlConnection.createStatement().executeQuery("show trace");
+
+        assert rs.next();
+        String result = rs.getString("STATEMENT");
+        assert result.contains("+sample_percentage(");
+    }
+
+    @Test
     public void testHintFlagInsideTran() throws SQLException {
         String hint = "/*TDDL:a()*/ ";
         String sql = "select * from " + baseOneTableName;

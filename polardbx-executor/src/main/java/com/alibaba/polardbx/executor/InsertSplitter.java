@@ -168,6 +168,9 @@ public class InsertSplitter {
         executionContext.getConnection().setLastInsertId(lastInsertId);
         executionContext.getConnection().setReturnedLastInsertId(returnedLastInsertId);
 
+        //insert split没有走参数化，所以要在这添加MultiLine的判断
+        sql.setMultiLine(lexer.getLine() > 1);
+
         AffectRowCursor arc = new AffectRowCursor(affectRows);
         return new ResultCursor(arc);
     }

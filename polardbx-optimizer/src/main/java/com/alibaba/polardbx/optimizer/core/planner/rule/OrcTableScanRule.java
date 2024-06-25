@@ -84,27 +84,31 @@ public class OrcTableScanRule extends RelOptRule {
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
                 logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(),
                 getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                logicalTableScan.getFlashbackOperator(), logicalTableScan.getPartitions());
         } else if (!withInProject && withFilter && !withOutProject) {
             LogicalFilter logicalFilter = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
                 logicalTableScan.getTable(), new ArrayList<>(), logicalFilter.getChildExps(), new ArrayList<>(),
                 logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                logicalTableScan.getFlashbackOperator(), logicalTableScan.getPartitions());
         } else if (withInProject && !withFilter && !withOutProject) {
             LogicalProject logicalProject = call.rel(0);
             LogicalTableScan logicalTableScan = call.rel(1);
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
                 logicalTableScan.getTable(), new ArrayList<>(), new ArrayList<>(),
                 getColumnRefProjects(logicalProject.getProjects()), logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                logicalTableScan.getFlashbackOperator(), logicalTableScan.getPartitions());
         } else if (!withInProject && !withFilter && !withOutProject) {
             LogicalTableScan logicalTableScan = call.rel(0);
             orcTableScan =
                 OrcTableScan.create(logicalTableScan.getCluster(), logicalTableScan.getTable(), new ArrayList<>(),
                     new ArrayList<>(), new ArrayList<>(),
-                logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getHints(), logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                    logicalTableScan.getFlashbackOperator(),
                     logicalTableScan.getPartitions());
         } else if (!withInProject && withFilter && withOutProject) {
             LogicalProject logicalProject = call.rel(0);
@@ -113,7 +117,8 @@ public class OrcTableScanRule extends RelOptRule {
             orcTableScan = OrcTableScan.create(logicalTableScan.getCluster(),
                 logicalTableScan.getTable(), getColumnRefProjects(logicalProject.getProjects()),
                 logicalFilter.getChildExps(), new ArrayList<>(), logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                logicalTableScan.getFlashbackOperator(), logicalTableScan.getPartitions());
         } else if (withInProject && withFilter && withOutProject) {
             LogicalProject outProject = call.rel(0);
             LogicalFilter logicalFilter = call.rel(1);
@@ -123,7 +128,8 @@ public class OrcTableScanRule extends RelOptRule {
                 logicalTableScan.getTable(), getColumnRefProjects(outProject.getProjects()),
                 logicalFilter.getChildExps(), getColumnRefProjects(inProject.getProjects()),
                 logicalTableScan.getHints(),
-                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(), logicalTableScan.getPartitions());
+                logicalTableScan.getIndexNode(), logicalTableScan.getFlashback(),
+                logicalTableScan.getFlashbackOperator(), logicalTableScan.getPartitions());
         } else {
             throw new AssertionError("impossible case");
         }

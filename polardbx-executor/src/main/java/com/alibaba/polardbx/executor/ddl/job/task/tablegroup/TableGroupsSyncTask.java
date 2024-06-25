@@ -26,6 +26,7 @@ import com.alibaba.polardbx.gms.sync.SyncScope;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import lombok.Getter;
 
+import java.sql.Connection;
 import java.util.List;
 
 @Getter
@@ -45,7 +46,12 @@ public class TableGroupsSyncTask extends BaseSyncTask {
         syncTableGroup();
     }
 
-    private void syncTableGroup() {
+    @Override
+    protected void duringRollbackTransaction(Connection metaDbConnection, ExecutionContext executionContext) {
+        syncTableGroup();
+    }
+
+    protected void syncTableGroup() {
         try {
             SyncManagerHelper.sync(new TableGroupsSyncAction(schemaName, tableGroupNameList), SyncScope.ALL);
         } catch (Throwable t) {

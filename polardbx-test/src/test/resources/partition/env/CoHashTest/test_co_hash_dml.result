@@ -67,11 +67,11 @@ LogicalView(tables="ch_t1_f_f[]", shardCount=0, sql="SELECT `id`, `sid`, `user_i
 explain select * from ch_t1_f_f where order_id in ('abcdefg12345678') and user_id in ('12345679');
 Logical ExecutionPlan
 Gather(concurrent=true)
-  LogicalView(tables="ch_t1_f_f[]", shardCount=0, sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE ((`order_id` IN(?)) AND (`user_id` IN(?)))", isDynamicParam="true")
+  LogicalView(tables="ch_t1_f_f[]", shardCount=0, sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE ((`order_id` IN(?)) AND (`user_id` IN(?)))")
 explain select * from ch_t1_f_f where (order_id,user_id) in (('abcdefg12345678','12345679'));
 Logical ExecutionPlan
 Gather(concurrent=true)
-  LogicalView(tables="ch_t1_f_f[]", shardCount=0, sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE (((`order_id`, `user_id`)) IN(?))", isDynamicParam="true")
+  LogicalView(tables="ch_t1_f_f[]", shardCount=0, sql="SELECT `id`, `sid`, `user_id`, `order_id`, `order_time` FROM `ch_t1_f_f` AS `ch_t1_f_f` WHERE (((`order_id`, `user_id`)) IN(?))")
 ## range-select
 explain select * from ch_t1_f_f where user_id>='12345678';
 Logical ExecutionPlan

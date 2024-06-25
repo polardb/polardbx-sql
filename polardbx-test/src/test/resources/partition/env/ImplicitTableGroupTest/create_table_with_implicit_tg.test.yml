@@ -1,0 +1,5 @@
+## DISABLE_FAST_SQL_PARSER
+## error_msg: $#failed with state PAUSED#$
+/*+TDDL:cmd_extra(SIM_CDC_FAILED=true)*/create table t_i1(a int, b int, c int) partition by key(a) partitions 4 with tablegroup = 'tg_i1' implicit;
+create table t_i1(a int, b int, c int) partition by key(a) partitions 4 with tablegroup = 'tg_i1' implicit;
+show create table t_i1;

@@ -159,7 +159,8 @@ public class LogicalAlterTableGroupSplitPartition extends LogicalAlterTableSplit
             }
             preparedData.setLogicalParts(logicalParts);
         }
-        preparedData.prepareInvisiblePartitionGroup();
+        Boolean hasSubPartition = (partitionInfo.getPartitionBy().getSubPartitionBy() != null);
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
     }
 
     public static LogicalAlterTableGroupSplitPartition create(DDL ddl) {

@@ -208,6 +208,74 @@ public class WildCardTest {
         }
     }
 
+    @Test
+    public void testLatin1BinContains() {
+        CollationHandler collationHandler = CollationHandlers.COLLATION_HANDLER_LATIN1_BIN;
+        for (String matched : MATCHED) {
+            if (isContains(matched)) {
+                String pattern = matched.substring(1, matched.length() - 1);
+                int[] lps = computeLPSArray(Slices.utf8Slice(pattern).getBytes());
+                Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                    collationHandler.containsCompare(CHECK_STR, pattern.getBytes(), lps));
+            } else {
+                Assert.assertTrue(String.format("select \'%s\' like \'%s\';", CHECK_STR, matched),
+                    collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(matched)));
+            }
+        }
+
+        for (String unmatched : UNMATCHED) {
+            if (isContains(unmatched)) {
+                String pattern = unmatched.substring(1, unmatched.length() - 1);
+                int[] lps = computeLPSArray(Slices.utf8Slice(pattern).getBytes());
+                Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                    collationHandler.containsCompare(CHECK_STR, pattern.getBytes(), lps));
+            } else {
+                Assert.assertFalse(String.format("select \'%s\' like \'%s\';", CHECK_STR, unmatched),
+                    collationHandler.wildCompare(CHECK_STR, Slices.utf8Slice(unmatched)));
+            }
+        }
+    }
+
+    public static int[] computeLPSArray(byte[] pattern) {
+        int[] lps = new int[pattern.length];
+        int length = 0;
+        lps[0] = 0;
+        int i = 1;
+
+        while (i < pattern.length) {
+            if (pattern[i] == pattern[length]) {
+                length++;
+                lps[i] = length;
+                i++;
+            } else {
+                if (length != 0) {
+                    length = lps[length - 1];
+                } else {
+                    lps[i] = length;
+                    i++;
+                }
+            }
+        }
+        return lps;
+    }
+
+    private boolean isContains(String pattern) {
+        if (pattern == null || pattern.length() < 2) {
+            return false;
+        }
+        byte[] bytes = pattern.getBytes();
+        if (bytes[0] == CollationHandler.WILD_MANY && bytes[bytes.length - 1] == CollationHandler.WILD_MANY) {
+            for (int i = 1; i < bytes.length - 1; i++) {
+                if (bytes[i] == CollationHandler.WILD_MANY || bytes[i] == CollationHandler.WILD_ONE) {
+                    // no % _ in the middle
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
     /**
      * Gbk bin 没有实现wildcompare
      * 预期输出全为false

@@ -24,7 +24,6 @@ import com.alibaba.polardbx.common.utils.Pair;
 import com.alibaba.polardbx.executor.balancer.Balancer;
 import com.alibaba.polardbx.executor.balancer.stats.BalanceStats;
 import com.alibaba.polardbx.executor.balancer.stats.GroupStats;
-import com.alibaba.polardbx.executor.balancer.stats.PartitionGroupStat;
 import com.alibaba.polardbx.executor.ddl.job.builder.MoveDatabaseBuilder;
 import com.alibaba.polardbx.executor.ddl.job.task.BaseValidateTask;
 import com.alibaba.polardbx.executor.ddl.job.task.CostEstimableDdlTask;
@@ -36,9 +35,6 @@ import com.alibaba.polardbx.executor.ddl.job.task.basic.MoveDatabaseValidateTask
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PauseCurrentJobTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.PhysicalBackfillTask;
 import com.alibaba.polardbx.executor.ddl.job.task.basic.SyncLsnTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyLogTask;
-import com.alibaba.polardbx.executor.ddl.job.task.shared.EmptyTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyExecutorInitTask;
 import com.alibaba.polardbx.executor.ddl.job.task.changset.ChangeSetApplyFinishTask;
 import com.alibaba.polardbx.executor.ddl.newengine.job.DdlJobFactory;
@@ -71,8 +67,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
-
-import static com.alibaba.polardbx.common.properties.ConnectionParams.CHANGE_SET_APPLY_OPTIMIZATION;
 
 /**
  * Created by luoyanxin.
@@ -197,7 +191,7 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
                     executableDdlJob.addTask(syncLsnTask);
                     syncLsnTaskAdded = true;
                 }
-                for (List<DdlTask> pipeLine : subTaskJobFactory.getPhysicalyTaskPipeLine()) {
+                for (List<DdlTask> pipeLine : GeneralUtil.emptyIfNull(subTaskJobFactory.getPhysicalyTaskPipeLine())) {
                     DdlTask parentLeaveNode;
                     if (leavePipeLineQueue.size() < parallelism) {
                         parentLeaveNode = syncLsnTask;
@@ -255,12 +249,12 @@ public class MoveDatabaseJobFactory extends DdlJobFactory {
             for (String sourceGroup : entry.getValue()) {
                 if (!shareStorageMode) {
                     instGroupDbInfos.computeIfAbsent(entry.getKey(), o -> new ArrayList<>())
-                        .add(Pair.of(GroupInfoUtil.buildScaloutGroupName(sourceGroup),
+                        .add(Pair.of(GroupInfoUtil.buildScaleOutGroupName(sourceGroup),
                             GroupInfoUtil.buildPhysicalDbNameFromGroupName(sourceGroup)));
                 } else {
                     String targetPhyDb = GroupInfoUtil.buildScaleOutPhyDbName(schemaName, sourceGroup);
                     instGroupDbInfos.computeIfAbsent(entry.getKey(), o -> new ArrayList<>())
-                        .add(Pair.of(GroupInfoUtil.buildScaloutGroupName(sourceGroup), targetPhyDb));
+                        .add(Pair.of(GroupInfoUtil.buildScaleOutGroupName(sourceGroup), targetPhyDb));
                 }
             }
         }

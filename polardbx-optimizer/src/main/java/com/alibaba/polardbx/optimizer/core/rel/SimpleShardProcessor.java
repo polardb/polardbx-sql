@@ -73,4 +73,19 @@ public class SimpleShardProcessor extends ShardProcessor {
         }
         return SimpleRuleProcessor.shardReturnPair(tableRule, value, encoding);
     }
+
+    /**
+     * simple shard for simple rule table. return table index instead of group&phy_table name
+     */
+    public int simpleShard(Object value, String encoding) {
+        if (isUnsignedType) {
+            BigInteger shardVal = (BigInteger) DataTypes.ULongType.convertJavaFrom(value);
+            if (shardVal != null && shardVal.compareTo(BigInteger.ZERO) < 0) {
+                value = 0;
+            }
+        } else if (dataType != null) {
+            value = dataType.convertJavaFrom(value);
+        }
+        return SimpleRuleProcessor.simpleShard(tableRule, value, encoding);
+    }
 }

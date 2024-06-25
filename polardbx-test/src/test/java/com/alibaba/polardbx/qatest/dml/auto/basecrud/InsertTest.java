@@ -1319,4 +1319,13 @@ public class InsertTest extends AutoCrudBasedLockTestCase {
         executeErrorAssert(tddlConnection, sql, null,
             MessageFormat.format("{0}'' of the {1} is not updatable", viewName, "REPLACE"));
     }
+
+    @Test
+    public void testInsertUserDefineVariables() {
+        // b, c are not initialized.
+        final String insertSql = "set @a=1; insert into " + baseOneTableName
+            + " (integer_test, bigint_test, varchar_test, pk) values (@b, @a, @c, 1)";
+
+        executeOnMysqlAndTddl(mysqlConnection, tddlConnection, insertSql, null);
+    }
 }

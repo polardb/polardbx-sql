@@ -35,10 +35,7 @@ import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.common.StorageInfoManager;
 import com.alibaba.polardbx.executor.spi.ITransactionManager;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
-import com.alibaba.polardbx.gms.metadb.MetaDbDataSource;
-import com.alibaba.polardbx.gms.topology.InstConfigAccessor;
 import com.alibaba.polardbx.gms.topology.SystemDbHelper;
-import com.alibaba.polardbx.gms.util.InstIdUtil;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.context.ExecutionContext;
 import com.alibaba.polardbx.optimizer.utils.ITimestampOracle;
@@ -51,18 +48,19 @@ import com.alibaba.polardbx.transaction.async.TransactionIdleTimeoutTaskWrapper;
 import com.alibaba.polardbx.transaction.async.TransactionStatisticsTaskWrapper;
 import com.alibaba.polardbx.transaction.log.GlobalTxLogManager;
 import com.alibaba.polardbx.transaction.trx.AllowReadTransaction;
+import com.alibaba.polardbx.transaction.trx.ArchiveTransaction;
 import com.alibaba.polardbx.transaction.trx.AsyncCommitTransaction;
-import com.alibaba.polardbx.transaction.trx.AutoCommitTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.AutoCommitSingleShardTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.AutoCommitTransaction;
+import com.alibaba.polardbx.transaction.trx.AutoCommitTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.BestEffortTransaction;
 import com.alibaba.polardbx.transaction.trx.CobarStyleTransaction;
 import com.alibaba.polardbx.transaction.trx.ITsoTransaction;
 import com.alibaba.polardbx.transaction.trx.MppReadOnlyTransaction;
 import com.alibaba.polardbx.transaction.trx.ReadOnlyTsoTransaction;
 import com.alibaba.polardbx.transaction.trx.TsoTransaction;
-import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
 import com.alibaba.polardbx.transaction.trx.XATransaction;
+import com.alibaba.polardbx.transaction.trx.XATsoTransaction;
 import com.alibaba.polardbx.transaction.tso.ClusterTimestampOracle;
 
 import java.sql.Connection;
@@ -223,6 +221,10 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             mdlDeadlockDetectionTask.cancel();
             mdlDeadlockDetectionTask = null;
         }
+        if (killTimeoutTransactionTask != null) {
+            killTimeoutTransactionTask.cancel();
+            killTimeoutTransactionTask = null;
+        }
         super.doDestroy();
     }
 
@@ -291,6 +293,9 @@ public class TransactionManager extends AbstractLifecycle implements ITransactio
             break;
         case COLUMNAR_READ_ONLY_TRANSACTION:
             trx = new ColumnarTransaction(executionContext, this);
+            break;
+        case ARCHIVE:
+            trx = new ArchiveTransaction(executionContext, this);
             break;
         default:
             throw new AssertionError("TransactionType: " + trxConfig.name() + " not supported");

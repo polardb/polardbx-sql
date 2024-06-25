@@ -1059,7 +1059,7 @@ public class CreateGlobalIndexBuilder extends DdlPhyPlanBuilder {
 
         // validate unsupported columnar columns
         if (isColumnar) {
-            SqlValidatorImpl.validateUnsupportedColumTypeWithCci(
+            SqlValidatorImpl.validateUnsupportedColumnTypeWithCci(
                 indexTableStmt, indexTableStmt.getPrimaryKeyNames(),
                 gsiPreparedData.getColumns().stream()
                     .map(SqlIndexColumnName::getColumnNameStr)

@@ -35,6 +35,7 @@ import com.alibaba.polardbx.common.model.DbPriv;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.properties.DynamicConfig;
+import com.alibaba.polardbx.common.properties.ParamManager;
 import com.alibaba.polardbx.common.utils.ExecutorMode;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.MergeHashMap;
@@ -1654,6 +1655,12 @@ public class TConnection implements ITConnection {
         if (lastFailedMessage != null) {
             this.executionContext.getExtraDatas().put(ExecutionContext.LAST_FAILED_MESSAGE, lastFailedMessage);
         }
+
+        if (ecNeedClear.getParamManager().getBoolean(ConnectionParams.OUTPUT_MYSQL_ERROR_CODE)) {
+            ParamManager.setBooleanVal(this.executionContext.getParamManager().getProps(),
+                ConnectionParams.OUTPUT_MYSQL_ERROR_CODE, true, false);
+        }
+
         ecNeedClear.clearContextAfterTrans();
     }
 

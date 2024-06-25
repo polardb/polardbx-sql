@@ -17,12 +17,14 @@
 package com.alibaba.polardbx.common.jdbc;
 
 import com.alibaba.polardbx.common.utils.Assert;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import junit.framework.TestCase;
 import org.junit.Test;
 
 import java.util.BitSet;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * @author fangwu
@@ -113,5 +115,16 @@ public class RawStringTest extends TestCase {
         Assert.assertTrue("3,'s\\n'".equals(pr.buildRawString()));
         RawString newPr = pr.convertType(o -> o, -1);
         Assert.assertTrue("3,'s\\n'".equals(newPr.buildRawString()));
+    }
+
+    @Test
+    public void testPruneStep() {
+        RawString rawString = new RawString(ImmutableList.copyOf(IntStream.range(0, 1000).iterator()));
+
+        for (int i = 0; i < 1000; i++) {
+            PruneRawString pruneRawString = rawString.pruneStep(i);
+            assert pruneRawString.size() == 1;
+            assert pruneRawString.getObj(0, -1) == rawString.getObj(i, -1);
+        }
     }
 }

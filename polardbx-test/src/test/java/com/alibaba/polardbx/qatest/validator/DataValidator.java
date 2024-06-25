@@ -482,6 +482,15 @@ public class DataValidator {
     }
 
     /**
+     * 验证查询结果非顺序一致，支持mysql和tddl不同sql 查询语句返回结果允许为空
+     */
+    public static void selectContentSameAssertAllowEmpty(String mysqlSql, String tddlSql, List<Object> param,
+                                                         Connection mysqlConnection,
+                                                         Connection tddlConnection) {
+        selectContentSameAssert(mysqlSql, tddlSql, param, mysqlConnection, tddlConnection, true);
+    }
+
+    /**
      * 验证查询结果非顺序一致，支持mysql和tddl不同sql 查询语句返回结果不允许为空
      */
     public static void selectContentSameAssert(String mysqlSql, String tddlSql, List<Object> param,

@@ -206,6 +206,9 @@ public class SqlConverter {
             }
         }
 
+        boolean enablePushDownDistinct = plannerContext.getExecutionContext().getParamManager().getBoolean(
+            ConnectionParams.ENABLE_PUSHDOWN_DISTINCT);
+
         final SqlToRelConverter sqlToRelConverter = new TddlSqlToRelConverter(
             new DrdsViewExpander(cluster, this, catalog),
             validator,
@@ -214,7 +217,8 @@ public class SqlConverter {
             StandardConvertletTable.INSTANCE,
             converterConfig,
             PlannerContext.getPlannerContext(cluster),
-            threshold);
+            threshold,
+            enablePushDownDistinct);
 
         RelRoot root = sqlToRelConverter.convertQuery(validatedNode, false, true);
         return root.rel;

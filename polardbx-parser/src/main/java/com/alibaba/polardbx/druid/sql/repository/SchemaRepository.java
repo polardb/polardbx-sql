@@ -614,7 +614,7 @@ public class SchemaRepository {
             return false;
         }
 
-        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(name.getSimpleName()));
+        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalizeNoTrim(name.getSimpleName()));
         SchemaObject schemaObject = schema.findTable(nameHashCode64);
         if (schemaObject != null) {
             MySqlCreateTableStatement createTableStmt = (MySqlCreateTableStatement) schemaObject.getStatement();
@@ -959,7 +959,7 @@ public class SchemaRepository {
             if (schema == null) {
                 continue;
             }
-            long nameHashCode64 = FnvHash.hashCode64(table.getTableName(true));
+            long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalizeNoTrim(table.getTableName()));
             schema.getStore().removeObject(nameHashCode64);
         }
         return true;
@@ -1010,7 +1010,7 @@ public class SchemaRepository {
                 stmt.apply(x);
                 Schema schema = findSchema(stmt.getSchema(), false);
                 // same index name on different table is allowed in mysql，so the object name should contact table name with index name
-                String name = SQLUtils.normalize(table.getSimpleName()) + "." + SQLUtils
+                String name = SQLUtils.normalizeNoTrim(table.getSimpleName()) + "." + SQLUtils
                     .normalize(x.getIndexName().getSimpleName());
                 schema.getStore().removeIndex(FnvHash.hashCode64(name));
                 return true;
@@ -1022,7 +1022,7 @@ public class SchemaRepository {
 
     boolean acceptCreateIndex(SQLCreateIndexStatement x) {
         String schemaName = x.getSchema();
-        String tableName = SQLUtils.normalize(x.getTableName());
+        String tableName = SQLUtils.normalizeNoTrim(x.getTableName());
         String indexName = SQLUtils.normalize(x.getName().getSimpleName());
 
         Schema schema = findSchema(schemaName, true);
@@ -1052,7 +1052,7 @@ public class SchemaRepository {
 
         // we should do some special process, if the renaming or dropping index is created by sql syntax like 'create index ... on ...'
         for (SQLAlterTableItem item : x.getItems()) {
-            String tableName = SQLUtils.normalize(x.getTableName());
+            String tableName = SQLUtils.normalizeNoTrim(x.getTableName());
             if (item instanceof SQLAlterTableDropIndex) {
                 SQLAlterTableDropIndex dropIndex = (SQLAlterTableDropIndex) item;
                 String indexName = SQLUtils.normalize(dropIndex.getIndexName().getSimpleName());
@@ -1090,7 +1090,7 @@ public class SchemaRepository {
             if (stmt1Before.equalsIgnoreCase(stmt2After) && stmt2Before.equalsIgnoreCase(stmt1After)) {
                 // Get all column names so that our new column name will not be conflict with existing column
                 Set<String> columnNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-                long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(x.getTableName()));
+                long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalizeNoTrim(x.getTableName()));
                 SchemaObject object = schema.findTable(nameHashCode64);
                 if (object != null) {
                     SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();
@@ -1114,7 +1114,7 @@ public class SchemaRepository {
             }
         }
 
-        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalize(x.getTableName()));
+        long nameHashCode64 = FnvHash.hashCode64(SQLUtils.normalizeNoTrim(x.getTableName()));
         SchemaObject object = schema.findTable(nameHashCode64);
         if (object != null) {
             SQLCreateTableStatement stmt = (SQLCreateTableStatement) object.getStatement();

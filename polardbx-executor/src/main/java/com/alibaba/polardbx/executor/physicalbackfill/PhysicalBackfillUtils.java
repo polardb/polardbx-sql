@@ -108,6 +108,8 @@ public class PhysicalBackfillUtils {
 
     public static final String IBD = "ibd";
     public static final String CFG = "cfg";
+
+    public static final String CFP = "cfp";
     public final static String FLUSH_TABLE_SQL_TEMPLATE = "FLUSH TABLES %s FOR EXPORT";
     public final static String UNLOCK_TABLE = "UNLOCK TABLES";
     public final static String TEMP_FILE_POSTFIX = ".TEMPFILE";
@@ -225,13 +227,8 @@ public class PhysicalBackfillUtils {
                 PhysicalBackfillDetailInfoFieldJSON.fromJson(record.getDetailInfo());
             if (detailInfoFieldJSON.getSourceHostAndPort() != null) {
                 if (type != 2) {
-                    deleteInnodbDataFile(tableSchema, record.getSourceGroupName(), record.getPhysicalDb(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getKey(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getValue(),
-                        convertToCfgFileName(record.getSourceDirName()), true, ec);
-                    deleteInnodbDataFile(tableSchema, record.getSourceGroupName(), record.getPhysicalDb(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getKey(),
-                        detailInfoFieldJSON.getSourceHostAndPort().getValue(), record.getSourceDirName(), true, ec);
+                    deleteInnodbDataFiles(tableSchema, detailInfoFieldJSON.getSourceHostAndPort(),
+                        record.getSourceDirName(), record.getSourceGroupName(), record.getPhysicalDb(), true, ec);
                 }
 
                 if (type != 1) {
@@ -242,14 +239,29 @@ public class PhysicalBackfillUtils {
                         Pair.of(tarDbGroupInfoRecord.phyDbName.toLowerCase(), tarDbGroupInfoRecord.groupName);
                     for (Pair<String, Integer> pair : GeneralUtil.emptyIfNull(
                         detailInfoFieldJSON.getTargetHostAndPorts())) {
-                        deleteInnodbDataFile(tableSchema, record.getTargetGroupName(), targetDbAndGroup.getKey(),
-                            pair.getKey(), pair.getValue(), convertToCfgFileName(record.getTargetDirName()), true, ec);
-                        deleteInnodbDataFile(tableSchema, record.getTargetGroupName(), targetDbAndGroup.getKey(),
-                            pair.getKey(), pair.getValue(), record.getTargetDirName(), true, ec);
+                        deleteInnodbDataFiles(tableSchema, pair, record.getTargetDirName(), record.getTargetGroupName(),
+                            targetDbAndGroup.getKey(), true, ec);
                     }
                 }
             }
         }
+    }
+
+    public static void deleteInnodbDataFiles(String schemaName, Pair<String, Integer> hostInfo, String dir,
+                                             String groupName, String physicalDb,
+                                             boolean couldIgnore,
+                                             ExecutionContext ec) {
+        PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, groupName, physicalDb,
+            hostInfo.getKey(),
+            hostInfo.getValue(),
+            PhysicalBackfillUtils.convertToCfgFileName(dir, CFG), couldIgnore, ec);
+        PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, groupName, physicalDb,
+            hostInfo.getKey(),
+            hostInfo.getValue(),
+            PhysicalBackfillUtils.convertToCfgFileName(dir, CFP), couldIgnore, ec);
+        PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, groupName, physicalDb,
+            hostInfo.getKey(),
+            hostInfo.getValue(), dir, true, ec);
     }
 
     public static void deleteInnodbDataFile(String schemaName, String groupName, String phyDb, String host, int port,
@@ -853,15 +865,15 @@ public class PhysicalBackfillUtils {
         return tempFileAndDir;
     }
 
-    public static String convertToCfgFileName(String ibdFileName) {
+    public static String convertToCfgFileName(String ibdFileName, String fileExtension) {
         assert !StringUtil.isNullOrEmpty(ibdFileName);
         int ibdIndex = ibdFileName.lastIndexOf(IBD);
         int tempIndex = ibdFileName.lastIndexOf(TEMP_FILE_POSTFIX);
         assert ibdIndex != -1;
         if (tempIndex != -1) {
-            return ibdFileName.substring(0, ibdIndex) + CFG + TEMP_FILE_POSTFIX;
+            return ibdFileName.substring(0, ibdIndex) + fileExtension + TEMP_FILE_POSTFIX;
         } else {
-            return ibdFileName.substring(0, ibdIndex) + CFG;
+            return ibdFileName.substring(0, ibdIndex) + fileExtension;
         }
     }
 

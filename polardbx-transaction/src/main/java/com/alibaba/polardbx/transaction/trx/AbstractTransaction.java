@@ -67,6 +67,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.StampedLock;
+import java.util.regex.Pattern;
 
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL;
 import static com.alibaba.polardbx.common.exception.code.ErrorCode.ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL;
@@ -119,18 +120,19 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
     private final long maxTime;
 
     // Only rollback statement when the following errors occur.
-    private static final List<String> enableRollbackStatementErrors = ImmutableList.of(
-        "Lock wait timeout exceeded; try restarting transaction",
-        "Duplicate entry",
-        "Data too long for column",
-        "Out of range value for column",
-        "[TDDL-4602][ERR_CONVERTOR]",
-        "Incorrect datetime value",
-        "Incorrect time value",
-        "Data truncated for column",
-        "doesn't have a default value",
-        "Cannot delete or update a parent row: a foreign key constraint fails",
-        "Option SET_DEFAULT"
+    private static final List<Pattern> canRollbackStatementErrors = ImmutableList.of(
+        Pattern.compile(".*Lock wait timeout exceeded; try restarting transaction.*"),
+        Pattern.compile(".*Duplicate entry.*"),
+        Pattern.compile(".*Data too long for column.*"),
+        Pattern.compile(".*Out of range value for column.*"),
+        Pattern.compile(".*\\[TDDL-4602]\\[ERR_CONVERTOR].*"),
+        Pattern.compile(".*Incorrect datetime value.*"),
+        Pattern.compile(".*Incorrect time value.*"),
+        Pattern.compile(".*Data truncated for column.*"),
+        Pattern.compile(".*doesn't have a default value.*"),
+        Pattern.compile(".*Cannot delete or update a parent row: a foreign key constraint fails.*"),
+        Pattern.compile(".*Option SET_DEFAULT.*"),
+        Pattern.compile(".*Column .* cannot be null.*")
     );
 
     public AbstractTransaction(ExecutionContext executionContext, TransactionManager manager) {
@@ -793,7 +795,7 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
         }
     }
 
-    private boolean shouldRollbackStatement(Throwable t) {
+    protected boolean shouldRollbackStatement(Throwable t) {
         /* Rollback statement when:
          * 1. the current statement is a DML;
          * 2. and it fails when it is executing in multi-shards.
@@ -802,8 +804,8 @@ public abstract class AbstractTransaction extends BaseTransaction implements IDi
             && (this.getCrucialError() == ERR_TRANS_CONTINUE_AFTER_WRITE_FAIL
             || this.getCrucialError() == ERR_GLOBAL_SECONDARY_INDEX_CONTINUE_AFTER_WRITE_FAIL)) {
             final String errorMessage = t.getMessage();
-            for (String error : enableRollbackStatementErrors) {
-                if (StringUtils.containsIgnoreCase(errorMessage, error)) {
+            for (Pattern errorPattern : canRollbackStatementErrors) {
+                if (errorPattern.matcher(errorMessage).matches()) {
                     return true;
                 }
             }

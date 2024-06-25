@@ -34,7 +34,6 @@ import com.alibaba.polardbx.executor.common.GsiStatisticsManager;
 import com.alibaba.polardbx.executor.ddl.workqueue.BackFillThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.ChangeSetThreadPool;
 import com.alibaba.polardbx.executor.ddl.workqueue.FastCheckerThreadPool;
-import com.alibaba.polardbx.executor.sync.DeleteBaselineSyncAction;
 import com.alibaba.polardbx.gms.config.impl.InstConfUtil;
 import com.alibaba.polardbx.executor.ddl.workqueue.PriorityWorkQueue;
 import com.alibaba.polardbx.gms.ha.impl.StorageHaChecker;
@@ -444,6 +443,12 @@ public abstract class ClusterLoader extends BaseClusterLoader {
             boolean enableLowerCase =
                 Boolean.parseBoolean(p.getProperty(ConnectionProperties.ENABLE_LOWER_CASE_TABLE_NAMES));
             InformationSchemaViewManager.getInstance().defineCaseSensitiveView(enableLowerCase);
+        }
+
+        if (p.containsKey(ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE)) {
+            DynamicConfig.getInstance().loadValue(logger,
+                ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE,
+                p.getProperty(ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE));
         }
 
         if (p.containsKey(ConnectionProperties.COLUMNAR_TSO_UPDATE_INTERVAL)) {

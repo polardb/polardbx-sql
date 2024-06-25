@@ -5606,7 +5606,17 @@ SqlValidatorImpl implements SqlValidatorWithHints {
         }
     }
 
-    public static void validateUnsupportedColumTypeWithCci(MySqlCreateTableStatement stmt, List<String> primaryKeys,
+    public static void validateUnsupportedTypeWithCciWhenModifyColumn(SqlColumnDeclaration columnDeclaration) {
+        final List<String> deniedTypes = Arrays.asList(
+            "text", "binary", "varbinary", "blob", "timestamp", "time", "year", "json", "enum", "set", "point", "geometry");
+        String columnType = columnDeclaration.getDataType().getTypeName().getLastName().toLowerCase();
+        if (deniedTypes.contains(columnType)) {
+            throw new TddlRuntimeException(ErrorCode.ERR_UNSUPPORTED_COLUMN_TYPE_WITH_CCI,
+                "MODIFY/CHANGE COLUMN", columnType);
+        }
+    }
+
+    public static void validateUnsupportedColumnTypeWithCci(MySqlCreateTableStatement stmt, List<String> primaryKeys,
                                                            List<String> sortKeys, List<String> shardingKeys) {
         final String[] deniedTypes = {
             "float", "double", "decimal", "numeric", "json", "enum", "set", "point", "geometry"};
@@ -6900,6 +6910,10 @@ SqlValidatorImpl implements SqlValidatorWithHints {
                 insert.getTargetColumnList(),
                 false, null);
 
+        // for INSERT t() values(), in which no source or target column list is specified,
+        // rewrite SqlNode with INSERT t() values(DEFAULT, DEFAULT, ...)
+        checkAndRewriteEmptySource(insert, targetRowType);
+
         final SqlNode source = insert.getSource();
         if (source instanceof SqlSelect) {
             final SqlSelect sqlSelect = (SqlSelect) source;
@@ -6944,6 +6958,29 @@ SqlValidatorImpl implements SqlValidatorWithHints {
                 SqlNode selectItem = insert.getUpdateSelect().getSelectList().get(i);
                 SqlNode sqlNode = ((SqlBasicCall) selectItem).getOperands()[0];
                 insert.getUpdateList().getList().set(i, sqlNode);
+            }
+        }
+    }
+
+    public void checkAndRewriteEmptySource(SqlInsert insert, RelDataType targetRowType) {
+        if (insert.getTargetColumnList() == null) {
+            final SqlNode originSource = insert.getSource();
+            if (originSource instanceof SqlBasicCall && originSource.getKind() == SqlKind.VALUES) {
+                final SqlBasicCall values = (SqlBasicCall) originSource;
+                final SqlBasicCall row = (SqlBasicCall) values.getOperands()[0];
+                // If target column list and source value list is all empty,
+                // rewrite source to VALUES(DEFAULT, DEFAULT, ...)
+                if (row.getOperands() == null || row.getOperands().length == 0) {
+                    final List<String> fieldNames = targetRowType.getFieldNames();
+                    final long fieldCount = fieldNames.stream().filter(f -> !isImplicitKey(f)).count();
+                    final SqlNode[] defaults = new SqlNode[(int) fieldCount];
+                    for (int i = 0; i < defaults.length; i++) {
+                        // Add DEFAULT to VALUES for each target column
+                        defaults[i] =
+                            new SqlBasicCall(SqlStdOperatorTable.DEFAULT, SqlNode.EMPTY_ARRAY, SqlParserPos.ZERO);
+                    }
+                    values.setOperand(0, new SqlBasicCall(row.getOperator(), defaults, row.getParserPosition()));
+                }
             }
         }
     }

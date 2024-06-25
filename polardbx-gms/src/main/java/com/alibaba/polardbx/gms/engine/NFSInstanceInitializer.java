@@ -106,18 +106,8 @@ public class NFSInstanceInitializer {
     }
 
     private synchronized NFSFileSystem createNFSFileSystem(URI nfsUri, boolean enableCache) throws IOException {
-        Map<String, Long> globalVariables = InstConfUtil.fetchLongConfigs(
-            ConnectionParams.OSS_FS_MAX_READ_RATE,
-            ConnectionParams.OSS_FS_MAX_WRITE_RATE
-        );
-        Long maxReadRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_READ_RATE))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_READ_RATE.getDefault()));
-        Long maxWriteRate = Optional.ofNullable(globalVariables.get(ConnectionProperties.OSS_FS_MAX_WRITE_RATE))
-            .orElse(StringNumericParser.simplyParseLong(ConnectionParams.OSS_FS_MAX_WRITE_RATE.getDefault()));
-
-        FileSystemRateLimiter rateLimiter = new GuavaFileSystemRateLimiter(maxReadRate, maxWriteRate);
+        FileSystemRateLimiter rateLimiter = FileSystemUtils.newRateLimiter();
         NFSFileSystem nfsFileSystem = new NFSFileSystem(enableCache, rateLimiter);
-
         nfsFileSystem.initialize(nfsUri, new Configuration());
         return nfsFileSystem;
     }

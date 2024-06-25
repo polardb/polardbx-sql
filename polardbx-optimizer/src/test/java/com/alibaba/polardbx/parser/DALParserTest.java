@@ -304,6 +304,24 @@ public class DALParserTest extends TestCase {
         Assert.assertEquals("SHOW COLLATION WHERE Collation LIKE 'big5%'", output);
     }
 
+    public void test_show_binlog_events() {
+        String sql = "show binlog events";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinLogEventsStatement show = (MySqlShowBinLogEventsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(show);
+        Assert.assertEquals("SHOW BINLOG EVENTS", output);
+    }
+
+    public void test_show_binlog_events_with() {
+        String sql = "show binlog events with 'group1_stream_0'";
+        MySqlStatementParser parser = new MySqlStatementParser(sql);
+        MySqlShowBinLogEventsStatement show = (MySqlShowBinLogEventsStatement) parser.parseStatementList().get(0);
+        parser.match(Token.EOF);
+        String output = SQLUtils.toMySqlString(show);
+        Assert.assertEquals("SHOW BINLOG EVENTS WITH 'group1_stream_0'", output);
+    }
+
     public void test_binaryLog() throws Exception {
         String sql = "SHOW binlog events in 'a' from 1 limit 1,2  ";
         MySqlStatementParser parser = new MySqlStatementParser(sql);

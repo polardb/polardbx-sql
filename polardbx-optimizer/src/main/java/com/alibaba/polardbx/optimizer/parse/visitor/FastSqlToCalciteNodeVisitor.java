@@ -291,18 +291,18 @@ import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsConvertAll
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateScheduleStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateSecurityPolicyStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsCreateStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclRuleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropCclTriggerStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropFileStorageStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropScheduleStatement;
-import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelComponentStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropSecurityPolicyStatement;
+import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsDropStoragePoolStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsFireScheduleStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsGrantSecurityLabelStatement;
 import com.alibaba.polardbx.druid.sql.dialect.mysql.ast.statement.DrdsInspectDDLJobCache;
@@ -481,6 +481,7 @@ import com.alibaba.polardbx.optimizer.parse.bean.NumberParser;
 import com.alibaba.polardbx.optimizer.parse.bean.Sequence;
 import com.alibaba.polardbx.optimizer.parse.bean.TableMetaData;
 import com.alibaba.polardbx.optimizer.parse.custruct.FastSqlConstructUtils;
+import com.alibaba.polardbx.optimizer.parse.privilege.PrivilegeContext;
 import com.alibaba.polardbx.optimizer.partition.common.LocalPartitionDefinitionInfo;
 import com.alibaba.polardbx.optimizer.rule.TddlRuleManager;
 import com.alibaba.polardbx.optimizer.sql.sql2rel.TddlSqlToRelConverter;
@@ -2737,10 +2738,15 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 break;
             case "'load_local_disk'":
                 table.setEngine(Engine.LOCAL_DISK);
+                break;
             case "'load_nfs'":
                 table.setEngine(Engine.NFS);
+                break;
             case "'load_external_disk'":
                 table.setEngine(Engine.EXTERNAL_DISK);
+                break;
+            case "'load_abs'":
+                table.setEngine(Engine.ABS);
                 break;
             default:
                 break;
@@ -2899,7 +2905,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 "table option INSERT_METHOD");
             // outTableOptions.setInsertMethod(InsertMethod.FIRST);
         } else if (TStringUtil.equalsIgnoreCase(key, "KEY_BLOCK_SIZE")) {
-            outTableOptions.setKeyBlockSize((SqlCall) value);
+            outTableOptions.setKeyBlockSize((SqlNumericLiteral) value);
         } else if (TStringUtil.equalsIgnoreCase(key, "MAX_ROWS")) {
             outTableOptions.setMaxRows((SqlNumericLiteral) value);
         } else if (TStringUtil.equalsIgnoreCase(key, "MIN_ROWS")) {
@@ -3190,7 +3196,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 }
                 MysqlForeignKey foreignKey =
                     (MysqlForeignKey) ((SQLAlterTableAddConstraint) sqlAlterTableItem).getConstraint();
-                logicalReferencedTables.add(SQLUtils.normalize(foreignKey.getReferencedTableName().getSimpleName()));
+                logicalReferencedTables.add(
+                    SQLUtils.normalizeNoTrim(foreignKey.getReferencedTableName().getSimpleName()));
             } else if (sqlAlterTableItem instanceof MySqlAlterTableModifyColumn) {
                 final SQLColumnDefinition sqlColumnDefinition =
                     ((MySqlAlterTableModifyColumn) sqlAlterTableItem).getNewColumnDefinition();
@@ -4231,7 +4238,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             }
 
             String schemaName = foreignKey.getReferencedTable().getSchema() == null ? getDefaultSchema() :
-                SQLUtils.normalize(foreignKey.getReferencedTable().getSchema());
+                SQLUtils.normalizeNoTrim(foreignKey.getReferencedTable().getSchema());
 
             final SqlIndexDefinition indexDef = SqlIndexDefinition.localIndex(SqlParserPos.ZERO,
                 false,
@@ -4452,7 +4459,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                 final SQLConstraintImpl constraint = (SQLConstraintImpl) tableElement;
                 final SqlIdentifier indexName = (SqlIdentifier) convertToSqlNode(constraint.getName());
                 if (indexName != null && !indexName.getLastName().isEmpty()) {
-                    indexNamesSet.add(indexName.getLastName());
+                    indexNamesSet.add(SQLUtils.normalizeNoTrim(indexName.getLastName()));
                 }
             }
         }
@@ -4468,49 +4475,8 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             } else if (tableElement instanceof SQLConstraintImpl) {
                 final SQLConstraintImpl constraint = (SQLConstraintImpl) tableElement;
 
-                // Assign name if no name.
-                if (!(tableElement instanceof MySqlPrimaryKey) &&
-                    (null == constraint.getName() || constraint.getName().getSimpleName().isEmpty())) {
-                    String baseName = null;
-                    int prob = 0;
-                    if (tableElement instanceof MySqlKey) {
-                        baseName = ((MySqlKey) tableElement).getColumns().get(0).getExpr().toString();
-                    } else if (tableElement instanceof MySqlTableIndex) {
-                        SQLExpr expr = ((MySqlTableIndex) tableElement).getColumns().get(0).getExpr();
-                        if (expr instanceof SQLMethodInvokeExpr) {
-                            baseName = ((SQLMethodInvokeExpr) expr).getMethodName();
-                        } else {
-                            baseName = expr.toString();
-                        }
-                    }
-                    if (baseName != null) {
-                        baseName = SQLUtils.normalizeNoTrim(baseName);
-                        if (!indexNamesSet.contains(baseName)) {
-                            constraint.setName(baseName);
-                            indexNamesSet.add(baseName);
-                        } else {
-                            prob = 2;
-                            baseName = baseName + "_";
-                            while (indexNamesSet.contains(baseName + prob)) {
-                                ++prob;
-                            }
-                            constraint.setName(baseName + prob);
-                            indexNamesSet.add(baseName + prob);
-                        }
-                    } else {
-                        if (tableElement instanceof MysqlForeignKey) {
-                            baseName = SQLUtils.normalizeNoTrim(tableName.getLastName().toLowerCase()) + "_ibfk_";
-                            prob++;
-                        } else {
-                            baseName = "i_";
-                        }
-                        while (indexNamesSet.contains(baseName + prob)) {
-                            ++prob;
-                        }
-                        constraint.setName(baseName + prob);
-                        indexNamesSet.add(baseName + prob);
-                    }
-                }
+                // Assign constraint name if no name.
+                assignConstraintName(constraint, indexNamesSet, tableName);
 
                 final SqlIdentifier indexName = (SqlIdentifier) convertToSqlNode(constraint.getName());
                 final List<SqlIndexOption> options = new LinkedList<>();
@@ -4649,7 +4615,7 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
                             .toUpperCase());
                     if (null != mySqlKey.getKeyBlockSize()) {
                         options.add(SqlIndexOption.createKeyBlockSize(SqlParserPos.ZERO,
-                            (SqlLiteral) mySqlKey.getKeyBlockSize()));
+                            (SqlLiteral) convertToSqlNode(mySqlKey.getKeyBlockSize())));
                     }
 
                     if (tableElement instanceof MySqlPrimaryKey) {
@@ -4962,6 +4928,55 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
         return dictColumns;
     }
 
+    public void assignConstraintName(SQLConstraintImpl constraint, Set<String> indexNamesSet, SqlIdentifier tableName) {
+        if (!(constraint instanceof MySqlPrimaryKey) &&
+            (null == constraint.getName() || constraint.getName().getSimpleName().isEmpty())) {
+            String baseName = null;
+            int prob = 0;
+            if (constraint instanceof MySqlKey) {
+                baseName = ((MySqlKey) constraint).getColumns().get(0).getExpr().toString();
+            } else if (constraint instanceof MySqlTableIndex) {
+                SQLExpr expr = ((MySqlTableIndex) constraint).getColumns().get(0).getExpr();
+                if (expr instanceof SQLMethodInvokeExpr) {
+                    baseName = ((SQLMethodInvokeExpr) expr).getMethodName();
+                } else {
+                    baseName = expr.toString();
+                }
+            }
+            if (baseName != null) {
+                String normalizeBaseName = SQLUtils.normalizeNoTrim(baseName);
+                if (!indexNamesSet.contains(normalizeBaseName)) {
+                    constraint.setName(baseName);
+                    indexNamesSet.add(normalizeBaseName);
+                } else {
+                    prob = 2;
+                    normalizeBaseName = normalizeBaseName + "_";
+                    while (indexNamesSet.contains(normalizeBaseName + prob)) {
+                        ++prob;
+                    }
+                    String indexName = normalizeBaseName + prob;
+                    String backtickIndexName = SqlIdentifier.surroundWithBacktick(normalizeBaseName + prob);
+                    constraint.setName(backtickIndexName);
+                    indexNamesSet.add(indexName);
+                }
+            } else {
+                if (constraint instanceof MysqlForeignKey) {
+                    baseName = SQLUtils.normalizeNoTrim(tableName.getLastName().toLowerCase()) + "_ibfk_";
+                    prob++;
+                } else {
+                    baseName = "i_";
+                }
+                while (indexNamesSet.contains(baseName + prob)) {
+                    ++prob;
+                }
+                String indexName = baseName + prob;
+                String backtickIndexName = SqlIdentifier.surroundWithBacktick(baseName + prob);
+                constraint.setName(backtickIndexName);
+                indexNamesSet.add(indexName);
+            }
+        }
+    }
+
     private void convertIndexOption(List<SqlIndexOption> options, SQLIndexOptions fastSqlOptions) {
         if (fastSqlOptions.getKeyBlockSize() != null) {
             options.add(SqlIndexOption.createKeyBlockSize(SqlParserPos.ZERO,
@@ -5071,9 +5086,11 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(SQLCreateJavaFunctionStatement x) {
-        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_JAVA_UDF)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT,
-                "java udf not support now, you can set ENABLE_JAVA_UDF = true to enable java udf!");
+        if (!ec.isGod()) {
+            if (!InstConfUtil.getValBool(TddlConstants.ENABLE_JAVA_UDF)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT,
+                    "java udf not support now, you can set ENABLE_JAVA_UDF = true to enable java udf!");
+            }
         }
         final String funcName = SQLUtils.normalize(x.getName().getSimpleName()).toLowerCase();
         this.sqlNode = SqlDdlNodes.createJavaFunction(SqlParserPos.ZERO,
@@ -5089,10 +5106,13 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(SQLDropJavaFunctionStatement x) {
-        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_JAVA_UDF)) {
-            throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT,
-                "java udf not support now, you can set ENABLE_JAVA_UDF = true to enable java udf!");
+        if (!ec.isGod()) {
+            if (!InstConfUtil.getValBool(TddlConstants.ENABLE_JAVA_UDF)) {
+                throw new TddlRuntimeException(ErrorCode.ERR_UDF_NOT_SUPPORT,
+                    "java udf not support now, you can set ENABLE_JAVA_UDF = true to enable java udf!");
+            }
         }
+
         final String funcName = SQLUtils.normalize(x.getName().getSimpleName()).toString();
         this.sqlNode = SqlDdlNodes.dropJavaFunction(SqlParserPos.ZERO,
             funcName,
@@ -5574,8 +5594,19 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
             ((SqlIdentifier) tableNameIdentifier).indexNode = sqlNodeHint;
             ((SqlIdentifier) tableNameIdentifier).partitions = partitions;
 
+            SqlOperator asOfOperator = null;
+
+            if (x.isFlashbackWithTso()) {
+                //as of tso: 8.0 使用 as of gcn; 5.7 使用 as of tso
+                asOfOperator =
+                    InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF_57;
+            } else {
+                //as of timestamp: 8.0 转成 as of gcn； 5.7 使用 as of timestamp
+                asOfOperator = InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF;
+            }
+
             tableNameIdentifier = new SqlBasicCall(
-                InstanceVersion.isMYSQL80() ? SqlStdOperatorTable.AS_OF_80 : SqlStdOperatorTable.AS_OF,
+                asOfOperator,
                 new SqlNode[] {
                     tableNameIdentifier,
                     snapshotTimestampIdentifier
@@ -8492,37 +8523,43 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(MySqlChangeMasterStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            for (SQLAssignItem option : x.getOptions()) {
-                SqlNode key = convertToSqlNode(option.getTarget());
-                SqlNode value = convertToSqlNode(option.getValue());
-                options.add(Pair.of(key, value));
-            }
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlChangeMaster(SqlParserPos.ZERO, options, channel, subChannel);
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        for (SQLAssignItem option : x.getOptions()) {
+            SqlNode key = convertToSqlNode(option.getTarget());
+            SqlNode value = convertToSqlNode(option.getValue());
+            options.add(Pair.of(key, value));
+        }
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlChangeMaster(SqlParserPos.ZERO, options, channel, subChannel);
         return false;
     }
 
     @Override
     public boolean visit(MySqlChangeReplicationFilterStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            for (SQLAssignItem option : x.getFilters()) {
-                SqlNode key = convertToSqlNode(option.getTarget());
-                SqlNode value = convertToSqlNode(option.getValue());
-                options.add(Pair.of(key, value));
-            }
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlChangeReplicationFilter(SqlParserPos.ZERO, options, channel, subChannel);
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        for (SQLAssignItem option : x.getFilters()) {
+            SqlNode key = convertToSqlNode(option.getTarget());
+            SqlNode value = convertToSqlNode(option.getValue());
+            options.add(Pair.of(key, value));
+        }
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlChangeReplicationFilter(SqlParserPos.ZERO, options, channel, subChannel);
         return false;
     }
 
@@ -8616,56 +8653,61 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(MySqlStartSlaveStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlStartSlave(SqlParserPos.ZERO, options, channel, subChannel);
-
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlStartSlave(SqlParserPos.ZERO, options, channel, subChannel);
         return false;
     }
 
     @Override
     public boolean visit(MySqlStopSlaveStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlStopSlave(SqlParserPos.ZERO, options, channel, subChannel);
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlStopSlave(SqlParserPos.ZERO, options, channel, subChannel);
         return false;
     }
 
     @Override
     public boolean visit(MySqlResetSlaveStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlResetSlave(SqlParserPos.ZERO, options, channel, subChannel, x.isAll());
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlResetSlave(SqlParserPos.ZERO, options, channel, subChannel, x.isAll());
         return false;
     }
 
     @Override
     public boolean visit(MySqlShowSlaveStatusStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
-            SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlNode subChannel = convertToSqlNode(x.getSubChannel());
-            sqlNode = new SqlShowSlaveStatus(SqlParserPos.ZERO, options, channel, subChannel);
-
-        } else {
-            this.sqlNode = new SqlShow(SqlParserPos.ZERO, ImmutableList.of(SqlSpecialIdentifier.SLAVE,
-                SqlSpecialIdentifier.STATUS));
+        if (!CdcRpcClient.useCdc()) {
+            throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        List<Pair<SqlNode, SqlNode>> options = new LinkedList<>();
+        SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlNode subChannel = convertToSqlNode(x.getSubChannel());
+        sqlNode = new SqlShowSlaveStatus(SqlParserPos.ZERO, options, channel, subChannel);
         return false;
     }
 
@@ -11431,112 +11473,125 @@ public class FastSqlToCalciteNodeVisitor extends CalciteVisitor implements MySql
 
     @Override
     public boolean visit(SQLStartReplicaCheckTableStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            final SqlNode channel = convertToSqlNode(x.getChannel());
-            SqlStartReplicaCheck sqlNode = new SqlStartReplicaCheck(SqlParserPos.ZERO, channel, dbName);
-            if (x.getTableName() != null) {
-                sqlNode.setTableName(convertToSqlNode(x.getTableName()));
-            }
-            this.sqlNode = sqlNode;
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
         }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        final SqlNode channel = convertToSqlNode(x.getChannel());
+        SqlStartReplicaCheck sqlNode = new SqlStartReplicaCheck(SqlParserPos.ZERO, channel, dbName);
+        if (x.getTableName() != null) {
+            sqlNode.setTableName(convertToSqlNode(x.getTableName()));
+        }
+        this.sqlNode = sqlNode;
         return false;
     }
 
     @Override
     public boolean visit(SQLPauseReplicaCheckTableStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlPauseReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlPauseReplicaCheck(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlPauseReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlPauseReplicaCheck(SqlParserPos.ZERO, dbName);
         }
         return false;
     }
 
     @Override
     public boolean visit(SQLContinueReplicaCheckTableStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlContinueReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlContinueReplicaCheck(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlContinueReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlContinueReplicaCheck(SqlParserPos.ZERO, dbName);
         }
         return false;
     }
 
     @Override
     public boolean visit(SQLCancelReplicaCheckTableStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlCancelReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlCancelReplicaCheck(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlCancelReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlCancelReplicaCheck(SqlParserPos.ZERO, dbName);
         }
         return false;
     }
 
     @Override
     public boolean visit(SQLResetReplicaCheckTableStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlResetReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlResetReplicaCheck(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        if (!ec.isGod()) {
+            PrivilegeContext pc = ec.getPrivilegeContext();
+            throw new TddlRuntimeException(ErrorCode.ERR_CHECK_PRIVILEGE_FAILED, "GOD", pc.getUser(), pc.getHost());
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlResetReplicaCheck(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlResetReplicaCheck(SqlParserPos.ZERO, dbName);
         }
         return false;
     }
 
     @Override
     public boolean visit(SQLShowReplicaCheckProgressStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlShowReplicaCheckProgress(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlShowReplicaCheckProgress(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlShowReplicaCheckProgress(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlShowReplicaCheckProgress(SqlParserPos.ZERO, dbName);
         }
         return false;
     }
 
     @Override
     public boolean visit(SQLShowReplicaCheckDiffStatement x) {
-        if (CdcRpcClient.useCdc() && ec.getParamManager().getBoolean(ConnectionParams.ENABLE_REPLICA)) {
-            final SqlNode dbName = convertToSqlNode(x.getDbName());
-            if (x.getTableName() != null) {
-                final SqlNode tbName = convertToSqlNode(x.getTableName());
-                this.sqlNode = new SqlShowReplicaCheckDiff(SqlParserPos.ZERO, dbName, tbName);
-            } else {
-                this.sqlNode = new SqlShowReplicaCheckDiff(SqlParserPos.ZERO, dbName);
-            }
-        } else {
+        if (!CdcRpcClient.useCdc()) {
             throw new TddlRuntimeException(ErrorCode.ERR_REPLICA_NOT_SUPPORT, "replica is not support yet!");
+        }
+        final SqlNode dbName = convertToSqlNode(x.getDbName());
+        if (x.getTableName() != null) {
+            final SqlNode tbName = convertToSqlNode(x.getTableName());
+            this.sqlNode = new SqlShowReplicaCheckDiff(SqlParserPos.ZERO, dbName, tbName);
+        } else {
+            this.sqlNode = new SqlShowReplicaCheckDiff(SqlParserPos.ZERO, dbName);
         }
         return false;
     }

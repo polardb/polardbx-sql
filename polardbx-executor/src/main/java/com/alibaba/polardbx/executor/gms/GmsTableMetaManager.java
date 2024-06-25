@@ -62,6 +62,7 @@ import com.alibaba.polardbx.gms.partition.TableLocalPartitionRecord;
 import com.alibaba.polardbx.gms.partition.TablePartitionRecord;
 import com.alibaba.polardbx.gms.tablegroup.ComplexTaskOutlineRecord;
 import com.alibaba.polardbx.gms.topology.DbInfoManager;
+import com.alibaba.polardbx.gms.topology.DbInfoRecord;
 import com.alibaba.polardbx.gms.util.MetaDbUtil;
 import com.alibaba.polardbx.optimizer.OptimizerContext;
 import com.alibaba.polardbx.optimizer.config.table.ColumnMeta;
@@ -721,6 +722,8 @@ public class GmsTableMetaManager extends AbstractLifecycle implements SchemaMana
             hasPrimaryKey, TableStatus.convert(tableRecord.status), tableRecord.version, tableRecord.flag);
         res.setId(tableRecord.id);
         res.setEngine(Engine.of(tableRecord.engine));
+
+        res.setEncryption(TableMetaParser.parseEncryption(schemaName, tableRecord.createOptions));
         if (Engine.isFileStore(res.getEngine())) {
             res.buildFileStoreMeta(columnMappingMap, columnMetaMap);
         }

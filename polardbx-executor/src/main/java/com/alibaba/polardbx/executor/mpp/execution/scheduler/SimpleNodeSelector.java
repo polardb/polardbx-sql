@@ -187,11 +187,11 @@ public class SimpleNodeSelector implements NodeSelector {
             long hashCode;
             if (((OssSplit) split.getConnectorSplit()).getDesignatedFile() != null) {
                 hashCode = ((OssSplit) split.getConnectorSplit()).getDesignatedFile().hashCode();
-                hashCode = MurmurHashUtils.murmurHashWithZeroSeed(hashCode);
+                hashCode = MurmurHashUtils.murmurHash128WithZeroSeed(hashCode);
             } else {
                 List<String> phyTableNameList = ((OssSplit) split.getConnectorSplit()).getPhyTableNameList();
                 hashCode = phyTableNameList.stream().map(x -> x.hashCode()).reduce(31, (a, b) -> a + b).longValue();
-                hashCode = MurmurHashUtils.murmurHashWithZeroSeed(hashCode);
+                hashCode = MurmurHashUtils.murmurHash128WithZeroSeed(hashCode);
             }
 
             int position = (int) hashCode % candidateNodes.size();
@@ -221,7 +221,7 @@ public class SimpleNodeSelector implements NodeSelector {
         Map<Integer, List<Split>> randomAssign = new HashMap<>();
         for (Split split : splits) {
             long hashCode = ((OssSplit) split.getConnectorSplit()).getDesignatedFile().hashCode();
-            hashCode = MurmurHashUtils.murmurHashWithZeroSeed(hashCode);
+            hashCode = MurmurHashUtils.murmurHash128WithZeroSeed(hashCode);
 
             int position = (int) hashCode % candidateNodes.size();
             if (position < 0) {

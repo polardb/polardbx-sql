@@ -23,6 +23,7 @@ import org.apache.calcite.sql.type.InferTypes;
 import org.apache.calcite.sql.type.OperandTypes;
 import org.apache.calcite.sql.type.ReturnTypes;
 import org.apache.calcite.sql.type.SqlTypeFamily;
+import org.apache.calcite.util.Optionality;
 
 /**
  * Created by chuanqin on 17/12/8.
@@ -39,5 +40,10 @@ public class SqlBitOrFunction extends SqlAggFunction {
             SqlFunctionCategory.NUMERIC,
             false,
             false);
+    }
+
+    @Override
+    public Optionality getDistinctOptionality() {
+        return Optionality.IGNORED;
     }
 }

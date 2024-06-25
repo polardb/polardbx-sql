@@ -638,4 +638,82 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         }
     }
 
+    @Test
+    public void testDrdsSingleTableOmc() {
+        String tableName = "omc_single_table";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int ) single", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0,1),(2,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column b bigint null,", tableName) + USE_OMC_ALGORITHM;
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+        sql = String.format("select * from %s where a=0", tableName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "0");
+            Assert.assertEquals(rs.getString(2), "1");
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+
+        sql = String.format("select * from %s where a=2", tableName);
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "2");
+            Assert.assertNull(rs.getString(2));
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
+
+    @Test
+    public void testDrdsBroadcastTableOmc() {
+        String tableName = "omc_broadcast_table";
+        dropTableIfExists(tableName);
+        String sql =
+            String.format("create table %s (a int primary key, b int ) broadcast", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("insert into table %s values (0,1),(2,null)", tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format("alter table %s modify column b bigint null,", tableName) + USE_OMC_ALGORITHM;
+        execDdlWithRetry(tddlDatabase1, tableName, sql, tddlConnection);
+
+        sql = String.format("select * from %s where a=0", tableName);
+        ResultSet rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "0");
+            Assert.assertEquals(rs.getString(2), "1");
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+
+        sql = String.format("select * from %s where a=2", tableName);
+        rs = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs.next());
+            Assert.assertEquals(rs.getString(1), "2");
+            Assert.assertNull(rs.getString(2));
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs);
+        }
+    }
+
 }

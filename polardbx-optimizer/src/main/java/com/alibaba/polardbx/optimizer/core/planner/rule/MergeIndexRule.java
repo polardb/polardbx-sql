@@ -345,7 +345,7 @@ public class MergeIndexRule extends RelOptRule {
                                             LogicalTableScan logicalTableScan) {
         final LogicalTableScan primaryScan =
             LogicalTableScan.create(logicalTableScan.getCluster(), primary, logicalTableScan.getHints(), null,
-                logicalTableScan.getFlashback(), null);
+                logicalTableScan.getFlashback(), logicalTableScan.getFlashbackOperator(), null);
         LogicalView logicalView = LogicalView.create(primaryScan, primary);
         logicalView.setFromMergeIndex(true);
         LogicalFilter logicalFilter = LogicalFilter.create(logicalView, predicate);
@@ -425,7 +425,7 @@ public class MergeIndexRule extends RelOptRule {
         // build index scan
         final LogicalTableScan indexTableScan =
             LogicalTableScan.create(logicalTableScan.getCluster(), index, logicalTableScan.getHints(), null,
-                logicalTableScan.getFlashback(), null);
+                logicalTableScan.getFlashback(), logicalTableScan.getFlashbackOperator(), null);
         final LogicalIndexScan indexScan = new LogicalIndexScan(index, indexTableScan, lockMode);
 
         // filter, the predicate must be cover by indexScan

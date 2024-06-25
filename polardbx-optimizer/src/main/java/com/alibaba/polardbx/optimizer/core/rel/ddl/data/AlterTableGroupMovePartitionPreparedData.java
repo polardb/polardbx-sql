@@ -71,7 +71,7 @@ public class AlterTableGroupMovePartitionPreparedData extends AlterTableGroupBas
     }
 
     @Override
-    public void prepareInvisiblePartitionGroup() {
+    public void prepareInvisiblePartitionGroup(Boolean useSubPartition) {
         TableGroupConfig tableGroupConfig = OptimizerContext.getContext(getSchemaName()).getTableGroupInfoManager()
             .getTableGroupConfigByName(getTableGroupName());
         Long tableGroupId = tableGroupConfig.getTableGroupRecord().getId();

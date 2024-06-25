@@ -106,6 +106,7 @@ public class LogicalDropDatabaseHandler extends HandlerCommon {
         dropDbInfo.setTs(ts);
         Long socketTimeout = executionContext.getParamManager().getLong(ConnectionParams.SOCKET_TIMEOUT);
         dropDbInfo.setSocketTimeout(socketTimeout == null ? -1 : socketTimeout);
+
         DbTopologyManager.dropLogicalDb(dropDbInfo);
         CdcManagerHelper.getInstance()
             .notifyDdl(dbName, null, sqlDropDatabase.getKind().name(), executionContext.getOriginSql(),

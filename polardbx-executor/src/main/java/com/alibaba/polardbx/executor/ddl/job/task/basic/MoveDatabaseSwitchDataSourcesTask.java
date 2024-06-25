@@ -60,7 +60,7 @@ public class MoveDatabaseSwitchDataSourcesTask extends BaseDdlTask {
                 .switchGroupStorageInfos(schemaName, entry.getKey(), entry.getValue().getKey(), targetGroup,
                     entry.getValue().getValue(), metaDbConnection);
 
-            ScaleOutUtils.updateGroupType(schemaName, GroupInfoUtil.buildScaloutGroupName(entry.getKey()),
+            ScaleOutUtils.updateGroupType(schemaName, GroupInfoUtil.buildScaleOutGroupName(entry.getKey()),
                 DbGroupInfoRecord.GROUP_TYPE_SCALEOUT_FINISHED, metaDbConnection);
         }
         updateSupportedCommands(true, false, metaDbConnection);

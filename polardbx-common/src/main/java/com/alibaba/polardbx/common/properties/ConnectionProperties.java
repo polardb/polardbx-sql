@@ -684,10 +684,6 @@ public class ConnectionProperties {
 
     public static final String ENABLE_UDF = "ENABLE_UDF";
 
-    public static final String ENABLE_JAVA_UDF = "ENABLE_JAVA_UDF";
-
-    public static final String CHECK_INVALID_JAVA_UDF = "CHECK_INVALID_JAVA_UDF";
-
     public static final String MAX_JAVA_UDF_NUM = "MAX_JAVA_UDF_NUM";
 
     public static final String FORCE_DROP_JAVA_UDF = "FORCE_DROP_JAVA_UDF";
@@ -864,6 +860,8 @@ public class ConnectionProperties {
     public static final String MYSQL_JOIN_REORDER_EXHAUSTIVE_DEPTH = "MYSQL_JOIN_REORDER_EXHAUSTIVE_DEPTH";
 
     public static final String ENABLE_LV_SUBQUERY_UNWRAP = "ENABLE_LV_SUBQUERY_UNWRAP";
+
+    public static final String EXPLAIN_PRUNING_DETAIL = "EXPLAIN_PRUNING_DETAIL";
 
     public static final String ENABLE_FILTER_REORDER = "ENABLE_FILTER_REORDER";
 
@@ -1094,6 +1092,8 @@ public class ConnectionProperties {
      * max sample size of backfill physical table
      */
     public static final String BACKFILL_MAX_SAMPLE_SIZE = "BACKFILL_MAX_SAMPLE_SIZE";
+
+    public static final String BACKFILL_USE_RETURNING = "BACKFILL_USE_RETURNING";
 
     /**
      * enable split physical table for backfill
@@ -1802,6 +1802,11 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_COMPLEX_DML_CROSS_DB = "ENABLE_COMPLEX_DML_CROSS_DB";
     public static final String COMPLEX_DML_WITH_TRX = "COMPLEX_DML_WITH_TRX";
+
+    public static final String ENABLE_PUSHDOWN_DISTINCT = "ENABLE_PUSHDOWN_DISTINCT";
+    /**
+     * Enable index selection
+     */
     public static final String ENABLE_INDEX_SELECTION = "ENABLE_INDEX_SELECTION";
 
     public static final String ENABLE_INDEX_SELECTION_PRUNE = "ENABLE_INDEX_SELECTION_PRUNE";
@@ -2056,6 +2061,11 @@ public class ConnectionProperties {
      */
     public static final String ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX = "ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX";
     /**
+     * Label if auto use key syntax for all local index on show create table
+     */
+    public static final String ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX = "ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX";
+
+    /**
      * Label if auto use range/list columns partitions for "part by range/list", default is true
      */
     public static final String ENABLE_AUTO_USE_COLUMNS_PARTITION = "ENABLE_AUTO_USE_COLUMNS_PARTITION";
@@ -2158,6 +2168,8 @@ public class ConnectionProperties {
     public static final String ENABLE_HA_CHECK_TASK_LOG = "ENABLE_HA_CHECK_TASK_LOG";
 
     public static final String ENABLE_NDV_USE_COLUMNAR = "ENABLE_NDV_USE_COLUMNAR";
+
+    public static final String ENABLE_MPP_NDV_USE_COLUMNAR = "ENABLE_MPP_NDV_USE_COLUMNAR";
     /**
      * ndv sketch expire time
      */
@@ -2328,6 +2340,12 @@ public class ConnectionProperties {
      */
     public static final String IN_PRUNE_STEP_SIZE = "IN_PRUNE_STEP_SIZE";
     public static final String IN_PRUNE_MAX_TIME = "IN_PRUNE_MAX_TIME";
+    public static final String PRUNING_TIME_WARNING_THRESHOLD = "PRUNING_TIME_WARNING_THRESHOLD";
+
+    public static final String ENABLE_PRUNING_IN = "ENABLE_PRUNING_IN";
+
+    public static final String ENABLE_PRUNING_IN_DML = "ENABLE_PRUNING_IN_DML";
+
     /**
      * the max num of pruning info cache by logical view
      */
@@ -2377,6 +2395,10 @@ public class ConnectionProperties {
     public static final String ENABLE_STANDBY_BACKFILL = "ENABLE_STANDBY_BACKFILL";
     public static final String PHYSICAL_DDL_IGNORED_ERROR_CODE = "PHYSICAL_DDL_IGNORED_ERROR_CODE";
     public static final String DDL_PAUSE_DURING_EXCEPTION = "DDL_PAUSE_DURING_EXCEPTION";
+    public static final String OUTPUT_MYSQL_ERROR_CODE = "OUTPUT_MYSQL_ERROR_CODE";
+
+    public static final String MAPPING_TO_MYSQL_ERROR_CODE = "MAPPING_TO_MYSQL_ERROR_CODE";
+
     public static final String CHANGE_SET_REPLAY_TIMES = "CHANGE_SET_REPLAY_TIMES";
     public static final String CHANGE_SET_APPLY_BATCH = "CHANGE_SET_APPLY_BATCH";
     public static final String CHANGE_SET_MEMORY_LIMIT = "CHANGE_SET_MEMORY_LIMIT";
@@ -2600,6 +2622,13 @@ public class ConnectionProperties {
 
     public static final String PHYSICAL_BACKFILL_SPEED_TEST =
         "PHYSICAL_BACKFILL_SPEED_TEST";
+
+    public static final String REBALANCE_MAINTENANCE_ENABLE = "REBALANCE_MAINTENANCE_ENABLE";
+    public static final String REBALANCE_MAINTENANCE_TIME_START = "REBALANCE_MAINTENANCE_TIME_START";
+
+    public static final String REBALANCE_MAINTENANCE_TIME_END = "REBALANCE_MAINTENANCE_TIME_END";
+
+    public static final String CANCEL_REBALANCE_JOB_DUE_MAINTENANCE = "CANCEL_REBALANCE_JOB_DUE_MAINTENANCE";
 
     public static final String ENABLE_DEADLOCK_DETECTION_80 = "ENABLE_DEADLOCK_DETECTION_80";
     public static final String MOCK_COLUMNAR_INDEX = "MOCK_COLUMNAR_INDEX";

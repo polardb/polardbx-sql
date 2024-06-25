@@ -50,7 +50,7 @@ public class SqlTableOptions extends SqlCall {
     private SqlCharStringLiteral indexDir;
     private SqlLiteral delayKeyWrite;
     private InsertMethod insertMethod;
-    private SqlCall keyBlockSize;
+    private SqlNumericLiteral keyBlockSize;
     private SqlNumericLiteral maxRows;
     private SqlNumericLiteral minRows;
     private PackKeys packKeys;
@@ -304,11 +304,11 @@ public class SqlTableOptions extends SqlCall {
         this.insertMethod = insertMethod;
     }
 
-    public SqlCall getKeyBlockSize() {
+    public SqlNumericLiteral getKeyBlockSize() {
         return keyBlockSize;
     }
 
-    public void setKeyBlockSize(SqlCall keyBlockSize) {
+    public void setKeyBlockSize(SqlNumericLiteral keyBlockSize) {
         this.keyBlockSize = keyBlockSize;
     }
 

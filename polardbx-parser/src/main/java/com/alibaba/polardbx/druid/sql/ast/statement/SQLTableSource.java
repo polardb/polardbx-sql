@@ -42,6 +42,10 @@ public interface SQLTableSource extends SQLObject {
 
     void setFlashback(SQLExpr flashback);
 
+    boolean isFlashbackWithTso();
+
+    void setFlashbackWithTso(boolean flashbackWithTso);
+
     SQLColumnDefinition findColumn(String columnName);
 
     SQLColumnDefinition findColumn(long columnNameHash);

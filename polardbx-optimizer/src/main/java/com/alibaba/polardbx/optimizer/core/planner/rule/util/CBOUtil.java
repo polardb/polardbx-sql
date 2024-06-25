@@ -18,6 +18,8 @@ package com.alibaba.polardbx.optimizer.core.planner.rule.util;
 
 import com.alibaba.polardbx.common.Engine;
 import com.alibaba.polardbx.common.exception.TddlNestableRuntimeException;
+import com.alibaba.polardbx.common.exception.TddlRuntimeException;
+import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.type.MySQLStandardFieldType;
@@ -149,6 +151,8 @@ import org.apache.calcite.util.mapping.Mappings;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -228,14 +232,23 @@ public class CBOUtil {
                  * fetch or offset be parameterized.
                  */
                 fetch = builder.makeCall(SqlStdOperatorTable.PLUS, fetch, originalSort.offset);
-
             } else {
                 long fetchVal = getRexParam(originalSort.fetch, parameterContextMap);
                 long offsetVal = getRexParam(originalSort.offset, parameterContextMap);
-                /**
-                 * fetch or offset be parameterized.
-                 */
-                fetch = builder.makeBigIntLiteral(offsetVal + fetchVal);
+                if (offsetVal == Long.MAX_VALUE || fetchVal == Long.MAX_VALUE) {
+                    fetch = builder.makeBigIntLiteral(Long.MAX_VALUE);
+                } else {
+                    if (offsetVal < 0) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "get rex " + offsetVal);
+                    }
+                    if (fetchVal < 0) {
+                        throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER, "get rex " + fetchVal);
+                    }
+                    /**
+                     * fetch or offset be parameterized.
+                     */
+                    fetch = builder.makeBigIntLiteral(offsetVal + fetchVal);
+                }
             }
         }
         return fetch;
@@ -654,14 +667,38 @@ public class CBOUtil {
         return canSortMerge;
     }
 
+    /**
+     * get the long value of rex parameter, if big integer is bigger than Long.MAX_VALUE, return Long.MAX_VALUE
+     */
     public static long getRexParam(RexNode rex, Map<Integer, ParameterContext> params) {
         long rs = 0L;
         if (rex instanceof RexDynamicParam) {
             if (params.size() == 0) {
                 return rs;
             }
-            rs =
-                Long.valueOf(String.valueOf(params.get(((RexDynamicParam) rex).getIndex() + 1).getValue())).longValue();
+            try {
+                return Long.valueOf(String.valueOf(params.get(((RexDynamicParam) rex).getIndex() + 1).getValue()));
+            } catch (NumberFormatException e) {
+                Object obj = params.get(((RexDynamicParam) rex).getIndex() + 1).getValue();
+                if (obj instanceof BigInteger) {
+                    if (((BigInteger) obj).signum() < 0) {
+                        return -Long.MAX_VALUE;
+                    } else {
+                        return Long.MAX_VALUE;
+                    }
+                }
+                if (obj instanceof BigDecimal) {
+                    if (((BigDecimal) obj).scale() > 0) {
+                        throw e;
+                    }
+                    if (((BigDecimal) obj).signum() < 0) {
+                        return -Long.MAX_VALUE;
+                    } else {
+                        return Long.MAX_VALUE;
+                    }
+                }
+                throw e;
+            }
         } else if (rex instanceof RexCall) {
             RexCall rexcall = (RexCall) rex;
             if (rexcall.isA(SqlKind.PLUS) && rexcall.operands.size() == 2) {
@@ -669,6 +706,9 @@ public class CBOUtil {
                 long r = getRexParam(rexcall.operands.get(1), params);
                 if (l > -1 && r > -1) {
                     rs = l + r;
+                    if (rs < 0) {
+                        rs = Long.MAX_VALUE;
+                    }
                 }
             } else {
                 throw new IllegalArgumentException("Invalid RexNode " + rex);
@@ -893,6 +933,7 @@ public class CBOUtil {
 
             final LogicalTableScan columnarTableScan =
                 LogicalTableScan.create(scan.getCluster(), this.indexTable, scan.getHints(), null, scan.getFlashback(),
+                    scan.getFlashbackOperator(),
                     null);
             return new OSSTableScan(columnarTableScan, lockMode);
         }
@@ -1256,6 +1297,14 @@ public class CBOUtil {
             }
             if (call.getAggregation().getKind() == SqlKind.FINAL_HYPER_LOGLOG) {
                 return true;
+            }
+
+            if (call.getAggregation().getKind() == SqlKind.COUNT) {
+                if (!call.isDistinct()) {
+                    if (call.getArgList().size() > 1) {
+                        return true;
+                    }
+                }
             }
         }
         return false;

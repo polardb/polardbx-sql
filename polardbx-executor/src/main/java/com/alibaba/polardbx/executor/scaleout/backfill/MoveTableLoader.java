@@ -63,7 +63,7 @@ public class MoveTableLoader extends com.alibaba.polardbx.executor.backfill.Load
                               BiFunction<List<RelNode>, ExecutionContext, List<Cursor>> executeFunc,
                               Map<String, String> sourceTargetGroupMap) {
         super(schemaName, tableName, insert, insertIgnore, checkerPlan, checkerPkMapping, checkerParamMapping,
-            executeFunc, true);
+            executeFunc, true, null);
         this.sourceTargetGroupMap = sourceTargetGroupMap;
     }
 

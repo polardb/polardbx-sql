@@ -16,16 +16,9 @@
 
 package org.apache.calcite.sql;
 
-import com.alibaba.polardbx.common.exception.TddlRuntimeException;
-import com.alibaba.polardbx.common.exception.code.ErrorCode;
-import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.druid.util.StringUtils;
-import com.google.common.base.Preconditions;
-import org.apache.calcite.rel.type.RelDataType;
-import org.apache.calcite.rel.type.RelDataTypeField;
 import org.apache.calcite.sql.parser.SqlParserPos;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.calcite.sql.util.SqlVisitor;
 import org.apache.calcite.sql.validate.SqlValidator;
 import org.apache.calcite.sql.validate.SqlValidatorScope;
@@ -76,18 +69,37 @@ public class SqlPartition extends SqlNode {
         StringBuilder sb = new StringBuilder("");
         sb.append("PARTITION ");
         sb.append(name);
-        sb.append(" ");
-        sb.append(values.toString());
+        if (values != null) {
+            sb.append(" ");
+            sb.append(values.toString());
+        }
         if (TStringUtil.isNotEmpty(locality)) {
             sb.append(" LOCALITY=");
             sb.append(TStringUtil.quoteString(locality));
+        }
+
+        if (subPartitionCount != null) {
+            sb.append(" ");
+            sb.append("SUBPARTITIONS ");
+            sb.append(subPartitionCount.toString());
+        }
+        if (subPartitions != null && !subPartitions.isEmpty()) {
+            sb.append(" ");
+            sb.append("(");
+            for (int i = 0; i < subPartitions.size(); i++) {
+                if (i > 0) {
+                    sb.append(",");
+                }
+                SqlNode subPart = subPartitions.get(i);
+                sb.append(subPart.toString());
+            }
+            sb.append(")");
         }
         return sb.toString();
     }
 
     @Override
     public void unparse(SqlWriter writer, int leftPrec, int rightPrec) {
-
     }
 
     @Override

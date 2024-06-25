@@ -50,6 +50,10 @@ public final class ClearHandler {
                 return ClearFileSystemCache.response(c, Engine.NFS, false, hasMore);
             case ServerParseClear.EXTERNAL_DISK_CACHE:
                 return ClearFileSystemCache.response(c, Engine.EXTERNAL_DISK, false, hasMore);
+            case ServerParseClear.S3_CACHE:
+                return ClearFileSystemCache.response(c, Engine.S3, false, hasMore);
+            case ServerParseClear.ABS_CACHE:
+                return ClearFileSystemCache.response(c, Engine.ABS, false, hasMore);
             case ServerParseClear.HEATMAP_CACHE:
                 return ClearPartitionsHeatmapCache.response(c, hasMore);
             case ServerParseClear.PROCEDURE_CACHE:

@@ -360,7 +360,7 @@ public class ConnectionParams {
         new IntConfigParam(ConnectionProperties.PHYSICAL_DDL_MDL_WAITING_TIMEOUT,
             -1, //5
             Attribute.MAX_PHYSICAL_DDL_MDL_WAITING_TIMEOUT, //Integer.MAX_VALUE
-            Integer.valueOf(Attribute.PHYSICAL_DDL_MDL_WAITING_TIMEOUT), //15
+            -1,
             false);
 
     /**
@@ -1253,6 +1253,11 @@ public class ConnectionParams {
             true,
             false);
 
+    public final static BooleanConfigParam BACKFILL_USE_RETURNING = new BooleanConfigParam(
+        ConnectionProperties.BACKFILL_USE_RETURNING,
+        true,
+        false);
+
     /**
      * enable parallel physical table backfill
      */
@@ -2036,6 +2041,9 @@ public class ConnectionParams {
     public static final BooleanConfigParam ENABLE_LV_SUBQUERY_UNWRAP = new BooleanConfigParam(
         ConnectionProperties.ENABLE_LV_SUBQUERY_UNWRAP, true, true);
 
+    public static final BooleanConfigParam EXPLAIN_PRUNING_DETAIL = new BooleanConfigParam(
+        ConnectionProperties.EXPLAIN_PRUNING_DETAIL, false, true);
+
     public static final BooleanConfigParam ENABLE_FILTER_REORDER = new BooleanConfigParam(
         ConnectionProperties.ENABLE_FILTER_REORDER, true, true);
 
@@ -2626,6 +2634,11 @@ public class ConnectionParams {
         true,
         true);
 
+    public static final BooleanConfigParam ENABLE_PUSHDOWN_DISTINCT = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_PUSHDOWN_DISTINCT,
+        true,
+        true);
+
     public static final BooleanConfigParam ENABLE_INDEX_SKYLINE = new BooleanConfigParam(
         ConnectionProperties.ENABLE_INDEX_SKYLINE,
         false,
@@ -2688,18 +2701,6 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam ENABLE_UDF = new BooleanConfigParam(
         ConnectionProperties.ENABLE_UDF,
-        true,
-        true
-    );
-
-    public static final BooleanConfigParam ENABLE_JAVA_UDF = new BooleanConfigParam(
-        ConnectionProperties.ENABLE_JAVA_UDF,
-        true,
-        true
-    );
-
-    public static final BooleanConfigParam CHECK_INVALID_JAVA_UDF = new BooleanConfigParam(
-        ConnectionProperties.CHECK_INVALID_JAVA_UDF,
         true,
         true
     );
@@ -3074,7 +3075,7 @@ public class ConnectionParams {
 
     public static final IntConfigParam IN_SUB_QUERY_THRESHOLD = new IntConfigParam(
         ConnectionProperties.IN_SUB_QUERY_THRESHOLD, 2, Integer.MAX_VALUE,
-        8, true);
+        100000, true);
 
     public static final BooleanConfigParam ENABLE_IN_SUB_QUERY_FOR_DML = new BooleanConfigParam(
         ConnectionProperties.ENABLE_IN_SUB_QUERY_FOR_DML, false, Boolean.TRUE);
@@ -3252,6 +3253,14 @@ public class ConnectionParams {
      */
     public static final BooleanConfigParam ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX = new BooleanConfigParam(
         ConnectionProperties.ENABLE_AUTO_USE_RANGE_FOR_TIME_INDEX,
+        false,
+        true);
+
+    /**
+     * Label if auto use key syntax for all local index on show create table
+     */
+    public static final BooleanConfigParam ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_USE_KEY_FOR_ALL_LOCAL_INDEX,
         false,
         true);
 
@@ -3503,6 +3512,9 @@ public class ConnectionParams {
     public static final BooleanConfigParam ENABLE_NDV_USE_COLUMNAR = new BooleanConfigParam(
         ConnectionProperties.ENABLE_NDV_USE_COLUMNAR, false, true);
 
+    public static final BooleanConfigParam ENABLE_MPP_NDV_USE_COLUMNAR = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_MPP_NDV_USE_COLUMNAR, false, true);
+
     /**
      * expire time(sec) for ndv sketch info
      */
@@ -3660,7 +3672,7 @@ public class ConnectionParams {
         new IntConfigParam(ConnectionProperties.CHANGE_SET_APPLY_BATCH, 1, 10 * 1024, 128, false);
 
     public static final LongConfigParam CHANGE_SET_MEMORY_LIMIT = new LongConfigParam(
-        ConnectionProperties.CHANGE_SET_MEMORY_LIMIT, 1024L, 1024 * 1024 * 1024L, 8 * 1024 * 1024L, false);
+        ConnectionProperties.CHANGE_SET_MEMORY_LIMIT, 1024L, 16 * 1024 * 1024L, 1024 * 1024L, false);
 
     public static final BooleanConfigParam CN_ENABLE_CHANGESET =
         new BooleanConfigParam(ConnectionProperties.CN_ENABLE_CHANGESET, true, true);
@@ -3886,19 +3898,10 @@ public class ConnectionParams {
         true);
 
     /**
-     * the min size of IN expr that would be pruned
+     * the MAX size of IN expr being pruned
      */
-    public static final IntConfigParam IN_PRUNE_SIZE = new IntConfigParam(
-        ConnectionProperties.IN_PRUNE_SIZE, 0, Integer.MAX_VALUE, 150, true);
-
-    /**
-     * the batch size of IN expr being pruned
-     */
-    public static final IntConfigParam IN_PRUNE_STEP_SIZE = new IntConfigParam(
-        ConnectionProperties.IN_PRUNE_STEP_SIZE, 1, Integer.MAX_VALUE, 10, true);
-
     public static final IntConfigParam IN_PRUNE_MAX_TIME = new IntConfigParam(
-        ConnectionProperties.IN_PRUNE_MAX_TIME, 1, Integer.MAX_VALUE, 100, true);
+        ConnectionProperties.IN_PRUNE_MAX_TIME, 1, Integer.MAX_VALUE, 100000, true);
 
     public static final IntConfigParam MAX_IN_PRUNE_CACHE_SIZE = new IntConfigParam(
         ConnectionProperties.MAX_IN_PRUNE_CACHE_SIZE, 0, Integer.MAX_VALUE, 200, true);
@@ -3938,6 +3941,16 @@ public class ConnectionParams {
     public static final BooleanConfigParam DDL_PAUSE_DURING_EXCEPTION =
         new BooleanConfigParam(ConnectionProperties.DDL_PAUSE_DURING_EXCEPTION,
             false,
+            false);
+
+    public static final BooleanConfigParam OUTPUT_MYSQL_ERROR_CODE =
+        new BooleanConfigParam(ConnectionProperties.OUTPUT_MYSQL_ERROR_CODE,
+            false,
+            false);
+
+    public static final StringConfigParam MAPPING_TO_MYSQL_ERROR_CODE =
+        new StringConfigParam(ConnectionProperties.MAPPING_TO_MYSQL_ERROR_CODE,
+            "",
             false);
 
     public static final StringConfigParam PURGE_OSS_FILE_CRON_EXPR = new StringConfigParam(
@@ -4571,8 +4584,34 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam PHYSICAL_BACKFILL_SPEED_TEST = new BooleanConfigParam(
         ConnectionProperties.PHYSICAL_BACKFILL_SPEED_TEST,
+        false,
+        true);
+
+    /**
+     * rebalance start point
+     */
+    public static final BooleanConfigParam REBALANCE_MAINTENANCE_ENABLE = new BooleanConfigParam(
+        ConnectionProperties.REBALANCE_MAINTENANCE_ENABLE,
         true,
         true);
+
+    /**
+     * rebalance start point
+     */
+    public static final StringConfigParam REBALANCE_MAINTENANCE_TIME_START =
+        new StringConfigParam(ConnectionProperties.REBALANCE_MAINTENANCE_TIME_START, "00:00", true);
+
+    /**
+     * rebalance stop point
+     */
+    public static final StringConfigParam REBALANCE_MAINTENANCE_TIME_END =
+        new StringConfigParam(ConnectionProperties.REBALANCE_MAINTENANCE_TIME_END, "00:00", true);
+
+    public static final BooleanConfigParam CANCEL_REBALANCE_JOB_DUE_MAINTENANCE = new BooleanConfigParam(
+        ConnectionProperties.CANCEL_REBALANCE_JOB_DUE_MAINTENANCE,
+        false,
+        true
+    );
 
     public static final BooleanConfigParam ENABLE_DEADLOCK_DETECTION_80 = new BooleanConfigParam(
         ConnectionProperties.ENABLE_DEADLOCK_DETECTION_80,
@@ -4814,6 +4853,12 @@ public class ConnectionParams {
 
     public static final BooleanConfigParam ENABLE_AUTO_COMMIT_TSO = new BooleanConfigParam(
         ConnectionProperties.ENABLE_AUTO_COMMIT_TSO,
+        true,
+        true
+    );
+
+    public static final BooleanConfigParam ENABLE_1PC_OPT = new BooleanConfigParam(
+        ConnectionProperties.ENABLE_1PC_OPT,
         true,
         true
     );

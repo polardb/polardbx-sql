@@ -289,6 +289,7 @@ public abstract class AbstractUCACollationHandler extends AbstractCollationHandl
                 code = codepoint & 0xFF;
 
                 weightPage = UCA_WEIGHTS[page];
+                // If weight page for codepoint does not exist, then calculate algorithmically
                 if (weightPage == null) {
                     code = (page << 8) + code;
                     implicit[0] = (code & 0x7FFF) | 0x8000;

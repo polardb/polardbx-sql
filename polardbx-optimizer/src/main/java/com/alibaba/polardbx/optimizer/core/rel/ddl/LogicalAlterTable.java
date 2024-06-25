@@ -82,12 +82,9 @@ import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAddColumn;
 import org.apache.calcite.sql.SqlAddForeignKey;
-import org.apache.calcite.sql.SqlAddFullTextIndex;
 import org.apache.calcite.sql.SqlAddIndex;
 import org.apache.calcite.sql.SqlAddPrimaryKey;
-import org.apache.calcite.sql.SqlAddSpatialIndex;
 import org.apache.calcite.sql.SqlAddUniqueIndex;
-import org.apache.calcite.sql.SqlAlter;
 import org.apache.calcite.sql.SqlAlterColumnDefaultVal;
 import org.apache.calcite.sql.SqlAlterSpecification;
 import org.apache.calcite.sql.SqlAlterTable;
@@ -107,7 +104,6 @@ import org.apache.calcite.sql.SqlChangeColumn;
 import org.apache.calcite.sql.SqlColumnDeclaration;
 import org.apache.calcite.sql.SqlColumnDeclaration.SpecialIndex;
 import org.apache.calcite.sql.SqlConvertToCharacterSet;
-import org.apache.calcite.sql.SqlDrop;
 import org.apache.calcite.sql.SqlDropColumn;
 import org.apache.calcite.sql.SqlDropForeignKey;
 import org.apache.calcite.sql.SqlDropPrimaryKey;
@@ -122,6 +118,7 @@ import org.apache.calcite.sql.SqlReferenceOption;
 import org.apache.calcite.sql.SqlTableOptions;
 import org.apache.calcite.sql.parser.SqlParserPos;
 import org.apache.calcite.sql.type.SqlTypeUtil;
+import org.apache.calcite.sql.validate.SqlValidatorImpl;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.ListUtils;
 import org.apache.commons.lang.StringUtils;
@@ -132,9 +129,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1052,7 +1047,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
             // Local indexes on clustered GSIs.
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
-                if (gsiEntry.getValue().clusteredIndex) {
+                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getValue().columnarIndex) {
                     final String clusteredTableName = gsiEntry.getKey();
                     createIndexWithGsiPreparedData
                         .addLocalIndexPreparedData(
@@ -1069,7 +1064,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
             // Drop generated local index on clustered.
             final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
             for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
-                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexTableName)) {
+                if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getKey().equalsIgnoreCase(indexTableName) &&
+                    !gsiEntry.getValue().columnarIndex) {
                     // Add all clustered index except which is dropping.
                     final String clusteredTableName = gsiEntry.getKey();
                     TableMeta tableMeta =
@@ -1111,7 +1107,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         }
         final GsiTableMetaBean gsiTableMeta = gsiMetaBean.getTableMeta().get(tableName);
         for (Map.Entry<String, GsiIndexMetaBean> gsiEntry : gsiTableMeta.indexMap.entrySet()) {
-            if (gsiEntry.getValue().clusteredIndex) {
+            if (gsiEntry.getValue().clusteredIndex && !gsiEntry.getValue().columnarIndex) {
                 preparedData.addAlterClusterIndex(prepareAlterTableData(gsiEntry.getKey()));
             }
         }
@@ -1498,7 +1494,7 @@ public class LogicalAlterTable extends LogicalTableOperation {
         }
     }
 
-    private AlterTablePreparedData prepareAlterTableData(String tableName) {
+    public AlterTablePreparedData prepareAlterTableData(String tableName) {
         return prepareAlterTableData(this.schemaName, tableName, this.tableName, false);
     }
 
@@ -2903,7 +2899,13 @@ public class LogicalAlterTable extends LogicalTableOperation {
             return;
         }
 
-        for (SqlAlterSpecification alterItem : sqlAlterTable.getAlters()) {
+        // forbid multiple statements for now
+        if (getSqlAlterTable().getAlters().size() > 1) {
+            throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
+                "Do not support multiple ALTER TABLE statements on table with clustered columnar index");
+        }
+
+        for (SqlAlterSpecification alterItem : getSqlAlterTable().getAlters()) {
             SqlKind alterType = alterItem.getKind();
             switch (alterType) {
             case DROP_COLUMN:
@@ -2950,6 +2952,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
                 SqlModifyColumn modifyColumn = (SqlModifyColumn) alterItem;
                 columnName = modifyColumn.getColName().getLastName();
 
+                SqlValidatorImpl.validateUnsupportedTypeWithCciWhenModifyColumn(modifyColumn.getColDef());
+
                 // columnar primary key column can never modified.
                 if (tableColumns.isColumnarPrimaryKey(columnName)) {
                     throw new TddlRuntimeException(ErrorCode.ERR_OPTIMIZER,
@@ -2970,6 +2974,8 @@ public class LogicalAlterTable extends LogicalTableOperation {
             case CHANGE_COLUMN:
                 SqlChangeColumn changeColumn = (SqlChangeColumn) alterItem;
                 columnName = changeColumn.getOldName().getLastName();
+
+                SqlValidatorImpl.validateUnsupportedTypeWithCciWhenModifyColumn(changeColumn.getColDef());
 
                 // columnar primary key column can never modified.
                 if (tableColumns.isColumnarPrimaryKey(columnName)) {

@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
  */
 public class DbNameUtil {
 
-    private final static int MAX_DB_NAME_LENGTH = 32;
+    private final static int MAX_DB_NAME_LENGTH = 64;
 
     public static boolean validateDbName(String dbName, boolean isKeyWords) {
 

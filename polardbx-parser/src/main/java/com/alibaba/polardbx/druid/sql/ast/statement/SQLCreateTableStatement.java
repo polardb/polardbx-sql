@@ -493,7 +493,7 @@ public class SQLCreateTableStatement extends SQLStatementImpl implements SQLDDLS
         SQLExpr expr = tableSource.getExpr();
         if (expr instanceof SQLName) {
             String name = ((SQLName) expr).getSimpleName();
-            return SQLUtils.normalize(name);
+            return SQLUtils.normalizeNoTrim(name);
         }
 
         return null;

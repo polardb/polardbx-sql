@@ -50,7 +50,7 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
@@ -174,10 +174,11 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         Assert.assertThat(trace.size(), is(2));
 
         //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 2);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
@@ -301,10 +302,11 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         Assert.assertThat(trace.size(), is(1));
 
         //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 1);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);
@@ -428,10 +430,11 @@ public class OMCMultiWriteTest extends DDLBaseNewDBTestCase {
         Assert.assertThat(trace.size(), is(2));
 
         //因为是delete only状态，所以预期GSI表包含DELETE流量
+        // 更新 delete only 下，UPDATE 在GSI表上还是 UPDATE
         sql = String.format("UPDATE %s SET b = 2 WHERE a = '123'", tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, "trace" + dmlHintStr + sql);
         trace = getTrace(tddlConnection);
-        assertTraceContains(trace, "DELETE", 2);
+        assertTraceContains(trace, "DELETE", 0);
 
         //因为是delete only状态，所以预期GSI表和主表都包含DELETE流量
         sql = String.format("DELETE FROM %s WHERE a = '234'", tableName);

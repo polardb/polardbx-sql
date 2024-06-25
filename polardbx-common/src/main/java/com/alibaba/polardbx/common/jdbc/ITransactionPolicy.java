@@ -68,7 +68,9 @@ public interface ITransactionPolicy {
 
         AUTO_COMMIT,
 
-        AUTO_COMMIT_TSO;
+        AUTO_COMMIT_TSO,
+
+        ARCHIVE;
 
         public boolean isA(EnumSet<TransactionClass> set) {
             return set.contains(this);
@@ -80,14 +82,17 @@ public interface ITransactionPolicy {
                 TransactionClass.TSO,
                 TransactionClass.TSO_READONLY,
                 TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
-                TSO_2PC_OPT);
+                TSO_2PC_OPT,
+                TransactionClass.ARCHIVE);
 
         public static final EnumSet<TransactionClass> EXPLICIT_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
                 TransactionClass.XA_TSO,
                 TransactionClass.TSO,
                 TransactionClass.ALLOW_READ_CROSS_DB,
-                TSO_2PC_OPT);
+                TransactionClass.COBAR_STYLE,
+                TSO_2PC_OPT,
+                TransactionClass.ARCHIVE);
 
         public static final EnumSet<TransactionClass> TSO_TRANSACTION = EnumSet
             .of(TransactionClass.TSO,
@@ -110,7 +115,8 @@ public interface ITransactionPolicy {
             .of(TransactionClass.XA,
                 TransactionClass.XA_TSO,
                 TransactionClass.TSO,
-                TSO_2PC_OPT);
+                TSO_2PC_OPT,
+                TransactionClass.ARCHIVE);
 
         public static final EnumSet<TransactionClass> SUPPORT_PARALLEL_GET_CONNECTION_TRANSACTION = EnumSet
             .of(TransactionClass.XA,
@@ -119,7 +125,8 @@ public interface ITransactionPolicy {
                 TransactionClass.AUTO_COMMIT,
                 TransactionClass.AUTO_COMMIT_SINGLE_SHARD,
                 TransactionClass.AUTO_COMMIT_TSO,
-                TransactionClass.TSO_READONLY);
+                TransactionClass.TSO_READONLY,
+                TransactionClass.ARCHIVE);
 
         public static final EnumSet<TransactionClass> ALLOW_GROUP_PARALLELISM_WITHOUT_SHARE_READVIEW_TRANSACTION =
             EnumSet.of(TransactionClass.AUTO_COMMIT,
@@ -131,6 +138,7 @@ public interface ITransactionPolicy {
     NoTransaction NO_TRANSACTION = new NoTransaction();
     DefaultPolicy XA = new DefaultPolicy(TransactionClass.XA);
     Tso TSO = new Tso();
+    DefaultPolicy ARCHIVE = new DefaultPolicy(TransactionClass.ARCHIVE);
 
     TransactionClass getTransactionType(boolean isAutoCommit, boolean isReadOnly);
 
@@ -259,6 +267,8 @@ public interface ITransactionPolicy {
             return ITransactionPolicy.ALLOW_READ_CROSS_DB;
         case "NO_TRANSACTION":
             return ITransactionPolicy.NO_TRANSACTION;
+        case "ARCHIVE":
+            return ITransactionPolicy.ARCHIVE;
         default:
             throw new TddlRuntimeException(ErrorCode.ERR_CONFIG, "Unknown transaction policy: " + name);
         }

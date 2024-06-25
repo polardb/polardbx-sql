@@ -40,6 +40,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 public class GeneralUtil {
@@ -582,5 +583,17 @@ public class GeneralUtil {
         } else {
             return source;
         }
+    }
+
+    /**
+     * return target length random string
+     */
+    public static String randomString(int length) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            char ch = (char) (ThreadLocalRandom.current().nextInt('x' - 'a') + 'a');
+            sb.append(ch);
+        }
+        return sb.toString();
     }
 }

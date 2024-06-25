@@ -31,4 +31,6 @@ public enum OptimizerAlertType {
     STATISTIC_JOB_INTERRUPT,
 
     STATISTIC_INCONSISTENT,
+
+    PRUNING_SLOW,
 }

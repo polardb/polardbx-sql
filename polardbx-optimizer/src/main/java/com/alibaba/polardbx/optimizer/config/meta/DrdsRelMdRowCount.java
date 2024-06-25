@@ -92,7 +92,7 @@ public class DrdsRelMdRowCount extends RelMdRowCount {
         rowCount = Math.max(rowCount - offset, 0D);
 
         if (rel.fetch != null) {
-            long limit = CBOUtil.getRexParam(rel.fetch, params);
+            long limit = Math.max(CBOUtil.getRexParam(rel.fetch, params), 1);
             if (limit < rowCount) {
                 return (double) limit;
             }

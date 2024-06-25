@@ -244,10 +244,18 @@ public class DrdsParameterizeSqlVisitor extends MySqlOutputVisitor {
         } else if (StringUtils.startsWith(name, "@")) {
             if (parameterized) {
                 String varText = TStringUtil.substring(name, 1);
-                if (executionContext != null
-                    && executionContext.getUserDefVariables() != null
-                    && executionContext.getUserDefVariables().containsKey(varText.toLowerCase())
-                    && executionContext.getUserDefVariables().get(varText.toLowerCase()) != null) {
+
+                // TConnection will set an empty user def variables.
+                if (executionContext != null && executionContext.getUserDefVariables() != null) {
+
+                    String varName = varText.toLowerCase();
+
+                    // https://dev.mysql.com/doc/refman/5.7/en/user-variables.html
+                    // If you refer to a variable that has not been initialized, it has a value of NULL and a type of string.
+                    if (!executionContext.getUserDefVariables().containsKey(varName)) {
+                        executionContext.getUserDefVariables().put(varName, null);
+                    }
+
                     print('?');
                     incrementReplaceCunt();
 

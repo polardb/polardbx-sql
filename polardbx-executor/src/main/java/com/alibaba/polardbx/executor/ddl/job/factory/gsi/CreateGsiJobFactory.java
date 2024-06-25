@@ -236,6 +236,7 @@ public class CreateGsiJobFactory extends DdlJobFactory {
             bringUpGsi = GsiTaskFactory.addGlobalIndexTasks(
                 schemaName,
                 primaryTableName,
+                oldIndexName,
                 indexTableName,
                 stayAtDeleteOnly,
                 stayAtWriteOnly,

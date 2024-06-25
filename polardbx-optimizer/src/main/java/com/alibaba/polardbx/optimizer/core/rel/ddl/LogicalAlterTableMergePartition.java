@@ -201,7 +201,7 @@ public class LogicalAlterTableMergePartition extends BaseDdlOperation {
         preparedData.setTableGroupName(tableGroupName);
         preparedData.setMergePartitions(mergePartitions);
         preparedData.setTargetGroupDetailInfoExRecords(targetGroupDetailInfoExRecords);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
 
         List<String> newPartitionGroupNames = new ArrayList<>();
         preparedData.getInvisiblePartitionGroups().forEach(o -> newPartitionGroupNames.add(o.getPartition_name()));

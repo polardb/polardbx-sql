@@ -108,10 +108,11 @@ public class LogicalRefreshTopology extends BaseDdlOperation {
                     PartitionNameUtil.autoGeneratePartitionNames(tableGroupRecord, partNames, subPartNamePairs,
                         groupDetailInfoExRecords.size(),
                         new TreeSet<>(String::compareToIgnoreCase), false);
+                Boolean hasSubPartition = !GeneralUtil.isEmpty(subPartNamePairs);
                 refreshDbTopologyPreparedData.setTableGroupName(tableGroupConfig.getTableGroupRecord().tg_name);
                 refreshDbTopologyPreparedData.setNewPartitionNames(newPartitions);
                 refreshDbTopologyPreparedData.setTargetGroupDetailInfoExRecords(groupDetailInfoExRecords);
-                refreshDbTopologyPreparedData.prepareInvisiblePartitionGroup();
+                refreshDbTopologyPreparedData.prepareInvisiblePartitionGroup(hasSubPartition);
             }
             dbPreparedDataMap.put(dbEntry.getKey(), refreshDbTopologyPreparedData);
         }

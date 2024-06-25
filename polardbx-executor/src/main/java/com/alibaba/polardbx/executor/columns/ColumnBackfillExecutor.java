@@ -435,7 +435,7 @@ public class ColumnBackfillExecutor extends Extractor {
     /**
      * Check whether all dn using XProtocol
      */
-    private static boolean isAllDnUseXDataSource(TopologyHandler topologyHandler) {
+    public static boolean isAllDnUseXDataSource(TopologyHandler topologyHandler) {
         return topologyHandler.getGroupNames().stream()
             .allMatch(groupName -> Optional.ofNullable(topologyHandler.get(groupName))
                 .map((Function<IGroupExecutor, Object>) IGroupExecutor::getDataSource)

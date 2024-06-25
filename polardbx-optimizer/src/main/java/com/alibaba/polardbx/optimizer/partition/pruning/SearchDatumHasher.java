@@ -213,7 +213,7 @@ public class SearchDatumHasher {
     }
 
     protected long doMurmurHash(long multiFiledHashCode) {
-        long finalHashVal = MurmurHashUtils.murmurHashWithZeroSeed(multiFiledHashCode);
+        long finalHashVal = MurmurHashUtils.murmurHash128WithZeroSeed(multiFiledHashCode);
 
         /**
          * Make sure that all the hashCode are in the ragne [Long.MIN_VALUE+1,Long.MAX_VALUE-1] because

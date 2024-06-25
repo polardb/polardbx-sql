@@ -1441,7 +1441,8 @@ public abstract class SqlImplementor {
           final SqlIdentifier identifier = (SqlIdentifier) node;
           final SqlIdentifier newIdentifier =
               new SqlIdentifier(((SqlIdentifier) node).names, ((SqlIdentifier) node).getCollation(),
-                  node.getParserPosition(), null, null, identifier.partitions, identifier.flashback);
+                  node.getParserPosition(), null, null, identifier.partitions, identifier.flashback,
+                  identifier.flashbackOperator);
           final SqlIdentifier alias =
               new SqlIdentifier(ImmutableList.of(neededAlias), null, POS, null, identifier.indexNode);
 

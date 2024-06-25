@@ -37,6 +37,7 @@ import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.sql.SqlCreateTable;
 import org.apache.calcite.util.Pair;
 
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -134,6 +135,17 @@ public enum ExecutionStrategy {
         final boolean ukContainsPartitionKey =
             GlobalIndexMeta.isEveryUkContainsAllPartitionKey(targetTable, schema, true, ec);
 
+        List<String> autoIncColumns = primaryTableMeta.getAutoIncrementColumns();
+        Collection<ColumnMeta> pk = primaryTableMeta.getPrimaryKey();
+        boolean skipCheckingPk = false;
+        if (pk.size() == 1 && autoIncColumns.size() == 1) {
+            skipCheckingPk = ec.getParamManager().getBoolean(ConnectionParams.DML_SKIP_DUPLICATE_CHECK_FOR_PK)
+                && StringUtils.equalsIgnoreCase(pk.iterator().next().getName(), autoIncColumns.get(0));
+        }
+        final boolean ukContainsAllSkAndGsiContainsAllUk = skipCheckingPk ?
+            GlobalIndexMeta.isEveryUkContainsAllPartitionKey(targetTable, schema, false, ec) :
+            ukContainsPartitionKey;
+
         // Statement detail
         final boolean canPushDuplicateCheck =
             withoutPkAndUk || (ukContainsPartitionKey && allGsiPublished
@@ -203,6 +215,7 @@ public enum ExecutionStrategy {
         result.doMultiWrite = doMultiWrite;
         result.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
         result.pushableForeignConstraintCheck = pushableFkCheck;
+        result.ukContainsAllSkAndGsiContainsAllUk = ukContainsAllSkAndGsiContainsAllUk;
 
         // Pushdown dml on single/partition table without replica for performance
         if (!doMultiWrite && canPush) {

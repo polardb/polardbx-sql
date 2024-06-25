@@ -22,9 +22,11 @@ import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.BytesSql;
 import com.alibaba.polardbx.common.jdbc.ParameterContext;
 import com.alibaba.polardbx.common.jdbc.Parameters;
+import com.alibaba.polardbx.common.jdbc.RawString;
 import com.alibaba.polardbx.common.model.sqljep.Comparative;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.common.properties.DynamicConfig;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.TStringUtil;
 import com.alibaba.polardbx.common.utils.logger.Logger;
@@ -160,6 +162,8 @@ import org.apache.calcite.sql.util.SqlShuttle;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Pair;
 import org.apache.calcite.util.Util;
+import org.apache.commons.lang.StringUtils;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
@@ -288,7 +292,7 @@ public class LogicalView extends TableScan {
 
     public LogicalView(TableScan scan, LockMode lockMode) {
         super(scan.getCluster(), scan.getTraitSet(), scan.getTable(), scan.getHints(), scan.getIndexNode(),
-            scan.getFlashback(), scan.getPartitions());
+            scan.getFlashback(), scan.getFlashbackOperator(), scan.getPartitions());
         this.dbType = DbType.MYSQL;
         this.tableNames.add(Util.last(table.getQualifiedName()));
         this.schemaName = table.getQualifiedName().size() == 2 ? table.getQualifiedName().get(0) :
@@ -309,6 +313,7 @@ public class LogicalView extends TableScan {
             newLogicalView.getHints(),
             newLogicalView.getIndexNode(),
             newLogicalView.getFlashback(),
+            newLogicalView.getFlashbackOperator(),
             newLogicalView.getPartitions());
         this.dbType = newLogicalView.getDbType();
         this.tableNames.addAll(newLogicalView.getTableNames());
@@ -553,8 +558,14 @@ public class LogicalView extends TableScan {
 
     private List<RelNode> getInnerInput(SqlSelect sqlTemplate, UnionOptHelper helper,
                                         ExecutionContext executionContext, boolean forceIgnoreRF) {
-
-        Map<String, List<List<String>>> targetTables = getTargetTables(executionContext);
+        Map<String, List<List<String>>> targetTables;
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> pruningMap =
+            OptimizerUtils.pruningInValue(this, executionContext);
+        if (pruningMap == null) {
+            targetTables = getTargetTables(executionContext);
+        } else {
+            targetTables = transformToTargetTables(pruningMap);
+        }
         if (forceIgnoreRF) {
             sqlTemplate = (SqlSelect) sqlTemplate.accept(new SqlShuttle() {
                 @Override
@@ -574,7 +585,9 @@ public class LogicalView extends TableScan {
             this,
             dbType,
             schemaName,
-            tableNames);
+            tableNames,
+            pruningMap
+        );
         phyTableScanbuilder.setUnionOptHelper(helper);
         return phyTableScanbuilder.build(executionContext);
     }
@@ -595,11 +608,33 @@ public class LogicalView extends TableScan {
         }
     }
 
+    protected Map<String, List<List<String>>> transformToTargetTables(
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> prunedParameters) {
+        Map<String, List<List<String>>> targetTables = new HashMap<>();
+        for (com.alibaba.polardbx.common.utils.Pair<String, List<String>> pair : prunedParameters.keySet()) {
+            String group = pair.getKey();
+            List<String> tableNames = pair.getValue();
+            List<List<String>> tablesList = targetTables.get(group);
+            if (tablesList == null) {
+                tablesList = new ArrayList<>();
+                targetTables.put(group, tablesList);
+            }
+            tablesList.add(tableNames);
+        }
+        return targetTables;
+    }
+
     protected Map<String, List<List<String>>> buildTargetTablesForPartitionTb(ExecutionContext executionContext) {
-        List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
-        filterPrunedResultBySelectedPartitions(resultList);
+        final List<PartPrunedResult> resultList = getPartPrunedResults(executionContext);
         Map<String, List<List<String>>> rs = PartitionPrunerUtils.buildTargetTablesByPartPrunedResults(resultList);
         return rs;
+    }
+
+    @NotNull
+    public List<PartPrunedResult> getPartPrunedResults(ExecutionContext executionContext) {
+        List<PartPrunedResult> resultList = PartitionPruner.prunePartitions(this, executionContext);
+        filterPrunedResultBySelectedPartitions(resultList);
+        return resultList;
     }
 
     private void validateSelectedPartitions(boolean isNewPartDb, PartitionInfo partInfo, boolean isJoin) {
@@ -1269,8 +1304,9 @@ public class LogicalView extends TableScan {
                 pw.item("XPlan", format.printToString(plan));
             }
         }
-
-        pw.itemIf("isDynamicParam", "true", pushDownOpt.couldDynamicPruning());
+        String pruningInfo = pruningInfo(executionContext);
+        boolean couldPruning = pushDownOpt.couldDynamicPruning();
+        pw.itemIf("pruningInfo", pruningInfo, couldPruning && StringUtils.isNotEmpty(pruningInfo));
 
         // FIXME generate correct param for LogicalView
         // StringBuilder builder = new StringBuilder();
@@ -1290,6 +1326,66 @@ public class LogicalView extends TableScan {
         // }
 
         return pw;
+    }
+
+    /**
+     * get pruning info, only for explain
+     */
+    private String pruningInfo(ExecutionContext executionContext) {
+        Set<Integer> indexes = pushDownOpt.getShardRelatedInTypeParamIndexes();
+        if (indexes == null || indexes.size() == 0) {
+            return "";
+        }
+        Map<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> map =
+            OptimizerUtils.pruningInValue(this, executionContext);
+        if (map == null || map.size() == 0) {
+            return "";
+        }
+        int fullInFullSize = 0;
+        int pruningSize = 0;
+        Parameters allParameters = executionContext.getParams();
+
+        for (Integer index : indexes) {
+            if (allParameters.getCurrentParameter().containsKey(index) &&
+                allParameters.getCurrentParameter().get(index).getValue() instanceof RawString) {
+                RawString rawString = (RawString) allParameters.getCurrentParameter().get(index).getValue();
+                fullInFullSize += rawString.size();
+            }
+        }
+
+        StringBuilder detail = new StringBuilder(", pruning detail:");
+        for (Map.Entry<com.alibaba.polardbx.common.utils.Pair<String, List<String>>, Parameters> entry : map.entrySet()) {
+
+            detail.append(entry.getKey().toString()).append("->(");
+            Parameters parameters = entry.getValue();
+            int pruningInSize = 0;
+            for (Integer index : indexes) {
+                if (parameters.getCurrentParameter().containsKey(index) &&
+                    parameters.getCurrentParameter().get(index).getValue() instanceof RawString) {
+                    RawString rawString = (RawString) parameters.getCurrentParameter().get(index).getValue();
+                    pruningInSize += rawString.size();
+                    detail.append(rawString.display()).append(",");
+                }
+            }
+            if (detail.charAt(detail.length() - 1) == ',') {
+                detail.deleteCharAt(detail.length() - 1);
+            }
+            detail.append(");");
+            pruningSize += fullInFullSize - pruningInSize;
+        }
+        if (pruningSize == 0) {
+            return "";
+        }
+
+        String info = "all size:" + fullInFullSize + "*" + map.values().size() + "(part), pruning size:" + pruningSize;
+        boolean outputDetail = executionContext.getParamManager().getBoolean(ConnectionParams.EXPLAIN_PRUNING_DETAIL);
+        if (outputDetail) {
+            if (detail.charAt(detail.length() - 1) == ';') {
+                detail.deleteCharAt(detail.length() - 1);
+            }
+            info = info + ", pruning time:" + executionContext.getPruningTime() + "ms" + detail;
+        }
+        return info;
     }
 
     public void setIsMGetEnabled(boolean isMGetEnabled) {
@@ -1570,7 +1666,7 @@ public class LogicalView extends TableScan {
         return PlannerUtils.guessShardCount(shardColumns, getRelShardInfo(executionContext), totalShardCount);
     }
 
-    protected int getTotalShardCount() {
+    public int getTotalShardCount() {
         TddlRuleManager ruleManager =
             PlannerContext.getPlannerContext(this).getExecutionContext().getSchemaManager(schemaName)
                 .getTddlRuleManager();
@@ -2468,5 +2564,16 @@ public class LogicalView extends TableScan {
 
     public void setFromMergeIndex(boolean fromMergeIndex) {
         this.fromMergeIndex = fromMergeIndex;
+    }
+
+    /**
+     * 一些特殊情况select 不可直接下推标识：
+     * 1、as of tso [expr], expr包含不确定性表达式, 需上层计算
+     */
+    public boolean unPushDown() {
+        if (getFlashback() != null) {
+            return !RexUtil.isDeterministic(getFlashback());
+        }
+        return false;
     }
 }

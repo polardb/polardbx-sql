@@ -98,8 +98,8 @@ import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalAnalyzeTable;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalChangeConsensusLeader;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckCci;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCheckGsi;
-import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalConvertAllSequences;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalClearFileStorage;
+import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalConvertAllSequences;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateDatabase;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFileStorage;
 import com.alibaba.polardbx.optimizer.core.rel.ddl.LogicalCreateFunction;
@@ -200,8 +200,8 @@ import org.apache.calcite.rel.ddl.AlterTableRepartition;
 import org.apache.calcite.rel.ddl.AlterTableSetTableGroup;
 import org.apache.calcite.rel.ddl.AnalyzeTable;
 import org.apache.calcite.rel.ddl.ChangeConsensusRole;
-import org.apache.calcite.rel.ddl.ConvertAllSequences;
 import org.apache.calcite.rel.ddl.ClearFileStorage;
+import org.apache.calcite.rel.ddl.ConvertAllSequences;
 import org.apache.calcite.rel.ddl.CreateDatabase;
 import org.apache.calcite.rel.ddl.CreateFileStorage;
 import org.apache.calcite.rel.ddl.CreateFunction;
@@ -255,6 +255,7 @@ import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.rex.RexOver;
 import org.apache.calcite.rex.RexShuttle;
 import org.apache.calcite.rex.RexSubQuery;
+import org.apache.calcite.rex.RexUtil;
 import org.apache.calcite.sql.SqlAddForeignKey;
 import org.apache.calcite.sql.SqlAlterTable;
 import org.apache.calcite.sql.SqlAlterTableAddPartition;
@@ -447,6 +448,12 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
         if (scanOrLookup instanceof LogicalView) {
             AccessPathRule.nomoralizeIndexNode((LogicalView) scanOrLookup);
         }
+        if (scan.getFlashback() != null) {
+            if (!RexUtil.isDeterministic(scan.getFlashback())) {
+                containUncertainValue = true;
+                existsNonPushDownFunc = true;
+            }
+        }
         return scanOrLookup;
     }
 
@@ -528,7 +535,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                     final RelOptTable indexTable = catalog.getTableForMember(ImmutableList.of(schemaName, indexName));
                     final LogicalTableScan columnarTableScan =
                         LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
-                            scan.getFlashback(),
+                            scan.getFlashback(), scan.getFlashbackOperator(),
                             null);
                     this.withIndexHint = true;
                     // remove force index for physical sql
@@ -564,7 +571,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
 
                 final LogicalTableScan indexTableScan =
                     LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null, scan.getFlashback(),
-                        null);
+                        scan.getFlashbackOperator(), null);
                 final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
                 this.withIndexHint = true;
 
@@ -600,7 +607,7 @@ public class ToDrdsRelVisitor extends RelShuttleImpl {
                         final RelOptTable indexTable = catalog.getTableForMember(indexTableNames);
                         final LogicalTableScan indexTableScan =
                             LogicalTableScan.create(scan.getCluster(), indexTable, scan.getHints(), null,
-                                scan.getFlashback(), null);
+                                scan.getFlashback(), scan.getFlashbackOperator(), null);
                         final LogicalIndexScan index = new LogicalIndexScan(indexTable, indexTableScan, this.lockMode);
                         this.withIndexHint = true;
 

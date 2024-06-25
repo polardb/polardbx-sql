@@ -94,7 +94,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.getDefaultExprEvalFieldsMapping(),
             insert.isPushablePrimaryKeyCheck(),
             insert.isPushableForeignConstraintCheck(),
-            insert.isModifyForeignKey()
+            insert.isModifyForeignKey(),
+            insert.isUkContainsAllSkAndGsiContainsAllUk()
         );
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.primaryInsertWriter = primaryInsertWriter;
@@ -130,7 +131,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
                              List<Integer> inputToEvalFieldsMapping, List<ColumnMeta> defaultExprColMetas,
                              List<RexNode> defaultExprColRexNodes, List<Integer> defaultExprEvalFieldsMapping,
                              boolean pushablePrimaryKeyCheck, boolean pushableForeignConstraintCheck,
-                             boolean modifyForeignKey) {
+                             boolean modifyForeignKey, boolean ukContainsAllSkAndGsiContainsAllUk) {
         super(cluster, traitSet, table, catalogReader, input, operation, flattened, insertRowType, keywords,
             duplicateKeyUpdateList, batchSize, appendedColumnIndex, hints, tableInfo, primaryInsertWriter,
             gsiInsertWriters, autoIncParamIndex, ukColumnNamesList, beforeUkMapping, afterUkMapping, afterUgsiUkMapping,
@@ -140,7 +141,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
             unOpitimizedDuplicateKeyUpdateList, pushDownInsertWriter, gsiInsertIgnoreWriter, primaryDeleteWriter,
             gsiDeleteWriters, usePartFieldChecker, columnMetaMap, ukContainGeneratedColumn, evalRowColMetas,
             genColRexNodes, inputToEvalFieldsMapping, defaultExprColMetas, defaultExprColRexNodes,
-            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck, modifyForeignKey);
+            defaultExprEvalFieldsMapping, pushablePrimaryKeyCheck, pushableForeignConstraintCheck, modifyForeignKey,
+            ukContainsAllSkAndGsiContainsAllUk);
         this.primaryRelocateWriter = primaryRelocateWriter;
         this.gsiRelocateWriters = gsiRelocateWriters;
         this.broadCastReplaceScaleOutWriter = broadCastReplaceScaleOutWriter;
@@ -205,7 +207,8 @@ public class LogicalReplace extends LogicalInsertIgnore {
             getDefaultExprEvalFieldsMapping(),
             isPushablePrimaryKeyCheck(),
             isPushableForeignConstraintCheck(),
-            isModifyForeignKey());
+            isModifyForeignKey(),
+            isUkContainsAllSkAndGsiContainsAllUk());
         return newLogicalReplace;
     }
 
@@ -234,7 +237,7 @@ public class LogicalReplace extends LogicalInsertIgnore {
             insert.getUnOptimizedDuplicateKeyUpdateList(), insert.getEvalRowColMetas(), insert.getGenColRexNodes(),
             insert.getInputToEvalFieldsMapping(), insert.getDefaultExprColMetas(), insert.getDefaultExprColRexNodes(),
             insert.getDefaultExprEvalFieldsMapping(), insert.isPushablePrimaryKeyCheck(),
-            insert.isPushableForeignConstraintCheck(), isModifyForeignKey());
+            insert.isPushableForeignConstraintCheck(), isModifyForeignKey(), isUkContainsAllSkAndGsiContainsAllUk());
 
         final InsertWriter replaceWriter = new InsertWriter(primaryWriter.getTargetTable(), copied);
         return replaceWriter.getInput(executionContext);

@@ -801,4 +801,35 @@ public class OnlineModifyColumnTest extends DDLBaseNewDBTestCase {
         sql = String.format("alter table %s modify column b decimal(12, 2)," + USE_OMC_ALGORITHM, tableName);
         JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
     }
+
+    @Test
+    public void testOnlineModifyColumnWithUGsi() {
+        String tableName = "omc_test_ugsi" + RandomUtils.getStringBetween(1, 5);
+        dropTableIfExists(tableName);
+        String sql = String.format(
+            "create table %s (a char(32) primary key, b char(32), unique global index ugsi_b(b) partition by key(b) partitions 64) partition by key(`a`) partitions 3",
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = "insert into " + tableName
+            + " values('7e6654a4dadc99g248c8744028e362f0', '2a5996ac96da576b83b862s3g78ceddb')";
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "alter table %s modify column a char(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin," + USE_OMC_ALGORITHM,
+            tableName);
+        JdbcUtil.executeUpdateSuccess(tddlConnection, sql);
+
+        sql = String.format(
+            "select count(1) from %s force index(usgi_b) where b = '2a5996ac96da576b83b862s3g78ceddb'", tableName);
+        ResultSet rs1 = JdbcUtil.executeQuerySuccess(tddlConnection, sql);
+        try {
+            Assert.assertTrue(rs1.next());
+            Assert.assertEquals(rs1.getInt(1), 1);
+        } catch (SQLException e) {
+            throw new RuntimeException("", e);
+        } finally {
+            JdbcUtil.close(rs1);
+        }
+    }
 }

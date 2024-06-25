@@ -166,6 +166,8 @@ public class LogicalInsert extends TableModify {
     protected List<RexNode> defaultExprColRexNodes = null;
     protected List<Integer> defaultExprEvalFieldsMapping = null;
 
+    protected boolean ukContainsAllSkAndGsiContainsAllUk = false;
+
     public LogicalInsert(TableModify modify) {
         this(modify.getCluster(),
             modify.getTraitSet(),
@@ -218,7 +220,8 @@ public class LogicalInsert extends TableModify {
                          List<RexNode> genColRexNodes, List<Integer> inputToEvalFieldsMapping,
                          List<ColumnMeta> defaultExprColMetas, List<RexNode> defaultExprColRexNodes,
                          List<Integer> defaultExprEvalFieldsMapping, boolean pushablePrimaryKeyCheck,
-                         boolean pushableForeignConstraintCheck, boolean modifyForeignKey) {
+                         boolean pushableForeignConstraintCheck, boolean modifyForeignKey,
+                         boolean ukContainsAllSkAndGsiContainsAllUk) {
         super(cluster, traitSet, table, catalogReader, input, operation, null, null, flattened, keywords, batchSize,
             appendedColumnIndex, hints, tableInfo);
         this.duplicateKeyUpdateList = duplicateKeyUpdateList;
@@ -239,6 +242,7 @@ public class LogicalInsert extends TableModify {
         this.pushablePrimaryKeyCheck = pushablePrimaryKeyCheck;
         this.pushableForeignConstraintCheck = pushableForeignConstraintCheck;
         this.modifyForeignKey = modifyForeignKey;
+        this.ukContainsAllSkAndGsiContainsAllUk = ukContainsAllSkAndGsiContainsAllUk;
     }
 
     /**
@@ -852,7 +856,8 @@ public class LogicalInsert extends TableModify {
             getDefaultExprEvalFieldsMapping(),
             isPushablePrimaryKeyCheck(),
             isPushableForeignConstraintCheck(),
-            isModifyForeignKey());
+            isModifyForeignKey(),
+            isUkContainsAllSkAndGsiContainsAllUk());
         newLogicalInsert.sqlTemplate = sqlTemplate;
         newLogicalInsert.literalColumnIndex = literalColumnIndex;
         newLogicalInsert.seqColumnIndex = seqColumnIndex;
@@ -1220,5 +1225,13 @@ public class LogicalInsert extends TableModify {
 
     public void setModifyForeignKey(boolean modifyForeignKeys) {
         this.modifyForeignKey = modifyForeignKeys;
+    }
+
+    public boolean isUkContainsAllSkAndGsiContainsAllUk() {
+        return ukContainsAllSkAndGsiContainsAllUk;
+    }
+
+    public void setUkContainsAllSkAndGsiContainsAllUk(boolean ukContainsAllSkAndGsiContainsAllUk) {
+        this.ukContainsAllSkAndGsiContainsAllUk = ukContainsAllSkAndGsiContainsAllUk;
     }
 }

@@ -121,9 +121,6 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
 
     private static ThreadPoolExecutor executor;
 
-    /**
-     * schemaName:table name:columns name -> sketch
-     */
     private final Map<String, Long> cardinalitySketch = Maps.newConcurrentMap();
 
     private Map<String, String> correctionsMap = Maps.newConcurrentMap();
@@ -369,20 +366,19 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
         CacheLine cacheLine = getCacheLine(schema, logicalTableName);
         Long cardinality = cardinalitySketch.get(buildSketchKey(schema, logicalTableName, columnName));
+
+        if (fromOptimizer) {
+            cacheLine.setLastAccessTime(unixTimeStamp());
+        }
         if (DynamicConfig.getInstance().enableHll() &&
-            cardinality != null &&
-            cardinality != -1 &&
-            // exclude outliers
-            !isCardinalityOutliers(cardinality.longValue(), cacheLine)) {
+            !isCardinalityOutliers(cardinality, columnName, cacheLine)) {
             StatisticTrace statisticTrace = isNeedTrace ?
                 StatisticUtils.buildTrace(schema + "," + logicalTableName + "," + columnName,
                     "getCardinality", cardinality, HLL_SKETCH,
                     sds.ndvModifyTime(schema, logicalTableName, columnName), "") : null;
             return StatisticResult.build(HLL_SKETCH).setValue(cardinality, statisticTrace);
         }
-        if (fromOptimizer) {
-            cacheLine.setLastAccessTime(unixTimeStamp());
-        }
+
         Map<String, Long> cardinalityMap = cacheLine.getCardinalityMap();
         if (cardinalityMap != null) {
             cardinality = cardinalityMap.get(columnName.toLowerCase());
@@ -408,9 +404,21 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
         }
     }
 
-    private boolean isCardinalityOutliers(long cardinality, CacheLine cacheLine) {
-        if (cardinality == 0L && cacheLine.getRowCount() > 0) {
+    private boolean isCardinalityOutliers(Long cardinality, String columnName, CacheLine cacheLine) {
+        if (StringUtils.isEmpty(columnName) || cacheLine == null) {
+            throw new IllegalArgumentException("columnName or cacheLine is null");
+        }
+        if (cardinality == null || cardinality < 0) {
             return true;
+        } else if (cardinality == 0L) {
+            boolean topNNull = cacheLine.getTopN(columnName) == null;
+            Histogram histogram =
+                cacheLine.getHistogramMap() == null ? null : cacheLine.getHistogramMap().get(columnName);
+            boolean bothNull = topNNull && histogram == null;
+            // if rowcount > 0 and column topn/histogram has values, then cardinality(ndv) couldn't be 0
+            if (cacheLine.getRowCount() > 0 && !bothNull) {
+                return true;
+            }
         }
         return false;
     }
@@ -1239,6 +1247,13 @@ public class StatisticManager extends AbstractLifecycle implements StatisticServ
     @Override
     public String workload() {
         return null;
+    }
+
+    /**
+     * schemaName:table name:columns name -> sketch
+     */
+    Map<String, Long> getCardinalitySketch() {
+        return cardinalitySketch;
     }
 
     public enum AutoAnalyzeState {

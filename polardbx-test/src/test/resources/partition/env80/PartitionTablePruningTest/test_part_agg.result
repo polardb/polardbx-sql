@@ -7,10 +7,10 @@ PARTITION BY HASH (a) PARTITIONS 4;
 SHOW CREATE TABLE tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
-	`a` bigint(20) NOT NULL,
-	`b` bigint(20) NOT NULL,
+	`a` bigint NOT NULL,
+	`b` bigint NOT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
 PARTITION BY KEY(`a`)
 PARTITIONS 4
 INSERT INTO tbl
@@ -58,10 +58,10 @@ PARTITION BY RANGE (a) (
 SHOW CREATE TABLE tbl;
 Table,Create Table
 tbl,CREATE TABLE `tbl` (
-	`a` bigint(20) NOT NULL,
-	`b` bigint(20) NOT NULL,
+	`a` bigint NOT NULL,
+	`b` bigint NOT NULL,
 	KEY `auto_shard_key_a` USING BTREE (`a`)
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 DEFAULT COLLATE = utf8mb4_general_ci
 PARTITION BY RANGE(`a`)
 (PARTITION p0 VALUES LESS THAN (100) ENGINE = InnoDB,
  PARTITION p1 VALUES LESS THAN (200) ENGINE = InnoDB,

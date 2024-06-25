@@ -36,6 +36,10 @@ public class CollationHandlers {
         new Utf8mb4CharsetHandler(CollationName.UTF8MB4_0900_AI_CI).getCollationHandler();
     public final static CollationHandler COLLATION_HANDLER_UTF8MB4_UNICODE_520_CI =
         new Utf8mb4CharsetHandler(CollationName.UTF8MB4_UNICODE_520_CI).getCollationHandler();
+
+    public final static CollationHandler COLLATION_HANDLER_UTF8MB4_ZH_0900_AS_CS =
+        new Utf8mb4CharsetHandler(CollationName.UTF8MB4_ZH_0900_AS_CS).getCollationHandler();
+
     public final static CollationHandler COLLATION_HANDLER_UTF8MB4_BIN =
         new Utf8mb4CharsetHandler(CollationName.UTF8MB4_BIN).getCollationHandler();
     public final static CollationHandler COLLATION_HANDLER_UTF16_GENERAL_CI =

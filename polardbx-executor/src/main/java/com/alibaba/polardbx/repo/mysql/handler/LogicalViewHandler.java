@@ -82,7 +82,8 @@ public class LogicalViewHandler extends HandlerCommon {
             params = executionContext.getParams().getCurrentParameter();
         }
         ReplaceCallWithLiteralVisitor visitor = null;
-        if (executionContext.getSqlType() != SqlType.SELECT) {
+        //不是select类型，或包含 flashback，需要替换不确定性函数
+        if (executionContext.getSqlType() != SqlType.SELECT || logicalView.getFlashback() != null) {
             visitor = new ReplaceCallWithLiteralVisitor(Lists.newArrayList(),
                 params, RexUtils.getEvalFunc(executionContext), true);
         }

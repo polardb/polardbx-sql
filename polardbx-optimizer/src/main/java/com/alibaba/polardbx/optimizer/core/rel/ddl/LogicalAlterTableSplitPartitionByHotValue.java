@@ -251,7 +251,7 @@ public class LogicalAlterTableSplitPartitionByHotValue extends BaseDdlOperation 
         preparedData.setTaskType(ComplexTaskMetaManager.ComplexTaskType.SPLIT_HOT_VALUE);
         preparedData.setHotKeyPartitionName(hotKeyPartNamePrefix);
         preparedData.setSplitPointInfos(splitPointInfos);
-        preparedData.prepareInvisiblePartitionGroup();
+        preparedData.prepareInvisiblePartitionGroup(hasSubPartition);
         preparedData.setSourceSql(((SqlAlterTable) alterTable.getSqlNode()).getSourceSql());
         preparedData.setTargetImplicitTableGroupName(sqlAlterTable.getTargetImplicitTableGroupName());
         if (preparedData.needFindCandidateTableGroup()) {

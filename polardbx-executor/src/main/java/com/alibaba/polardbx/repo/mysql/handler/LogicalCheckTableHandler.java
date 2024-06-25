@@ -471,7 +471,7 @@ public class LogicalCheckTableHandler extends HandlerCommon {
         }
 
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null) {
+            if (bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean gsiMetaBean = bean.gsiMetaBean;
                 doCheckForOnePartTableTopology(schemaName, gsiMetaBean.indexName, executionContext, result,
                     logicalTableName);

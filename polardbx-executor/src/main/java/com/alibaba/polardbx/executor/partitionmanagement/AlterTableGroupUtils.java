@@ -2924,18 +2924,70 @@ public class AlterTableGroupUtils {
             }
         }
 
-        List<String> newPartitionsStr = new ArrayList<>();
-        for (SqlPartition newSqlPartition : newPartitions) {
-            newPartitionsStr.add(newSqlPartition.toString());
+        boolean useSubPart = partitionInfo.getPartitionBy().getSubPartitionBy() != null;
+        boolean useSubPartTemp = false;
+        if (useSubPart) {
+            useSubPartTemp = partitionInfo.getPartitionBy().getSubPartitionBy().isUseSubPartTemplate();
         }
 
-        PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
-        tobePrintDefaultSpec.setLogical(false);
-        newPartitionsStr.add(
-            tobePrintDefaultSpec.toString()
-        );
-        String finalNewpartsExpr = String.join(", ", newPartitionsStr);
-        return MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+        if (!useSubPart || useSubPartTemp) {
+            /**
+             * Only for 1st-level-part of list
+             */
+            List<String> newPartitionsStr = new ArrayList<>();
+            for (SqlPartition newSqlPartition : newPartitions) {
+                newPartitionsStr.add(newSqlPartition.toString());
+            }
+
+            PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+            tobePrintDefaultSpec.setLogical(false);
+            newPartitionsStr.add(
+                tobePrintDefaultSpec.toString()
+            );
+            String finalNewPartsExpr = String.join(", ", newPartitionsStr);
+            String finalSplitSql =
+                MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewPartsExpr);
+            return finalSplitSql;
+        } else {
+            /**
+             * For 1st-level-part with specifying 2nd-level-part of list
+             */
+
+            /**
+             * Here only handle the add partition operations
+             * of non-template-subpartition list/list_columns containing default partition or
+             * non-template-subpartition range/range_columns containing maxvalue partition
+             */
+
+            List<String> newPartitionsStr = new ArrayList<>();
+            for (SqlPartition newSqlPartition : newPartitions) {
+                newPartitionsStr.add(newSqlPartition.toString());
+            }
+
+            PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+            newPartitionsStr.add(
+                tobePrintDefaultSpec.toString()
+            );
+
+            String finalNewpartsExpr = String.join(", ", newPartitionsStr);
+            String finalSplitSql =
+                MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+            return finalSplitSql;
+        }
+
+//        List<String> newPartitionsStr = new ArrayList<>();
+//        for (SqlPartition newSqlPartition : newPartitions) {
+//            newPartitionsStr.add(newSqlPartition.toString());
+//        }
+//
+//        PartitionSpec tobePrintDefaultSpec = defaultSpec.copy();
+//        tobePrintDefaultSpec.setLogical(false);
+//        newPartitionsStr.add(
+//            tobePrintDefaultSpec.toString()
+//        );
+//        String finalNewpartsExpr = String.join(", ", newPartitionsStr);
+//        String finalSplitSql = MessageFormat.format(SPLIT_TABLEGROUP_SQL, objectName, defaultSpec.getName(), finalNewpartsExpr);
+//        return finalSplitSql;
     }
 
     public static String convertAddListRelToSplitListSqlForSubPartition(LogicalAlterTableAddPartition addPartitionPlan,

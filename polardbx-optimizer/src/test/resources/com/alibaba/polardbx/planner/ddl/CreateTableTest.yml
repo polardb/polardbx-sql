@@ -1,0 +1,21 @@
+SQL:
+  - sql: |
+      alter table t1 partition by key(b);
+    plan: |
+      logicalddl(sql="alter table t1 partition by key (b);")
+  - sql: |
+      alter table t1 ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 16;
+    plan: |
+      logicalddl(sql="alter table t1 	row_format = compressed key_block_size = 16;")
+DDL:
+  t1:
+    create table `t1` (`a` int, b int, primary key (a) KEY_BLOCK_SIZE = 16) ROW_FORMAT = COMPRESSED KEY_BLOCK_SIZE = 8;
+
+STATISTICS:
+  t1:
+    595915652
+CONFIG:
+  ENABLE_BKA_JOIN:
+    null
+  defaltxxAPPName.isNew:
+    true

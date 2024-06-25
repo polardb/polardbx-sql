@@ -20,6 +20,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.jdbc.IDataSource;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
+import com.alibaba.polardbx.common.properties.ConnectionProperties;
 import com.alibaba.polardbx.common.utils.AsyncUtils;
 import com.alibaba.polardbx.common.utils.GeneralUtil;
 import com.alibaba.polardbx.common.utils.LoggerUtil;
@@ -49,6 +50,7 @@ import com.alibaba.polardbx.optimizer.exception.TableNotFoundException;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
+import org.eclipse.jetty.util.StringUtil;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -91,10 +93,6 @@ public class NDVShardSketch {
     public static final String HYPER_LOG_LOG_SQL = "SELECT HYPERLOGLOG(%1$2s) AS HLL FROM %2$2s";
 
     public static final String HYPER_LOG_LOG_MUL_COLUMNS_SQL = "SELECT HYPERLOGLOG(concat(%1$2s)) AS HLL FROM %2$2s";
-
-    public static final String COLUMNAR_HINT =
-        "/*+TDDL:cmd_extra(ENABLE_DIRECT_PLAN=false ENABLE_SORT_AGG=false ENABLE_POST_PLANNER=false "
-            + "WORKLOAD_TYPE=AP ENABLE_COLUMNAR_OPTIMIZER=true OPTIMIZER_TYPE='columnar')*/";
 
     /**
      * schemaName:table name:columns name
@@ -521,7 +519,7 @@ public class NDVShardSketch {
         boolean columnar = false;
         // try columnar sketch first
         cardinality = sketchByColumnar(shardKey, shardPart, dnCardinalityArray, sketchArray, gmtCreated, gmtUpdate,
-            cardinalityTime, sketchTime);
+            cardinalityTime, sketchTime, ec);
         if (cardinality >= 0) {
             columnar = true;
         }
@@ -595,9 +593,9 @@ public class NDVShardSketch {
     private static long sketchByColumnar(String shardKey, String[] shardPart,
                                          long[] dnCardinalityArray, byte[][] sketchArray,
                                          long[] gmtCreated, long[] gmtUpdate,
-                                         AtomicLong cardinalityTime, AtomicLong sketchTime) {
-        // check whether to use columnar sketch
-        if (!InstConfUtil.getBool(ConnectionParams.ENABLE_NDV_USE_COLUMNAR)) {
+                                         AtomicLong cardinalityTime, AtomicLong sketchTime, ExecutionContext ec) {
+        String hint = genColumnarHllHint(ec);
+        if (StringUtil.isEmpty(hint)) {
             return -1;
         }
         String[] shardKeys = shardKey.split(":");
@@ -608,7 +606,7 @@ public class NDVShardSketch {
         if (tm == null) {
             return -1;
         }
-        // must be a table with columanr indexes
+        // must be a table with columnar indexes
         if (GeneralUtil.isEmpty(tm.getColumnarIndexPublished())) {
             return -1;
         }
@@ -618,7 +616,9 @@ public class NDVShardSketch {
         try (Connection connection = ExecutorContext.getContext(schemaName).getInnerConnectionManager()
             .getConnection(schemaName);
             Statement stmt = connection.createStatement()) {
-            ResultSet rs = stmt.executeQuery(COLUMNAR_HINT + String.format(HYPER_LOG_LOG_SQL, columnsName, tableName));
+            String sql = hint + String.format(HYPER_LOG_LOG_SQL, columnsName, tableName);
+            logger.info(sql);
+            ResultSet rs = stmt.executeQuery(sql);
             if (rs.next()) {
                 cardinality = rs.getLong(1);
             }
@@ -637,6 +637,37 @@ public class NDVShardSketch {
             gmtUpdate[i] = start;
         }
         return cardinality;
+    }
+
+    public static String genColumnarHllHint(ExecutionContext ec) {
+        boolean isNdv = (ec == null) ?
+            InstConfUtil.getBool(ConnectionParams.ENABLE_NDV_USE_COLUMNAR) :
+            ec.getParamManager().getBoolean(ConnectionParams.ENABLE_NDV_USE_COLUMNAR);
+
+        boolean isMppNdv = (ec == null) ?
+            InstConfUtil.getBool(ConnectionParams.ENABLE_MPP_NDV_USE_COLUMNAR) :
+            ec.getParamManager().getBoolean(ConnectionParams.ENABLE_MPP_NDV_USE_COLUMNAR);
+        if (!(isNdv || isMppNdv)) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("/*+TDDL:cmd_extra(");
+        // disable fast path
+        sb.append(ConnectionProperties.ENABLE_DIRECT_PLAN).append("=false ");
+        sb.append(ConnectionProperties.ENABLE_POST_PLANNER).append("=false ");
+        sb.append(ConnectionProperties.ENABLE_INDEX_SELECTION).append("=false ");
+        sb.append(ConnectionProperties.ENABLE_SORT_AGG).append("=false ");
+
+        // use columnar optimizer
+        sb.append(ConnectionProperties.WORKLOAD_TYPE).append("=AP ");
+        sb.append(ConnectionProperties.ENABLE_COLUMNAR_OPTIMIZER).append("=true ");
+
+        if (isMppNdv) {
+            // use master mpp
+            sb.append(ConnectionProperties.ENABLE_HTAP).append("=true ");
+            sb.append(ConnectionProperties.ENABLE_MASTER_MPP).append("=true ");
+        }
+        sb.append(")*/");
+        return sb.toString();
     }
 
     private static void sketchOnePart(String shardKey, String[] shardPart,

@@ -68,6 +68,7 @@ import static com.alibaba.polardbx.common.TddlConstants.LONG_ENOUGH_TIMEOUT_FOR_
  *
  * @author luoyanxin
  */
+@Deprecated
 public class PhysicalBackfillExtractor {
 
     private long lastUpdateTime = 0l;
@@ -378,7 +379,8 @@ public class PhysicalBackfillExtractor {
                                 bean.physicalDb,
                                 detailInfoFieldJSON.getSourceHostAndPort().getKey(),
                                 detailInfoFieldJSON.getSourceHostAndPort().getValue(),
-                                PhysicalBackfillUtils.convertToCfgFileName(bean.sourceDirName), true, ec);
+                                PhysicalBackfillUtils.convertToCfgFileName(bean.sourceDirName,
+                                    PhysicalBackfillUtils.CFG), true, ec);
                             PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, bean.sourceGroupName,
                                 bean.physicalDb,
                                 detailInfoFieldJSON.getSourceHostAndPort().getKey(),
@@ -499,13 +501,15 @@ public class PhysicalBackfillExtractor {
             String srcDir;
             if (initBean.isEmpty()) {
                 srcDir = PhysicalBackfillUtils.convertToCfgFileName(
-                    srcFileAndDir.getValue() + PhysicalBackfillUtils.TEMP_FILE_POSTFIX);
+                    srcFileAndDir.getValue() + PhysicalBackfillUtils.TEMP_FILE_POSTFIX, PhysicalBackfillUtils.CFG);
             } else {
-                srcDir = PhysicalBackfillUtils.convertToCfgFileName(srcFileAndDir.getValue());
+                srcDir =
+                    PhysicalBackfillUtils.convertToCfgFileName(srcFileAndDir.getValue(), PhysicalBackfillUtils.CFG);
             }
 
             String tarFileName = targetFileAndDir.getKey();
-            String tarDir = PhysicalBackfillUtils.convertToCfgFileName(targetFileAndDir.getValue());
+            String tarDir =
+                PhysicalBackfillUtils.convertToCfgFileName(targetFileAndDir.getValue(), PhysicalBackfillUtils.CFG);
             copyCfgFile(Pair.of(srcFileName, srcDir), srcDbAndGroup, sourceHostIpAndPort,
                 Pair.of(tarFileName, tarDir), targetDbAndGroup, targetHost, consumer);
 
@@ -635,7 +639,8 @@ public class PhysicalBackfillExtractor {
 
             PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, srcDbAndGroup.getValue(), srcDbAndGroup.getKey(),
                 ipPortPair.getKey(), ipPortPair.getValue(),
-                PhysicalBackfillUtils.convertToCfgFileName(tempFileAndDir.getValue()), false, ec);
+                PhysicalBackfillUtils.convertToCfgFileName(tempFileAndDir.getValue(), PhysicalBackfillUtils.CFG), false,
+                ec);
 
             PhysicalBackfillUtils.deleteInnodbDataFile(schemaName, srcDbAndGroup.getValue(), srcDbAndGroup.getKey(),
                 ipPortPair.getKey(), ipPortPair.getValue(), tempFileAndDir.getValue(), false, ec);
@@ -815,7 +820,8 @@ public class PhysicalBackfillExtractor {
                         String directory = srcFileAndDir.getValue();
 
                         if (!handlerIbdFile) {
-                            directory = PhysicalBackfillUtils.convertToCfgFileName(directory);
+                            directory =
+                                PhysicalBackfillUtils.convertToCfgFileName(directory, PhysicalBackfillUtils.CFG);
                         }
 
                         srcFileInfoBuilder.setFileName(fileName);

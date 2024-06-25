@@ -521,6 +521,8 @@ public class SqlCreateTable extends SqlCreate {
                 || trimmedComment.equalsIgnoreCase("load_s3")
                 || trimmedComment.equalsIgnoreCase("load_local_disk")
                 || trimmedComment.equalsIgnoreCase("load_nfs")
+                || trimmedComment.equalsIgnoreCase("load_s3")
+                || trimmedComment.equalsIgnoreCase("load_abs")
                 || trimmedComment.equalsIgnoreCase("load_external_disk");
         }
 
@@ -2738,8 +2740,7 @@ public class SqlCreateTable extends SqlCreate {
 
             Set<String> orderedIndexColumnNames = new LinkedHashSet<>(shardingKey);
             final String suffix = buildUnifyIndexName(orderedIndexColumnNames, 45);
-            final String indexName = addFkIndex ? (foreignKeyIndexName == null ?
-                buildForeignKeyIndexName(existingIndexNames, suffix) : foreignKeyIndexName) :
+            final String indexName = addFkIndex ? buildForeignKeyName(foreignKeyIndexName, existingIndexNames, suffix) :
                 buildIndexName(existingIndexNames, suffix);
 
             final MySqlTableIndex mySqlTableIndex = new MySqlTableIndex();
@@ -2763,6 +2764,13 @@ public class SqlCreateTable extends SqlCreate {
             stmt.getTableElementList().add(mySqlTableIndex);
             existingIndexNames.add(indexName);
         }
+    }
+
+    public static String buildForeignKeyName(String foreignKeyIndexName, Set<String> existingIndexNames,
+                                              String suffix) {
+        return foreignKeyIndexName == null ?
+            buildForeignKeyIndexName(existingIndexNames, suffix) :
+            SqlIdentifier.surroundWithBacktick(foreignKeyIndexName);
     }
 
     private static List<IndexColumnInfo> preparAutoCompositeIndexs(List<String> shardKeys,

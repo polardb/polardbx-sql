@@ -23,6 +23,7 @@ import com.alibaba.polardbx.common.exception.TddlRuntimeException;
 import com.alibaba.polardbx.common.exception.code.ErrorCode;
 import com.alibaba.polardbx.common.properties.ConnectionParams;
 import com.alibaba.polardbx.common.properties.ConnectionProperties;
+import com.alibaba.polardbx.executor.backfill.Loader;
 import com.alibaba.polardbx.executor.common.ExecutorContext;
 import com.alibaba.polardbx.executor.cursor.Cursor;
 import com.alibaba.polardbx.executor.cursor.impl.AffectRowCursor;
@@ -39,13 +40,11 @@ import com.alibaba.polardbx.optimizer.utils.PhyTableOperationUtil;
 import com.alibaba.polardbx.optimizer.utils.QueryConcurrencyPolicy;
 import com.alibaba.polardbx.statistics.SQLRecorderLogger;
 import org.apache.calcite.rel.RelNode;
-import org.apache.commons.lang3.StringUtils;
 
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import static com.alibaba.polardbx.executor.utils.ExecUtils.getQueryConcurrencyPolicy;
 
@@ -69,6 +68,9 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
         BackfillExecutor backfillExecutor =
             new BackfillExecutor((List<RelNode> inputs, ExecutionContext executionContext) -> {
                 QueryConcurrencyPolicy queryConcurrencyPolicy = getQueryConcurrencyPolicy(executionContext);
+                if (Loader.canUseBackfillReturning(executionContext, dstSchemaName)) {
+                    queryConcurrencyPolicy = QueryConcurrencyPolicy.GROUP_CONCURRENT_BLOCK;
+                }
                 List<Cursor> inputCursors = new ArrayList<>(inputs.size());
                 executeWithConcurrentPolicy(executionContext, inputs, queryConcurrencyPolicy, inputCursors,
                     dstSchemaName);
@@ -162,7 +164,7 @@ public class LogicalTableDataMigrationBackfillHandler extends HandlerCommon {
             metaManager.getTableAndIndexMeta(primaryTableName, EnumSet.of(IndexStatus.PUBLIC));
 
         for (GsiMetaManager.GsiTableMetaBean bean : meta.getTableMeta().values()) {
-            if (bean.gsiMetaBean != null) {
+            if (bean.gsiMetaBean != null && !bean.gsiMetaBean.columnarIndex) {
                 GsiMetaManager.GsiIndexMetaBean bean1 = bean.gsiMetaBean;
                 allGsiNames.add(bean1.indexName);
             }

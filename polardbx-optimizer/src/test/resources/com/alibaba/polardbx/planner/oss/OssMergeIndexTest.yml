@@ -20,11 +20,10 @@ SQL:
         hashagg(group="l_orderkey,l_partkey,l_suppkey,l_tax,l_linenumber")
           unionall(concurrent=true)
             gather(concurrent=true)
-              osstablescan(tables="lineitem[p1,p2,p3,...p128]", shardcount=128, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_orderkey` = ?)", isdynamicparam="true")
+              osstablescan(tables="lineitem[p1,p2,p3,...p128]", shardcount=128, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_orderkey` = ?)")
+            osstablescan(tables="lineitem[p107]", sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where ((`l_suppkey` = ?) and (`l_partkey` = ?))")
             gather(concurrent=true)
-              osstablescan(tables="lineitem[p107]", sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where ((`l_suppkey` = ?) and (`l_partkey` = ?))", isdynamicparam="true")
-            gather(concurrent=true)
-              osstablescan(tables="lineitem[p4,p16,p128]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_partkey` in(?))", isdynamicparam="true")
+              osstablescan(tables="lineitem[p4,p16,p128]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_partkey` in(?))", pruninginfo="all size:3*3(part), pruning size:6")
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_OSS_INDEX_SELECTION=true)*/select l_tax from lineitem where ((l_partkey = 1 and l_suppkey = 2) or ( l_partkey in (2,3,4))) or (l_orderkey between 3  and 70);
     plan: |
@@ -32,17 +31,15 @@ SQL:
         hashagg(group="l_orderkey,l_partkey,l_suppkey,l_tax,l_linenumber")
           unionall(concurrent=true)
             gather(concurrent=true)
-              osstablescan(tables="lineitem[p1,p2,p3,...p128]", shardcount=128, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_orderkey` between ? and ?)", isdynamicparam="true")
+              osstablescan(tables="lineitem[p1,p2,p3,...p128]", shardcount=128, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_orderkey` between ? and ?)")
+            osstablescan(tables="lineitem[p107]", sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where ((`l_suppkey` = ?) and (`l_partkey` = ?))")
             gather(concurrent=true)
-              osstablescan(tables="lineitem[p107]", sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where ((`l_suppkey` = ?) and (`l_partkey` = ?))", isdynamicparam="true")
-            gather(concurrent=true)
-              osstablescan(tables="lineitem[p4,p16,p128]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_partkey` in(?))", isdynamicparam="true")
+              osstablescan(tables="lineitem[p4,p16,p128]", shardcount=3, sql="select `l_orderkey`, `l_partkey`, `l_suppkey`, `l_tax`, `l_linenumber` from `lineitem` as `lineitem` where (`l_partkey` in(?))", pruninginfo="all size:3*3(part), pruning size:6")
   - sql: |
       /*+TDDL:cmd_extra(ENABLE_OSS_INDEX_SELECTION=true)*/select l_tax from lineitem where ((l_partkey = 1 and l_suppkey = 2) or ( l_partkey in (2,3,4))) and (l_orderkey between 3  and 70);
     plan: |
       gather(concurrent=true)
-        osstablescan(tables="lineitem[p4,p16,p107,p128]", shardcount=4, sql="select `l_tax` from `lineitem` as `lineitem` where ((`l_orderkey` between ? and ?) and (((`l_partkey` = ?) and (`l_suppkey` = ?)) or (`l_partkey` in(?))))", isdynamicparam="true")
-
+        osstablescan(tables="lineitem[p4,p16,p107,p128]", shardcount=4, sql="select `l_tax` from `lineitem` as `lineitem` where ((`l_orderkey` between ? and ?) and (((`l_partkey` = ?) and (`l_suppkey` = ?)) or (`l_partkey` in(?))))", pruninginfo="all size:3*4(part), pruning size:6")
 
 DDL:
   lineitem:
@@ -211,7 +208,7 @@ STATISTICS:
   lineitem.l_tax.sample_rate:
     1.6666707E-4
   lineitem.l_partkey.composite_cardinality:
-    -11819
+    11819
 CONFIG:
   ENABLE_BKA_JOIN:
     null

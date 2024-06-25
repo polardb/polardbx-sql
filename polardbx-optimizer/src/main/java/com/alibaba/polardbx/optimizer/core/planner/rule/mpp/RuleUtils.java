@@ -152,10 +152,14 @@ public abstract class RuleUtils {
             } else {
                 long fetchVal = CBOUtil.getRexParam(sort.fetch, parameterContextMap);
                 long offsetVal = CBOUtil.getRexParam(sort.offset, parameterContextMap);
-                /**
-                 * fetch or offset be parameterized.
-                 */
-                fetch = builder.makeBigIntLiteral(offsetVal + fetchVal);
+                if (offsetVal == Long.MAX_VALUE || fetchVal == Long.MAX_VALUE) {
+                    fetch = builder.makeBigIntLiteral(Long.MAX_VALUE);
+                } else {
+                    /**
+                     * fetch or offset be parameterized.
+                     */
+                    fetch = builder.makeBigIntLiteral(offsetVal + fetchVal);
+                }
             }
         }
         return fetch;

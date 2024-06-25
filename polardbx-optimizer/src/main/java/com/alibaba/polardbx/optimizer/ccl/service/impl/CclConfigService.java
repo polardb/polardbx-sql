@@ -130,7 +130,6 @@ public class CclConfigService implements ICclConfigService {
                                     rescheduleTask.getWaitStartTs() + cclRuleInfo.getCclRuleRecord().waitTimeout * 1000
                                         + CclUtils.generateNoise();
                                 if (rescheduleTask == polledRescheduleTask && deadline < ts) {
-                                    rescheduleTask.getReschedulable().setRescheduled(false, null);
                                     rescheduleTask.getCclRuleInfo().getCclRuntimeStat().killedCount.getAndIncrement();
                                     rescheduleTask.getReschedulable()
                                         .handleRescheduleError(new TddlRuntimeException(ErrorCode.ERR_CCL, String
@@ -140,6 +139,7 @@ public class CclConfigService implements ICclConfigService {
                                                 cclRuleInfo.getCclRuleRecord().id,
                                                 (ts - rescheduleTask.getWaitStartTs())),
                                             null));
+                                    rescheduleTask.getReschedulable().setRescheduled(false, null);
                                     cclRuleInfo.getStayCount().decrementAndGet();
                                 } else {
                                     cclRuleInfo.getWaitQueue().addFirst(polledRescheduleTask);

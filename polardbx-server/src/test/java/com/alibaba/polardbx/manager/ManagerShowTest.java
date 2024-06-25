@@ -1,6 +1,5 @@
 package com.alibaba.polardbx.manager;
 
-import com.alibaba.polardbx.common.utils.Assert;
 import com.alibaba.polardbx.manager.response.ShowDirectMemory;
 import com.alibaba.polardbx.net.buffer.ByteBufferHolder;
 import com.alibaba.polardbx.net.compress.IPacketOutputProxy;
@@ -8,6 +7,7 @@ import com.alibaba.polardbx.net.compress.PacketOutputProxyFactory;
 import com.alibaba.polardbx.net.compress.RawPacketByteBufferOutputProxy;
 import com.alibaba.polardbx.net.packet.EOFPacket;
 import com.alibaba.polardbx.net.packet.RowDataPacket;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.nio.ByteBuffer;
@@ -24,7 +24,7 @@ public class ManagerShowTest {
         ByteBuffer byteBuffer = ByteBuffer.allocateDirect(size);
         long directMemorySize = ShowDirectMemory.getDirectMemorySize();
 
-        Assert.assertTrue(directMemorySize >= size);
+        Assert.assertTrue("Got direct memory size: " + directMemorySize, directMemorySize >= size);
         byteBuffer.clear();
     }
 

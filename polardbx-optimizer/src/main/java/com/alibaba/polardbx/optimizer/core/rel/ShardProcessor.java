@@ -128,7 +128,7 @@ public abstract class ShardProcessor {
     }
 
     public static SimpleShardProcessor buildSimple(LogicalView logicalView, String tableName, ExecutionContext ec) {
-        TddlRuleManager or = OptimizerContext.getContext(logicalView.getSchemaName()).getRuleManager();
+        TddlRuleManager or = ec.getSchemaManager().getTddlRuleManager();
         TableRule tr = or.getTableRule(tableName);
 
         List<String> shardColumns = tr.getShardColumns();

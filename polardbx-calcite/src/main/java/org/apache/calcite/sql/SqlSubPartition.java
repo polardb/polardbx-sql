@@ -70,8 +70,10 @@ public class SqlSubPartition extends SqlNode {
         StringBuilder sb = new StringBuilder("");
         sb.append("SUBPARTITION ");
         sb.append(name);
-        sb.append(" ");
-        sb.append(values.toString());
+        if (values != null) {
+            sb.append(" ");
+            sb.append(values.toString());
+        }
         if (TStringUtil.isNotEmpty(locality)) {
             sb.append(" LOCALITY=");
             sb.append(TStringUtil.quoteString(locality));
